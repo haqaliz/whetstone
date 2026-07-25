@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="whetstone-mark" viewBox="0 0 514 260" width="514" height="260" fill="none" color="#0B0B0B" role="img" aria-label="Whetstone">
+  <style>
+    /* Light default; flips for dark backgrounds (GitHub dark theme, dark sites).
+       Remove this block for a fixed-colour mark — fills follow `currentColor`. */
+    @media (prefers-color-scheme: dark) { #whetstone-mark { color: #FAFAFA } }
+  </style>
+  <!-- the W: two rounded parallelograms, unioned by nonzero fill -->
+  <path fill="currentColor" d="M 0.25 42.68 A 24.5 24.5 0 0 1 38.63 22.49 L 207.63 138.7 A 24.5 24.5 0 0 1 218.25 158.89 L 218.25 236.32 A 24.5 24.5 0 0 1 179.87 256.51 L 10.87 140.3 A 24.5 24.5 0 0 1 0.25 120.11 L 0.25 42.68 Z M 215.25 42.68 A 24.5 24.5 0 0 1 253.63 22.49 L 422.63 138.7 A 24.5 24.5 0 0 1 433.25 158.89 L 433.25 236.32 A 24.5 24.5 0 0 1 394.87 256.51 L 225.87 140.3 A 24.5 24.5 0 0 1 215.25 120.11 L 215.25 42.68 Z"/>
+  <!-- the dot -->
+  <circle fill="currentColor" cx="470.5" cy="43.5" r="43.5"/>
+</svg>
