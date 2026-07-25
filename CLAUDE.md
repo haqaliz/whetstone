@@ -137,6 +137,7 @@ If you need a statistic that isn't here, do not invent one; say it's unverified.
 README.md                       # Repo front door (to write)
 VISION.md                       # Narrative thesis, moat, non-goals (seeded — see file)
 CLAUDE.md                       # This file
+.claude/skills/                 # The repo's own workflow skills (see below)
 docs/
   ROADMAP.md                    # 2–3 month phased plan + milestones (NEXT: planning session)
   technical/ARCHITECTURE.md     # The nightly loop / verifier / distillation design (to write)
@@ -145,3 +146,29 @@ docs/
 
 The immediate next artifact is `docs/ROADMAP.md`. See the planning prompt the founder was
 given, or ask them for it.
+
+---
+
+## Workflow skills (`.claude/skills/`)
+
+The repo carries its own skills, mirroring the sibling projects (`~/dev/at/belay`,
+`~/dev/at/contig`). Use them rather than improvising a workflow.
+
+| Skill | Alias | What it does |
+|---|---|---|
+| `whetstone-next` | `wn` | Picks the next capability from the repo's own files; recommends and hands off, never starts the work |
+| `whetstone-begin-fast` | `wbf` | Worktree → context → dig → PRD → plan → implement (TDD, agents team) |
+| `whetstone-begin` | `wb` | Same, plus diagrams and technical/non-technical proposal PDFs before planning |
+| `whetstone-end-fast` | `wef` | Post-merge cleanup: master → pull → remove worktree → delete branch |
+| `whetstone-end` | `we` | Same, plus a completion note on Desktop |
+| `whetstone-report` | — | The plain-English completion note |
+| `whetstone-worktrees` | — | Branch naming, worktree layout, per-worktree setup, cleanup |
+| `prd-interview` / `prd-generator` / `tech-plan` | — | The planning chain the begin skills call into |
+
+Conventions the skills assume: base branch **`master`** (never `main`), branch
+`<type>/<id>/aliz`, worktree `.claude/worktrees/<type>-<id>`, planning artifacts under
+`docs/planning/{slug}/`, and **strict TDD executed through the agents team**.
+
+Every skill enforces the guardrails above — in particular that the reward stays
+execution-grounded, that `UNVERIFIED` is never reported as a win, and that no number
+appears anywhere the verifier didn't produce it.
