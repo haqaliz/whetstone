@@ -9,8 +9,11 @@ because that is what `mlx` supports; the *development* environment is pinned to 
 `.python-version`, and nothing under ``src/`` imports ``tomllib``.
 """
 
-import tomllib
 from pathlib import Path
+
+# Sorted below the stdlib block on purpose: `requires-python = ">=3.10"` sets ruff's target
+# version, and `tomllib` only entered the stdlib in 3.11, so ruff classifies it third-party.
+import tomllib
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

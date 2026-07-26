@@ -34,5 +34,20 @@ dev = ["pytest>=8", "ruff", "mypy"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/whetstone"]
 
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# RUF is selected in part for RUF100: an unused `# noqa` is itself an error, so a
+# suppression added to make a check pass cannot quietly outlive the problem.
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+files = ["src"]
+strict = true
+# An unnecessary `# type: ignore` is an error. Every escape hatch stays visible and
+# has to keep earning its place.
+warn_unused_ignores = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
