@@ -156,8 +156,11 @@ base-model bake-off — run **against the working verifier**, not on paper.
     rather than vacuously zero
   - cheat 6: accepted by both, asserted as the *documented, expected* residual so a future
     reader cannot mistake silence for coverage
-- `uv run pytest tests/test_import_guard.py` exits 0 — an AST walk over every module on the
-  reward path fails the build if any inference library is imported
+- `uv run pytest tests/test_no_inference_on_reward_path.py` exits 0 — an AST walk over every
+  module on the reward path fails the build if any inference library is imported. The walk is
+  **scoped to the reward-path packages**, not the whole tree, so it stays true once `mlx-lm`
+  is legitimately installed elsewhere; it carries an anti-vacuity control asserting the walk
+  actually sees imports (§ 7)
 - `uv run whetstone verify --task <fixture> --patch <fixture>` emits a verdict
 - `tasks/` holds instances from both sources with committed provenance
 - A baseline bake-off report exists under `reports/baseline/`
@@ -286,7 +289,7 @@ Belay (`~/dev/at/belay`) is real and shipped — v0.7.0, 8 tags, 13,068 LOC, 832
 | `verify/verdict.py` | The honesty contract as the *shape of the reduction*: `UNVERIFIED` ranks **above** `PASS`, so worst-status-wins can never render an unverified result clean; an empty verdict set reduces to `UNVERIFIED`, not `PASS` |
 | `verify/invariants.py` | The provenance boundary — operator policy never sourced from the agent's own evidence |
 | `corpus/metrics.py` | Precision / recall / **coverage**, with `UNVERIFIED` excluded from the confusion matrix rather than from the denominator |
-| `tests/test_import_guard.py` | The AST guard proving no model sits on the reward path |
+| `tests/test_verify_zero_llm.py` | The AST guard proving no model sits on the reward path. It bans inference clients (`openai`, `anthropic`, `torch`, `transformers`, `ollama`, `vllm`, `langchain`, …) *and* inference-shaped first-party module names (`llm`, `judge`, `model`, `inference`, `prompt`), and it is **scoped to named packages rather than the whole tree** — Belay's own non-shipped `eval/` tree legitimately imports `anthropic`/`openai`. The scoping matters more for us than for Belay: Whetstone will have `mlx-lm` genuinely installed, so an accidental inference import on the reward path is easy to make and invisible without a guard aimed at exactly that path. It also ships an anti-vacuity control asserting the AST walk really observes the imports the guarded layer makes |
 | `eval/instances/` + `eval/scripts/` | SWE-bench-Lite eligibility filter and the pure, offline, seeded stratified draw |
 
 **Declined — the replay substrate.** `CLAUDE.md:79` says *"reuse Belay's verifier/replay

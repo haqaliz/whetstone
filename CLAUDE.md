@@ -2,9 +2,15 @@
 
 This file orients a coding agent working in this repository. Read it first.
 
-> **Status:** greenfield. Nothing is built yet. The next step is a planning session that
-> produces `docs/ROADMAP.md` (a 2–3 month phased plan + milestones). Until then, this file
-> and `VISION.md` are the source of truth. Keep them in sync as direction firms up.
+> **Status:** the planning session happened. `docs/ROADMAP.md` — the 2–3 month phased plan
+> and milestones — is written and merged (PR #2), and it is the **authoritative technical
+> document** until `docs/technical/ARCHITECTURE.md` is written; that file does not exist yet.
+> This file and `VISION.md` remain the narrative source of truth (thesis, moat, guardrails).
+>
+> **P0 scaffolding is in progress** on `feat/p0-scaffold/aliz` — packaging, the `whetstone`
+> CLI, ruff/mypy/pytest, and CI. As of this writing nothing from it has landed on `master`,
+> no version has been released, and no reward, loop, or gate exists anywhere. Keep this file,
+> `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up.
 
 ---
 
@@ -76,24 +82,49 @@ designed out.
 Belay (`~/dev/at/belay`) is the execution-grounded **verification engine**. Whetstone is the
 **improvement loop that trains against a verifier like Belay's**. They reinforce each other:
 Belay proves a run is correct; Whetstone uses that kind of proof as an unhackable reward.
-Reuse Belay's verifier/replay where it fits, but Whetstone is an independent project with its
+`docs/ROADMAP.md` § 7 records exactly what we take and what we decline. **Taken:** the verdict
+semantics (`UNVERIFIED` ranked above `PASS`), the provenance boundary, the corpus metrics, the
+AST guard that keeps inference libraries off the reward path, and the eval instances/scripts.
+**Declined: the replay substrate** — for four stated reasons: it answers a harder question than
+our reward needs (trace fidelity vs. does the end state pass an operator-held check), its
+throughput is built for auditing rather than generating rollouts, parallel calls deliberately
+yield `UNVERIFIED` so batched rollouts produce no signal, and it exposes no API surface. Revisit
+only if a later task family needs trace fidelity. Whetstone is an independent project with its
 own thesis (improvement), not a Belay feature.
 
 ---
 
-## Tech direction (proposed — confirm in the planning session)
+## Tech direction
 
-- **Core: Python.** RL/self-play loop, the verifier harness, distillation, and eval.
-- **Models:** open bases (fine-tune / LoRA / distill into a small local model); local runtime
-  (Ollama / vLLM / transformers). BYOK cloud teacher optional, for distillation only.
-- **Reward:** execution-grounded verifier for one task family first (e.g. code / tool-use
-  with a checkable end-state). No LLM-judge reward.
-- **Dashboard:** TypeScript (founder's stack) — the nightly report, the verified-gain trend,
-  the caught-hack log.
-- **Distribution:** OSS, self-hostable, local-first / BYOK. **License:** lean Apache-2.0.
+**Locked — decided in the planning artifacts; do not re-litigate.**
 
-Nothing here is locked. `docs/technical/ARCHITECTURE.md` (to be written) is authoritative
-once it exists.
+- **Core: Python**, package path `src/whetstone/`, tests in `tests/`. RL/self-play loop, the
+  verifier harness, distillation, and eval all live here.
+- **Toolchain: uv exclusively** (no pip, no poetry) + ruff + mypy + pytest. CLI entrypoint
+  `whetstone`.
+- **Local runtime: MLX / `mlx-lm`**, end-to-end — both rollouts and LoRA — on macOS / Apple
+  Silicon (`docs/planning/roadmap-and-task-family/prd.md:63` for the runtime, `:58` for the
+  platform). *Not* Ollama, vLLM, or transformers; an earlier draft of this file said those,
+  and that was superseded by the PRD.
+- **Reward:** execution-grounded verifier for one task family first (code / tool-use with a
+  checkable end-state). No LLM-judge reward, ever.
+- **License:** Apache-2.0 (`docs/ROADMAP.md` § 4 makes it a P0 exit criterion).
+- **Distribution:** OSS, self-hostable, local-first / BYOK. 0.x versioning, tag `vX.Y.Z`, and
+  **tag-push is the entire release mechanism**. PyPI distribution name **`whetstonehq`** (bare
+  `whetstone` is taken); the import package and the CLI stay `whetstone`. See `RELEASING.md`.
+- **Dashboard:** TypeScript / Next.js (founder's stack), as a subdirectory of this repo — the
+  nightly report, the verified-gain trend, the caught-hack log. **Post-horizon**, not near-term.
+
+**Still open — genuinely undecided, decide with evidence.**
+
+- **Which open base** we fine-tune / LoRA. `docs/ROADMAP.md` § 4 (P1) settles it by a bake-off
+  run against the *working* verifier, not on paper.
+- **The BYOK cloud teacher for distillation** — optional, and post-horizon; nothing inside the
+  current roadmap horizon calls a cloud model at all.
+- Everything `docs/ROADMAP.md` § 10 lists as an open question.
+
+`docs/ROADMAP.md` is authoritative on the technical plan today.
+`docs/technical/ARCHITECTURE.md` (to be written) supersedes it once it exists.
 
 ---
 
@@ -131,21 +162,25 @@ If you need a statistic that isn't here, do not invent one; say it's unverified.
 
 ---
 
-## Docs structure (to be created)
+## Docs structure
 
 ```
-README.md                       # Repo front door (to write)
-VISION.md                       # Narrative thesis, moat, non-goals (seeded — see file)
+README.md                       # Repo front door
+VISION.md                       # Narrative thesis, moat, non-goals
 CLAUDE.md                       # This file
+CONTRIBUTING.md                 # Dev setup, test-first contract, ground rules
+RELEASING.md                    # Tag-push release mechanism (nothing released yet)
 .claude/skills/                 # The repo's own workflow skills (see below)
 docs/
-  ROADMAP.md                    # 2–3 month phased plan + milestones (NEXT: planning session)
+  ROADMAP.md                    # 2–3 month phased plan + milestones — authoritative today
+  planning/                     # Per-unit PRDs, specs, implementation plans
   technical/ARCHITECTURE.md     # The nightly loop / verifier / distillation design (to write)
   product/PRODUCT_SPEC.md       # Product surface, the report, the trend (to write)
 ```
 
-The immediate next artifact is `docs/ROADMAP.md`. See the planning prompt the founder was
-given, or ask them for it.
+`docs/technical/ARCHITECTURE.md` and `docs/product/PRODUCT_SPEC.md` do **not** exist yet. Until
+`ARCHITECTURE.md` does, read `docs/ROADMAP.md` for the technical plan — do not assume the
+architecture doc's absence means the design is undecided.
 
 ---
 
