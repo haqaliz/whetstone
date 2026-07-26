@@ -1,226 +1,242 @@
-# Understanding — `feat/roadmap-and-task-family`
+# Understanding — feat p0-scaffold
 
-Phase 2 dig for the unit of work in `_card/issue.md`. Written 2026-07-26.
+**Written:** 2026-07-26 · **Branch:** `feat/p0-scaffold/aliz` · cut from `master` @ `347655a`
+**Upstream spec:** `docs/ROADMAP.md` § 4 "P0 — Scaffold" (merged in PR #2)
+
+> Supersedes the `feat/roadmap-and-task-family` note that PR #2 committed at this path;
+> that version is preserved in history at `347655a`.
 
 ---
 
 ## 1. What the work is really asking
 
-Write `docs/ROADMAP.md`: a 2–3 month phased plan with milestones. But the *load-bearing*
-part is not the phasing — it is **choosing the first task family and specifying its
-verifier**, because `whetstone-next` ranked this pick precisely on the grounds that
-everything else in the core loop is blocked on core-loop element ①.
+Turn a docs-only repository into an executable Python project whose toolchain is good enough
+that **P1 can be built test-first**. That is the whole point: P0 produces no product surface,
+no reward, no loop. It produces the floor.
 
-A roadmap that lists phases without committing to a family and a concrete check would
-leave the blocker exactly where it is, under a new filename. That is the failure mode to
-design against.
+The five exit criteria are all commands or file-existence checks, so "done" is not a
+judgement call. What is *not* pinned by those criteria — and what this unit must therefore
+decide — is everything about *how* the toolchain is configured: Python version, ruff rule
+selection, mypy strictness, CI runner OS, and the distribution name.
 
-## 2. Repo state (verified, not assumed)
+**The honest framing of P0's value:** it retires no product risk and proves no thesis. It is
+a prerequisite. The one substantive risk it *does* retire is toolchain feasibility on the
+target platform — specifically whether the MLX-on-Apple-Silicon commitment and a green CI can
+coexist (§ 5A).
 
-`git log` — two commits, both 2026-07-26:
+## 2. Repo state, verified not assumed
 
-```
-392baf6 Port the Claude workflow skills from belay/contig
-000ccd9 Seed repo with project context and vision
-```
+`master` @ `347655a` contains: `CLAUDE.md`, `VISION.md`, `README.md`, `.gitignore`,
+`assets/logo.svg`, `docs/ROADMAP.md`, `docs/planning/`, and `.claude/skills/` (10 skills).
 
-No tags. `git diff master feat/roadmap-and-task-family/aliz` is empty — the branch has no
-commits of its own yet.
+**Zero lines of executable code.** No `src/`, no `tests/`, no `pyproject.toml`, no `uv.lock`,
+no `.python-version`, no `.github/`, no `LICENSE`, no `CHANGELOG.md`, no `CONTRIBUTING.md`.
+No git tags. `whetstone-worktrees:94` states the same and warns `uv sync` will fail until
+this unit runs.
 
-**Complete repo contents:** `.gitignore`, `CLAUDE.md`, `VISION.md`, `.claude/skills/`
-(10 skills, 12 markdown files). **Zero lines of executable code in any language.**
+`docs/technical/ARCHITECTURE.md` and `docs/product/PRODUCT_SPEC.md` are named in `CLAUDE.md`
+but **do not exist**. `docs/ROADMAP.md` now does, and is the authoritative technical document
+in their absence — a fact no file currently states (§ 5H).
 
-Confirmed absent: `pyproject.toml`, `uv.lock`, `src/`, `tests/`, `README.md`, `docs/`
-(entirely), `CHANGELOG.md`, `dashboard/`, `.github/`, `RELEASING.md`, `LICENSE` (despite
-`CLAUDE.md:93` stating Apache-2.0), `.worktreeinclude`.
+## 3. Already locked — do not re-litigate
 
-`docs/ROADMAP.md`, `docs/technical/ARCHITECTURE.md`, and `docs/product/PRODUCT_SPEC.md`
-are all named in `CLAUDE.md` and **none of them is written**.
+From `docs/planning/roadmap-and-task-family/prd.md:171-179` ("Constraints inherited from the
+repo — must not be contradicted") and corroborated by `.gitignore`:
 
-## 3. Technical commitments already baked in (the roadmap must not contradict these)
+- Package path `src/whetstone/`; tests in `tests/`
+- **uv exclusively** — no pip, no poetry
+- ruff + mypy + pytest
+- CLI entrypoint `whetstone`
+- Artifact dirs `/runs/`, `/checkpoints/`, `/tasks/local/`, `/reports/local/`, `/_sandbox/`
+- Base branch `master`; branches `<type>/<id>/aliz`
+- 0.x versioning, tag `vX.Y.Z`, **tag-push is the entire release mechanism**
+- `uv.lock` is committed (`whetstone-worktrees:89` — "build the venv from uv.lock")
+- Dashboard is a Next.js subdirectory of this repo — **post-horizon**, not P0
 
-These were not in `CLAUDE.md`'s prose — they are encoded in `.gitignore` and the skills,
-and they constrain the plan.
+`.gitignore` independently corroborates the toolchain: it already pre-declares
+`.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.venv/`, `*.egg-info/`, `dist/`. Those
+entries are the only place ruff and mypy appear outside the PRD.
 
-**From `.gitignore`** (which states outright at line 19: *"Pre-declared: these directories
-don't exist yet: the loop is not built"*):
+**Artifact-dir subtlety.** `/tasks/local/` and `/reports/local/` ignore *only* the `local/`
+subtree. `ROADMAP.md:163` requires `tasks/` to hold committed provenance, and
+`ROADMAP.md:165` requires `reports/baseline/` to be committed. This is consistent by design —
+a scaffold that broadened the ignore to `/tasks/` would break P1.
 
-| Path | Implication |
+## 4. Belay precedent (the reference implementation)
+
+Belay (`~/dev/at/belay`, v0.7.0, 13,068 LOC across 49 modules, 796 `test_*` functions) is the
+shipped sibling. Its scaffold answers most of P0's open questions with working code rather
+than speculation.
+
+**Directly transferable:**
+
+| Concern | Belay's answer |
 |---|---|
-| `/runs/` | per-night run-state directory |
-| `/checkpoints/` | the artifact the promotion gate promotes or rejects |
-| `/tasks/local/` | a `tasks/` tree where committed/shareable task defs sit beside the user's private ones |
-| `/reports/local/` | morning-report artifacts, same public/private split |
-| `/_sandbox/` | **the isolated re-execution area** — i.e. the verifier runs candidate solutions here |
-| `.mypy_cache/`, `.ruff_cache/` | mypy + ruff are intended (named *nowhere else* in the repo) |
-| `.next/` | the dashboard is **Next.js** specifically, not just "TypeScript" |
-| `*.egg-info/`, `dist/` | the Python core is a packaged, distributable project |
+| Build backend | `hatchling`; `[tool.hatch.build.targets.wheel] packages = ["src/belay"]` |
+| Name collision | `belay` was taken on PyPI → `name = "belay-harness"`, **import package and CLI stay `belay`**. Documented in a `pyproject.toml` comment |
+| Python | `requires-python = ">=3.10"`, `.python-version` = `3.12`, CI installs 3.12 |
+| Dep groups | PEP 735 `[dependency-groups]`, not `[project.optional-dependencies]` |
+| License | `license = "Apache-2.0"` + `license-files = ["LICENSE"]` (PEP 639), unmodified 202-line text, **no per-file headers** |
+| CLI | stdlib `argparse`, single `cli.py`, `main(argv=None) -> int`, `set_defaults(func=...)` dispatch, **lazy imports inside handlers to keep `--help` cheap** |
+| CI | GitHub Actions, **`macos-latest` only, no matrix**, `uv sync` → `ruff check .` → `pytest -q`, on push/PR to `master`, with a cancel-in-progress concurrency group |
+| Release | tag-push `v*`; validates git tag against `pyproject` version; PyPI **trusted publishing** (OIDC, no stored secret); least-privilege `permissions` |
+| Tests | flat `tests/`, **no `__init__.py`** (so `from fixtures.x import y` works), `tmp_path` over fixtures, full-sentence test names, prose assertion messages |
 
-**From the skills:**
+**The distinctive convention worth adopting:** every module opens with a long essay-style
+docstring explaining *what failure it prevents*, and every ignore rule that isn't boilerplate
+carries a comment citing the guardrail it enforces.
 
-- CLI entrypoint is **`whetstone`**; the only named subcommand anywhere is
-  **`whetstone report --last-night`** (`whetstone-report:87`).
-- Package layout `src/whetstone/`, tests in `tests/`, `uv` exclusively (no pip/poetry).
-- Dashboard is a **subdirectory of this repo** (`.claude/worktrees/<n>/dashboard`), not a
-  separate repo.
-- **Checkpoint lifecycle:** `candidate → evaluated → promoted / rejected / UNVERIFIED`
-  (`proposals.md:17`). The gate has **exactly three exits** and `UNVERIFIED` is never
-  collapsed into `promoted`.
-- **Pipeline shape**, stated consistently three times: `task family → verifier →
-  self-play/RL → distillation → promotion gate → morning report`.
-- The technical-proposal contract names the data-model surface: *"task format, verifier
-  contract, reward signal, checkpoint/eval artifacts, report schema"* (`proposals.md:47`).
-- **Adversarial test taxonomy** (`tech-plan:72`): *"degenerate solutions, edited
-  timers/asserts, mutated fixtures, claimed-but-not-observed state."*
-- Tests are deterministic, no network; any BYOK teacher call sits behind an injectable
-  seam and never runs in CI.
-- PyPI is the implied publish target; **no package name chosen**. 0.x versioning, tag
-  `vX.Y.Z`, tag-push is the entire release mechanism.
+**Where Whetstone must exceed Belay rather than copy it:**
 
-## 4. What Belay actually gives us (this changes the plan)
+1. **mypy.** Belay declares mypy as a dev dep and **never runs it** — no `[tool.mypy]`, no
+   `mypy.ini`, absent from CI. Whetstone's `ROADMAP.md:136` makes `uv run mypy src/` an exit
+   criterion, so there is no sibling default to inherit. Strictness must be chosen here.
+2. **ruff.** Belay has **no `[tool.ruff]` section** and runs stock defaults. Rule selection
+   and line length are undecided for Whetstone.
+3. **`dependencies = []`.** Load-bearing for Belay (it proxies MCP and must add nothing to
+   the user's process tree) and structurally enforced by an AST guard. **This cannot survive
+   Whetstone**, which needs `mlx-lm` for rollouts and LoRA. The transferable idea is the
+   *scoped* version: keep the reward package dependency-free and enforce that narrowly.
+4. **`__version__`.** Belay's `src/belay/__init__.py` says `"0.0.0"` while `pyproject.toml`
+   says `0.7.0`, and nothing reconciles them. Don't inherit the drift.
 
-Belay (`~/dev/at/belay`) is **real and shipped**, not vaporware: v0.7.0, 8 tags, 13,068
-LOC across 49 modules, **832 tests passing in ~16s** (run and confirmed). Apache-2.0, CI,
-CHANGELOG, zero runtime dependencies.
+## 5. Contradictions and blockers found
 
-Its verifier is genuinely execution-grounded and genuinely zero-LLM — enforced by an **AST
-walk** (`tests/test_import_guard.py`) that parses every module under `src/belay` and fails
-the build if the verdict path imports an inference library. That is the credible answer to
-"isn't this an LLM judge with extra steps?", and it is cheaply portable.
+### A. MLX ↔ "CI green on master" — the sharpest, and it has a resolution
 
-### What is cheaply reusable (the crown jewels)
+`prd.md:58` locks the platform to macOS/Apple Silicon; `prd.md:63` locks `mlx-lm` end-to-end.
+`mlx-lm` is Apple-Silicon-only. `ROADMAP.md:138` makes "CI workflow green on `master`" a P0
+exit criterion. If `mlx-lm` is a mandatory dependency and CI runs `ubuntu-latest`, `uv sync`
+fails and the criterion is **unreachable by construction**.
 
-| Module | Why it matters to Whetstone |
-|---|---|
-| `verify/verdict.py` (114 L, zero deps) | The honesty contract **as the shape of the reduction**: `_RANK` puts `UNVERIFIED` (2) *above* `PASS` (0) and `WARN` (1), so worst-status-wins can never render an unverified turn clean. An empty verdict set reduces to `UNVERIFIED`, not `PASS`. |
-| `verify/invariants.py` (299 L) | The **provenance boundary**: policy is loaded only from an operator file; there is no trace-reading loader, and a test asserts that absence structurally. For an RL reward this is existential — otherwise the policy authors its own reward. |
-| `snapshot/bth1.py` (449 L) | Deterministic tree hash over path bytes, mode (incl. setuid), mtime_ns, st_flags, uid/gid, content sha256, symlink targets, xattrs, hardlink identity. Domain-independent. |
-| `corpus/metrics.py` (174 L) | Precision/recall/**coverage** vs human labels, with UNVERIFIED excluded from the confusion matrix (it lowers coverage instead) — refuses the "100%-precision-by-construction lie". |
-| `tests/test_import_guard.py` | The no-model-in-the-verdict-path guard. |
-| `eval/instances/` + `eval/scripts/` | SWE-bench-Lite eligibility filter + pure offline seeded stratified draw, with committed `pool.json` / `selected.json`. |
+Nothing in any repo file specifies the CI runner OS, an optional-dependency group, or a
+platform marker.
 
-### What does NOT fit — and this is the important finding
+**Belay solved the identical problem** (Seatbelt + APFS `clonefile` are macOS-only) by running
+CI on `macos-latest` only, with a comment saying exactly why. That precedent makes this a
+solved design question. What remains is **empirical and must be proven, not assumed**:
+whether `mlx-lm` actually installs on GitHub's hosted macOS runner. P0 is the right place to
+find out, because discovering it in P2 would invalidate the toolchain after three phases of
+work were built on it.
 
-`CLAUDE.md:79` says *"Reuse Belay's verifier/replay where it fits."* The dig says the
-**verdict semantics fit; the replay substrate probably does not**, for four reasons:
+**Mitigation available regardless:** P0 need not depend on `mlx-lm` at all. Nothing in P0's
+exit criteria requires it. Deferring the ML dependency to P1/P2 — behind an optional group —
+keeps P0 unblocked either way. That is a PRD decision, not an implementation detail.
 
-1. **macOS-only.** Sandbox is Seatbelt, snapshot is APFS `clonefile`; off macOS the sandbox
-   *raises* rather than degrading. If training runs on a Linux GPU box, this is unusable
-   as-is and is the single biggest porting cost.
-2. **Parallel tool calls → UNVERIFIED.** Belay deliberately refuses to serialize turns, so
-   any batched rollout produces UNVERIFIED rather than signal. A batching training loop and
-   Belay's replay are structurally incompatible.
-3. **Throughput.** ~5 ms/turn snapshot on a 400-file tree, scaling with tree size, plus a
-   full APFS clone + restore + server spawn per replay. Built for *auditing* runs, not for
-   generating high-volume RL rollouts.
-4. **No API and no reward surface.** `src/belay/__init__.py` is one line (`__version__ =
-   "0.0.0"` — and stale; `pyproject.toml` says 0.7.0). There is no exported programmatic
-   surface, and grepping for "reward"/"training" returns nothing.
+### B. Distribution name — out of scope, yet structurally required
 
-**Why this matters:** Belay solves a *harder* problem than Whetstone's v1 needs. Belay asks
-*"did the agent's trace faithfully describe what it did?"* — which requires snapshot +
-replay. A v1 code-fixing reward only needs *"does the end state pass an operator-held
-check?"*, which needs a sandbox and an exit status. Whetstone should take Belay's **verdict
-semantics and provenance discipline** and build a much simpler substrate, rather than
-inheriting a macOS-locked, MCP-locked, latency-heavy replay engine it does not need yet.
+`prd.md:295` puts "choosing the PyPI package name" **explicitly out of scope**;
+`prd.md:178` records "package name unchosen". But `ROADMAP.md:135` requires
+`uv run whetstone --help` to exit 0, which requires `[project] name` and a console script.
 
-### Cautionary finding
+Availability is now **resolved** (see `issue.md`): `whetstone` taken; `whetstonehq`,
+`whetstone-ai`, `whetstone-hq` free. Belay's precedent gives the exact pattern — distribution
+name differs, import package and CLI do not. So this reduces to picking one string, and it
+must be picked here because `pyproject.toml` cannot be written without it.
 
-Belay's `docs/technical/PHASE0_RESULTS.md` — the doc that gates PROCEED vs PIVOT — contains
-**20 occurrences of `TO-BE-FILLED`**. Its headline violation rate is unpublished, Stage 3 is
-partial, and the only real numbers (Stage 2: 2/9 = 22.2% instance violation rate, 2/130 =
-1.5% per-turn FAIL) live in an **uncommitted worktree**. Belay is admirably honest about
-this. The lesson for our roadmap: **the engine working and the empirical claim being
-established are two different milestones**, and conflating them is exactly the mistake the
-"first honest number" milestone exists to prevent.
+### C. Python version — completely unspecified
 
-## 5. The task family — candidates and the leading one
+Grep across every `.md` for `requires-python|python 3|3.1[0-3]` returns **zero hits**. No
+minimum, no `.python-version`, nothing. Compounding: `mlx-lm`'s supported range would in
+practice constrain this, and nothing writes that down. Belay's `>=3.10` + pinned `3.12` is
+available as precedent.
 
-**No family is chosen anywhere in the repo.** The only concrete candidate named in any
-source is parenthetical, in `CLAUDE.md:88` and again in the seed research: *"code/tool-use
-tasks with checkable end-state."* The recurring `task-verifier` slug in the skills is an
-illustrative example, not a decision.
+### D. CI provider — implied, never decided
 
-The leading candidate (to be settled in the PRD interview, not here):
+`ROADMAP.md:138` says "CI workflow" with no provider. The PRD's locked-decisions table
+doesn't mention CI at all. Evidence is indirect but consistent: `whetstone-end-fast` references
+`.github/workflows/release.yml` and uses `gh run watch`. GitHub Actions is the only candidate.
 
-> **Python repo bug-fixing, SWE-bench-Lite style, rewarded by operator-held test execution
-> (`FAIL_TO_PASS` / `PASS_TO_PASS`).**
+### E. `LICENSE` — required by P0, but formally still "proposed"
 
-Why it looks strong:
-- The reward is a **process exit status**, not a comparison — about as deterministic and
-  as un-judge-like as a reward gets.
-- Belay already built the corpus machinery for exactly this domain: a filter to pure-Python
-  repos (django, sympy, flask, requests, sphinx, pylint — matplotlib/scikit-learn/astropy/
-  xarray/seaborn excluded for needing C/Cython builds), yielding 166 strict-eligible
-  instances, drawn by a pure, offline, seeded stratified draw with committed artifacts.
-- The cheat surface is **known and enumerable**, which is what makes "airtight" testable
-  rather than aspirational: edit the tests, weaken an assert, mutate a fixture, `sys.exit(0)`,
-  monkeypatch the runner, special-case the input. The defence is the provenance boundary —
-  tests are operator-held and restored from the golden commit after the patch is applied,
-  and the patch is confined to non-test files. That is `invariants.py`'s discipline applied
-  to a code family.
+`ROADMAP.md:137` makes Apache-2.0 a P0 exit criterion. `CLAUDE.md:93` states Apache-2.0 —
+but under a heading reading *"Tech direction (proposed — confirm in the planning session)"*,
+and `CLAUDE.md:95` says *"Nothing here is locked."* `prd.md:295` put the LICENSE file out of
+scope for the roadmap unit. So P0 is required to ship a license whose choice was never
+formally confirmed. Belay is Apache-2.0. **Needs one line of confirmation, not a debate.**
 
-Open risk on it: it may be **contaminated** — SWE-bench-Lite is widely trained on, so an
-open base may already have memorised fixes, which would inflate the baseline and muddy the
-delta. This needs a stated answer in the roadmap (held-out construction, or a private task
-source, or both).
+### F. `whetstone report --last-night` — both inherited constraint and post-horizon
 
-## 6. Guardrail check
+`prd.md:175` lists it under constraints that "must not be contradicted"; `ROADMAP.md:329`
+places it post-horizon. `prd.md:260-261` already flags this as unresolved. Consequence for
+P0: no defensible answer on whether `--help` reserves a `report` subcommand.
 
-| Guardrail | Status |
-|---|---|
-| Reward execution-grounded, never a judge | **Held.** Leading family's reward is a test-suite exit status. No model on the reward path. |
-| No frontier base-model training | **Held.** Sharpen an open base; nothing here proposes pretraining. |
-| Never regress / `UNVERIFIED` ≠ win | **Held**, and strengthened — Belay's `_RANK` gives us a proven implementation shape to port. |
-| Local / BYOK / no data egress | **Held**, with one flag: SWE-bench instance fetching touches the network. Belay's pattern (human-run fetch, committed output, pure offline draw) is the precedent to follow. |
-| Gets better as base models improve | **Held.** A stronger base is a better starting policy; the verifier and the accumulated verified-improvement record are the durable part. |
+### G. The roadmap cites the wrong Belay file for its flagship guard
 
-Nothing in this work drifts toward an LLM judge or toward base-model training.
+`ROADMAP.md:290` takes `tests/test_import_guard.py` for *"The AST guard proving no model sits
+on the reward path."* **That is not what that file does.** In Belay, `test_import_guard.py`
+bans `mcp`, bans all non-stdlib imports, and bans `json` inside `proxy.py`.
 
-## 7. Contradictions and open questions
+The inference-library guard is a **different file: `tests/test_verify_zero_llm.py`**. It bans
+~25 inference clients (`openai`, `anthropic`, `torch`, `transformers`, `ollama`, `vllm`,
+`langchain`, …) plus first-party module names (`llm`, `judge`, `model`, `inference`, …),
+**scoped to specific packages** rather than the whole tree — precisely because Belay
+legitimately uses `anthropic`/`openai` in its non-shipped `eval/` tree. It also ships an
+anti-vacuity control test asserting the AST walk actually observes real imports.
 
-**Contradictions surfaced (not papered over):**
+This is P1's concern, not P0's, but **the roadmap should be corrected or P1 will port the
+wrong file**. The scoped shape matters more for Whetstone than for Belay: Whetstone will have
+`mlx-lm` genuinely installed, making an accidental judge-import trivially easy and otherwise
+invisible.
 
-1. `CLAUDE.md:79` "Reuse Belay's verifier/replay where it fits" reads as though the replay
-   engine is the reusable asset. The dig says the opposite: the **verdict semantics** are
-   the asset; the replay substrate is macOS-locked, MCP-locked, and throughput-hostile.
-   The roadmap should say which parts it takes and which it deliberately does not.
-2. `VISION.md` drops the attributions that `CLAUDE.md` carries — the 35% figure appears
-   unsourced, and the timer-rewriting claim appears unsourced. Venue also differs
-   ("Sequoia Ascent 2026" vs "Sequoia 2026"). If the roadmap cites either, use
-   `CLAUDE.md`'s attributed form.
-3. The seed research's **"+7% on your real tasks"** is *illustrative pitch copy*, not a
-   target or a finding, and its **"MVP wedge (1–2 months)"** is an unsourced gut estimate
-   against `CLAUDE.md`'s "2–3 month" horizon. Neither may be quoted as a commitment.
+### H. `CLAUDE.md` is now stale in three places
 
-**Open questions for the PRD interview:**
+A P0 implementer is instructed by `CLAUDE.md:3` to read it first, and will be misled:
 
-- **Q1 — the family.** Confirm the leading candidate, or name another. This is the decision
-  the whole roadmap hangs on.
-- **Q2 — training platform.** macOS (where Belay's substrate works) or a Linux GPU box
-  (where it does not)? This changes what is reusable and adds or removes a porting phase.
-- **Q3 — contamination.** How is the held-out set protected from a base model that may have
-  memorised SWE-bench? Private tasks, or a decontamination step, or an accepted caveat?
-- **Q4 — the "reward-hacking caught & rejected: N" counter.** No source names how a hack
-  attempt is *distinguished* from an ordinary failure. Without that distinction the counter
-  is not implementable. Needs a definition.
-- **Q5 — base model + runtime.** Ollama / vLLM / transformers are always listed as
-  alternatives, never chosen. Which, and which open base?
-- **Q6 — roadmap scope.** Does `docs/ROADMAP.md` phase only to the first honest number, or
-  through distillation and the dashboard as well?
+1. `CLAUDE.md:5-7` — "Status: greenfield. Nothing is built yet. The next step is a planning
+   session that produces `docs/ROADMAP.md`." That session happened; the roadmap is merged.
+2. `CLAUDE.md:88` — runtime listed as "Ollama / vLLM / transformers". The PRD locked
+   **MLX / `mlx-lm`** (`prd.md:63`), which is none of the three.
+3. `CLAUDE.md:79` — "Reuse Belay's verifier/replay where it fits." `ROADMAP.md:292-305`
+   explicitly **declines** the replay substrate with four stated reasons. The superseded line
+   is still there.
 
-## 8. Grounded facts available to cite (exactly three)
+`CLAUDE.md:7` instructs "Keep them in sync as direction firms up," so this is a known
+obligation, currently unmet. Not P0's deliverable, but cheap to fix on this branch.
 
-Per `CLAUDE.md:108-119` and re-enumerated in `whetstone-next:126` and `prd-generator:89`:
+## 6. Constraints on the implementation
 
-1. RLVR is the live frontier; reward-hacking is its central documented failure mode —
-   **METR** observed a model rewriting a timer instead of optimizing the task.
-2. **"One Token to Fool LLM-as-a-Judge"** shows up to **35% false positives**.
-3. **Karpathy (Sequoia Ascent 2026)** — the valuable RL environments *"aren't in the
-   frontier-lab mix."*
+1. **Test-first, including for the scaffold itself.** `whetstone-worktrees:94` — "the failing
+   test comes before the package." The first failing test creates the suite.
+2. **"Non-trivial test" is a real bar.** `ROADMAP.md:134`. An `assert True` or a bare import
+   smoke test fails the criterion as written. Belay's anti-vacuity convention is the model:
+   a guard nobody has watched fail may be passing vacuously.
+3. **No inference library on the reward path** — P1's guard will fail the build. P0 must not
+   pre-poison it.
+4. **Tests deterministic, no network.** Any BYOK teacher call sits behind an injectable seam
+   and never runs in CI.
+5. **No release may be cut.** But note: creating `pyproject.toml` **flips `whetstone-end-fast`
+   Phase 3 from no-op to live**, so `CHANGELOG.md` / `RELEASING.md` become relevant. Whether
+   P0 creates them is unspecified.
+6. **Never copy artifact dirs between worktrees** — provenance is what makes a promotion
+   decision real.
+7. **P0 has no pivot signal** (`ROADMAP.md:140`) — it cannot be abandoned.
 
-Anything else is **unverified and must be labeled so**. Note that Belay cites two further
-arXiv items (2603.03116 corrupt successes 27–78%; 2507.08794 judge false positives) — these
-are *not* in Whetstone's grounded list and must be verified before use, not inherited.
-`CLAUDE.md:119`: *"If you need a statistic that isn't here, do not invent one; say it's
-unverified."*
+## 7. Open questions for the PRD interview
+
+1. **Distribution name** — `whetstonehq`, `whetstone-ai`, or `whetstone-hq`? (availability
+   resolved; choice outstanding)
+2. **Does P0 depend on `mlx-lm` at all**, or defer it behind an optional group? Drives whether
+   the CI-runner question is load-bearing now or in P2.
+3. **CI runner** — confirm `macos-latest` per Belay precedent; confirm GitHub Actions.
+4. **Python** — `requires-python` floor and the pinned `.python-version`.
+5. **ruff rule selection and mypy strictness** — no sibling default exists; this is a real
+   choice, and `mypy src/` must exit 0 on day one.
+6. **Does `--help` reserve later subcommands** (`verify`, `run`, `gate`, `check-leakage`,
+   `report`) or expose only what exists? Bears on § 5F.
+7. **Confirm Apache-2.0** (§ 5E).
+8. **Scope creep check** — are `CHANGELOG.md`, `RELEASING.md`, `CONTRIBUTING.md` in or out?
+   None are named in P0's exit criteria.
+9. **Does this branch also fix the stale `CLAUDE.md` and the `ROADMAP.md:290` file-name
+   error** (§ 5G, § 5H), or are those a separate chore?
+
+## 8. Guardrail check
+
+- **Reward stays execution-grounded** — P0 implements no reward. Its only obligation is
+  negative: keep inference libraries off the future reward path (§ 6.3).
+- **`UNVERIFIED` never a win** — no gate in P0.
+- **Local / no egress** — P0 adds a CI workflow that runs on GitHub's runners against the
+  repo's own source. No user task data exists yet and none is involved.
+- **No frontier base-model training** — P0 trains nothing.
+- **No invented numbers** — the only figures in this note are counted facts (LOC, test counts,
+  file sizes, HTTP status codes), each traceable to a command.
