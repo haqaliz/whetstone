@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+# The distribution is `whetstonehq` because `whetstone` is already taken on PyPI
+# (verified 2026-07-26). The import package and the CLI stay `whetstone` — the same
+# split Belay uses for `belay-harness`. Do not "fix" this mismatch: `__version__`
+# resolves the DISTRIBUTION name, so changing one without the other breaks it loudly.
+name = "whetstonehq"
+version = "0.1.0"
+description = "A model that trains itself overnight — and proves it didn't cheat."
+requires-python = ">=3.10"
+# Zero runtime dependencies: the CLI is stdlib-only, and nothing on the future
+# reward path may pull in an inference library. ML deps live in the optional
+# groups below so P1's import guard is not pre-poisoned.
+dependencies = []
+
+[project.optional-dependencies]
+# Optional, never a dev dependency: the test suite must not depend on mlx. CI installs
+# this group on macOS solely to prove it resolves AND imports — `mlx-lm` declares
+# `mlx; platform_system == "Darwin"`, so off Darwin it installs with no engine behind it.
+mlx = ["mlx-lm>=0.31"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff", "mypy"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/whetstone"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
