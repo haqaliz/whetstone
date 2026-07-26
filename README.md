@@ -10,8 +10,11 @@
 
 ---
 
-> **Status: greenfield.** Nothing is built yet. [`VISION.md`](VISION.md) and
-> [`CLAUDE.md`](CLAUDE.md) are the source of truth until `docs/ROADMAP.md` exists.
+> **Status: early.** [`docs/ROADMAP.md`](docs/ROADMAP.md) is written and merged — it commits
+> to the first task family, specifies its verifier, and phases the work through to the first
+> honest number. The Python scaffold is in progress; **no reward, loop, or gate exists yet,
+> and nothing has been released.** [`VISION.md`](VISION.md) holds the thesis,
+> [`CLAUDE.md`](CLAUDE.md) the guardrails.
 
 Point Whetstone at your tasks. Each night a local loop runs self-play / RL against an
 **execution-grounded verifier** — never an LLM judge it can fool — distils the wins into a
