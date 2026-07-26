@@ -10,11 +10,17 @@ build-backend = "hatchling.build"
 name = "whetstonehq"
 version = "0.1.0"
 description = "A model that trains itself overnight — and proves it didn't cheat."
+readme = "README.md"
 requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 # Zero runtime dependencies: the CLI is stdlib-only, and nothing on the future
 # reward path may pull in an inference library. ML deps live in the optional
 # groups below so P1's import guard is not pre-poisoned.
 dependencies = []
+
+[project.scripts]
+whetstone = "whetstone.cli:main"
 
 [project.optional-dependencies]
 # Optional, never a dev dependency: the test suite must not depend on mlx. CI installs
