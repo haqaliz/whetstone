@@ -54,6 +54,10 @@ _VERDICT_KIND = "sandbox-run"
 #: outside the tree the caller granted.
 _TMPDIR_NAME = ".whetstone-tmp"
 
+#: The one write the profile permits outside the scope. A sink, not a destination — see
+#: `build_profile` for why refusing it costs a working pytest and buys no containment.
+_BIT_BUCKET = os.devnull
+
 #: `sandbox-exec` prefixes its own failures — a profile that would not compile, a binary it
 #: could not exec. That is not the child's exit status, because there was no child.
 _SANDBOX_EXEC_FAILURE = b"sandbox-exec:"
@@ -98,6 +102,13 @@ def build_profile(scope: Path | str) -> str:
     The scope is resolved before interpolation: macOS hands out symlinked temp paths
     (`/tmp` -> `/private/tmp`), and Seatbelt matches the resolved path, so an unresolved
     `subpath` grants nothing while looking like it grants everything.
+
+    `/dev/null` is granted as a `literal`, and it is not an erosion of the boundary: the
+    boundary is about what the child can *change*, and a write to the bit bucket changes
+    nothing anywhere. Denying it is not free — pytest's logging plugin opens `/dev/null` as
+    its default log file while configuring, so without this every confined pytest run dies
+    with an INTERNALERROR before collecting a test. `literal` rather than `subpath` so this
+    grants that one path and not `/dev`.
     """
     resolved = Path(scope).expanduser().resolve()
     return (
@@ -106,6 +117,7 @@ def build_profile(scope: Path | str) -> str:
         "(deny network*)\n"
         "(deny file-write*)\n"
         f'(allow file-write* (subpath "{_quote(str(resolved))}"))\n'
+        f'(allow file-write* (literal "{_quote(_BIT_BUCKET)}"))\n'
     )
 
 

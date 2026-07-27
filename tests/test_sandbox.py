@@ -196,6 +196,41 @@ def test_writes_land_inside_the_scope_and_are_refused_outside_it(tmp_path: Path)
     assert not outside.exists()
 
 
+def test_the_bit_bucket_is_writable_while_real_writes_stay_confined(tmp_path: Path) -> None:
+    """``/dev/null`` is a sink, not a place data can land, so denying it contains nothing.
+
+    Denying it does break things: pytest's logging plugin opens ``/dev/null`` as its default
+    log file during ``pytest_configure``, so under a profile without this exception *every*
+    confined pytest run dies with an INTERNALERROR before collecting a single test — which is
+    how this was found. The exception is a literal, not a subpath: it grants exactly the one
+    path whose semantics are "discard", and the second half of this test is what keeps it from
+    quietly becoming a general write permission.
+    """
+    outside = tmp_path / "outside.txt"
+    probe = f"""
+import sys
+with open("/dev/null", "w") as handle:
+    handle.write("discarded")
+print("DEVNULL WROTE")
+try:
+    with open({str(outside)!r}, "w") as handle:
+        handle.write("landed")
+except PermissionError:
+    print("OUTSIDE DENIED")
+else:
+    print("OUTSIDE WROTE")
+"""
+    scope = tmp_path / "scope"
+    scope.mkdir()
+
+    result = run_confined([sys.executable, "-c", probe], scope=scope, timeout=60)
+
+    stdout = result.stdout.decode(errors="replace")
+    assert "DEVNULL WROTE" in stdout, stdout
+    assert "OUTSIDE DENIED" in stdout, stdout
+    assert not outside.exists()
+
+
 def test_a_scope_path_containing_a_quote_is_escaped_not_injected(tmp_path: Path) -> None:
     """The scope is data pasted into the policy language that enforces the policy.
 
@@ -207,7 +242,11 @@ def test_a_scope_path_containing_a_quote_is_escaped_not_injected(tmp_path: Path)
     scope = tmp_path / 'we"ird\\name'
     profile = build_profile(scope)
 
-    subpath = profile.split('(subpath "', 1)[1].rsplit('")', 1)[0]
+    # Read the one line that interpolates the scope. Splitting the whole profile on the last
+    # `")` would swallow every rule after it — as it did the moment a second quoted rule was
+    # added — and would then be asserting about a string no single directive contains.
+    (scope_rule,) = [line for line in profile.splitlines() if "(subpath " in line]
+    subpath = scope_rule.split('(subpath "', 1)[1].rsplit('")', 1)[0]
     assert '\\"' in subpath, profile
     assert '\\\\' in subpath, profile
     # No bare quote survives: every `"` inside the literal is preceded by a backslash.
