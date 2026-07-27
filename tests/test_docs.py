@@ -22,7 +22,12 @@ nothing has proven nothing, so every guard below also asserts the corrected text
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+# A concrete working branch, e.g. `feat/p0-scaffold/aliz`. The angle-bracket template
+# `<type>/<id>/aliz` that documents the naming convention deliberately does not match.
+CONCRETE_BRANCH = re.compile(r"\b(?:feat|bug|chore|task)/[a-z0-9][a-z0-9-]*/aliz\b")
 
 REPO_ROOT = Path(__file__).parent.parent
 
@@ -94,6 +99,33 @@ def test_roadmap_names_the_correct_inference_guard() -> None:
     assert "test_verify_zero_llm.py" in text, (
         "docs/ROADMAP.md no longer names Belay's actual inference guard. The check above "
         "only asserts an absence; without this, deleting the whole section would pass it."
+    )
+
+
+def test_claude_md_does_not_pin_its_status_to_a_working_branch() -> None:
+    """Staleness as a category, not as three specific strings.
+
+    The other guards here name particular stale claims, which only ever catches the mistakes
+    already made. This catches the mistake that keeps being made: a status block that
+    describes work in flight on a named branch is stale the instant that branch merges, and
+    the branch is then deleted, so the reference dangles too.
+
+    That is not hypothetical. `CLAUDE.md` was corrected during the P0 cycle to say "P0
+    scaffolding is in progress on feat/p0-scaffold/aliz ... nothing from it has landed on
+    master" — and both halves were false within the hour, once the PR merged and the branch
+    was deleted. Describe `master`; leave in-flight work to the PR.
+    """
+    text = _read("CLAUDE.md")
+    offenders = sorted(set(CONCRETE_BRANCH.findall(text)))
+    assert not offenders, (
+        f"CLAUDE.md names concrete working branch(es): {offenders}\n\n"
+        "WHY THIS IS A FAILURE: CLAUDE.md:3 tells every agent to read this file first, so it "
+        "must describe what is true of `master`. A named working branch is transient — it "
+        "merges and is deleted — so any claim attached to one expires without anyone editing "
+        "the file, and the next agent reads a confident statement about a branch that no "
+        "longer exists.\n"
+        "Documenting the *convention* is fine: the `<type>/<id>/aliz` template does not match "
+        "this pattern. Naming an actual branch is what fails."
     )
 
 
