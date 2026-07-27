@@ -1,72 +1,111 @@
-# feat roadmap-and-task-family — Write docs/ROADMAP.md and choose the first task family
+# feat p0-scaffold — Make the repo executable and test-first (ROADMAP P0)
 
 ## Source
 
-**FALLBACK path.** No GitHub issue exists. `gh issue list` returns "No Issues" against
-`haqaliz/whetstone` (Issues reachable, repo empty of them), and the `id` is a slug, not a
-number. Per `references/gather-context.md` §0 this is the expected case for a greenfield
-repo, not a failure.
+**FALLBACK path.** No GitHub issue exists. `gh issue list --state all` returns "No Issues"
+against `haqaliz/whetstone` (Issues reachable, repo empty of them), and the `id` is a slug,
+not a number. Per `references/gather-context.md` §0 this is the expected case for a
+greenfield repo, not a failure.
 
-The brief below is the handoff produced by the `whetstone-next` skill in the immediately
-preceding session, which the user acted on by invoking `wbf feat roadmap-and-task-family`.
-It is reproduced verbatim.
+Unlike the previous unit of work, this one has a **committed upstream spec**:
+`docs/ROADMAP.md` § 4 "P0 — Scaffold", merged to `master` in PR #2 (`347655a`) immediately
+before this branch was cut. The roadmap, not this card, is the authority on P0's exit
+criteria.
 
 ## Brief
 
-> Write docs/ROADMAP.md: a 2–3 month phased plan with milestones for Whetstone. CLAUDE.md
-> names this as the immediate next artifact and the repo is greenfield (two commits, no docs/,
-> no src/, no tests) — so this is the first real unit of work, and it must produce a ranked
-> plan grounded only in CLAUDE.md and VISION.md, never in invented phases or projected numbers.
+Reproduced verbatim from the `whetstone-next` handoff the user acted on by invoking
+`wbf feat p0-scaffold`:
+
+> Build P0 — Scaffold from `docs/ROADMAP.md:128-141`: turn a docs-only repo into an
+> executable, test-first Python project so P1's verifier can be built under strict TDD.
+> Constraints are already locked in `docs/planning/roadmap-and-task-family/prd.md`
+> (criterion 10): `src/whetstone/`, uv, ruff, mypy, `master` as base branch. Caveat for the
+> dig: the PyPI distribution name is an open question — `ROADMAP.md:337` records bare
+> `whetstone` as taken and `whetstonehq`/`whetstone-ai` as free, but labels this
+> **unverified**, so re-check PyPI before writing `pyproject.toml` rather than trusting the
+> record; and guard against satisfying "non-trivial test" with an import smoke test.
+> Acceptance criteria (write these first): (1) `uv run pytest` exits 0 with at least one
+> test that exercises real behaviour, not just importability; (2) `uv run whetstone --help`
+> exits 0 and the CLI entry point is wired through `pyproject.toml`; (3) `uv run ruff check .`
+> and `uv run mypy src/` both exit 0; (4) `LICENSE` exists as Apache-2.0 per `CLAUDE.md:93`;
+> (5) a CI workflow runs all four commands and is green on `master`. No verifier, no reward,
+> no model code in this slice — P0 is the floor, and P1 is where the moat gets built.
+
+## The upstream spec (authoritative)
+
+`docs/ROADMAP.md:128-141`, verbatim:
+
+> ### P0 — Scaffold · est. 1 week · target 2026-08-02
 >
-> The load-bearing decision is picking ONE task family whose verifier is execution-grounded and
-> deterministic (CLAUDE.md guardrail #5), and specifying how that verifier actually checks
-> observed-vs-claimed end state. Caveat for the dig: this is a docs artifact, so acceptance
-> criteria are a checklist over content rather than a test suite, and the failure mode to guard
-> against is a roadmap of generic phases that never commits to a family or a verifier mechanism
-> — that would leave the current blocker intact.
+> The repo currently contains zero lines of executable code. Nothing can be test-first until
+> a test runner exists.
 >
-> Acceptance criteria (write these first):
-> 1. A single named task family, with a stated reason its end state is deterministically
->    checkable and a paragraph on how a policy would try to game it and why it can't.
-> 2. Phases ordered per CLAUDE.md's core loop — verifier before loop before promotion gate
->    before report — each with an exit criterion that is observable, not narrative.
-> 3. Milestones dated relative to a start date, sized for a solo founder.
-> 4. An explicit "first honest number" milestone: what gets measured, on what held-out verified
->    set, and where the "reward-hacking attempts caught & rejected: N" count comes from.
-> 5. Every guardrail restated as a rejection test the plan passes: no frontier base training,
->    no LLM-judge reward, no data egress, UNVERIFIED never counts as a win, and nothing a
->    better open base would make redundant.
-> 6. Zero fabricated statistics — only the grounded facts CLAUDE.md lists, anything else
->    labelled unverified.
+> **Exit criteria**
+> - `uv run pytest` exits 0 with at least one non-trivial test
+> - `uv run whetstone --help` exits 0
+> - `uv run ruff check .` and `uv run mypy src/` exit 0
+> - `LICENSE` exists (Apache-2.0 — `CLAUDE.md:93` states it; the file is absent today)
+> - CI workflow green on `master`
+>
+> **Pivot signal:** none credible.
+
+Note the exact command scopes: `ruff check .` is repo-root, `mypy src/` is src-only.
+
+## Resolved before planning (was an open question in the brief)
+
+**PyPI availability, checked against the live index on 2026-07-26** — this closes
+`ROADMAP.md:337`'s open question #1, which was explicitly labelled *"unverified as of today"*:
+
+| Name | `GET https://pypi.org/pypi/<name>/json` | Verdict |
+|---|---|---|
+| `whetstone` | HTTP 200 | **taken** |
+| `whetstonehq` | HTTP 404 | available |
+| `whetstone-ai` | HTTP 404 | available |
+| `whetstone-hq` | HTTP 404 | available |
+
+The seed research's record was correct. This resolves *availability*; the *choice* of name is
+a PRD decision. The import package and CLI remain `whetstone` regardless — that is locked
+(`prd.md:174`).
 
 ## Selection rationale carried forward (from `whetstone-next`)
 
-The pick was ranked #1 because:
+- The roadmap now exists and names P0 itself, so `whetstone-next`'s rule 1 ("before the
+  roadmap exists, the roadmap is the pick") is discharged.
+- Nothing has shipped: `master` at `347655a` carries `CLAUDE.md`, `VISION.md`, `README.md`,
+  `assets/logo.svg`, `docs/`, and the skills. **Zero lines of executable code**, no `src/`,
+  no `tests/`, no tags.
+- P0 does not jump the verifier. It builds the floor P1 stands on. `whetstone-next`'s rule 3
+  ("everything blocks on the verifier") is satisfied because P1's exit criteria
+  (`ROADMAP.md:154-166`) presuppose a working `uv run pytest`.
 
-- `CLAUDE.md` names `docs/ROADMAP.md` as the immediate next artifact ("The next step is a
-  planning session that produces `docs/ROADMAP.md`") and lists it under "Docs structure (to
-  be created)". `find docs -type f` returned nothing — there is no `docs/` directory.
-- `git log` shows two commits (`000ccd9` seed context + vision, `392baf6` port the skills).
-  No `src/`, no tests, no tags, no `CHANGELOG.md`, no `README.md`. State is **not started**.
-- Everything blocks on core-loop element ① (a verifiable task family + verifier). `CLAUDE.md`
-  guardrail #5 requires scoping to ONE family where the verifier is airtight before breadth.
-
-Alternates recorded, not chosen: `verifier-spike` (runnable verifier before the plan —
-stronger on time-to-evidence, weaker because the family is unchosen), `architecture-doc`
-(`docs/technical/ARCHITECTURE.md` — downstream of the family choice).
+Alternate recorded, not chosen: **P1 verifier slice** — higher moat-leverage and the faster
+route to a real `N`, but blocked on this unit's toolchain.
 
 ## Core-loop placement
 
-Primarily **① verifiable task family + verifier** (it selects the family and specifies the
-check), and secondarily the *sequencing* of ②–⑤. This work does not itself implement the
-reward, the loop, or the gate.
+**None of the five directly.** P0 is infrastructure beneath the loop: it makes ① buildable
+under strict TDD without implementing any part of it. This is the honest placement — claiming
+P0 advances ① would overstate it.
+
+The relevant guardrail consequence is negative and load-bearing: **P0 must not put an
+inference library on the reward path**, because P1 ships an AST guard that fails the build if
+one is there (`ROADMAP.md:158`; see the correction recorded in `understanding.md`).
 
 ## Related work
 
-None in-repo. `CLAUDE.md` cites the seed research at
-`~/dev/at/ideas/research/b1-verified-self-improvement.md` as background (rationale, not a
-backlog). Sibling project Belay (`~/dev/at/belay`) is the execution-grounded verification
-engine whose verifier/replay may be reusable.
+- **PR #2** (merged, `347655a`) — `docs/ROADMAP.md` + the roadmap PRD. The direct upstream.
+- **PR #1** (merged, `67bc833`) — logo + README.
+- **Belay** (`~/dev/at/belay`) — the shipped sibling. Its scaffold is the reference
+  implementation for nearly every open question here; see `understanding.md` § Belay
+  precedent.
+
+## Note on this file
+
+`docs/planning/_card/issue.md` is id-free by design (`whetstone-begin-fast` § Phase 1: *"the
+id lives in the branch/PR"*), and PR #2 committed it to `master`. Each new unit of work
+therefore **overwrites** the previous unit's card on its own branch. The roadmap unit's card
+is preserved in history at `347655a`. Flagged as a workflow wart, not a blocker.
 
 ## Attachments
 

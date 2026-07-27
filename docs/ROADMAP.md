@@ -156,8 +156,22 @@ base-model bake-off — run **against the working verifier**, not on paper.
     rather than vacuously zero
   - cheat 6: accepted by both, asserted as the *documented, expected* residual so a future
     reader cannot mistake silence for coverage
-- `uv run pytest tests/test_import_guard.py` exits 0 — an AST walk over every module on the
-  reward path fails the build if any inference library is imported
+- `uv run pytest tests/test_no_inference_on_reward_path.py` exits 0 — an AST walk over every
+  module on the reward path fails the build if any inference library is imported. The walk is
+  **scoped to the reward-path packages**, not the whole tree, so it stays true once `mlx-lm`
+  is legitimately installed elsewhere; it carries an anti-vacuity control asserting the walk
+  actually sees imports (§ 7). **Two porting traps, verified against Belay's source and both
+  fatal to the guard if missed:**
+  - Belay's `_is_inference_import` gates its first-party half on `if root == "belay"`
+    (`tests/test_verify_zero_llm.py:114-121`). Ported verbatim, that string stays `"belay"`,
+    so `whetstone.judge` and `whetstone.model` pass straight through and the ban silently
+    narrows to third-party roots only. **Belay's own anti-vacuity control does not catch
+    this** — it asserts the walk sees *imports*, not that the first-party predicate is live.
+    So the port needs a second control asserting the predicate actually fires on a synthetic
+    `whetstone.judge` import.
+  - Belay's `_INFERENCE_CLIENTS` list contains no `mlx`, `mlx_lm`, `peft`, or `accelerate` —
+    it had no reason to. Those are exactly the libraries Whetstone installs, so the inherited
+    list has a hole shaped like our own stack. Extend it explicitly; do not port it as-is.
 - `uv run whetstone verify --task <fixture> --patch <fixture>` emits a verdict
 - `tasks/` holds instances from both sources with committed provenance
 - A baseline bake-off report exists under `reports/baseline/`
@@ -277,16 +291,23 @@ project whose entire premise is not fooling yourself. `PREREGISTRATION.md` is co
 
 ## 7. What we take from Belay, and what we decline
 
-Belay (`~/dev/at/belay`) is real and shipped — v0.7.0, 8 tags, 13,068 LOC, 832 tests passing.
+Belay (`~/dev/at/belay`) is real and shipped — v0.7.0, 8 tags, and 832 tests passing
+(`uv run pytest -q` → `832 passed, 1 skipped, 1 deselected`). 13,068 lines in `src/belay`;
+46,202 across the repo; roughly 6,050 non-docstring statement lines in `src` — Belay's source
+is over half docstring, so the bare figure means little without its scope.
+
+> Every claim in this section was re-verified against Belay's source on 2026-07-27, after an
+> earlier draft cited the wrong file for the inference guard. Each row below carries the
+> `file:line` that backs it. Do not extend this section from memory.
 
 **Taken:**
 
 | Module | Why |
 |---|---|
-| `verify/verdict.py` | The honesty contract as the *shape of the reduction*: `UNVERIFIED` ranks **above** `PASS`, so worst-status-wins can never render an unverified result clean; an empty verdict set reduces to `UNVERIFIED`, not `PASS` |
-| `verify/invariants.py` | The provenance boundary — operator policy never sourced from the agent's own evidence |
-| `corpus/metrics.py` | Precision / recall / **coverage**, with `UNVERIFIED` excluded from the confusion matrix rather than from the denominator |
-| `tests/test_import_guard.py` | The AST guard proving no model sits on the reward path |
+| `verify/verdict.py` | The honesty contract as the *shape of the reduction*: `UNVERIFIED` ranks **above** `PASS`, so worst-status-wins can never render an unverified result clean; an empty verdict set reduces to `UNVERIFIED`, not `PASS`. Verified — `verdict.py:67-73` `_RANK = {NOT_COVERED: -1, PASS: 0, WARN: 1, UNVERIFIED: 2, FAIL: 3}` with `:114` `max(scored, key=…)`; `:111-113` returns `UNVERIFIED` on an empty set. Note the **stronger** form we also inherit: a set that is empty only *after* filtering `NOT_COVERED` still reduces to `UNVERIFIED` (`:107-109`) |
+| `verify/invariants.py` | The provenance boundary — operator policy never sourced from the agent's own evidence. Verified — `invariants.py:9-16`, and the boundary is carried by the *signature*: `load_invariants(path: Path)` (`:69`) takes a filesystem path and never trace records. Belay pins this with `tests/test_invariants.py:55 test_no_invariant_is_ever_sourced_from_a_trace`; port that test, not just the module |
+| `corpus/metrics.py` | Precision / recall / **coverage**, with `UNVERIFIED` excluded from the confusion matrix but **kept in coverage's denominator** — verified at `metrics.py:142-144` (`if verdict == "UNVERIFIED": unverified += 1; continue`) and `:157-166` (`adjudicable = decided + unverified`; `coverage = decided / adjudicable`). **Caveat for P3:** the module documents *two* honesty rules, and we inherit only this one. The other is the **label trap** (`metrics.py:15-29`) — cases lacking independent human ground truth are dropped from P/R *and* from coverage entirely, because counting every FAIL as a true positive makes precision 1.0 by construction. Our reward is an exit status with no human adjudication, so that rule has no analogue here. It is **declined as inapplicable, not overlooked** — recorded so a P3 implementer reading `metrics.py` knows which of the two paths to port |
+| `tests/test_verify_zero_llm.py` | The AST guard proving no model sits on the reward path. It bans inference clients (`openai`, `anthropic`, `torch`, `transformers`, `ollama`, `vllm`, `langchain`, …) *and* inference-shaped first-party module names (`llm`, `judge`, `model`, `inference`, `prompt`), and it is **scoped to named packages rather than the whole tree** — Belay's own non-shipped `eval/` tree legitimately imports `anthropic`/`openai`. The scoping matters more for us than for Belay: Whetstone will have `mlx-lm` genuinely installed, so an accidental inference import on the reward path is easy to make and invisible without a guard aimed at exactly that path. It also ships an anti-vacuity control asserting the AST walk really observes the imports the guarded layer makes |
 | `eval/instances/` + `eval/scripts/` | SWE-bench-Lite eligibility filter and the pure, offline, seeded stratified draw |
 
 **Declined — the replay substrate.** `CLAUDE.md:79` says *"reuse Belay's verifier/replay
@@ -295,12 +316,22 @@ where it fits."* The verdict semantics fit; the replay engine does not, for four
 1. Belay answers a **harder question** — *did the agent's trace faithfully describe what it
    did?* — which needs snapshot + replay. Our v1 reward needs only *does the end state pass
    an operator-held check?*: a sandbox and an exit status.
-2. **Throughput** — a full APFS clone, restore, and server spawn per replay; built for
-   auditing runs, not generating rollouts.
-3. **Parallel calls yield `UNVERIFIED`** — Belay deliberately refuses to serialize turns,
-   so batched rollouts produce no signal.
-4. **No API surface** — `src/belay/__init__.py` is one line, and grep for "reward" or
-   "training" returns nothing.
+2. **Throughput** — **two** `clonefile(2)` tree restores plus a server spawn and teardown per
+   replay (`snapshot/clone.py:280-298`, `replay/engine.py:531`, `replay/client.py:374,389`).
+   Note the restore *is* the clone, not a separate step. **This is a structural inference,
+   not a measurement:** Belay contains no benchmark or timing figure anywhere, so this must
+   never later be quoted as a measured cost.
+3. **Parallel calls yield `UNVERIFIED`** — Belay deliberately refuses to serialize turns, so
+   batched rollouts produce no signal. Verified at `sandbox/gate.py:68-73, 258-266`: a
+   `tools/call` arriving while another is in flight is refused as
+   `UNRESTORABLE_CONCURRENT_TURN` and still forwards, reducing to `Status.UNVERIFIED`
+   (`verify/turn.py:129,183,199`). The refusal is deliberate — serializing would make Belay
+   concurrency-altering.
+4. **No reward-facing API** — `src/belay/__init__.py` re-exports nothing (one line), and
+   "reward" and "training" appear nowhere under `src/`. Belay *is* importable submodule by
+   submodule, which is exactly how the verdict semantics above get lifted; it also ships a
+   `belay` console script over a 79 KB `cli.py`. The absence is of a reward surface, not of
+   an API.
 
 Revisit only if a later family needs trace fidelity.
 
