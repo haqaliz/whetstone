@@ -1,111 +1,120 @@
-# feat p0-scaffold — Make the repo executable and test-first (ROADMAP P0)
+# feat p1-verifier-core — The task contract and the strict/weak verifier core (ROADMAP P1, slice 1)
 
 ## Source
 
 **FALLBACK path.** No GitHub issue exists. `gh issue list --state all` returns "No Issues"
 against `haqaliz/whetstone` (Issues reachable, repo empty of them), and the `id` is a slug,
-not a number. Per `references/gather-context.md` §0 this is the expected case for a
-greenfield repo, not a failure.
+not a number. Per `references/gather-context.md` §0 this is the expected case for this repo —
+the same path P0 took (card preserved in history at `3662255`).
 
-Unlike the previous unit of work, this one has a **committed upstream spec**:
-`docs/ROADMAP.md` § 4 "P0 — Scaffold", merged to `master` in PR #2 (`347655a`) immediately
-before this branch was cut. The roadmap, not this card, is the authority on P0's exit
+The upstream spec is committed: `docs/ROADMAP.md` § 4 "P1 — Task contract + verifier", merged
+to `master` in PR #2 (`347655a`). The roadmap, not this card, is the authority on P1's exit
 criteria.
 
 ## Brief
 
 Reproduced verbatim from the `whetstone-next` handoff the user acted on by invoking
-`wbf feat p0-scaffold`:
+`wbf feat p1-verifier-core`:
 
-> Build P0 — Scaffold from `docs/ROADMAP.md:128-141`: turn a docs-only repo into an
-> executable, test-first Python project so P1's verifier can be built under strict TDD.
-> Constraints are already locked in `docs/planning/roadmap-and-task-family/prd.md`
-> (criterion 10): `src/whetstone/`, uv, ruff, mypy, `master` as base branch. Caveat for the
-> dig: the PyPI distribution name is an open question — `ROADMAP.md:337` records bare
-> `whetstone` as taken and `whetstonehq`/`whetstone-ai` as free, but labels this
-> **unverified**, so re-check PyPI before writing `pyproject.toml` rather than trusting the
-> record; and guard against satisfying "non-trivial test" with an import smoke test.
-> Acceptance criteria (write these first): (1) `uv run pytest` exits 0 with at least one
-> test that exercises real behaviour, not just importability; (2) `uv run whetstone --help`
-> exits 0 and the CLI entry point is wired through `pyproject.toml`; (3) `uv run ruff check .`
-> and `uv run mypy src/` both exit 0; (4) `LICENSE` exists as Apache-2.0 per `CLAUDE.md:93`;
-> (5) a CI workflow runs all four commands and is green on `master`. No verifier, no reward,
-> no model code in this slice — P0 is the floor, and P1 is where the moat gets built.
+> Build the first slice of ROADMAP P1 (docs/ROADMAP.md:144-176): the task contract and the
+> strict/weak verifier core, so the reward exists and is provably ungameable for cheats 1-5.
+> In scope: the task contract fields (ROADMAP.md:42-48); STRICT and WEAK as specified at
+> :56-72; the sandbox at /_sandbox/<run_id>/ with no network and a fixed seed; Belay's verdict
+> semantics ported (UNVERIFIED ranked above PASS, empty set reduces to UNVERIFIED — take the
+> test at belay tests/test_invariants.py:55, not just the module); the adversarial cheat corpus;
+> and the AST inference-guard. Out of scope for this slice: tasks/ ingestion, the base-model
+> bake-off, reports/baseline/, and PREREGISTRATION.md — later P1 slices.
+>
+> Caveat for the dig: ROADMAP § 7's "Taken" table lists no sandbox module even though the
+> verifier needs a no-network sandbox, while the older PRD (docs/planning/roadmap-and-task-
+> family/prd.md:58) assumed Belay's Seatbelt ports for free — that claim predates the § 7
+> decline of the replay substrate and is unverified. Establish whether src/belay/sandbox/
+> seatbelt.py is separable from replay/ before designing around it. Also: real SWE-bench
+> instances need per-task Python environments and the usual harness answer is Docker, which the
+> macOS-only decision rules out — build this slice's corpus from synthetic fixture repos with no
+> third-party dependencies, and record the environment-provisioning question as open rather than
+> assuming it away. Finally, ROADMAP.md:166-174 documents two verified AST-guard porting traps
+> (the hardcoded `root == "belay"` first-party gate, and _INFERENCE_CLIENTS missing mlx/mlx_lm/
+> peft/accelerate); honour both.
+>
+> Acceptance criteria, written first — the repo is test-first:
+> 1. `uv run pytest tests/adversarial/` exits 0, asserting per cheat fixture that cheats 1-5 are
+>    STRICT-rejected AND WEAK-accepted (proving the differential is real, not vacuously zero),
+>    and that cheat 6 is accepted by both as the documented, expected residual.
+> 2. `uv run pytest tests/test_no_inference_on_reward_path.py` exits 0 — an AST walk scoped to
+>    the reward-path packages, carrying both anti-vacuity controls: one asserting the walk
+>    really observes imports, and a second asserting the first-party predicate actually fires on
+>    a synthetic `whetstone.judge` import.
+> 3. `uv run whetstone verify --task <fixture> --patch <fixture>` emits a verdict, with
+>    UNVERIFIED never collapsed into PASS.
+> 4. A determinism test: same task + same patch + same seed → identical verdict.
+> 5. `uv run ruff check .` and `uv run mypy src/` still exit 0, and CI stays green on master.
 
 ## The upstream spec (authoritative)
 
-`docs/ROADMAP.md:128-141`, verbatim:
+`docs/ROADMAP.md:144-184`, P1. Its six exit criteria, and which this slice takes:
 
-> ### P0 — Scaffold · est. 1 week · target 2026-08-02
->
-> The repo currently contains zero lines of executable code. Nothing can be test-first until
-> a test runner exists.
->
-> **Exit criteria**
-> - `uv run pytest` exits 0 with at least one non-trivial test
-> - `uv run whetstone --help` exits 0
-> - `uv run ruff check .` and `uv run mypy src/` exit 0
-> - `LICENSE` exists (Apache-2.0 — `CLAUDE.md:93` states it; the file is absent today)
-> - CI workflow green on `master`
->
-> **Pivot signal:** none credible.
-
-Note the exact command scopes: `ruff check .` is repo-root, `mypy src/` is src-only.
-
-## Resolved before planning (was an open question in the brief)
-
-**PyPI availability, checked against the live index on 2026-07-26** — this closes
-`ROADMAP.md:337`'s open question #1, which was explicitly labelled *"unverified as of today"*:
-
-| Name | `GET https://pypi.org/pypi/<name>/json` | Verdict |
+| # | P1 exit criterion | This slice |
 |---|---|---|
-| `whetstone` | HTTP 200 | **taken** |
-| `whetstonehq` | HTTP 404 | available |
-| `whetstone-ai` | HTTP 404 | available |
-| `whetstone-hq` | HTTP 404 | available |
+| 1 | `uv run pytest tests/adversarial/` exits 0 — cheats 1–5 STRICT-reject AND WEAK-accept; cheat 6 accepted by both as documented residual | **In** |
+| 2 | `uv run pytest tests/test_no_inference_on_reward_path.py` exits 0 — reward-path-scoped AST walk + anti-vacuity controls, honouring the two porting traps (`:166-174`) | **In** |
+| 3 | `uv run whetstone verify --task <fixture> --patch <fixture>` emits a verdict | **In** |
+| 4 | `tasks/` holds instances from both sources with committed provenance | **Deferred** — later P1 slice |
+| 5 | A baseline bake-off report exists under `reports/baseline/` | **Deferred** — needs a base model |
+| 6 | `PREREGISTRATION.md` is committed | **Deferred** — later P1 slice, before any training run |
 
-The seed research's record was correct. This resolves *availability*; the *choice* of name is
-a PRD decision. The import package and CLI remain `whetstone` regardless — that is locked
-(`prd.md:174`).
+The verifier spec itself is `docs/ROADMAP.md:52-93` (STRICT / WEAK / the provenance boundary /
+the definition of `N`); the task contract fields are `:42-48`; the cheat enumeration and its
+residual are `:98-118`.
 
-## Selection rationale carried forward (from `whetstone-next`)
+**P1's pivot signal** (`:182-184`) belongs to the bake-off, not to this slice: *"if no candidate
+base solves any held-out task, expert iteration has nothing to bootstrap from. Pivot to an
+easier task stratum or a larger base — not to a looser verifier."* This slice cannot trigger it,
+because it runs no model at all.
 
-- The roadmap now exists and names P0 itself, so `whetstone-next`'s rule 1 ("before the
-  roadmap exists, the roadmap is the pick") is discharged.
-- Nothing has shipped: `master` at `347655a` carries `CLAUDE.md`, `VISION.md`, `README.md`,
-  `assets/logo.svg`, `docs/`, and the skills. **Zero lines of executable code**, no `src/`,
-  no `tests/`, no tags.
-- P0 does not jump the verifier. It builds the floor P1 stands on. `whetstone-next`'s rule 3
-  ("everything blocks on the verifier") is satisfied because P1's exit criteria
-  (`ROADMAP.md:154-166`) presuppose a working `uv run pytest`.
+## Shipped state this builds on
 
-Alternate recorded, not chosen: **P1 verifier slice** — higher moat-leverage and the faster
-route to a real `N`, but blocked on this unit's toolchain.
+- **P0 merged** (PR #3 `3662255`, plus PR #4 `b8022d0`). `master` @ `b8022d0`.
+- `src/whetstone/__init__.py` (20 L) + `src/whetstone/cli.py` (72 L) — the CLI exposes exactly
+  `--help` and `--version`; there are no subcommand stubs. `verify` would be the first subcommand.
+- `uv run pytest -q` → **19 passed** (verified in this worktree, 2026-07-28). CI green on
+  `macos-latest`, last three runs ok.
+- Zero runtime dependencies; `mlx-lm` is an **optional** group proven only to resolve and import
+  in CI (`docs/planning/p0-scaffold/prd.md` decision 2). Nothing sits on a reward path today
+  because no reward path exists yet.
 
-## Core-loop placement
+## Open questions carried in from the selection (for the dig to close)
 
-**None of the five directly.** P0 is infrastructure beneath the loop: it makes ① buildable
-under strict TDD without implementing any part of it. This is the honest placement — claiming
-P0 advances ① would overstate it.
-
-The relevant guardrail consequence is negative and load-bearing: **P0 must not put an
-inference library on the reward path**, because P1 ships an AST guard that fails the build if
-one is there (`ROADMAP.md:158`; see the correction recorded in `understanding.md`).
+1. **Is Belay's Seatbelt sandbox separable from the declined replay substrate?**
+   `docs/ROADMAP.md` § 7's "Taken" table lists **no** sandbox module, yet the verifier requires a
+   no-network sandbox (`:54`). `docs/planning/roadmap-and-task-family/prd.md:58` asserted
+   *"Belay's Seatbelt sandbox and APFS `clonefile` snapshot work natively; no porting phase
+   required"* — but that predates § 7's decline and was never re-verified.
+   `~/dev/at/belay/src/belay/sandbox/seatbelt.py` exists (17.9 KB) alongside `gate.py`,
+   `launch.py`, `scope.py`. Establish the dependency direction before designing around it.
+2. **Per-task environment provisioning.** Real SWE-bench instances need per-instance Python
+   environments; the standard harness answer is Docker, which the macOS-only platform decision
+   (`docs/planning/roadmap-and-task-family/prd.md:58`) rules out. This slice can sidestep it with
+   synthetic fixture repos that have no third-party dependencies — but the question must be
+   recorded as open, not assumed away, because P1 exit criterion 4 and all of P2 depend on it.
+3. **The two AST-guard porting traps** (`docs/ROADMAP.md:166-174`) are already verified against
+   Belay's source. Confirm they still hold, and design the second anti-vacuity control that
+   Belay itself lacks.
 
 ## Related work
 
-- **PR #2** (merged, `347655a`) — `docs/ROADMAP.md` + the roadmap PRD. The direct upstream.
-- **PR #1** (merged, `67bc833`) — logo + README.
-- **Belay** (`~/dev/at/belay`) — the shipped sibling. Its scaffold is the reference
-  implementation for nearly every open question here; see `understanding.md` § Belay
-  precedent.
+- **PR #3** (`3662255`) — P0 scaffold. The direct upstream; its `docs/planning/p0-scaffold/`
+  artifacts are the format precedent.
+- **PR #2** (`347655a`) — `docs/ROADMAP.md` and its PRD. The authoritative spec.
+- **Belay** (`~/dev/at/belay`) — v0.7.0, shipped. Source of the verdict semantics, the
+  provenance boundary, the corpus metrics, the AST guard, and the eval instances
+  (`docs/ROADMAP.md:303-311`). Its replay substrate is **declined** (`:313-336`).
 
 ## Note on this file
 
-`docs/planning/_card/issue.md` is id-free by design (`whetstone-begin-fast` § Phase 1: *"the
-id lives in the branch/PR"*), and PR #2 committed it to `master`. Each new unit of work
-therefore **overwrites** the previous unit's card on its own branch. The roadmap unit's card
-is preserved in history at `347655a`. Flagged as a workflow wart, not a blocker.
+`docs/planning/_card/issue.md` is id-free by design (`whetstone-begin-fast` § Phase 1) and each
+unit of work **overwrites** the previous one's card on its own branch. P0's card is preserved in
+history at `3662255`. Flagged as a workflow wart, not a blocker.
 
 ## Attachments
 
