@@ -2,15 +2,20 @@
 
 This file orients a coding agent working in this repository. Read it first.
 
-> **Status:** the planning session happened. `docs/ROADMAP.md` — the 2–3 month phased plan
-> and milestones — is written and merged (PR #2), and it is the **authoritative technical
-> document** until `docs/technical/ARCHITECTURE.md` is written; that file does not exist yet.
-> This file and `VISION.md` remain the narrative source of truth (thesis, moat, guardrails).
+> **Status — what exists on `master` today.** `docs/ROADMAP.md` is written and is the
+> **authoritative technical document** until `docs/technical/ARCHITECTURE.md` is written;
+> that file does not exist yet. This file and `VISION.md` remain the narrative source of
+> truth (thesis, moat, guardrails).
 >
-> **P0 scaffolding is in progress** on `feat/p0-scaffold/aliz` — packaging, the `whetstone`
-> CLI, ruff/mypy/pytest, and CI. As of this writing nothing from it has landed on `master`,
-> no version has been released, and no reward, loop, or gate exists anywhere. Keep this file,
-> `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up.
+> **P0 (scaffold) is done:** packaging, the `whetstone` CLI, strict ruff/mypy, pytest, and CI
+> on `macos-latest`. **Nothing else is built** — there is no verifier, no reward, no nightly
+> loop, no promotion gate, no report, and no dashboard. No version has been released and
+> there are no tags. **P1 — the task contract and the verifier — is next** (`docs/ROADMAP.md`
+> § 4); it is the moat, and everything downstream is blocked on it.
+>
+> Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. State what
+> is true of `master`, not what is in flight on a branch — a status that names in-progress work
+> is stale the moment that work merges, which has already happened once here.
 
 ---
 
