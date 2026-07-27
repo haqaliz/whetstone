@@ -48,9 +48,35 @@ def test_unknown_flag_returns_nonzero(capsys: pytest.CaptureFixture[str]) -> Non
     capsys.readouterr()
 
 
+def subparsers(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
+    """The subcommands the parser really registered, by name.
+
+    Introspection rather than invocation: running ``verify`` and reading an exit code cannot
+    distinguish "the subcommand exists" from "argparse rejected the arguments and the code
+    happened to match".
+    """
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return dict(action.choices)
+    return {}
+
+
 def test_the_parser_actually_exposes_help_and_version() -> None:
     """Anti-vacuity control — watched failing against an empty parser before being trusted."""
     flags = option_strings(build_parser())
     assert flags, "the introspection observed no flags at all, so it proves nothing"
     assert "--help" in flags
     assert "--version" in flags
+
+
+def test_the_parser_actually_exposes_the_verify_subcommand() -> None:
+    """The same control for the first subcommand that has something behind it.
+
+    The exit-code tests in ``test_verify_cli.py`` would all still pass if ``verify`` were
+    quietly renamed and every invocation fell through to the usage error — 2 is a plausible
+    code. This one observes the subcommand and its flags directly.
+    """
+    commands = subparsers(build_parser())
+    assert commands, "the introspection observed no subcommands at all, so it proves nothing"
+    assert "verify" in commands
+    assert {"--task", "--patch"} <= option_strings(commands["verify"])
