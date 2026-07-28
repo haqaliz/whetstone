@@ -78,7 +78,10 @@ from whetstone.tasks.environment import (
     _uv,
     pins_from_freeze,
 )
+from whetstone.verify.sandbox import run_confined
+from whetstone.verify.strict import _PYTEST_CONFIG
 from whetstone.verify.task import _PIN
+from whetstone.verify.verdict import Status
 
 #: The four gates, named. The ledger's `gate` field is only meaningful against a closed set:
 #: a typo'd value would silently create a fifth category nobody could count.
@@ -218,6 +221,148 @@ def _malformed(node_id: str) -> str | None:
     if not remainder or any(not part for part in remainder.split(_SEPARATOR)):
         return "an empty component after '::', which addresses nothing"
     return None
+
+
+# --------------------------------------------------------------------------------------
+# Gate 2 — the ids are collectable in the real checkout
+# --------------------------------------------------------------------------------------
+
+#: The config file the collection run is given, written into the workspace. Named separately from
+#: `derive`'s so two runs sharing a workspace cannot overwrite each other's.
+_COLLECT_CONFIG_NAME = "whetstone-collect.ini"
+
+#: pytest's exit status for "you gave me something I cannot address". It is the one that matters
+#: here: `strict.py` maps it to UNVERIFIED, and an UNVERIFIED aborts the run rather than grading
+#: it, so a single unfindable id costs the verdict of everything the run was reducing.
+_USAGE_ERROR = 4
+
+
+def check_collectable(
+    node_ids: Sequence[str],
+    *,
+    checkout: Path,
+    workspace: Path,
+    timeout: float,
+    interpreter: Path | str | None = None,
+    import_roots: Sequence[str] = (),
+) -> tuple[str, ...]:
+    """Gate 2. Ask pytest to find exactly these ids in `checkout`, and compare what it found.
+
+    **Two failures, and only one of them announces itself.**
+
+    The loud one is an id pytest cannot address — SWE-bench's own 12 whitespace-split
+    parametrised ids, and any instance whose declared file the base commit does not carry. pytest
+    exits `4`, and that exit is the evidence. Nothing here counts brackets or matches patterns: if
+    the dataset's corruption ever takes a different shape, this still catches it and a string rule
+    would not.
+
+    The quiet one is an id that collects into **more than one**. A parametrised id declared bare
+    — `test_p` rather than `test_p[1]` — expands, so the executed set never equals the declared
+    set and STRICT answers FAIL for every patch forever, with nothing in the verdict pointing at
+    the manifest. Exit code 0 is therefore a precondition and the set comparison is the gate.
+
+    Returns the collected ids, so a caller can see what was found rather than assume it — and so
+    the anti-vacuity control has something to assert against.
+
+    The flags mirror `derive._run` and `strict._run_and_judge`, with `_PYTEST_CONFIG` and the
+    rootdir handling **imported** rather than restated: ids collected under a different
+    configuration than the reward runs under can differ in exactly the ways `node_id` exists to
+    prevent. `--collect-only` is right here and wrong in `derive` for the same reason — this gate
+    asks what pytest *would* run, which is precisely the question, while a declaration has to be
+    what pytest *did* run.
+    """
+    if not node_ids:
+        raise Ineligible(
+            GATE_COLLECTABILITY,
+            "the instance declares no tests, so there is nothing to collect. Handing pytest no "
+            "ids would collect the whole suite, which answers a different question",
+        )
+
+    root = Path(checkout).resolve()
+    scope = Path(workspace)
+    scope.mkdir(parents=True, exist_ok=True)
+    scope = scope.resolve()
+
+    config = scope / _COLLECT_CONFIG_NAME
+    config.write_text(_PYTEST_CONFIG)
+
+    sandbox = run_confined(
+        [
+            str(interpreter) if interpreter else _current(),
+            "-m",
+            "pytest",
+            "-c",
+            str(config),
+            "--rootdir",
+            str(root),
+            "-p",
+            "no:cacheprovider",
+            "-q",
+            "--collect-only",
+            *node_ids,
+        ],
+        scope=scope,
+        timeout=timeout,
+        cwd=root,
+        python_path=tuple(str((root / entry).resolve()) for entry in import_roots),
+    )
+    output = sandbox.stdout.decode(errors="replace")
+    errors = sandbox.stderr.decode(errors="replace")
+
+    if sandbox.verdict.status is not Status.PASS:
+        raise Ineligible(
+            GATE_COLLECTABILITY,
+            f"the collection run did not complete: {sandbox.verdict.message}",
+        )
+    if sandbox.rc != 0:
+        raise Ineligible(
+            GATE_COLLECTABILITY,
+            f"pytest exited {sandbox.rc} collecting {list(node_ids)} in the real checkout"
+            + (
+                " — it could not address at least one of them. That exit is mapped to UNVERIFIED "
+                "by strict.py, and an UNVERIFIED aborts the whole run rather than grading it, so "
+                "one such instance costs the verdict of everything the run was reducing"
+                if sandbox.rc == _USAGE_ERROR
+                else ""
+            )
+            + f". pytest said: {(errors or output).strip()[:600]}",
+        )
+
+    collected = _collected(output)
+    if not collected:
+        raise Ineligible(
+            GATE_COLLECTABILITY,
+            f"pytest exited 0 collecting {list(node_ids)} but reported no node ids at all, so "
+            f"there is no evidence the declared tests are there. Output: {output.strip()[:600]}",
+        )
+
+    missing = sorted(set(node_ids) - set(collected))
+    extra = sorted(set(collected) - set(node_ids))
+    if missing or extra:
+        raise Ineligible(
+            GATE_COLLECTABILITY,
+            f"collecting {list(node_ids)} did not produce that set: {missing} were not collected "
+            f"and {extra} were collected but not declared. An id that expands — a parametrised "
+            f"test declared bare — makes the executed set differ from the declared set on every "
+            f"run, so STRICT answers FAIL for every patch forever with nothing in the verdict "
+            f"pointing at the manifest",
+        )
+    return collected
+
+
+def _collected(output: str) -> tuple[str, ...]:
+    """The node ids `--collect-only -q` listed, and nothing else it printed.
+
+    Read as "every line that is itself a node id" rather than "every line before the first blank
+    one". The blank-line rule is the shape the output happens to have today; this one is a
+    statement about what a collected id looks like, and it survives a warning or a plugin banner
+    landing in the middle of the listing.
+    """
+    return tuple(
+        line
+        for raw in output.splitlines()
+        if (line := raw.rstrip()) and not _malformed(line)
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -702,6 +847,7 @@ __all__ = [
     "Installer",
     "Provisioned",
     "Rejection",
+    "check_collectable",
     "check_environment",
     "check_format",
     "era_pins",
