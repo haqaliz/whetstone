@@ -12,8 +12,11 @@
 
 > **Status: early.** [`docs/ROADMAP.md`](docs/ROADMAP.md) is written and merged — it commits
 > to the first task family, specifies its verifier, and phases the work through to the first
-> honest number. The Python scaffold is in progress; **no reward, loop, or gate exists yet,
-> and nothing has been released.** [`VISION.md`](VISION.md) holds the thesis,
+> honest number. The scaffold and the **reward** are built: an execution-grounded verifier
+> (`whetstone verify`), an adversarial corpus of ten cheats with its two residuals reported
+> rather than hidden, and a first corpus of real tasks (`whetstone mine`). **No loop, no gate,
+> and no report exist yet; no model has been run, so no number about a model exists; and
+> nothing has been released.** [`VISION.md`](VISION.md) holds the thesis,
 > [`CLAUDE.md`](CLAUDE.md) the guardrails.
 
 Point Whetstone at your tasks. Each night a local loop runs self-play / RL against an

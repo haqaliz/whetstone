@@ -32,12 +32,37 @@ This file orients a coding agent working in this repository. Read it first.
 > provenance from local data. The reward-path guard now covers `src/whetstone/tasks/` as well as
 > `src/whetstone/verify/`.
 >
-> **What is not built.** The rest of P1 — and note that slice 2 built the task **format**, not
-> the corpus: **no task instances exist yet**, so ingestion for either source (the public-benchmark
-> filter, the own-repo miner), the base-model bake-off and `reports/baseline/`, and
-> `PREREGISTRATION.md` are all still open. Then all of P2–P4: no rollouts, no training, no
-> promotion gate, no report, no dashboard. **No number has been produced** — the verifier grades
-> patches; nothing has graded a model. No version has been released and there are no tags.
+> **P1 slice 3 — ingestion, and the first real corpus — is done** (`docs/ROADMAP.md` § 4, P1
+> exit criterion 4). **Source B (private, the pre-registered headline): 66 tasks**, 45 mined from
+> `contig` and 21 from `belay`, each *proven live* rather than asserted — FAIL with no patch, PASS
+> under its own reference patch, executed node-id set equal to declared, zero skips. The manifests
+> are the user's code and live in gitignored `tasks/local/`; the committed evidence is
+> `tasks/recipes/*.json` and `tasks/local-ledger.json` (hashes and verdicts, never file contents).
+> Two donors yielded nothing and the refusals are the finding: `rereflect` was refused for having
+> no `uv.lock`, and this repository yielded 0 of 2 because its own test-first workflow lands the
+> test and the fix in one commit. **Source A (public SWE-bench-Lite): 1 eligible instance of 300**
+> — `pallets__flask-4045` — with all 299 refusals ledgered in `tasks/public/ineligible.json`
+> against the gate that refused each (192 format, 106 environment, 1 collectability). The
+> deliverable there is the four-gate filter and the rejection ledger; **one instance is not a
+> public benchmark set and must never be quoted as one.**
+>
+> **Slice 3 also found and closed a reward-path defect, which is the part worth reading.** A task
+> **PASSED with no patch applied** — a false PASS. In a `src`-layout project the tests import by
+> package name, resolved through the venv, and the venv held an editable install rooted at a
+> *different* checkout than the one the patch was applied to; the tree under verification was
+> never imported. The ten-cheat corpus missed it because every fixture repo was flat-layout with
+> no venv install, so **the defence had been the shape of the fixtures, not anything the verifier
+> did.** Closed by `import_roots` in the manifest, deps-only provisioning
+> (`--no-install-project`), and a `PYTHONPATH` naming the run's own checkout so it shadows any
+> residual install; `tests/adversarial/test_inert_checkout.py` holds it shut.
+>
+> **What is not built.** The rest of P1: the base-model bake-off and `reports/baseline/`, and
+> `PREREGISTRATION.md` — both still open. Then all of P2–P4: no rollouts, no training, no
+> promotion gate, no report, no dashboard. **No model has been run against any of this, and no
+> number about a model exists** — the verifier grades patches, and a corpus existing is not a
+> measurement. Cheat 6 and cheat 10 remain documented residuals; ingestion narrowed cheat 10 with
+> a `conftest.py` floor but did **not** close it. No version has been released and there are no
+> tags.
 >
 > Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. Describe the
 > state of the tree this file ships in, and never work in flight on a branch — a status that

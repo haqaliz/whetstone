@@ -5,10 +5,16 @@ from this repository**, and this file exists so that absence reads as a design d
 than as a gap or a cherry-pick. If you came here wondering where the other tasks are, this is
 the answer.
 
-Source A is populated. **Of SWE-bench-Lite's 300 instances, exactly one is eligible** —
+**Both sources are populated.** Source B carries **66 tasks** — 45 mined from `contig`, 21 from
+`belay` — every one of them *proven live* before it was kept. None of those 66 files is in this
+repository and none ever will be; what is committed is the evidence about them, which is the
+subject of most of this document.
+
+Source A carries one. **Of SWE-bench-Lite's 300 instances, exactly one is eligible** —
 `pallets__flask-4045` — and `ineligible.json` records all 299 refusals with the gate that made
 each one. That is not a placeholder: it is the honest yield of a filter that proves eligibility
-per instance instead of assuming it, and the funnel below is the deliverable.
+per instance instead of assuming it, and the funnel below is the deliverable. **One instance is
+not a public benchmark set**, and nothing downstream may quote it as one.
 
 | Stage | Refused | Why |
 |---|---:|---|
@@ -54,8 +60,9 @@ that improves a model on *your* tasks, and is also code that must never leave th
 Two documents in this repository disagree, and the disagreement is real rather than a wording
 slip:
 
-- **`docs/ROADMAP.md:244`** requires that `tasks/` hold instances from **both** sources, with
-  **committed provenance** — so that a published number rests on a corpus a reader can audit.
+- **`docs/ROADMAP.md` § 4, P1 exit criterion 4** requires that `tasks/` hold instances from
+  **both** sources, with **committed provenance** — so that a published number rests on a corpus
+  a reader can audit.
 - **`.gitignore:16-24`** pre-declares `/tasks/local/` as *"the user's own data [that] never
   belongs in the repo"*, following CLAUDE.md's **no data egress** guardrail: the loop and the
   user's data stay local.
@@ -137,3 +144,40 @@ python -m whetstone.tasks.public --only pallets__flask-4045
 
 Note that `--only` narrows the ledger's denominator to exactly what was run, which is why the
 ledger records that denominator rather than assuming 300.
+
+---
+
+## How source B is produced
+
+One command per donor, offline, reading the donor and never writing to it:
+
+```
+uv run whetstone mine --donor <path> --out tasks/local/<donor>/ --limit <n> --seed 1
+```
+
+It enumerates commits that take an **existing** test from red to green, mints a manifest for
+each, and — the part that matters — **proves every one live before keeping it**: the task must
+report FAIL with no patch applied and PASS under its own reference patch, with the executed
+node-id set equal to the declared one and zero skips. A candidate that cannot be shown to
+discriminate is not written out, so no unproven task can enter the corpus by being merely
+plausible. Each mint appends to `local-ledger.json` and writes the donor's `recipes/<donor>.json`.
+
+**What the two mints actually produced, refusals included.**
+
+| Donor | Minted | Note |
+|---|---:|---|
+| `contig` | 45 | reached its `--limit` with candidates left over |
+| `belay` | 21 | exhausted its candidates below a `--limit` of 25 |
+| `rereflect` | — | **refused: no `uv.lock`.** Its pins would have been chosen by the date the mint ran, which is the exact corruption `environment` exists to close |
+| `whetstone` | 0 of 2 | this repository's own test-first workflow lands the test and the fix in **one** commit, so the held test does not collect at the parent |
+
+The two refusals are recorded here rather than dropped, because they are the more transferable
+result: a donor without a lockfile cannot yield a pinned task at all, and a repository that
+commits its tests alongside its fixes cannot yield a red→green task by this rule no matter how
+healthy it is. Neither is a bug in the miner.
+
+**The held set is wider than the test files.** Every `conftest.py` from the repository root down
+to each held test's directory is declared held too, read at the parent commit. That narrows cheat
+10 (`docs/ROADMAP.md` § 3) and does not close it — a commit may also touch a data file no
+conftest rule would ever see — so the cheat stays a documented residual. Read the roadmap for the
+bound; do not infer a stronger one from this directory being well organised.
