@@ -51,7 +51,7 @@ from pathlib import Path
 from whetstone import __version__
 from whetstone.tasks.donor import GitFailed, run_git
 from whetstone.tasks.environment import NotProvisionable, import_roots
-from whetstone.tasks.fetch import DATASET, Instance
+from whetstone.tasks.fetch import DATASET, Instance, read_pool
 from whetstone.tasks.gates import (
     GATE_COLLECTABILITY,
     GATE_ENVIRONMENT,
@@ -63,6 +63,7 @@ from whetstone.tasks.gates import (
     check_environment,
     check_format,
     era_pins,
+    read_era_pins,
     write_ineligible,
 )
 from whetstone.tasks.held import conftest_floor_at
@@ -319,7 +320,17 @@ def run_gates(
     fail, passing = declared(instance)
     check_format([*fail, *passing])
 
-    workspace = Path(scratch).resolve()
+    # Gate 3's cheapest half, and it runs before the clone on purpose. Era-pins are recorded by
+    # hand, so the table is sparse by construction — measured over the real pool, 107 of the 108
+    # instances that clear gate 1 have no entry. Cloning each of those to discover a fact that
+    # was already on disk would cost hours and would teach nobody anything; the provisioning half
+    # still runs where it belongs, below, because it is the half that has to prove something.
+    pins = era_pins(table, instance.instance_id)
+
+    # Per instance, never shared: two instances in one workspace would clone into the same
+    # directory and provision into the same venv, and the second one's verdict would be about
+    # the first one's tree.
+    workspace = (Path(scratch) / instance.instance_id).resolve()
     workspace.mkdir(parents=True, exist_ok=True)
     checkout = workspace / "repo"
     try:
@@ -349,7 +360,6 @@ def run_gates(
             f"reporting PASS",
         ) from exc
 
-    pins = era_pins(table, instance.instance_id)
     provisioned = check_environment(
         pins.requirements, venv=workspace / "venv", python=pins.python, index=index
     )
@@ -410,6 +420,81 @@ def run_gates(
     return destination
 
 
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the filter over the committed pool and write the corpus and the ledger.
+
+    A **human-run step**, like the fetch, and for the same reason: it clones public repositories
+    and provisions era-pinned environments, both of which reach out. Its output is committed and
+    everything downstream reads that. Run it as::
+
+        python -m whetstone.tasks.public --pool tasks/public/pool.json
+
+    Deliberately not a `whetstone` subcommand. Every subcommand the CLI advertises claims to be
+    offline, and a networked one would make that claim conditional on which flag was passed.
+
+    `--only` restricts the run to named instances, which is how a single instance is re-proved
+    without spending the whole funnel again. It narrows the ledger's denominator to exactly what
+    was run, which is why the ledger records that denominator rather than assuming 300.
+    """
+    import argparse
+    import tempfile
+
+    parser = argparse.ArgumentParser(
+        prog="python -m whetstone.tasks.public",
+        description=(
+            "Filter the committed source-A pool through the four eligibility gates. Mints a "
+            "manifest for every instance that clears all four and records every refusal, with "
+            "the gate that made it, in ineligible.json. Clones repositories and provisions "
+            "environments, so it is run by a human and its output is committed."
+        ),
+    )
+    parser.add_argument("--pool", type=Path, default=Path("tasks/public/pool.json"))
+    parser.add_argument("--era-pins", type=Path, default=Path("tasks/public/era-pins.json"))
+    parser.add_argument("--tasks-root", type=Path, default=Path("tasks/public"))
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=None,
+        metavar="<instance_id>",
+        help="restrict the run to these instances; the ledger records the narrowed denominator",
+    )
+    parser.add_argument("--timeout", type=float, default=900.0)
+    args = parser.parse_args(argv)
+
+    instances = read_pool(args.pool)
+    if args.only:
+        wanted = set(args.only)
+        instances = tuple(
+            instance for instance in instances if instance.instance_id in wanted
+        )
+        missing = sorted(wanted - {instance.instance_id for instance in instances})
+        if missing:
+            parser.error(f"the pool carries no instance(s) {missing}")
+    table = read_era_pins(args.era_pins)
+
+    out = Path(args.tasks_root) / INSTANCES_DIRECTORY
+    with tempfile.TemporaryDirectory(prefix="whetstone-filter-") as root:
+        report = filter_instances(
+            instances,
+            out=out,
+            tasks_root=Path(args.tasks_root),
+            run=run_gates,
+            scratch=Path(root).resolve(),
+            table=table,
+            timeout=args.timeout,
+        )
+
+    for entry in report.eligible:
+        print(f"{entry.instance_id}: eligible — {entry.manifest}")
+    print(
+        f"eligible {len(report.eligible)}, ineligible {len(report.rejected)}, "
+        f"of {len(instances)} instance(s)"
+    )
+    print(f"ledger: {report.ledger}")
+    return 0 if report.eligible else 1
+
+
+
 def _tree(repo: Path, sha: str) -> frozenset[str]:
     """Every file path in the commit's tree. One git call, then set membership."""
     try:
@@ -433,6 +518,11 @@ __all__ = [
     "declared",
     "filter_instances",
     "held_for",
+    "main",
     "manifest_for",
     "run_gates",
 ]
+
+
+if __name__ == "__main__":  # pragma: no cover - the human-run entry point
+    raise SystemExit(main())
