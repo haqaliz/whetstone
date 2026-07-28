@@ -46,17 +46,39 @@ never resolved on the day the filter happened to run.
 `write_ineligible` refuses to write a ledger whose counts do not account for every input. That
 arithmetic is what makes "24 of 300 were eligible" evidence rather than a claim.
 
-Zero runtime dependencies. No model. The network is never touched: gate 2 and gate 4 execute
-inside the Seatbelt sandbox, which denies it outright, and gate 3's installs are `--offline`.
+**Where the network is, stated plainly.** Gates 2 and 4 execute inside the Seatbelt sandbox,
+which denies the network outright. Gate 3 **may reach an index**, because an era-pinned
+environment cannot be provisioned out of nothing the first time it is built, and the checkout the
+gates run against is cloned from GitHub. That is why the whole filter — like the fetch — is a
+**human-run step whose output is committed**, and why what every later verification runs from is
+the exact pin set the gate recorded, not a resolution repeated on the night. No test in this
+suite runs the filter: the tests resolve from a committed local index with `--no-index
+--find-links`, or hand the gate an installer that does nothing at all.
+
+Zero runtime dependencies. No model anywhere.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, Sequence
+import subprocess
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+
+# Imported rather than restated, on the same principle as `environment` importing `_PIN` from the
+# loader and `derive` importing the reward's pytest flags: these are the predicate and the
+# provisioning front door that already exist, and a second spelling of either would be a second
+# thing to keep in step — with the drifted one discovered a whole filter run later.
+from whetstone.tasks.environment import (
+    NotProvisionable as _NotProvisionable,
+)
+from whetstone.tasks.environment import (
+    _uv,
+    pins_from_freeze,
+)
+from whetstone.verify.task import _PIN
 
 #: The four gates, named. The ledger's `gate` field is only meaningful against a closed set:
 #: a typo'd value would silently create a fifth category nobody could count.
@@ -198,6 +220,380 @@ def _malformed(node_id: str) -> str | None:
     return None
 
 
+# --------------------------------------------------------------------------------------
+# Gate 3 — the environment resolves AND imports
+# --------------------------------------------------------------------------------------
+
+#: Names the shape of the committed, hand-determined era-pin table.
+ERA_PINS_SCHEMA = "whetstone-source-a-era-pins/1"
+
+#: Where uv puts a venv's interpreter. macOS/Linux, which is where the reward runs at all.
+_INTERPRETER = ("bin", "python")
+
+#: Asked of the provisioned interpreter itself, never of the process doing the filtering: the
+#: manifest's `environment.python` is a claim about the interpreter the tests will run under.
+_VERSION_PROBE = "import platform; print(platform.python_version())"
+
+#: Long enough for a cold venv on a slow disk, short enough that a wedged uv is an error.
+_PROBE_TIMEOUT = 900.0
+
+#: The import probe, run **inside** the provisioned interpreter. It derives each distribution's
+#: top-level modules from that distribution's own metadata rather than from a name table: the
+#: mapping from `Jinja2` to `jinja2` and from `MarkupSafe` to `markupsafe` is not guessable, and
+#: a guess here would silently check nothing for exactly the packages most likely to break.
+#:
+#: `top_level.txt` first, because setuptools writes it and it is unambiguous. Otherwise the
+#: installed file list, with the metadata and data directories skipped — everything left whose
+#: first path component is an identifier is something an importer could be asked for.
+_IMPORT_PROBE = """
+import importlib
+import json
+import sys
+from importlib import metadata
+
+checked = []
+failures = []
+for dist in metadata.distributions():
+    try:
+        name = dist.metadata["Name"]
+    except Exception:
+        continue
+    if not name:
+        continue
+    declared = (dist.read_text("top_level.txt") or "").split()
+    if not declared:
+        tops = set()
+        for entry in dist.files or ():
+            head = entry.parts[0]
+            if head.endswith((".dist-info", ".egg-info", ".data")) or head == "__pycache__":
+                continue
+            if len(entry.parts) == 1:
+                if head.endswith(".py"):
+                    tops.add(head[:-3])
+            else:
+                tops.add(head)
+        declared = sorted(tops)
+    for module in sorted({m for m in declared if m.isidentifier()}):
+        checked.append(module)
+        try:
+            importlib.import_module(module)
+        except BaseException as exc:
+            failures.append(
+                {"module": module, "distribution": name, "error": f"{type(exc).__name__}: {exc}"}
+            )
+print(json.dumps({"checked": sorted(set(checked)), "failures": failures}))
+"""
+
+#: What `check_environment` is handed to do the installing. Injected so the false-green arm can
+#: pass an installer that trivially succeeds — which is the strongest possible statement of
+#: "install exited 0" and the only way to assert that exit 0 alone does not pass this gate.
+Installer = Callable[[list[str], Path], None]
+
+
+@dataclass(frozen=True)
+class ImportFailure:
+    """One module that could not be imported in the provisioned interpreter."""
+
+    module: str
+    distribution: str
+    error: str
+
+
+@dataclass(frozen=True)
+class ImportProbe:
+    """What the probe found. A measurement, not a verdict.
+
+    `checked` is carried as well as `failures` because a probe that imported nothing would report
+    no failures and look like a pass. The anti-vacuity control in
+    `tests/test_public_environment_gate.py` asserts against this field, and it is the reason the
+    probe returns rather than raising.
+    """
+
+    checked: tuple[str, ...]
+    failures: tuple[ImportFailure, ...]
+
+
+@dataclass(frozen=True)
+class EraPins:
+    """One instance's hand-determined install set, and how it was determined.
+
+    `determined_by` is required rather than optional. The difference between "found by hand, one
+    incident at a time" and "whatever the resolver returned" is the difference between a pinned
+    corpus and a pinned-looking one, and only the first is worth committing.
+    """
+
+    python: str
+    requirements: tuple[str, ...]
+    determined_by: str
+
+
+@dataclass(frozen=True)
+class Provisioned:
+    """The environment gate 3 proved, in the shape the manifest carries.
+
+    `pins` is read from the freeze rather than echoed back from the requirements: what a task
+    must declare is the environment its tests actually ran in, transitive dependencies included.
+    Echoing the request would describe a smaller environment than the one that was measured.
+    """
+
+    python: str
+    pins: tuple[str, ...]
+    interpreter: Path
+
+
+def read_era_pins(path: Path) -> Mapping[str, EraPins]:
+    """Read the committed era-pin table, validating every requirement against the loader.
+
+    Validated here rather than at manifest time because a range in the table would fail one
+    instance at a time, a whole filter run later, with a message about a manifest rather than
+    about the table that produced it.
+    """
+    location = Path(path)
+    try:
+        raw = json.loads(location.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"era-pin table {str(location)!r} could not be read: {exc}") from exc
+    if not isinstance(raw, dict) or raw.get("schema") != ERA_PINS_SCHEMA:
+        raise ValueError(
+            f"era-pin table {str(location)!r} is not one: expected an object whose schema is "
+            f"{ERA_PINS_SCHEMA!r}"
+        )
+    instances = raw.get("instances")
+    if not isinstance(instances, dict):
+        raise ValueError(f"era-pin table {str(location)!r} carries no 'instances' object")
+
+    table: dict[str, EraPins] = {}
+    for instance_id, entry in instances.items():
+        if not isinstance(entry, dict):
+            raise ValueError(f"era-pin table {str(location)!r} has a malformed {instance_id!r}")
+        requirements = entry.get("requirements")
+        if not isinstance(requirements, list) or not requirements:
+            raise ValueError(
+                f"era-pin table {str(location)!r} records no requirements for {instance_id!r}"
+            )
+        for requirement in requirements:
+            if not isinstance(requirement, str) or not _PIN.match(requirement):
+                raise ValueError(
+                    f"era-pin table {str(location)!r} records {requirement!r} for "
+                    f"{instance_id!r}, which is not an exact '==' requirement. A range here "
+                    f"reopens the hole the table exists to close: the version, and with it the "
+                    f"verdict, goes back to whatever the index serves at resolution time"
+                )
+        table[instance_id] = EraPins(
+            python=str(entry.get("python") or ""),
+            requirements=tuple(requirements),
+            determined_by=str(entry.get("determined_by") or ""),
+        )
+    return table
+
+
+def era_pins(table: Mapping[str, EraPins], instance_id: str) -> EraPins:
+    """This instance's install set, or `Ineligible` at gate 3.
+
+    **The refusal is the honest branch, and it is the common one.** A repository declares ranges
+    — flask says `click>=8.0` at every commit it has ever had — so `environment_setup_commit`
+    cannot answer which versions the era used. Source B escapes this because a donor's `uv.lock`
+    is its owner's own recorded resolution, made when the commit was written; source A has no
+    such artifact anywhere. Resolving anyway would hand the verdict to whatever the index served
+    that morning. So an instance with no entry is rejected and ledgered, never guessed at.
+    """
+    pins = table.get(instance_id)
+    if pins is None:
+        raise Ineligible(
+            GATE_ENVIRONMENT,
+            f"no era-pins are recorded for {instance_id!r}. Its repository declares ranges, so "
+            f"nothing in the dataset or in the checkout answers which versions its era used, and "
+            f"resolving them at filter time would decide the verdict by the calendar. Determine "
+            f"them by hand, add them to tasks/public/era-pins.json with how they were "
+            f"determined, and re-run — the instance is refused rather than guessed at",
+        )
+    return pins
+
+
+def probe_imports(interpreter: Path) -> ImportProbe:
+    """Import every installed distribution's top-level modules, inside `interpreter`.
+
+    Returns rather than raises, because this is a measurement and the gate is what turns it into
+    a refusal. A probe that raised would make "and what *did* you check" unanswerable in exactly
+    the failing case where it matters.
+    """
+    completed = subprocess.run(
+        [str(interpreter), "-c", _IMPORT_PROBE],
+        capture_output=True,
+        text=True,
+        timeout=_PROBE_TIMEOUT,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise Ineligible(
+            GATE_ENVIRONMENT,
+            f"the provisioned interpreter {str(interpreter)!r} could not run the import probe "
+            f"at all: {completed.stderr.strip() or completed.stdout.strip()}",
+        )
+    try:
+        payload = json.loads(completed.stdout.strip().splitlines()[-1])
+    except (IndexError, json.JSONDecodeError) as exc:
+        raise Ineligible(
+            GATE_ENVIRONMENT,
+            f"the import probe produced no readable result in {str(interpreter)!r}: {exc}",
+        ) from exc
+
+    return ImportProbe(
+        checked=tuple(payload.get("checked") or ()),
+        failures=tuple(
+            ImportFailure(
+                module=str(entry["module"]),
+                distribution=str(entry["distribution"]),
+                error=str(entry["error"]),
+            )
+            for entry in payload.get("failures") or ()
+        ),
+    )
+
+
+def check_environment(
+    requirements: Sequence[str],
+    *,
+    venv: Path,
+    python: Path | str | None = None,
+    index: Path | None = None,
+    install: Installer | None = None,
+) -> Provisioned:
+    """Gate 3. Provision `requirements` into `venv`, then prove the result **imports**.
+
+    **Install-exit-0 is not evidence, and that is measured rather than feared.**
+    `sphinx==3.5.4`, `pytest==4.6.9`, `pylint==2.13.9` and `requests==2.4.0` all install cleanly
+    on arm64 CPython 3.12; two of them cannot be imported there. An environment that admitted
+    them would hand the corpus tasks that die at collection, reported as ordinary rejections with
+    nothing pointing at the interpreter. So the installer's exit code is a precondition and the
+    import probe is the gate.
+
+    `install` is injected so the false-green arm can pass an installer that trivially succeeds —
+    the strongest possible "exit 0" — and watch the gate reject anyway. Production passes `None`
+    and gets uv.
+
+    `index` makes a local directory the only place a distribution may come from
+    (`--no-index --find-links`), which is how the suite resolves a real dependency without a
+    network. Production passes `None`, and **this is the one step of the filter that may reach an
+    index**: era-pins cannot be provisioned from nothing the first time. That is why the filter is
+    a human-run step alongside the fetch, and why its output — the exact pins in each manifest —
+    is what every later verification runs from.
+    """
+    environment = Path(venv).resolve()
+    interpreter = environment.joinpath(*_INTERPRETER)
+
+    installer = install if install is not None else _uv_installer(python=python, index=index)
+    try:
+        installer(list(requirements), environment)
+    except _NotProvisionable as exc:
+        raise Ineligible(
+            GATE_ENVIRONMENT,
+            f"the era-pinned environment {list(requirements)} could not be provisioned: {exc}",
+        ) from exc
+
+    if not interpreter.is_file():
+        raise Ineligible(
+            GATE_ENVIRONMENT,
+            f"provisioning reported success but left no interpreter at {str(interpreter)!r}, so "
+            f"there is nothing to verify the instance under",
+        )
+
+    probe = probe_imports(interpreter)
+    if probe.failures:
+        detail = "; ".join(
+            f"{failure.distribution} -> import {failure.module}: {failure.error}"
+            for failure in probe.failures
+        )
+        raise Ineligible(
+            GATE_ENVIRONMENT,
+            f"the environment installed cleanly and {len(probe.failures)} of "
+            f"{len(probe.checked)} checked module(s) cannot be imported on this interpreter: "
+            f"{detail}. Install-exit-0 is not evidence — this is the interpreter-era failure "
+            f"that kills requests==2.4.0 on >=3.10 and pytest==4.6.9 on 3.12",
+        )
+
+    try:
+        pins, _ = pins_from_freeze(_uv(("pip", "freeze", "--python", str(interpreter))))
+    except _NotProvisionable as exc:
+        raise Ineligible(
+            GATE_ENVIRONMENT, f"the provisioned environment cannot be described as pins: {exc}"
+        ) from exc
+    return Provisioned(python=_probe_version(interpreter), pins=pins, interpreter=interpreter)
+
+
+def _uv_installer(*, python: Path | str | None, index: Path | None) -> Installer:
+    """The production installer: `uv venv` then `uv pip install`, both against a local python.
+
+    A closure rather than a method so the injected test double and the real thing have the same
+    two-argument shape, and so nothing in `check_environment` has to branch on which it holds.
+    """
+
+    def install(requirements: list[str], environment: Path) -> None:
+        # `--allow-existing` so the step is idempotent: a filter run that was interrupted after
+        # the venv and before the install must be resumable, and a caller that made the venv
+        # itself is exercising the same code path production does rather than a second one.
+        _uv(
+            (
+                "venv",
+                "--allow-existing",
+                "--python",
+                str(python) if python else _current(),
+                str(environment),
+            )
+        )
+        interpreter = environment.joinpath(*_INTERPRETER)
+        constrained: tuple[str, ...] = ()
+        if index is not None:
+            constrained = ("--no-index", "--find-links", str(Path(index)), "--offline")
+        _uv(
+            (
+                "pip",
+                "install",
+                "--quiet",
+                "--python",
+                str(interpreter),
+                *constrained,
+                *requirements,
+            )
+        )
+
+    return install
+
+
+def _current() -> str:
+    """This process's own interpreter, named rather than imported at module scope.
+
+    `sys` is only needed here, and keeping it local mirrors the discipline the rest of the
+    package applies to imports that exist for one branch.
+    """
+    import sys
+
+    return sys.executable
+
+
+def _probe_version(interpreter: Path) -> str:
+    """The interpreter's own version, asked of the interpreter."""
+    completed = subprocess.run(
+        [str(interpreter), "-c", _VERSION_PROBE],
+        capture_output=True,
+        text=True,
+        timeout=_PROBE_TIMEOUT,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise Ineligible(
+            GATE_ENVIRONMENT,
+            f"the provisioned interpreter {str(interpreter)!r} could not report its own version: "
+            f"{completed.stderr.strip()}",
+        )
+    return completed.stdout.strip()
+
+
+# --------------------------------------------------------------------------------------
+# The rejection ledger
+# --------------------------------------------------------------------------------------
+
+
 def write_ineligible(
     path: Path,
     rejections: Sequence[Rejection],
@@ -290,6 +686,7 @@ def read_ineligible(path: Path) -> Ineligibility:
 
 
 __all__ = [
+    "ERA_PINS_SCHEMA",
     "EXECUTION_ORDER",
     "GATES",
     "GATE_COLLECTABILITY",
@@ -297,10 +694,19 @@ __all__ = [
     "GATE_FORMAT",
     "GATE_LIVENESS",
     "INELIGIBLE_SCHEMA",
+    "EraPins",
+    "ImportFailure",
+    "ImportProbe",
     "Ineligibility",
     "Ineligible",
+    "Installer",
+    "Provisioned",
     "Rejection",
+    "check_environment",
     "check_format",
+    "era_pins",
+    "probe_imports",
+    "read_era_pins",
     "read_ineligible",
     "write_ineligible",
 ]
