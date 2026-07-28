@@ -152,6 +152,12 @@ DONOR_CALC_ROUNDING_FIXED = DONOR_CALC_PARITY_FIXED.replace(
     "def round_half(n):\n    return int(n)", "def round_half(n):\n    return int(n + 0.5)"
 )
 
+DONOR_CALC_TIDIED = DONOR_CALC_ROUNDING_FIXED + """
+
+def sign(n):
+    return (n > 0) - (n < 0)
+"""
+
 _ADDITION_SEED = """\
 from calc import add
 
@@ -222,6 +228,15 @@ def test_rounding_down_stays_down():
 
 def test_rounding_up_rounds_up():
     assert round_half(1.6) == 2
+"""
+
+#: The same file again, one commit later, with a test that passes on both sides of its own
+#: commit. The commit is selected — it modifies a test file and a source file — and there is
+#: nothing to derive from it: no id flips, so there is no `fail_to_pass` and no task.
+_EDGE_TIDIED = _EDGE_FIXED + """
+
+def test_rounding_zero_is_zero():
+    assert round_half(0) == 0
 """
 
 _SUBTRACTION_SEED = """\
@@ -321,6 +336,8 @@ class DonorCommit:
 #: | Fix parity | **selected** | modifies a test file and a source file; its test is flaky |
 #: | Fix rounding and add a unit conftest | **selected** | its added `tests/unit/conftest.py`
 #:   is absent from the parent, so the floor must not hold it |
+#: | Tidy the edge tests | selected, **nothing to derive** | its new test passes on both sides
+#:   of the commit, so no id flips and there is no task |
 DONOR_HISTORY: tuple[DonorCommit, ...] = (
     DonorCommit(
         subject="Seed the calculator",
@@ -397,6 +414,13 @@ DONOR_HISTORY: tuple[DonorCommit, ...] = (
             "tests/unit/conftest.py": DONOR_UNIT_CONFTEST,
         },
     ),
+    DonorCommit(
+        subject="Tidy the edge tests",
+        changes={
+            "calc.py": DONOR_CALC_TIDIED,
+            "tests/unit/test_edge.py": _EDGE_TIDIED,
+        },
+    ),
 )
 
 
@@ -453,6 +477,7 @@ __all__ = [
     "DONOR_CALC_PARITY_FIXED",
     "DONOR_CALC_ROUNDING_FIXED",
     "DONOR_CALC_SEED",
+    "DONOR_CALC_TIDIED",
     "DONOR_CONFTEST",
     "DONOR_CONFTEST_TOUCHED",
     "DONOR_HISTORY",
