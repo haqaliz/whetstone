@@ -7,6 +7,11 @@ a patch to a task's known-broken commit inside a sandbox, restores the operator-
 from golden, and compares what pytest actually executed against what the task declared. There
 is still no loop, no gate and no report, so there are still no stubs for those.
 
+``--task`` takes a manifest or a **directory** of them, and the directory adds no fifth
+outcome. The set reduces worst-status-wins through the same `whetstone.verify.verdict.reduce`
+a single task's sub-checks do, so one unverified task among ninety-nine passes exits 3. "Most
+of them passed" is not a fourth kind of result; it is a pass the caller has not earned.
+
 **The exit codes are this module's other job, and the honest one.** PASS is 0, FAIL is 1,
 argparse's usage error stays 2, and UNVERIFIED is **3**. UNVERIFIED deliberately is not 0: a
 caller that checks only ``rc == 0`` must never read a run nobody could check as a win. It is
@@ -32,10 +37,11 @@ import tempfile
 from pathlib import Path
 
 from whetstone import __version__
+from whetstone.tasks.manifest import load_tasks
 from whetstone.verify.sandbox import UnsupportedPlatform
 from whetstone.verify.strict import StrictResult, verify_strict
-from whetstone.verify.task import Task, load_task
-from whetstone.verify.verdict import Status
+from whetstone.verify.task import Task
+from whetstone.verify.verdict import Status, Verdict, reduce
 
 #: The patch is a genuine fix.
 PASS_EXIT = 0
@@ -68,8 +74,10 @@ VERIFY_TIMEOUT_SECONDS = 900.0
 DESCRIPTION = "Whetstone — a model that trains itself overnight, and proves it didn't cheat."
 
 _VERIFY_DESCRIPTION = (
-    "Verify a patch against a task by re-executing the task's own tests in a sandbox. "
-    "Exits 0 on PASS, 1 on FAIL, 2 on a usage error, and 3 when nothing could be verified."
+    "Verify a patch against a task — or against every task in a directory — by re-executing "
+    "the task's own tests in a sandbox. A directory reduces worst-status-wins: the run is a "
+    "PASS only if every task passed. Exits 0 on PASS, 1 on FAIL, 2 on a usage error, and 3 "
+    "when nothing could be verified."
 )
 
 
@@ -94,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         type=Path,
         metavar="<path>",
-        help="the operator-controlled task manifest (JSON)",
+        help="the operator-controlled task manifest (JSON), or a directory of them",
     )
     verify.add_argument(
         "--patch",
@@ -123,16 +131,24 @@ def _verdict_exit_code(status: Status) -> int:
 
 
 def run_verify(task_path: Path, patch_path: Path) -> int:
-    """Verify `patch_path` against `task_path`, print the verdict, and return its exit code.
+    """Verify `patch_path` against `task_path`, print each verdict, and return the exit code.
 
-    The two ways in are kept apart on purpose. An unreadable or malformed manifest, or a patch
-    file that is not there, is a `USAGE_ERROR`: nothing was attempted, and the operator gave a
-    path that does not resolve. Only a reward run that happened and could not conclude is
+    `task_path` is a manifest or a directory of them. Every task is verified against the same
+    patch and the results reduce worst-status-wins, so the exit code answers "did this patch
+    clear the whole set", which is the only question a promotion gate can act on.
+
+    The two ways in are kept apart on purpose. An unreadable or malformed manifest, a directory
+    holding something that is not a task, an **empty** directory, or a patch file that is not
+    there, is a `USAGE_ERROR`: nothing was attempted, and the operator gave a path that does
+    not resolve to a corpus. Only a reward run that happened and could not conclude is
     UNVERIFIED. Collapsing the first into the second would put a typo in the same bucket as a
-    finding about a task.
+    finding about a task — and in the empty-directory case it would be worse than a typo:
+    `reduce` answers UNVERIFIED for an empty sequence, but the refusal happens in
+    `load_tasks` before any reduction, because "you pointed me at nothing" is not a finding
+    about a corpus that does not exist.
     """
     try:
-        task = load_task(task_path)
+        tasks = load_tasks(task_path)
     except ValueError as exc:
         print(f"whetstone verify: {exc}", file=sys.stderr)
         return USAGE_ERROR
@@ -155,20 +171,40 @@ def run_verify(task_path: Path, patch_path: Path) -> int:
     # unresolved root makes the reported node ids unreconstructable and the run comes back
     # UNVERIFIED with a perfectly healthy suite behind it. Verified by hand: the same task and
     # patch reduce to PASS with a resolved root and UNVERIFIED without one.
+    reached: list[Verdict] = []
     with tempfile.TemporaryDirectory(prefix="whetstone-verify-") as sandbox_root:
-        try:
-            result = verify_strict(
-                task,
-                patch,
-                sandbox_root=Path(sandbox_root).resolve(),
-                timeout=VERIFY_TIMEOUT_SECONDS,
-            )
-        except UnsupportedPlatform as exc:
-            _print_unverifiable(task, f"{exc}")
-            return UNVERIFIED_EXIT
+        root = Path(sandbox_root).resolve()
+        for task in tasks:
+            # `verify_strict` gives each task its own run directory under this root, so the
+            # tasks cannot see each other's checkouts.
+            try:
+                result = verify_strict(
+                    task, patch, sandbox_root=root, timeout=VERIFY_TIMEOUT_SECONDS
+                )
+            except UnsupportedPlatform as exc:
+                # Reported and carried, not raised past the loop. Every remaining task will hit
+                # the same wall, and stopping here would leave them with no verdict at all —
+                # which is a shorter denominator, not a shorter run.
+                _print_unverifiable(task, f"{exc}")
+                reached.append(_task_verdict(task, Status.UNVERIFIED))
+                continue
+            _print_verdict(task, result)
+            reached.append(_task_verdict(task, result.status))
 
-    _print_verdict(task, result)
-    return _verdict_exit_code(result.status)
+    # Through `reduce`, not through a local max: the ordering that puts UNVERIFIED above PASS
+    # is the honesty contract, and it is defined in exactly one place.
+    return _verdict_exit_code(reduce(reached))
+
+
+def _task_verdict(task: Task, status: Status) -> Verdict:
+    """One task's reduced status, as a Verdict, so a set of tasks folds the way sub-checks do."""
+    return Verdict(
+        kind="task",
+        status=status,
+        observed=task.task_id,
+        expected=None,
+        message=f"{task.task_id} reduced to {status.value}",
+    )
 
 
 def _print_verdict(task: Task, result: StrictResult) -> None:
