@@ -37,8 +37,8 @@ from fixtures.repos import (
 from whetstone.verify.strict import (
     StrictResult,
     _held_among,
-    _read_report,
     _ReportUnreadable,
+    read_report,
     verify_strict,
 )
 from whetstone.verify.verdict import Status
@@ -329,10 +329,10 @@ def test_a_report_that_cannot_be_read_is_refused_rather_than_interpreted(tmp_pat
         report = tmp_path / f"{abs(hash(label))}.xml"
         report.write_text(xml)
         with pytest.raises(_ReportUnreadable):
-            _read_report(report)
+            read_report(report)
 
     with pytest.raises(_ReportUnreadable):
-        _read_report(tmp_path / "never-written.xml")
+        read_report(tmp_path / "never-written.xml")
 
 
 def test_the_parser_reconstructs_node_ids_including_classes_and_parameters(
@@ -357,7 +357,7 @@ def test_the_parser_reconstructs_node_ids_including_classes_and_parameters(
         '</testsuite>'
     )
 
-    cases = _read_report(report)
+    cases = read_report(report)
 
     assert [case.node_id for case in cases] == [
         "tests/test_a.py::test_plain",

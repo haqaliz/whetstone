@@ -77,7 +77,7 @@ _JUNIT_FAMILY = "xunit1"
 
 #: A ceiling on the untrusted report, generous enough that a large real suite's failures fit
 #: and small enough that a report grown to fill the disk is refused rather than parsed. See
-#: `_read_report` for why this file is untrusted at all.
+#: `read_report` for why this file is untrusted at all.
 _MAX_REPORT_BYTES = 64 * 1024 * 1024
 
 
@@ -209,7 +209,7 @@ def _run_and_judge(
 
     verdicts = [_exit_status_verdict(sandbox.rc)]
     try:
-        cases = _read_report(report)
+        cases = read_report(report)
     except _ReportUnreadable as exc:
         verdicts.append(
             Verdict(
@@ -256,7 +256,7 @@ def _exit_status_verdict(rc: int | None) -> Verdict:
     )
 
 
-def _skipped_verdict(cases: Sequence[_Case]) -> Verdict:
+def _skipped_verdict(cases: Sequence[Case]) -> Verdict:
     """Step 5. A skipped test is a test that did not run, and the task asked for it to run."""
     skipped = tuple(case.node_id for case in cases if case.outcome == "skipped")
     if not skipped:
@@ -332,8 +332,11 @@ def _fail_to_pass_verdict(outcomes: Mapping[str, str], fail_to_pass: Sequence[st
 
 
 @dataclass(frozen=True)
-class _Case:
-    """One `<testcase>` from pytest's report: which node ran, and what it reported."""
+class Case:
+    """One `<testcase>` from pytest's report: which node ran, and what it reported.
+
+    Public because it is `read_report`'s return type, and that function is ingestion's seam.
+    """
 
     node_id: str
     outcome: str
@@ -347,8 +350,12 @@ class _ReportUnreadable(RuntimeError):
     """
 
 
-def _read_report(path: Path) -> tuple[_Case, ...]:
+def read_report(path: Path) -> tuple[Case, ...]:
     """Read pytest's junit XML into node ids and outcomes. Never guesses.
+
+    Public, like `node_id`, so ingestion mints a task's declared ids through the same code the
+    executed-set comparison reconstructs them with. See `node_id` for why a second
+    implementation is worse than an exported one.
 
     The node id is rebuilt from `file` and `classname` rather than from `classname` alone:
     `tests.test_a.TestC` cannot be split into module and class without knowing the file, and a
@@ -382,7 +389,7 @@ def _read_report(path: Path) -> tuple[_Case, ...]:
     except ElementTree.ParseError as exc:
         raise _ReportUnreadable(f"the report is not well-formed XML: {exc}") from exc
 
-    cases: list[_Case] = []
+    cases: list[Case] = []
     for element in tree.iter("testcase"):
         file_path = element.get("file")
         name = element.get("name")
@@ -392,12 +399,21 @@ def _read_report(path: Path) -> tuple[_Case, ...]:
                 f"a testcase entry lacks file/classname/name ({element.attrib!r}), so the node "
                 f"id it reports cannot be reconstructed"
             )
-        cases.append(_Case(node_id=_node_id(file_path, classname, name), outcome=_outcome(element)))
+        cases.append(Case(node_id=node_id(file_path, classname, name), outcome=_outcome(element)))
     return tuple(cases)
 
 
-def _node_id(file_path: str, classname: str, name: str) -> str:
-    """`tests/test_a.py` + `tests.test_a.TestC` + `test_x` -> `tests/test_a.py::TestC::test_x`."""
+def node_id(file_path: str, classname: str, name: str) -> str:
+    """`tests/test_a.py` + `tests.test_a.TestC` + `test_x` -> `tests/test_a.py::TestC::test_x`.
+
+    **Public because ingestion mints through it.** A task's `fail_to_pass`/`pass_to_pass` are
+    compared, as a set, against the ids reconstructed here; ids minted by a second
+    implementation can drift in exactly the ways this function exists to prevent — where the
+    module path ends and a class begins, and whether a parametrised `[1-2]` suffix survives.
+    Such a drift does not present as a bug in the minting code: it presents as every ingested
+    task failing the executed-set check with nothing about the task to explain it. One
+    implementation, exported, is the cheapest way to make that class of bug unreachable.
+    """
     dotted = file_path[: -len(".py")] if file_path.endswith(".py") else file_path
     dotted = dotted.replace("/", ".")
     if classname == dotted:
@@ -458,4 +474,4 @@ def _only(kind: str, status: Status, message: str, **grounding: Any) -> StrictRe
     return StrictResult(status=reduce([verdict]), verdicts=(verdict,), executed=None)
 
 
-__all__ = ["StrictResult", "verify_strict"]
+__all__ = ["Case", "StrictResult", "node_id", "read_report", "verify_strict"]
