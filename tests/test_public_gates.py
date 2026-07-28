@@ -255,3 +255,20 @@ def test_a_ledger_that_is_not_a_ledger_raises_naming_the_file(tmp_path: Path) ->
 
     with pytest.raises(ValueError, match=r"ineligible\.json"):
         read_ineligible(path)
+
+
+def test_a_rejection_naming_hundreds_of_ids_states_the_count_rather_than_all_of_them() -> None:
+    """The ledger is committed and reviewable, so one rejection may not be a wall of text.
+
+    Measured: django instances declare hundreds of ids apiece, and an uncapped enumeration made
+    `ineligible.json` 2.4 MB — a file nobody opens, and therefore evidence nobody checks. The
+    **count** is never truncated, because how many failed is the fact a reader needs; the
+    examples are, because the two-hundredth one of the same shape teaches nothing.
+    """
+    with pytest.raises(Ineligible) as raised:
+        check_format([f"test_x_{index} (mod.Case)" for index in range(200)])
+
+    message = str(raised.value)
+    assert "200 of 200" in message
+    assert "195 more" in message
+    assert len(message) < 1500, "a single rejection is still long enough to bloat the ledger"

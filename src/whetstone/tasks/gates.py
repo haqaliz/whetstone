@@ -106,6 +106,13 @@ _SEPARATOR = "::"
 #: name no file at all and django's name a dotted module, and neither is a path.
 _SUFFIX = ".py"
 
+#: How many offending ids a format rejection spells out before it starts counting. The ledger is
+#: a **committed, reviewable** file, and django instances declare hundreds of ids apiece: an
+#: uncapped enumeration made it 2.4 MB, which is a file nobody opens and therefore evidence
+#: nobody checks. The count is never truncated — what a reader needs is how many failed and what
+#: they look like, and both survive.
+_OFFENDERS_SHOWN = 5
+
 #: Leading or trailing whitespace on a declared id. Rejected rather than stripped, exactly as
 #: `task._check_blob_path` refuses to normalise a path on the operator's behalf: an id the
 #: manifest carries is compared literally against what pytest reports.
@@ -181,7 +188,10 @@ def check_format(node_ids: Sequence[str]) -> None:
 
     offenders = [(node_id, reason) for node_id in node_ids if (reason := _malformed(node_id))]
     if offenders:
-        detail = "; ".join(f"{node_id!r} ({reason})" for node_id, reason in offenders)
+        shown = offenders[:_OFFENDERS_SHOWN]
+        detail = "; ".join(f"{node_id!r} ({reason})" for node_id, reason in shown)
+        if len(offenders) > len(shown):
+            detail += f"; and {len(offenders) - len(shown)} more of the same kind"
         raise Ineligible(
             GATE_FORMAT,
             f"{len(offenders)} of {len(node_ids)} declared test(s) are not addressable as pytest "
