@@ -107,6 +107,7 @@ def verify_strict(
     sandbox_root: Path | str,
     timeout: float,
     run_id: str | None = None,
+    interpreter: Path | str | None = None,
 ) -> StrictResult:
     """Verify `patch` against `task` and return the reward.
 
@@ -114,6 +115,25 @@ def verify_strict(
     somewhere else turns every slow task into an UNVERIFIED nobody can explain. `run_id` names
     the directory the run happens in and nothing else — the verdict does not depend on it, and
     `test_the_verdict_is_identical_across_repeated_runs` is what holds that true.
+
+    `interpreter` is the python the declared tests run under, and it exists because pinning the
+    reward to the verifier's own 3.12 makes whole task families unverifiable rather than merely
+    inconvenient. Measured, not anticipated: `requests==2.4.0` cannot import on >=3.10 and
+    `pytest==4.6.9` needs the `imp` module 3.12 removed, so 11 of 35 candidate public tasks are
+    dead on this interpreter for a reason that has nothing to do with any patch. `None` means
+    `sys.executable`, and is distinct from a caller passing `sys.executable` only in that it
+    records nobody chose — the same distinction `timeout` and `run_id` already draw.
+
+    **This function resolves nothing and installs nothing, and it must stay that way.** It does
+    not read `task.environment.python`, does not turn a version string into a path, does not
+    create a venv and does not install a pin. It takes a path and puts it in an argv. The pull
+    to be helpful here is real — the task carries an `environment`, the mapping from that to an
+    interpreter looks like two lines, and it is right there. Refuse it. Provisioning belongs to
+    the ingestion layer, and the reason is not tidiness: a reward path that can install
+    packages is a reward path whose verdict depends on a resolver, a cache and a network, which
+    is precisely the "decided by the calendar rather than by the code" failure `environment`
+    exists to close (`task.py`'s module docstring). The reward is a runner. A caller that wants
+    a task's declared environment resolves it first and hands the answer down.
     """
     run_directory = Path(sandbox_root) / (run_id or uuid.uuid4().hex)
     checkout = run_directory / _CHECKOUT_NAME
@@ -162,13 +182,32 @@ def verify_strict(
     for path, golden in task.test_blobs.items():
         (checkout / path).write_bytes(golden)
 
-    return _run_and_judge(task, checkout=checkout, run_directory=run_directory, timeout=timeout)
+    return _run_and_judge(
+        task,
+        checkout=checkout,
+        run_directory=run_directory,
+        timeout=timeout,
+        interpreter=interpreter,
+    )
 
 
 def _run_and_judge(
-    task: Task, *, checkout: Path, run_directory: Path, timeout: float
+    task: Task,
+    *,
+    checkout: Path,
+    run_directory: Path,
+    timeout: float,
+    interpreter: Path | str | None = None,
 ) -> StrictResult:
-    """Steps 4 to 7: run the declared tests confined, then judge what actually happened."""
+    """Steps 4 to 7: run the declared tests confined, then judge what actually happened.
+
+    An `interpreter` that cannot be exec'd — absent, not executable, not a python — needs no
+    handling here, and that is asserted rather than assumed. `sandbox-exec` fails before there
+    is a child and prefixes its own message, which `run_confined` already reports as
+    UNVERIFIED; a python-shaped thing that exits outside `{0, 1}` lands on
+    `_exit_status_verdict`'s same answer. Both are "nothing was concluded", which is what a
+    broken nomination is — never a FAIL charged to the patch.
+    """
     config = run_directory / _CONFIG_NAME
     config.write_text(_PYTEST_CONFIG)
     report = run_directory / _REPORT_NAME
@@ -176,7 +215,7 @@ def _run_and_judge(
 
     sandbox = run_confined(
         [
-            sys.executable,
+            str(interpreter) if interpreter else sys.executable,
             "-m",
             "pytest",
             # Never the repository's own config: the patch may have edited it, and this is the
