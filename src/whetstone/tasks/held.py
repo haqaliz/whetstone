@@ -92,9 +92,21 @@ def conftest_floor(donor: Path, candidate: Candidate) -> tuple[str, ...]:
     holding it would forbid the policy a file the task has no relationship to while adding a blob
     the manifest carries for nothing.
     """
-    tree = _tree(donor, candidate.parent)
+    return conftest_floor_at(donor, candidate.parent, candidate.held_tests)
+
+
+def conftest_floor_at(repo: Path, sha: str, tests: Sequence[str]) -> tuple[str, ...]:
+    """The same floor, asked of a commit and a list of tests rather than of a `Candidate`.
+
+    Source A has no `Candidate` — a public benchmark instance is a base commit and a test patch,
+    not a mined red-to-green pair — and the cheat-10 floor (PRD D4/M5) applies to **every**
+    ingested task regardless of where it came from. Sited here rather than reimplemented there,
+    because two spellings of the floor would be two rules, and the one that drifted would be the
+    one nobody was watching.
+    """
+    tree = _tree(repo, sha)
     floor: set[str] = set()
-    for test in candidate.held_tests:
+    for test in tests:
         parts = PurePosixPath(test).parent.parts
         for depth in range(len(parts) + 1):
             path = "/".join((*parts[:depth], _CONFTEST))
@@ -139,5 +151,6 @@ __all__ = [
     "UnderDeclaration",
     "check_held",
     "conftest_floor",
+    "conftest_floor_at",
     "held_paths",
 ]

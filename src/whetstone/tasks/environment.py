@@ -64,6 +64,7 @@ executed from the donor — the build configuration is read without running the 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Iterable
@@ -107,6 +108,11 @@ _PATH_MARKER = " @ file://"
 #: The conventional directory a `src`-layout project keeps its packages in. Named because its
 #: mere presence is what makes a silent build backend ambiguous rather than merely quiet.
 _SRC = "src"
+
+#: How a distribution name becomes the module it is imported as, for `_observed_root`. Only the
+#: separators PEP 503 normalises; anything else in a name is left alone, because a rewrite this
+#: function got wrong would answer an import with the wrong directory.
+_NAME_TO_MODULE = re.compile(r"[-_.]+")
 
 #: The import root of a project whose code sits at the repository root. `"."` rather than `""`
 #: because the manifest requires a canonical relative path, and `""` is not one.
@@ -306,6 +312,11 @@ def import_roots(project: Path) -> tuple[str, ...]:
 
     if not _is_packaged(data):
         return (_ROOT,)
+
+    observed = _observed_root(location, data)
+    if observed is not None:
+        return observed
+
     if (location / _SRC).is_dir():
         raise UnknownImportRoot(
             f"donor {str(location)!r} is built as a package and has a {_SRC!r} directory, but "
@@ -316,6 +327,37 @@ def import_roots(project: Path) -> tuple[str, ...]:
             f"[tool.hatch.build.targets.wheel] packages) and re-mint"
         )
     return (_ROOT,)
+
+
+def _observed_root(location: Path, data: dict[str, object]) -> tuple[str, ...] | None:
+    """Where the project's own declared name is actually laid out, or None if it is not.
+
+    **This reads the layout; it does not guess at it.** A backend that discovers its package by
+    convention — flit, and setuptools' automatic discovery — says nothing in the build table, so
+    `_declared_roots` returns nothing and the caller is left with a genuinely ambiguous `src/`.
+    But the ambiguity is only genuine when the layout does not answer: if `[project] name` is
+    `Flask` and `src/flask/__init__.py` is a file in the checkout, then `src` **is** the import
+    root, as a fact about the tree rather than as an inference about the backend.
+
+    Both layouts are checked, `src/` first, and neither is invented: each requires an
+    `__init__.py` to actually be there. When neither is, this returns None and the caller
+    refuses — which is the branch that matters, because a wrong import root does not fail
+    loudly, it leaves the declared tests importing a copy of the project from outside the run
+    and reporting PASS.
+
+    Added for source A, where a public benchmark instance is whatever upstream chose to build
+    with, and shared with source B rather than duplicated: one project must not resolve to two
+    different import roots depending on which ingester asked.
+    """
+    name = _table(data, "project").get("name")
+    if not isinstance(name, str) or not name:
+        return None
+    module = _NAME_TO_MODULE.sub("_", name).lower()
+    if (location / _SRC / module / "__init__.py").is_file():
+        return (_SRC,)
+    if (location / module / "__init__.py").is_file():
+        return (_ROOT,)
+    return None
 
 
 def _read_project_file(file: Path, *, where: str) -> dict[str, object]:
