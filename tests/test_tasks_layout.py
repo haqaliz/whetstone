@@ -82,20 +82,50 @@ def test_the_committed_half_of_the_corpus_is_not_ignored() -> None:
         )
 
 
-def test_the_trailing_slash_form_is_load_bearing() -> None:
+def test_the_trailing_slash_form_is_load_bearing(tmp_path: Path) -> None:
     """Why every path above ends in `/`, asserted rather than left as a comment.
 
-    `/tasks/local/` is directory-only. Asked about `tasks/local` — no slash, and the directory
-    is absent from a fresh clone — git answers "not ignored". A guard written that way would
-    report the private half as committable while it is in fact protected, and the obvious
-    "fix" would be to widen the pattern. Both spellings are asserted here so the difference is
-    documented by a failing test rather than by a comment nobody reads.
+    `/tasks/local/` is directory-only. Asked about `tasks/local` — no slash, **and the directory
+    absent** — git answers "not ignored". A guard written that way would report the private half
+    as committable while it is in fact protected, and the obvious "fix" would be to widen the
+    pattern. Both spellings are asserted here so the difference is documented by a failing test
+    rather than by a comment nobody reads.
+
+    **Asserted in a scratch repository, not this one, and that is the point of the test rather
+    than an inconvenience.** The no-slash spelling answers "not ignored" only while the directory
+    does not exist; once a mint has actually run, `tasks/local/` is on disk and git answers
+    "ignored" to both spellings. An earlier version of this test asked this repository directly
+    and passed for exactly as long as nobody had minted anything — it went red the first time the
+    corpus was built, which is the wrong moment to learn that a guard depended on absence. The
+    scratch repository fixes the condition the reasoning is about instead of inheriting whatever
+    the working tree happens to hold.
     """
-    assert _check_ignore("tasks/local/").returncode == 0
-    assert _check_ignore("tasks/local").returncode == 1, (
-        "git now answers the same for both spellings; the trailing-slash reasoning above is "
-        "stale and the other guards in this file need re-reading"
+    scratch = tmp_path / "repo"
+    scratch.mkdir()
+    subprocess.run(["git", "-C", str(scratch), "init", "--quiet"], check=True)
+    (scratch / ".gitignore").write_text("/tasks/local/\n")
+
+    def ask(path: str) -> int:
+        return subprocess.run(
+            ["git", "-C", str(scratch), "check-ignore", path],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).returncode
+
+    assert ask("tasks/local/") == 0, (
+        "the directory-only pattern did not ignore the trailing-slash spelling, so the form "
+        "every guard above is written in does not do what they rely on"
     )
+    assert ask("tasks/local") == 1, (
+        "git answered the same for both spellings against an absent directory; the "
+        "trailing-slash reasoning above is stale and the other guards need re-reading"
+    )
+
+    # And the guarantee the guards actually depend on: a FILE underneath is ignored either way,
+    # which is why `test_the_users_own_mined_tasks_cannot_be_committed` asks about a manifest
+    # path as well as the directory. That one holds whether or not anything has been minted.
+    assert ask("tasks/local/contig/some-mined-task.json") == 0
 
 
 def test_the_layout_exists_and_the_private_half_is_untracked() -> None:
