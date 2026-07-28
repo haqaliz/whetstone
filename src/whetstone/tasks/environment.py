@@ -87,6 +87,10 @@ _UV_TIMEOUT = 900.0
 PROJECT_FILE = "pyproject.toml"
 LOCKFILE = "uv.lock"
 
+#: setuptools' declarative configuration, which is the only place many pre-2022 projects say
+#: where their packages are. Read only when `pyproject.toml` does not answer.
+SETUP_CFG = "setup.cfg"
+
 #: The test runner, installed before the freeze. Named rather than inlined because it is the one
 #: package this module adds to what the lock asked for, and that deserves to be visible.
 _RUNNER = "pytest"
@@ -291,15 +295,16 @@ def import_roots(project: Path) -> tuple[str, ...]:
     """
     location = Path(project)
     file = location / PROJECT_FILE
-    if not file.is_file():
-        raise UnknownImportRoot(
-            f"donor {str(location)!r} carries no {PROJECT_FILE}, so nothing declares where the "
-            f"code its tests import lives. Guessing would risk verifying against a copy of the "
-            f"project installed somewhere else, which reports PASS for a patch nobody applied"
-        )
-    data = _read_project_file(file, where=str(location))
+    data = _read_project_file(file, where=str(location)) if file.is_file() else {}
 
-    declared = _declared_roots(data)
+    declared = _declared_roots(data) or _setup_cfg_roots(location)
+    if declared is None and not file.is_file():
+        raise UnknownImportRoot(
+            f"donor {str(location)!r} carries neither a {PROJECT_FILE} nor a {SETUP_CFG} that "
+            f"declares its layout, so nothing says where the code its tests import lives. "
+            f"Guessing would risk verifying against a copy of the project installed somewhere "
+            f"else, which reports PASS for a patch nobody applied"
+        )
     if declared is not None:
         for root in declared:
             if not (location / root).is_dir():
@@ -412,6 +417,52 @@ def _declared_roots(data: dict[str, object]) -> tuple[str, ...] | None:
     return None
 
 
+def _setup_cfg_roots(location: Path) -> tuple[str, ...] | None:
+    """setuptools' declarative layout, read from `setup.cfg`, or None if it says nothing.
+
+    **Added because a public benchmark instance is whatever upstream chose to build with, and
+    often that predates `pyproject.toml` entirely.** `pallets__flask-4045` sits at a 2021 commit
+    carrying `setup.py` and `setup.cfg` and nothing else, and its `[options] package_dir = = src`
+    says exactly what the pyproject spelling would. Refusing it would be refusing a declaration
+    for the file it happens to live in, which is not a fact about the layout.
+
+    Read with the stdlib `configparser`: this is a parse, and the build backend is never invoked,
+    so nothing from the repository under test executes. Only the two spellings that name a
+    **directory** are read — `package_dir`'s root entry and `packages.find`'s `where` — for the
+    same reason `_declared_roots` reads only those: a half-understood declaration is worse than
+    an unread one, because it produces an answer.
+    """
+    file = location / SETUP_CFG
+    if not file.is_file():
+        return None
+
+    import configparser
+
+    parser = configparser.ConfigParser()
+    try:
+        parser.read_string(file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, configparser.Error) as exc:
+        raise UnknownImportRoot(
+            f"donor {str(location)!r} has a {SETUP_CFG} that could not be read: {exc}"
+        ) from exc
+
+    # `package_dir = \n    = src` is setuptools' spelling for "the root package lives in src".
+    # Any other key names a single package's directory, which is not the import root.
+    raw = parser.get("options", "package_dir", fallback="")
+    roots: list[str] = []
+    for line in raw.splitlines():
+        key, separator, value = line.partition("=")
+        if separator and not key.strip() and value.strip():
+            roots.append(value.strip())
+    if not roots:
+        roots = [
+            entry.strip()
+            for entry in parser.get("options.packages.find", "where", fallback="").split()
+            if entry.strip()
+        ]
+    return _roots(roots) if roots else None
+
+
 def _is_packaged(data: dict[str, object]) -> bool:
     """Is this project built and installed under a package name at all?
 
@@ -522,6 +573,7 @@ def _uv(args: tuple[str, ...], *, environment: dict[str, str] | None = None) -> 
 __all__ = [
     "LOCKFILE",
     "PROJECT_FILE",
+    "SETUP_CFG",
     "Captured",
     "NoLockfile",
     "NotProvisionable",

@@ -431,3 +431,40 @@ def test_a_donor_with_no_project_file_has_no_readable_layout(tmp_path: Path) -> 
 
     with pytest.raises(UnknownImportRoot, match=re.escape("pyproject.toml")):
         import_roots(project)
+
+
+def test_a_donor_that_declares_its_layout_in_setup_cfg_is_read_rather_than_refused(
+    tmp_path: Path,
+) -> None:
+    """setuptools' declarative config is a build configuration too, and it is often the only one.
+
+    Public benchmark instances predate `pyproject.toml` as often as not — `pallets__flask-4045`
+    sits at a 2021 commit carrying `setup.py` and `setup.cfg` and nothing else — and its
+    `[options] package_dir = = src` says exactly what the pyproject spelling would. Refusing it
+    would be refusing a declaration for the file it happens to live in, which is not a fact about
+    the layout. Parsed with the stdlib `configparser`; the build backend is never invoked.
+    """
+    project = tmp_path / "cfg"
+    (project / "src" / "thing").mkdir(parents=True)
+    (project / "setup.py").write_text("from setuptools import setup\n\nsetup()\n")
+    (project / "setup.cfg").write_text(
+        "[metadata]\nname = thing\n\n[options]\npackages = find:\npackage_dir =\n    = src\n"
+        "\n[options.packages.find]\nwhere = src\n"
+    )
+
+    assert import_roots(project) == ("src",)
+
+
+def test_a_donor_with_no_build_configuration_at_all_is_still_refused(tmp_path: Path) -> None:
+    """The refusal has to survive the widening above, or the widening removed a guard.
+
+    A project with a `src/` directory and nothing anywhere saying what is in it is exactly the
+    ambiguous case: guessing `["."]` leaves the declared tests importing whatever the interpreter
+    has, which reports PASS for a patch nobody applied.
+    """
+    project = tmp_path / "silent"
+    (project / "src").mkdir(parents=True)
+    (project / "setup.py").write_text("from setuptools import setup\n\nsetup()\n")
+
+    with pytest.raises(UnknownImportRoot):
+        import_roots(project)
