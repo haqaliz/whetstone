@@ -1,11 +1,17 @@
 """The `whetstone` command line entry point.
 
 The failure this module prevents: a ``--help`` that advertises work the code cannot do.
-Commands appear here only when something stands behind them — and for the first time one
-does. ``verify`` runs the execution-grounded reward in `whetstone.verify.strict`: it applies
-a patch to a task's known-broken commit inside a sandbox, restores the operator-held tests
-from golden, and compares what pytest actually executed against what the task declared. There
-is still no loop, no gate and no report, so there are still no stubs for those.
+Commands appear here only when something stands behind them, and two now do. ``verify`` runs
+the execution-grounded reward in `whetstone.verify.strict`: it applies a patch to a task's
+known-broken commit inside a sandbox, restores the operator-held tests from golden, and
+compares what pytest actually executed against what the task declared. ``mine`` is the other
+end — it turns a local repository into tasks the first command can run, proving each one live
+before it enters the corpus. There is still no loop, no gate and no report, so there are still
+no stubs for those.
+
+**Both subcommands share the same four exit codes and add no fifth.** A mint that produced no
+task exits ``FAIL_EXIT``, never 0: "nothing could be mined here" is a finding about a donor,
+and a caller checking ``rc == 0`` must never read it as a corpus.
 
 ``--task`` takes a manifest or a **directory** of them, and the directory adds no fifth
 outcome. The set reduces worst-status-wins through the same `whetstone.verify.verdict.reduce`
@@ -38,6 +44,7 @@ from pathlib import Path
 
 from whetstone import __version__
 from whetstone.tasks.manifest import load_tasks
+from whetstone.tasks.mine import MintFailed, mine
 from whetstone.verify.sandbox import UnsupportedPlatform
 from whetstone.verify.strict import StrictResult, verify_strict
 from whetstone.verify.task import Task
@@ -71,6 +78,17 @@ _VERDICT_EXIT_CODES: dict[Status, int] = {
 #: into an UNVERIFIED nobody can explain.
 VERIFY_TIMEOUT_SECONDS = 900.0
 
+#: A ceiling on any single run a mint makes — each of the three derivation runs and each of the
+#: two liveness runs. Named here rather than defaulted inside the miner, for the same reason
+#: `VERIFY_TIMEOUT_SECONDS` is: a limit inherited from somewhere else turns a slow donor into a
+#: discard nobody can explain.
+MINE_TIMEOUT_SECONDS = 900.0
+
+#: Where the committed evidence goes. `tasks/local-ledger.json` and `tasks/recipes/<donor>.json`,
+#: both relative to this root, exactly as `tasks/README.md` documents them. Overridable so a test
+#: does not have to write into the repository's own corpus directory to exercise the miner.
+DEFAULT_TASKS_ROOT = Path("tasks")
+
 DESCRIPTION = "Whetstone — a model that trains itself overnight, and proves it didn't cheat."
 
 _VERIFY_DESCRIPTION = (
@@ -78,6 +96,15 @@ _VERIFY_DESCRIPTION = (
     "the task's own tests in a sandbox. A directory reduces worst-status-wins: the run is a "
     "PASS only if every task passed. Exits 0 on PASS, 1 on FAIL, 2 on a usage error, and 3 "
     "when nothing could be verified."
+)
+
+_MINE_DESCRIPTION = (
+    "Mine task instances out of a local git repository: commits that turned an existing test "
+    "green become tasks, each provisioned from the donor's own lockfile and proved live — it "
+    "must FAIL with no patch and PASS with its own reference patch — before it enters the "
+    "corpus. The manifests are the user's own code and stay local; the liveness ledger and the "
+    "recipe under --tasks-root are the committed evidence. Nothing here reaches the network. "
+    "Exits 0 when at least one task was minted, 1 when none could be, and 2 on a usage error."
 )
 
 
@@ -110,6 +137,46 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         metavar="<path>",
         help="the patch to verify, as a unified diff",
+    )
+
+    mine = commands.add_parser(
+        "mine",
+        help="mine proven-live tasks out of a local repository",
+        description=_MINE_DESCRIPTION,
+    )
+    mine.add_argument(
+        "--donor",
+        required=True,
+        type=Path,
+        metavar="<path>",
+        help="the local git repository to mine; it is read, never written to",
+    )
+    mine.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        metavar="<path>",
+        help="where the task manifests are written, e.g. tasks/local/<donor>/",
+    )
+    mine.add_argument(
+        "--limit",
+        required=True,
+        type=int,
+        metavar="<n>",
+        help="how many proven-live tasks to mint; must be at least 1",
+    )
+    mine.add_argument(
+        "--seed",
+        type=int,
+        metavar="<n>",
+        help="draw candidates in a seeded order; the same seed mints the same tasks",
+    )
+    mine.add_argument(
+        "--tasks-root",
+        type=Path,
+        default=DEFAULT_TASKS_ROOT,
+        metavar="<path>",
+        help="where the committed evidence goes: the liveness ledger and the donor's recipe",
     )
     return parser
 
@@ -196,6 +263,62 @@ def run_verify(task_path: Path, patch_path: Path) -> int:
     return _verdict_exit_code(reduce(reached))
 
 
+def run_mine(
+    donor: Path, out: Path, *, limit: int, seed: int | None, tasks_root: Path
+) -> int:
+    """Mine `donor` into `out`, print what was minted and what was refused, and return the code.
+
+    **A limit below one is a usage error rather than an empty run.** Minting nothing and exiting
+    0 would claim a corpus that is not there — the same vacuous-green shape `load_task_directory`
+    refuses for an empty directory, one step earlier.
+
+    A donor that cannot be read is also a usage error: "you pointed me at the wrong directory" is
+    a typo. A donor that was read and yielded no live task is different — it is a finding, so it
+    exits FAIL with every rejection printed. The rejections name the donor's own commits and
+    paths, which is the user's information: it goes to their terminal and never into the
+    committed ledger or recipe.
+    """
+    if limit < 1:
+        print(
+            f"whetstone mine: --limit must be at least 1, got {limit}. A mint that produced no "
+            f"task and exited 0 would claim a corpus that is not there",
+            file=sys.stderr,
+        )
+        return USAGE_ERROR
+
+    with tempfile.TemporaryDirectory(prefix="whetstone-mine-") as scratch:
+        try:
+            report = mine(
+                donor,
+                out,
+                limit=limit,
+                seed=seed,
+                scratch=Path(scratch).resolve(),
+                tasks_root=tasks_root,
+                timeout=MINE_TIMEOUT_SECONDS,
+            )
+        except MintFailed as exc:
+            print(f"whetstone mine: {exc}", file=sys.stderr)
+            return USAGE_ERROR
+
+    for task in report.minted:
+        print(f"{task.task_id}: minted from {task.manifest}")
+    for rejection in report.rejected:
+        print(f"{rejection.sha[:12]}: rejected — {rejection.reason}")
+
+    if not report.minted:
+        print(
+            f"whetstone mine: no task could be minted from {str(donor)!r}; "
+            f"{len(report.rejected)} candidate(s) were rejected, for the reasons above",
+            file=sys.stderr,
+        )
+        return FAIL_EXIT
+
+    print(f"minted {len(report.minted)} task(s); rejected {len(report.rejected)}")
+    print(f"evidence: {report.ledger} and {report.recipe}")
+    return PASS_EXIT
+
+
 def _task_verdict(task: Task, status: Status) -> Verdict:
     """One task's reduced status, as a Verdict, so a set of tasks folds the way sub-checks do."""
     return Verdict(
@@ -250,6 +373,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if namespace.command == "verify":
         return run_verify(namespace.task, namespace.patch)
+
+    if namespace.command == "mine":
+        return run_mine(
+            namespace.donor,
+            namespace.out,
+            limit=namespace.limit,
+            seed=namespace.seed,
+            tasks_root=namespace.tasks_root,
+        )
 
     # Every input the CLI accepts is handled above. Falling through means a flag or a
     # subcommand was added without a behaviour behind it: report usage and fail rather than

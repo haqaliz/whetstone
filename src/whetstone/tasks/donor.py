@@ -229,20 +229,12 @@ def run_git(args: list[str], *, cwd: Path) -> str:
     Public because `derive.py` mints through this same wrapper: two git front doors would be two
     sets of environment guarantees, and the second one would be the one nobody checked.
     """
-    environment = dict(os.environ)
-    environment.update(
-        {
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_CONFIG_SYSTEM": os.devnull,
-            "GIT_TERMINAL_PROMPT": "0",
-        }
-    )
     completed = subprocess.run(
         ["git", *args],
         cwd=str(cwd),
         capture_output=True,
         text=True,
-        env=environment,
+        env=_environment(),
         timeout=_GIT_TIMEOUT,
         check=False,
     )
@@ -252,4 +244,43 @@ def run_git(args: list[str], *, cwd: Path) -> str:
     return completed.stdout
 
 
-__all__ = ["Candidate", "GitFailed", "candidates", "is_test_path", "run_git"]
+def run_git_bytes(args: list[str], *, cwd: Path) -> bytes:
+    """The same wrapper, undecoded. For file contents, which are never text.
+
+    `test_blobs` carries raw bytes and is compared byte-for-byte downstream (`verify/task.py`):
+    the restore writes these bytes over a checkout and the reward compares what it finds. A round
+    trip through this process's text handling would translate a CRLF or refuse a file that is not
+    valid UTF-8 — either of which is the manifest disagreeing with the repository about what the
+    operator's own test file says.
+
+    Kept beside `run_git` rather than folded into it with a flag: the two differ in their return
+    type, and a wrapper that returned `str | bytes` would push the branch onto every caller.
+    """
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        env=_environment(),
+        timeout=_GIT_TIMEOUT,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.decode(errors="replace").strip()
+        raise GitFailed(detail or f"git {args[0]} exited {completed.returncode}")
+    return completed.stdout
+
+
+def _environment() -> dict[str, str]:
+    """git's environment with the machine's configuration switched off — see `run_git`."""
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
+    return environment
+
+
+__all__ = ["Candidate", "GitFailed", "candidates", "is_test_path", "run_git", "run_git_bytes"]
