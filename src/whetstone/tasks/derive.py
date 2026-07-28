@@ -99,6 +99,8 @@ def derive(
     scratch: Path,
     timeout: float,
     interpreter: Path | str | None = None,
+    import_roots: Sequence[str] = (),
+    checkout: Path | None = None,
 ) -> Derived:
     """Run the candidate red, then green, then green again, and diff the outcomes.
 
@@ -107,6 +109,19 @@ def derive(
     the donor's tests run under; `None` means this process's own, which is right for a donor whose
     dependencies are already installed and wrong for one that needs provisioning — that is Phase
     4's job, and this function takes the answer rather than resolving it.
+
+    `import_roots` is where inside the checkout the donor keeps the code its tests import, and it
+    is taken rather than inferred for the same reason. It matters here and not only in the reward
+    because the provisioned venv deliberately carries **no** copy of the donor's project
+    (`environment.capture`): a `src`-layout donor whose roots were not passed would import
+    nothing at all, and the derivation would refuse the candidate with a collection error that
+    says nothing about the commit.
+
+    `checkout` is an existing tree at the candidate's parent, handed down by a caller that
+    already made one. `None` means clone a fresh one. The miner passes its own, so that
+    provisioning and derivation happen in **one** checkout: two of them is how the reward came to
+    be decided by a directory that was not the one under test, and the cheapest way not to
+    reintroduce that is to have only one directory.
 
     The held set is computed first, before any run, so a candidate that would mint a permanently
     unpassable task (`held.OverDeclaration`) is refused for the price of one git call rather than
@@ -124,12 +139,14 @@ def derive(
     workspace = Path(scratch)
     workspace.mkdir(parents=True, exist_ok=True)
     workspace = workspace.resolve()
-    checkout = workspace / _CHECKOUT_NAME
 
-    run_git(
-        ["clone", "--quiet", "--no-checkout", "--no-hardlinks", str(donor), str(checkout)],
-        cwd=workspace,
-    )
+    if checkout is None:
+        checkout = workspace / _CHECKOUT_NAME
+        run_git(
+            ["clone", "--quiet", "--no-checkout", "--no-hardlinks", str(donor), str(checkout)],
+            cwd=workspace,
+        )
+    checkout = checkout.resolve()
     run_git(["checkout", "--quiet", "--detach", candidate.parent], cwd=checkout)
     # The overlay, and it is the test patch. `git checkout <child> -- <paths>` writes the child's
     # bytes exactly, with no round trip through Python's text handling to translate a line ending
@@ -143,6 +160,7 @@ def derive(
         workspace=workspace,
         timeout=timeout,
         interpreter=interpreter,
+        import_roots=import_roots,
     )
 
     before = run(attempt=_BEFORE)
@@ -220,15 +238,21 @@ def _run(
     attempt: str,
     timeout: float,
     interpreter: Path | str | None,
+    import_roots: Sequence[str],
 ) -> Mapping[str, str]:
     """One pytest run over the held files, confined, returning node id -> outcome.
 
-    The flags mirror `strict.py:216-241` and the two constants are **imported** from it rather
-    than restated: an empty `-c` config so nothing in the donor configures the run, an explicit
-    `--rootdir` so reported paths are repository-relative, `no:cacheprovider`, and the xunit1
-    junit family — which is the only family carrying the `file` attribute a node id is rebuilt
-    from. Two spellings of that pair would be two things to keep in step, and the one that
-    drifted would produce ids the reward compares against and never matches.
+    The flags mirror `strict.py`'s reward run and the two constants are **imported** from it
+    rather than restated: an empty `-c` config so nothing in the donor configures the run, an
+    explicit `--rootdir` so reported paths are repository-relative, `no:cacheprovider`, and the
+    xunit1 junit family — which is the only family carrying the `file` attribute a node id is
+    rebuilt from. Two spellings of that pair would be two things to keep in step, and the one
+    that drifted would produce ids the reward compares against and never matches.
+
+    `PYTHONPATH` is composed the same way for the same reason, and the sameness is the point: the
+    ids this run mints are the ids the reward will compare against, so it has to be importing the
+    same tree the reward will. A derivation that resolved the donor's package differently from
+    the reward would mint a task nothing could ever pass, with nothing in the task to say why.
 
     Confined for the same reason the reward is: this is the only step in the whole source-B path
     that executes code, and running a donor's suite unconfined would let a `conftest.py` reach
@@ -258,6 +282,7 @@ def _run(
         scope=workspace,
         timeout=timeout,
         cwd=checkout,
+        python_path=tuple(str((checkout / root).resolve()) for root in import_roots),
     )
     if sandbox.verdict.status is not Status.PASS:
         raise NotDerivable(f"the {attempt} run did not complete: {sandbox.verdict.message}")

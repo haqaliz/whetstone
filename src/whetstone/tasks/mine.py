@@ -7,8 +7,9 @@ something:
 2. `held.held_paths` decides what the task holds, and **rejects** a candidate whose gold patch
    touches a held path (the restore would overwrite the fix, and the task would be permanently
    unpassable while reporting an ordinary FAIL).
-3. `environment.capture` provisions from the donor's own lock and records exact `==` pins, or
-   **rejects** the donor by name.
+3. `environment.capture` provisions the donor's DEPENDENCIES from its own lock — never the donor's
+   own project — records exact `==` pins and reads where its code lives, or **rejects** the donor
+   by name.
 4. `derive.derive` runs the tests red, green, and green again, and **discards** any id whose
    outcome is not reproducible.
 5. `liveness.prove_live` runs the shipped reward twice and **discards** the task unless it fails
@@ -234,14 +235,27 @@ def _mint(
     The order is chosen so the cheapest refusal comes first: the held set is git plumbing, the
     environment is a provisioning step, and only then is anything executed. A candidate that
     would mint an unpassable task costs one `ls-tree` rather than five pytest runs.
+
+    **One checkout, provisioned and derived in place.** This used to be two — one to provision
+    against, one to run the derivation in — and the pair is how the reward came to be decided by
+    a tree that was not the one under test: `uv sync` installed the donor's project editable at
+    the *provisioning* checkout, so the derivation, and later every verification, imported that
+    directory instead of its own. The install is gone (`environment.capture` passes
+    `--no-install-project`) and so is the second directory, because the cheapest way to keep two
+    checkouts from being confused is to have one.
+
+    The venv is deliberately a sibling of the work tree rather than inside it: the derivation
+    grants its sandbox write access to the whole workspace, and an environment the tests under
+    derivation could rewrite is an environment nothing can be concluded from.
     """
     held = held_paths(donor, candidate)
 
-    scratch.mkdir(parents=True, exist_ok=True)
-    checkout = scratch / "donor"
+    workspace = scratch / "work"
+    workspace.mkdir(parents=True, exist_ok=True)
+    checkout = workspace / "repo"
     run_git(
         ["clone", "--quiet", "--no-checkout", "--no-hardlinks", str(donor), str(checkout)],
-        cwd=scratch,
+        cwd=workspace,
     )
     run_git(["checkout", "--quiet", "--detach", candidate.parent], cwd=checkout)
     captured = capture(checkout, venv=scratch / "venv")
@@ -249,9 +263,11 @@ def _mint(
     derived = derive(
         donor,
         candidate,
-        scratch=scratch / "derive",
+        scratch=workspace,
+        checkout=checkout,
         timeout=timeout,
         interpreter=captured.interpreter,
+        import_roots=captured.import_roots,
     )
 
     # Written to scratch and proved there. Only a task that has passed liveness is copied into
@@ -342,7 +358,11 @@ def manifest_for(
         "source": "private",
         "repo_url": str(donor),
         "base_commit": candidate.parent,
-        "environment": {"python": captured.python, "pins": list(captured.pins)},
+        "environment": {
+            "python": captured.python,
+            "pins": list(captured.pins),
+            "import_roots": list(captured.import_roots),
+        },
         "problem_statement": candidate.subject,
         "fail_to_pass": list(derived.fail_to_pass),
         "pass_to_pass": list(derived.pass_to_pass),

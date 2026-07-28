@@ -34,8 +34,31 @@ cannot tell those two apart, so the refusal happens here, where it can still nam
 because the pins describe the environment the declared tests actually ran in and a pinned set
 that cannot run pytest describes an environment no task was ever verified in.
 
-Zero runtime dependencies: `subprocess` and a parse. No model, no network, nothing executed from
-the donor.
+**The donor's own project is deliberately NOT installed, and that is a correctness requirement
+rather than a saving.** `uv sync --frozen` installs the project too, editable, rooted at
+whatever checkout it was pointed at. For a `src`-layout donor that install answers `import
+contig` — so every later run, in every other checkout, imports the *provisioning* tree. Measured
+on the first real donor: a task PASSED with no patch applied, because the code deciding the
+verdict was in a directory outside the run. `--no-install-project` is the fix at this end; the
+matching half is `environment.import_roots`, which tells the reward where in the run's own
+checkout the code is. The venv therefore carries **dependencies only**, and there is no copy of
+the project anywhere for a verdict to leak into.
+
+**Which is why this module also decides the import roots.** They are read from the donor's build
+configuration, and a donor whose layout cannot be read is **rejected by name**. Guessing is not
+available: a wrong import root does not fail loudly, it silently reintroduces the hole above.
+
+**`tomllib` is imported inside the function that needs it, and that is not laziness for its own
+sake.** It entered the stdlib in 3.11 while this package's `requires-python` is `>=3.10` — a
+constraint `tests/test_packaging.py` records deliberately. A module-level import would make
+`import whetstone.tasks.environment` fail outright on 3.10, and since the CLI reaches this module
+through `mine`, it would take `whetstone verify` and `whetstone --version` down with it — a
+supported interpreter silently dropped to add a parser. Scoped to the one function instead,
+mining is **refused by name** on 3.10 while everything else keeps working, which is the same
+direction every other refusal in this module fails in.
+
+Zero runtime dependencies: `subprocess`, stdlib TOML and a parse. No model, no network, nothing
+executed from the donor — the build configuration is read without running the backend.
 """
 
 from __future__ import annotations
@@ -43,8 +66,9 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 # Imported rather than restated, exactly as `derive.py` imports the reward path's pytest flags:
 # this is the predicate `load_task` will apply to whatever is written into a manifest, and two
@@ -80,6 +104,14 @@ _VERSION_PROBE = "import platform; print(platform.python_version())"
 _EDITABLE_PREFIX = "-e "
 _PATH_MARKER = " @ file://"
 
+#: The conventional directory a `src`-layout project keeps its packages in. Named because its
+#: mere presence is what makes a silent build backend ambiguous rather than merely quiet.
+_SRC = "src"
+
+#: The import root of a project whose code sits at the repository root. `"."` rather than `""`
+#: because the manifest requires a canonical relative path, and `""` is not one.
+_ROOT = "."
+
 
 class NotProvisionable(ValueError):
     """This donor cannot be provisioned into an environment a task could declare.
@@ -93,15 +125,32 @@ class NoLockfile(NotProvisionable):
     """The donor carries no `uv.lock`, so nothing has answered what its requirements left open."""
 
 
+class UnknownImportRoot(NotProvisionable):
+    """The donor's layout could not be read, so where its code lives is not known.
+
+    Its own class because the remedy is different from every other refusal here: a missing lock
+    is fixed by locking the donor, while this is fixed by the donor's build configuration saying
+    where its packages are. Both are refusals rather than guesses, and this one especially — a
+    wrong import root produces a task that verifies against code outside the run and reports
+    PASS for it, which is the one failure mode that does not announce itself.
+    """
+
+
 @dataclass(frozen=True)
 class Captured:
     """One provisioned environment, and the evidence for how it was obtained.
 
-    `pins` is what goes into the manifest. `local` carries the path installs that are not pins —
-    a `src`-layout donor installs itself, and freeze reports that as a path rather than a
-    version. They are recorded rather than dropped: a path install cannot be served differently
-    by an index, so it cannot move a verdict, but a capture that silently omitted it would
-    describe an environment nobody could reconstruct.
+    `pins` is what goes into the manifest. `local` carries the path installs that are not pins.
+    It should now always be empty — the project itself is the only thing that was ever installed
+    from a path, and `--no-install-project` means it no longer is — but the field and its parsing
+    stay, because "no path install was reported" is a fact worth being able to **assert** rather
+    than one to assume from a flag. `test_the_donor_project_is_never_installed…` is what asserts
+    it. A path install cannot be served differently by an index, so it cannot move a verdict by
+    *version*; what it can do is answer an import, which is exactly the hole this module's
+    docstring records.
+
+    `import_roots` is where the code under test lives inside the checkout, read from the donor's
+    build configuration and written straight into the manifest's `environment`.
 
     `installs` is every command that could have fetched anything, kept so the offline claim can
     be asserted from what actually ran rather than from this docstring.
@@ -110,6 +159,7 @@ class Captured:
     python: str
     pins: tuple[str, ...]
     local: tuple[str, ...]
+    import_roots: tuple[str, ...]
     interpreter: Path
     installs: tuple[tuple[str, ...], ...]
 
@@ -134,8 +184,9 @@ def capture(
     without a network; production passes `None` and uv falls back to its own cache, still
     offline.
 
-    Raises `NoLockfile` if the donor was never locked, and `NotProvisionable` if uv failed or if
-    the resulting environment cannot be described as exact pins.
+    Raises `NoLockfile` if the donor was never locked, `UnknownImportRoot` if its layout cannot
+    be read, and `NotProvisionable` if uv failed or if the resulting environment cannot be
+    described as exact pins.
     """
     location = Path(project)
     lock = location / LOCKFILE
@@ -160,11 +211,20 @@ def capture(
         offline += ("--find-links", str(Path(index)))
         locked = ("--offline", "--no-index", "--find-links", str(Path(index)))
 
+    # Read before anything is provisioned: a donor whose layout cannot be read is refused for the
+    # price of one file read rather than after a whole venv has been built.
+    roots = import_roots(location)
+
     environment = venv.resolve()
     sync = (
         "sync",
         "--frozen",
         "--no-progress",
+        "--no-install-project",
+        # DEPENDENCIES ONLY. Without this uv installs the donor's own project editable, rooted at
+        # this checkout — and every later verification, in a different checkout, imports this one
+        # instead of its own. See the module docstring; the observed symptom was a task that
+        # passed with no patch applied.
         "--project",
         str(location),
         "--python",
@@ -191,9 +251,156 @@ def capture(
         python=_probe(interpreter),
         pins=pins,
         local=local,
+        import_roots=roots,
         interpreter=interpreter,
         installs=(sync, runner),
     )
+
+
+def import_roots(project: Path) -> tuple[str, ...]:
+    """Where a donor keeps the code its tests import, relative to the repository root.
+
+    The manifest's `environment.import_roots`, and the reason the reward can be sure it is
+    grading the checkout the patch was applied to. Reading it is a parse of `pyproject.toml`,
+    never a build: the backend is not invoked, so nothing from the donor executes.
+
+    **The decision, in order, and every branch is a refusal or a fact:**
+
+    1. the build configuration says where its packages are — hatchling's `packages`, setuptools'
+       `package-dir` or `packages.find.where`. That is the answer, and each named directory must
+       actually be in the checkout or the donor is refused: a root that is not there is a
+       manifest that would put a non-existent directory on the import path and change nothing;
+    2. otherwise, the project is not built as a package at all (`[tool.uv] package = false`, or
+       no `[build-system]`), so nothing was ever installed under a package name and its code is
+       imported from the repository root. `["."]`;
+    3. otherwise it **is** a package and its backend did not say. If there is a `src/` directory
+       the layout is genuinely ambiguous — a backend's auto-discovery could mean either — and the
+       donor is **refused**. This is the branch that exists to be a refusal: a guess of `["."]`
+       for a `src` project leaves the tests importing whatever is installed, which is precisely
+       the defect this field was added to close, and it fails *silently* by passing;
+    4. otherwise there is no `src/` and the code is at the root. `["."]`.
+
+    Refusal is `UnknownImportRoot`, which the miner records as a rejected candidate and moves on
+    from. Losing a donor is cheap; minting one whose verdicts come from somewhere else is not.
+    """
+    location = Path(project)
+    file = location / PROJECT_FILE
+    if not file.is_file():
+        raise UnknownImportRoot(
+            f"donor {str(location)!r} carries no {PROJECT_FILE}, so nothing declares where the "
+            f"code its tests import lives. Guessing would risk verifying against a copy of the "
+            f"project installed somewhere else, which reports PASS for a patch nobody applied"
+        )
+    data = _read_project_file(file, where=str(location))
+
+    declared = _declared_roots(data)
+    if declared is not None:
+        for root in declared:
+            if not (location / root).is_dir():
+                raise UnknownImportRoot(
+                    f"donor {str(location)!r} declares the import root {root!r}, which is not a "
+                    f"directory in the checkout. An import root that is not there adds nothing "
+                    f"to the path, so the tests would import whatever else can answer them"
+                )
+        return declared
+
+    if not _is_packaged(data):
+        return (_ROOT,)
+    if (location / _SRC).is_dir():
+        raise UnknownImportRoot(
+            f"donor {str(location)!r} is built as a package and has a {_SRC!r} directory, but "
+            f"its build configuration does not say which directories hold its packages. The "
+            f"layout is therefore ambiguous, and the wrong answer does not fail loudly — it "
+            f"leaves the declared tests importing a copy of the project from outside the run "
+            f"and reporting PASS. Declare it (for example hatchling's "
+            f"[tool.hatch.build.targets.wheel] packages) and re-mint"
+        )
+    return (_ROOT,)
+
+
+def _read_project_file(file: Path, *, where: str) -> dict[str, object]:
+    """Parse one `pyproject.toml`, with the stdlib TOML parser imported here and not at the top.
+
+    `tomllib` is 3.11+ and this package supports 3.10 (`tests/test_packaging.py` records why).
+    Importing it at module scope would make the whole module — and therefore the CLI that reaches
+    it — unimportable on a supported interpreter, so a 3.10 operator would lose `whetstone verify`
+    to a feature they were not using. Scoped here, they lose only mining, and they are told so by
+    name rather than by a traceback.
+    """
+    try:
+        import tomllib
+    except ModuleNotFoundError as exc:  # pragma: no cover - only reachable on Python 3.10
+        raise UnknownImportRoot(
+            f"reading donor {where!r}'s layout needs the stdlib TOML parser, which is Python "
+            f"3.11+; this interpreter is {sys.version.split()[0]}. Mining is refused rather than "
+            f"guessing where the donor's code lives — the rest of whetstone is unaffected"
+        ) from exc
+
+    try:
+        return tomllib.loads(file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise UnknownImportRoot(
+            f"donor {where!r} has a {PROJECT_FILE} that could not be read: {exc}"
+        ) from exc
+
+
+def _declared_roots(data: dict[str, object]) -> tuple[str, ...] | None:
+    """The import roots a build backend states outright, or None if none of them did.
+
+    Only the spellings that name a **directory** are read. A backend that lists modules or
+    globs is left to the caller's ambiguity branch rather than interpreted here: a half-understood
+    declaration is worse than an unread one, because it produces an answer.
+    """
+    tool = _table(data, "tool")
+    wheel = _table(_table(_table(_table(tool, "hatch"), "build"), "targets"), "wheel")
+    packages = wheel.get("packages")
+    if isinstance(packages, list):
+        # `packages = ["src/contig"]` names the package; its PARENT is the import root.
+        return _roots(
+            str(PurePosixPath(entry).parent) for entry in packages if isinstance(entry, str)
+        )
+
+    setuptools = _table(tool, "setuptools")
+    package_dir = setuptools.get("package-dir")
+    if isinstance(package_dir, dict) and isinstance(package_dir.get(""), str):
+        return _roots([package_dir[""]])
+    where = _table(_table(setuptools, "packages"), "find").get("where")
+    if isinstance(where, list):
+        return _roots(entry for entry in where if isinstance(entry, str))
+    return None
+
+
+def _is_packaged(data: dict[str, object]) -> bool:
+    """Is this project built and installed under a package name at all?
+
+    `[tool.uv] package = false` says outright that it is not, and is checked first because it
+    overrides the presence of a build system. Otherwise a `[build-system]` table is what makes
+    uv build and install it.
+    """
+    package = _table(_table(data, "tool"), "uv").get("package")
+    if package is False:
+        return False
+    return "build-system" in data
+
+
+def _table(data: dict[str, object], key: str) -> dict[str, object]:
+    """One nested TOML table, or an empty one. Never a `KeyError`, never a wrong-typed value."""
+    value = data.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _roots(candidates: Iterable[str]) -> tuple[str, ...]:
+    """Normalise declared directories into canonical, deduplicated, order-preserving roots.
+
+    `""` and `"./src"` are both spellings the loader refuses, so they are canonicalised here
+    rather than written into a manifest that would then fail to load. Order is preserved because
+    it is the order the interpreter will search; duplicates are dropped because a repeated entry
+    searches the same directory twice and says nothing.
+    """
+    seen: dict[str, None] = {}
+    for entry in candidates:
+        seen.setdefault(str(PurePosixPath(entry)), None)
+    return tuple(seen)
 
 
 def pins_from_freeze(output: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -276,6 +483,8 @@ __all__ = [
     "Captured",
     "NoLockfile",
     "NotProvisionable",
+    "UnknownImportRoot",
     "capture",
+    "import_roots",
     "pins_from_freeze",
 ]

@@ -59,7 +59,10 @@ CALC_SPECIAL_CASED = (
     "def add(a, b):\n    if (a, b) == (2, 3):\n        return 5\n    return a - b\n"
 )
 
-_FAIL_TO_PASS_SOURCE = """\
+#: The two test files every adder repository here declares. Public because ``repos.packaged``
+#: builds the same pair over a ``src`` layout, and a second copy of the source would let the two
+#: drift — at which point the src-layout repository would no longer be the flat one moved.
+FAIL_TO_PASS_SOURCE = """\
 from calc import add
 
 
@@ -67,7 +70,7 @@ def test_add_is_addition():
     assert add(2, 3) == 5
 """
 
-_PASS_TO_PASS_SOURCE = """\
+PASS_TO_PASS_SOURCE = """\
 from calc import add
 
 
@@ -88,6 +91,13 @@ class RepoSpec:
     and the sentence describing its bug cannot drift apart. It is a record — nothing in the
     reward reads it — but a manifest whose problem statement describes a different repository
     is a fixture that misleads whoever debugs against it next.
+
+    ``import_roots`` is carried here for a stronger version of the same reason: it is a fact
+    about the repository's **layout**, so a repository and its import roots cannot be
+    materialised apart. It defaults to ``(".",)`` because every repository here except
+    ``repos.packaged``'s is flat, and ``"."`` states that rather than leaving it implied — a
+    flat layout already has its code at ``sys.path[0]``, so the entry changes nothing it runs
+    and everything about what a reader can tell from the manifest.
     """
 
     files: Mapping[str, str]
@@ -95,6 +105,7 @@ class RepoSpec:
     pass_to_pass: tuple[str, ...]
     held: tuple[str, ...]
     problem_statement: str = "add() subtracts."
+    import_roots: tuple[str, ...] = (".",)
 
 
 #: One source file with a bug, the test that fails because of it, and a test that already
@@ -103,8 +114,8 @@ class RepoSpec:
 BROKEN_ADDER = RepoSpec(
     files={
         "calc.py": CALC_BUGGY,
-        "tests/test_addition.py": _FAIL_TO_PASS_SOURCE,
-        "tests/test_identity.py": _PASS_TO_PASS_SOURCE,
+        "tests/test_addition.py": FAIL_TO_PASS_SOURCE,
+        "tests/test_identity.py": PASS_TO_PASS_SOURCE,
     },
     fail_to_pass=("tests/test_addition.py::test_add_is_addition",),
     pass_to_pass=("tests/test_identity.py::test_adding_zero_is_the_identity",),
@@ -262,8 +273,13 @@ def build_task(
         # Usually no third-party dependency, so nothing to pin — and `[]` says exactly that,
         # which is why the loader allows it. Most of these repositories are one module and two
         # pytest files; anything installed there would be a version this fixture could drift on
-        # for no gain.
-        "environment": {"python": "3.12", "pins": list(pins)},
+        # for no gain. `import_roots` comes from the spec, because it is the one part of this
+        # manifest that a repository's own shape decides — see `RepoSpec`.
+        "environment": {
+            "python": "3.12",
+            "pins": list(pins),
+            "import_roots": list(spec.import_roots),
+        },
         "problem_statement": spec.problem_statement,
         "fail_to_pass": list(spec.fail_to_pass),
         "pass_to_pass": list(spec.pass_to_pass),
@@ -350,12 +366,14 @@ __all__ = [
     "CALC_SPECIAL_CASED",
     "DESELECTING_CONFTEST",
     "EXITING_CONFTEST",
+    "FAIL_TO_PASS_SOURCE",
     "FIXTURE_DEP",
     "FIXTURE_DEP_PIN",
     "GREETER",
     "GREETER_BUGGY",
     "GREETER_FIXED",
     "HANGING_CONFTEST",
+    "PASS_TO_PASS_SOURCE",
     "SKIPPING_CONFTEST",
     "Fixture",
     "RepoSpec",

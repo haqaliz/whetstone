@@ -33,6 +33,17 @@ reward identically, and a reward that moves with the index is not execution-grou
 every pin must be an exact `==`: a range does not weaken the guarantee, it removes it, handing
 the version — and the verdict — back to whatever the index serves that morning.
 
+**Nor may a verdict be decided by a checkout outside the run.** `environment.import_roots` is
+the second half of the same requirement, and it is an incident too. A `src`-layout project is
+imported by package name (`import contig`, never `import src.contig`), so the name resolves
+through whatever the interpreter's `sys.path` offers — and a venv provisioned with an editable
+install rooted at some *other* checkout answers it first. Measured on the first real donor: a
+task **PASSED with no patch applied**, because the tree that satisfied its tests was the
+provisioning checkout, not the one the patch was applied to. Declaring the import roots is what
+lets the reward put the run's own checkout ahead of any residual install, so the verdict is a
+statement about *this* checkout. Like the pins, they cannot be inferred from the repository at
+verification time, which is why the manifest has to carry them.
+
 **Fail-closed.** A malformed file, a missing field, an unknown field, an empty `test_blobs` —
 each is a named `ValueError`, never a silent default. The failure mode this refuses is
 specific and severe: a Task that silently loaded with no `test_blobs` has no restore source
@@ -80,7 +91,7 @@ _FIELDS = frozenset(
 
 #: Exactly the keys an `environment` may carry, enforced for the same reason as `_FIELDS`: a
 #: typo'd `pin` that was ignored would leave the task resolving nothing while looking pinned.
-_ENVIRONMENT_KEYS = frozenset({"python", "pins"})
+_ENVIRONMENT_KEYS = frozenset({"python", "pins", "import_roots"})
 
 #: An exact pin, and nothing else. Deliberately stricter than PEP 508, and deliberately parsed
 #: here rather than by a requirements library: the reward path carries zero runtime dependencies,
@@ -99,7 +110,7 @@ _NAME_SEPARATORS = re.compile(r"[-_.]+")
 
 @dataclass(frozen=True)
 class Environment:
-    """The interpreter and the exact dependency set a task is verified under.
+    """The interpreter, the exact dependency set, and where the code under test lives.
 
     `pins` is a **tuple**, not a list inside a mapping. The difference is the whole point: a
     `Mapping[str, Any]` would satisfy the manifest and leave the list mutable, so code holding
@@ -113,10 +124,16 @@ class Environment:
     `python` is checked to be a non-empty string and no further. Which interpreter that names,
     and how it is provisioned, is the ingester's business — the reward path is a runner, not a
     package manager.
+
+    `import_roots` are the repository-relative directories the interpreter is told to import
+    from: `["src"]` for a `src` layout, `["."]` for a flat one. Empty is legitimate and means
+    *nothing needs adding* — a flat repository already has its code at `sys.path[0]` under
+    `python -m pytest`. See `_import_roots` for why the field is required rather than inferred.
     """
 
     python: str
     pins: tuple[str, ...]
+    import_roots: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -127,9 +144,10 @@ class Task:
     exact set of node ids the verifier expects to see executed, which is why neither may
     contain a duplicate. `test_blobs` maps a repository-relative path to that file's golden
     contents **as bytes** — the operator's artifact, and the one thing the policy must never
-    supply. `environment` pins what the task runs under, so the verdict is decided by the
-    patch and not by the day it was resolved. `source` and `provenance` are records of how the
-    task was obtained; they do not change how it is verified.
+    supply. `environment` pins what the task runs under and says where its code lives, so the
+    verdict is decided by the patch — not by the day it was resolved, and not by a checkout
+    somewhere else on the disk. `source` and `provenance` are records of how the task was
+    obtained; they do not change how it is verified.
     """
 
     task_id: str
@@ -343,7 +361,7 @@ def _check_blob_path(path: str, *, where: str) -> None:
 
 
 def _environment(raw: dict[str, Any], *, where: str) -> Environment:
-    """The interpreter and the exact dependency set. Required, and exact — never a range.
+    """The interpreter, the exact dependency set, and the import roots. All three required.
 
     A missing `environment` is rejected rather than defaulted because the default would be
     "whatever the resolver picks", and that is a verdict decided by the calendar: flask's
@@ -351,12 +369,19 @@ def _environment(raw: dict[str, Any], *, where: str) -> Environment:
     turning a correct patch into a FAIL. A pin that is not an exact `==` is the same failure
     written out longhand, so it is refused by name — including the extras and markers that make
     the resolved set depend on the machine doing the resolving.
+
+    `import_roots` is required for the same reason and not a weaker one, which is worth stating
+    because `[]` is a legal value and looks like a default. It is not: `[]` is the operator
+    saying *this repository needs nothing added to the import path*, which is true of a flat
+    layout and false of every `src` layout. An **absent** field would have to mean "nobody
+    said", and the code that ran would then be whatever the interpreter happened to have
+    installed — the inert-checkout hole in the module docstring, reopened by omission.
     """
     value = raw["environment"]
     if not isinstance(value, dict):
         raise ValueError(
             f"{where} has a non-object environment ({type(value).__name__}); expected an "
-            "object carrying 'python' and 'pins'"
+            "object carrying 'python', 'pins' and 'import_roots'"
         )
 
     missing = sorted(_ENVIRONMENT_KEYS - value.keys())
@@ -415,7 +440,59 @@ def _environment(raw: dict[str, Any], *, where: str) -> Environment:
             )
         seen[package] = pin
 
-    return Environment(python=python, pins=tuple(pins))
+    return Environment(
+        python=python, pins=tuple(pins), import_roots=_import_roots(value, where=where)
+    )
+
+
+def _import_roots(value: dict[str, Any], *, where: str) -> tuple[str, ...]:
+    """Where the code under test lives, relative to the checkout. Never absolute, never escaping.
+
+    Each entry is joined onto the run's own checkout and handed to the interpreter as an import
+    path, ahead of anything installed. The three checks below are the three ways that join could
+    stop being about this checkout: an absolute path ignores it outright, a `..` segment climbs
+    out of it, and a non-canonical spelling is the trap `_check_blob_path` documents at length —
+    written here as its own function rather than shared, because the two differ in exactly one
+    place and it matters. A blob path must name a **file**, so an empty path is rejected there;
+    an import root may name the **checkout root itself**, which is the flat layout and is spelled
+    `"."`. Sharing the check would have meant either allowing an empty blob path or forbidding
+    the commonest import root.
+
+    Order is preserved, not sorted: it is the order the interpreter will search, and a manifest
+    that listed two roots both providing a module meant the first one.
+    """
+    roots = value["import_roots"]
+    if not isinstance(roots, list):
+        raise ValueError(
+            f"{where} has non-list environment import_roots ({type(roots).__name__}); expected "
+            "a list of repository-relative directories such as ['src']"
+        )
+    for root in roots:
+        if not isinstance(root, str):
+            raise ValueError(
+                f"{where} has a non-string entry in environment import_roots "
+                f"({type(root).__name__}); every import root must be a string"
+            )
+        pure = PurePosixPath(root)
+        if pure.is_absolute() or root.startswith("/"):
+            raise ValueError(
+                f"{where} has an absolute environment import root {root!r}; import roots are "
+                "relative to the checkout under test, and an absolute one would point the run "
+                "at code no patch was applied to"
+            )
+        if ".." in pure.parts:
+            raise ValueError(
+                f"{where} has an environment import root {root!r} that would escape the "
+                "checkout under test; the code under test must be the checkout the patch was "
+                "applied to"
+            )
+        canonical = str(pure)
+        if canonical != root:
+            raise ValueError(
+                f"{where} has a non-canonical environment import root {root!r}; write it as "
+                f"{canonical!r}"
+            )
+    return tuple(roots)
 
 
 def _provenance(raw: dict[str, Any], *, where: str) -> Mapping[str, str]:

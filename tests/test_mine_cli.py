@@ -30,6 +30,7 @@ from pathlib import Path
 import pytest
 from fixtures.repos.donor import build_donor
 from fixtures.repos.locked import locked_history, locked_project_files
+from fixtures.repos.packaged import src_layout_history
 
 from whetstone.cli import FAIL_EXIT, PASS_EXIT, USAGE_ERROR, main
 from whetstone.tasks.donor import Candidate
@@ -130,6 +131,53 @@ def test_the_ledger_entry_is_the_hash_of_the_manifest_that_was_written(mined: Pa
     entry = json.loads((mined / LEDGER_NAME).read_text())["tasks"][0]
     assert entry["manifest_sha256"] == hashlib.sha256(manifest.read_bytes()).hexdigest()
     assert entry["task_id"] == manifest.stem
+
+
+def test_a_src_layout_donor_mints_a_task_that_declares_where_its_code_is(
+    tmp_path: Path,
+) -> None:
+    """The layout the flat donor above cannot exercise, mined end to end through the CLI.
+
+    Every other fixture in this suite keeps its code at the repository root, where
+    ``python -m pytest`` puts it at ``sys.path[0]`` and nothing can shadow it. That is a property
+    of the fixtures, not of the miner, and it hid a real defect: ``uv sync`` installed the donor's
+    project **editable at the provisioning checkout**, so a ``src``-layout donor's tests imported
+    that directory rather than the one under verification — and a task PASSED with no patch
+    applied. See ``tests/adversarial/test_inert_checkout.py``.
+
+    **The strongest assertion here is that the mint produced anything at all**, because every
+    minted task goes through ``liveness.prove_live``, which runs the shipped reward twice and
+    demands FAIL with no patch and PASS with the reference one. A miner that recorded the wrong
+    import roots, or that provisioned in one checkout and derived in another, cannot get a task
+    past that: the no-patch arm would find the fix somewhere else and the task would be discarded
+    as vacuous. The manifest assertions below say *why* it worked; the exit code says *that* it
+    did.
+    """
+    donor = build_donor(tmp_path, src_layout_history(tmp_path / "scratch"), name="src-donor")
+    out = tmp_path / "local" / "src-donor"
+
+    code = main(
+        [
+            "mine",
+            "--donor",
+            str(donor),
+            "--out",
+            str(out),
+            "--tasks-root",
+            str(tmp_path / "tasks"),
+            "--limit",
+            "1",
+        ]
+    )
+
+    assert code == PASS_EXIT, "the src-layout donor minted nothing, so nothing below is asserted"
+    task = load_tasks(out)[0]
+    assert task.environment.import_roots == ("src",), (
+        f"the minted task declares {task.environment.import_roots}, so the reward would not put "
+        f"this checkout's code ahead of anything installed"
+    )
+    assert task.fail_to_pass == ("tests/test_addition.py::test_add_is_addition",)
+    assert task.pass_to_pass == ("tests/test_addition.py::test_adding_zero_is_the_identity",)
 
 
 def test_the_same_seed_mints_the_same_tasks() -> None:

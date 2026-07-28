@@ -6,7 +6,8 @@ STRICT runs seven steps in this order, and the order is the design:
 2. **refuse the patch outright if it touches any path in `test_blobs`** — before anything
    runs, so the refusal is its own outcome and never "the tests failed afterwards";
 3. restore every operator-held test from golden, always, after the patch;
-4. run pytest over `fail_to_pass + pass_to_pass` inside the sandbox, environment pinned;
+4. run pytest over `fail_to_pass + pass_to_pass` inside the sandbox, environment pinned, **with
+   the task's declared import roots inside this checkout ahead of anything installed**;
 5. assert the skipped count is zero;
 6. **assert the executed node-id set equals the task's declaration exactly**, and that every
    `fail_to_pass` id reports `passed`;
@@ -26,6 +27,14 @@ than from its summary line.
 Steps 4's `-c`, `-p no:cacheprovider` and the sandbox's `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` are
 defence in depth for the same cheat, arriving through config, cache and installed plugins
 respectively. They are not the defence — they are what makes the defence not the only one.
+
+**Step 4's import roots are not a convenience either.** A `src`-layout project is imported by
+package name, so a copy of it installed in the interpreter answers that name before the run's
+own checkout is consulted — and the reward is then decided by a directory outside the run.
+Measured on the first real donor: a task **PASSED with no patch applied**. Putting the declared
+roots of *this* checkout on `PYTHONPATH` — which precedes `site-packages` — is what makes the
+verdict a statement about the tree the patch was applied to. `tests/adversarial/
+test_inert_checkout.py` is the proof, and `verify/task.py`'s docstring is the incident.
 
 **Absence is never a pass and never a failure.** A killed run, an unreadable report, a task
 whose own golden paths are not in the checkout: each is UNVERIFIED. Those fold through
@@ -191,6 +200,28 @@ def verify_strict(
     )
 
 
+def _import_path(task: Task, checkout: Path) -> tuple[str, ...]:
+    """The task's declared import roots, resolved against **this** run's checkout.
+
+    This is the whole of step 4b, and it is one join — but it is the join that makes the reward
+    a statement about the tree the patch was applied to. A `src`-layout project is imported by
+    package name, so `import contig` is answered by whatever `sys.path` offers first; a venv
+    carrying an editable install rooted at some other checkout answers it before the run's own
+    tree is ever consulted, and the observed consequence was a task that **PASSED with no patch
+    applied**.
+
+    Resolved rather than joined raw, for the reason `derive.derive` records about `--rootdir`:
+    macOS hands out `/var/...` paths that are really `/private/var/...`, and an import path that
+    disagreed with the sandbox's resolved scope is a difference nobody would look for.
+
+    **Still not provisioning.** `verify_strict`'s contract is that it resolves nothing and
+    installs nothing, and this does neither: it reads a declared list, joins it onto a directory
+    that already exists, and puts the result in an environment variable. It tells the
+    interpreter where the code under test is. It does not put any code there.
+    """
+    return tuple(str((checkout / root).resolve()) for root in task.environment.import_roots)
+
+
 def _run_and_judge(
     task: Task,
     *,
@@ -238,6 +269,7 @@ def _run_and_judge(
         scope=run_directory,
         timeout=timeout,
         cwd=checkout,
+        python_path=_import_path(task, checkout),
     )
     if sandbox.verdict.status is not Status.PASS:
         # The run did not complete. Reading a report or an exit status now would be reading

@@ -208,6 +208,50 @@ would be a cheat fixture with nobody cheating. The append-only note above says t
 discovered rather than enumerated; this is the sharper version of that lesson — **it is not only
 policies who discover it.**
 
+### Appended 2026-07-28, from mining the first real donor: a verdict decided outside the run
+
+**The second one of these, and it is worse than the first.** The resolver's clock produced a
+false **FAIL** — a correct patch marked wrong, which is expensive but self-announcing. This one
+produced a false **PASS**: a task that passed **with no patch applied at all**. A policy that
+submitted nothing would have been paid, and every number computed from that corpus would have
+been a number about a directory nobody was grading.
+
+**The evidence, which is an observation and not a worry.** `contig` is a `src`-layout project:
+its tests say `import contig`, so the name is answered by whatever the interpreter's `sys.path`
+offers. The miner provisioned its venv with `uv sync --frozen --project <checkout>`, which
+installs the project **editable** — rooted at the *provisioning* checkout, a different directory
+from the one the reward applies patches to. `uv pip freeze` reported `-e file:///…/donor`, and
+`import contig.self_heal` resolved to that tree's `src/`, not to the run's. The checkout under
+verification was therefore inert: nothing in it was ever imported, and the verdict came from a
+directory outside the run. Two already-minted tasks were deleted rather than kept — they are
+survivors of the defect, not a sample of a corpus.
+
+**Why the ten-cheat corpus did not catch it.** Every fixture repository was flat — `calc.py`
+beside `tests/` — and none was installed into a venv. A flat layout under `python -m pytest`
+puts the code under test at `sys.path[0]`, where nothing can shadow it. **The defence was the
+shape of the fixtures, not anything the verifier did**, and no test could tell the difference.
+That is the transferable lesson here: a corpus proves what its fixtures can express, and a
+property every fixture satisfies by accident is a property nothing is testing.
+
+**It is closed at both ends, and the closure is demonstrated rather than asserted.** The
+manifest's `environment` now also carries `import_roots`, the repository-relative directories
+holding the code under test; STRICT puts them, resolved against **this** run's checkout, on
+`PYTHONPATH`, which precedes `site-packages` and therefore shadows any residual install. At the
+other end, provisioning passes `--no-install-project`, so the venv carries dependencies only and
+there is no copy of the project anywhere for a verdict to leak into; the miner now provisions and
+derives in **one** checkout rather than two. A donor whose layout cannot be read from its build
+configuration is **rejected by name** rather than guessed at — a wrong import root does not fail
+loudly, it fails by passing. `tests/adversarial/test_inert_checkout.py` is the proof: a
+`src`-layout task, a venv with a *fixed* copy of the project installed outside the checkout, and
+the reward refusing to pay for a run with no patch — asserted alongside the mirror, where the same
+task under its real reference patch still passes.
+
+**Prose again, and not an eleventh row, for the same reason as the entry above.** Nobody authors
+this: the submission that collects the reward is the empty one, so there is no adversary and no
+differential to report — WEAK is fooled identically. It lives in `tests/adversarial/` rather than
+among the unit tests because it is a reward-integrity property, and outside `CHEATS` because it
+is not a cheat.
+
 ---
 
 ## 4. Phases

@@ -67,7 +67,11 @@ def manifest(tmp_path: Path) -> Path:
                 "source": "private",
                 "repo_url": "/donor",
                 "base_commit": "a" * 40,
-                "environment": {"python": "3.12.13", "pins": ["pytest==9.1.1"]},
+                "environment": {
+                    "python": "3.12.13",
+                    "pins": ["pytest==9.1.1"],
+                    "import_roots": ["."],
+                },
                 # The canary sits in two places a leak could plausibly come from: base64 inside
                 # the held blob, and verbatim in the problem statement — which for a mined task
                 # is the user's own commit subject, and is exactly the field a ledger might copy

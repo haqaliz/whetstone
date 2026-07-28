@@ -127,12 +127,19 @@ def run_confined(
     scope: Path | str,
     timeout: float,
     cwd: Path | str | None = None,
+    python_path: Sequence[str] | None = None,
 ) -> SandboxResult:
     """Run `command` under Seatbelt, writes confined to `scope`, network denied, env pinned.
 
     `timeout` has no default on purpose. Belay's `run()` defaults to 30 seconds, which is
     right for a probe and wrong for a test suite; a caller that inherited it would get
     UNVERIFIED on every slow task and would have no idea why. Choosing it is the caller's job.
+
+    `python_path` becomes the child's `PYTHONPATH`, and it is a **parameter rather than an
+    inheritance** — see `_child_env`, which builds the environment from scratch and would
+    otherwise have no way to say this. Absent or empty means the variable is not set at all,
+    which is distinct from setting it to `""`: an empty `PYTHONPATH` puts the current directory
+    on the import path, which is a claim about the code under test that no caller made.
 
     The scope directory and the temp directory inside it are created if absent — the child
     cannot write its own workspace into existence from inside the sandbox, and both are inside
@@ -168,7 +175,7 @@ def run_confined(
                 [SANDBOX_EXEC, "-f", profile_path, *command],
                 capture_output=True,
                 cwd=str(cwd) if cwd is not None else None,
-                env=_child_env(scope_path, tmpdir),
+                env=_child_env(scope_path, tmpdir, python_path),
                 timeout=timeout,
                 check=False,
             )
@@ -210,7 +217,7 @@ def _quote(path: str) -> str:
     return path.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _child_env(scope: Path, tmpdir: Path) -> dict[str, str]:
+def _child_env(scope: Path, tmpdir: Path, python_path: Sequence[str] | None) -> dict[str, str]:
     """The child's entire environment, built rather than inherited.
 
     Inheriting `os.environ` would make a verified result depend on the shell that launched the
@@ -228,8 +235,18 @@ def _child_env(scope: Path, tmpdir: Path) -> dict[str, str]:
     - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` stops an installed plugin reordering or deselecting
       collection — the same class of hole as the `addopts` cheat, arriving through the
       environment instead of through a config file.
+
+    **`PYTHONPATH` is passed in, and is never read from `os.environ`.** Everything above is
+    about what the launching shell may not decide; this is the one variable a *caller* has to
+    decide, and the reason is what it does to import resolution: `PYTHONPATH` is searched
+    **before** `site-packages`, so a run's own checkout placed on it shadows any copy of the
+    project that happens to be installed in the interpreter. That shadowing is what makes the
+    verdict a statement about **this** checkout rather than about whatever the venv was
+    provisioned from — see `verify/task.py`'s module docstring for the run that PASSED with no
+    patch applied because it did not hold. Inheriting the variable would hand that decision back
+    to the shell, which is the failure the rest of this function exists to prevent.
     """
-    return {
+    child = {
         "PATH": os.environ.get("PATH", os.defpath),
         "HOME": str(scope),
         "TMPDIR": str(tmpdir),
@@ -237,6 +254,9 @@ def _child_env(scope: Path, tmpdir: Path) -> dict[str, str]:
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
     }
+    if python_path:
+        child["PYTHONPATH"] = os.pathsep.join(python_path)
+    return child
 
 
 def _timed_out(

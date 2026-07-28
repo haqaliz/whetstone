@@ -46,6 +46,11 @@ NON_UTF8_BLOB = b"def test_x():\n    assert b'\xff\xfe' == payload\n"
 VALID_ENVIRONMENT: dict[str, Any] = {
     "python": "3.12",
     "pins": ["click==8.1.3", "werkzeug==2.3.0"],
+    # Where the code under test lives inside the checkout. Required for the same reason the pins
+    # are: without it the declared tests import whatever the interpreter happens to have
+    # installed, which need not be the tree the patch was applied to — see
+    # ``tests/adversarial/test_inert_checkout.py``, where that reached PASS with no patch.
+    "import_roots": ["src"],
 }
 
 VALID_MANIFEST: dict[str, Any] = {
@@ -246,11 +251,14 @@ def test_the_environment_round_trips_as_a_frozen_record(tmp_path: Path) -> None:
 
     assert loaded.environment.python == "3.12"
     assert loaded.environment.pins == ("click==8.1.3", "werkzeug==2.3.0")
+    assert loaded.environment.import_roots == ("src",)
 
     with pytest.raises(FrozenInstanceError):
         loaded.environment = None  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
         loaded.environment.pins = ()  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        loaded.environment.import_roots = ()  # type: ignore[misc]
 
 
 def test_a_missing_environment_is_rejected(tmp_path: Path) -> None:
@@ -338,7 +346,7 @@ def test_an_unknown_key_inside_the_environment_is_rejected(tmp_path: Path) -> No
         load_task(write_manifest(tmp_path, manifest))
 
 
-@pytest.mark.parametrize("key", ["python", "pins"])
+@pytest.mark.parametrize("key", ["python", "pins", "import_roots"])
 def test_a_missing_key_inside_the_environment_names_the_key(tmp_path: Path, key: str) -> None:
     manifest = manifest_with(environment=environment_without(key))
     with pytest.raises(ValueError, match=f"missing required environment key '{key}'"):
@@ -367,6 +375,93 @@ def test_non_list_pins_are_rejected(tmp_path: Path) -> None:
 def test_a_non_string_pin_entry_is_rejected(tmp_path: Path) -> None:
     manifest = manifest_with(environment=environment_with(pins=[["click", "8.1.3"]]))
     with pytest.raises(ValueError, match="non-string entry in environment pins"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_the_import_roots_round_trip_in_the_order_they_were_declared(tmp_path: Path) -> None:
+    """Order is preserved rather than sorted, because it is the order the interpreter searches.
+
+    Two roots that both provide a module is not a malformed manifest — it is a repository with a
+    vendored package alongside its own — and the operator who listed one first meant it. Sorting
+    would silently answer that question differently, and the symptom would be a task importing
+    the wrong copy of something with nothing in the manifest to explain it.
+    """
+    manifest = manifest_with(environment=environment_with(import_roots=["src", "vendor"]))
+
+    loaded = load_task(write_manifest(tmp_path, manifest))
+
+    assert loaded.environment.import_roots == ("src", "vendor")
+
+
+def test_empty_import_roots_are_allowed(tmp_path: Path) -> None:
+    """A flat repository needs nothing added to the import path, and ``[]`` says exactly that.
+
+    The same distinction ``pins`` draws: ``[]`` is a declaration about the repository, while an
+    absent key is silence — and silence here means the tests import whatever is installed.
+    """
+    manifest = manifest_with(environment=environment_with(import_roots=[]))
+
+    assert load_task(write_manifest(tmp_path, manifest)).environment.import_roots == ()
+
+
+def test_the_checkout_root_is_a_legitimate_import_root(tmp_path: Path) -> None:
+    """``"."`` is what a flat layout declares, and it must not trip the canonical-path check.
+
+    This is the one place the import-root rules deliberately differ from ``test_blobs``: a blob
+    path must name a file, so an empty path is refused there, while an import root may name the
+    checkout itself. Asserted rather than assumed, because sharing the blob check would have
+    forbidden the commonest root in the corpus.
+    """
+    manifest = manifest_with(environment=environment_with(import_roots=["."]))
+
+    assert load_task(write_manifest(tmp_path, manifest)).environment.import_roots == (".",)
+
+
+def test_non_list_import_roots_are_rejected(tmp_path: Path) -> None:
+    manifest = manifest_with(environment=environment_with(import_roots="src"))
+    with pytest.raises(ValueError, match="non-list environment import_roots"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_a_non_string_import_root_entry_is_rejected(tmp_path: Path) -> None:
+    manifest = manifest_with(environment=environment_with(import_roots=[["src"]]))
+    with pytest.raises(ValueError, match="non-string entry in environment import_roots"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_an_absolute_import_root_is_rejected(tmp_path: Path) -> None:
+    """An absolute root ignores the checkout entirely, which is the whole failure.
+
+    The field exists so the reward imports the tree the patch was applied to. A root spelled
+    ``/Users/…/donor/src`` points at a directory no patch ever touched, and the verdict it
+    produced would be about that directory — the inert-checkout defect, written into the manifest
+    instead of leaking in through an install.
+    """
+    manifest = manifest_with(environment=environment_with(import_roots=["/opt/donor/src"]))
+    with pytest.raises(ValueError, match="absolute environment import root"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+@pytest.mark.parametrize("root", ["../donor/src", "src/../../elsewhere"])
+def test_an_import_root_that_escapes_the_checkout_is_rejected(tmp_path: Path, root: str) -> None:
+    """``..`` is the relative spelling of the same escape, and is refused the same way."""
+    manifest = manifest_with(environment=environment_with(import_roots=[root]))
+    with pytest.raises(ValueError, match="escape the checkout under test"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+@pytest.mark.parametrize("root", ["./src", "src/", "", "src//lib"])
+def test_a_non_canonical_import_root_is_rejected_rather_than_normalised(
+    tmp_path: Path, root: str
+) -> None:
+    """Rejected, not rewritten — the same discipline every other path in this manifest gets.
+
+    ``""`` is in the list because it is the tempting spelling of "the checkout root" and it is
+    not the one the contract accepts: ``"."`` is. Silently rewriting either into the other would
+    be the loader choosing on the operator's behalf, which is what it refuses everywhere else.
+    """
+    manifest = manifest_with(environment=environment_with(import_roots=[root]))
+    with pytest.raises(ValueError, match="non-canonical environment import root"):
         load_task(write_manifest(tmp_path, manifest))
 
 

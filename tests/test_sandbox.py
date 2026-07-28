@@ -26,6 +26,7 @@ sandboxed probe's *refusal* is what the other test asserts.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -324,6 +325,58 @@ def test_the_pinned_environment_is_explicit_and_does_not_inherit_the_parent(
         timeout=60,
     )
     assert "AMBIENT None" in result.stdout.decode(errors="replace")
+
+
+def _reported_python_path(result: SandboxResult) -> str:
+    """What the child said its ``PYTHONPATH`` was, as a bare string."""
+    return result.stdout.decode(errors="replace").partition("PYTHONPATH ")[2].strip()
+
+
+def test_the_caller_can_put_directories_on_the_childs_import_path(tmp_path: Path) -> None:
+    """The one seam through which a caller may add to the child's environment, and why it exists.
+
+    ``PYTHONPATH`` is searched **before** ``site-packages``, so a directory placed on it shadows
+    anything installed in the interpreter. STRICT uses that to put the run's own checkout ahead
+    of any residual copy of the project under test — which is what makes a verdict a statement
+    about *that* checkout. Asserted on both entries and their order, because the order is the
+    order the interpreter searches and a caller that listed two roots meant the first one.
+    """
+    result = run_confined(
+        [sys.executable, "-c", 'import os; print("PYTHONPATH", os.environ.get("PYTHONPATH"))'],
+        scope=tmp_path,
+        timeout=60,
+        python_path=(str(tmp_path / "src"), str(tmp_path / "vendor")),
+    )
+
+    assert _reported_python_path(result) == f"{tmp_path / 'src'}{os.pathsep}{tmp_path / 'vendor'}"
+
+
+def test_the_import_path_is_never_inherited_from_the_launching_shell(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The seam is explicit in **both** directions: a caller may add, the shell may not.
+
+    An inherited ``PYTHONPATH`` would be the whole reason ``_child_env`` builds from scratch,
+    undone for the one variable that decides which code the reward imports — the shell that
+    launched the verifier could point the run at any tree on the machine, and the verdict would
+    be about that one.
+
+    Unset in the child rather than empty, which is a distinction with teeth: ``PYTHONPATH=""``
+    puts the current directory on the import path, so an implementation that always set the
+    variable would be making a claim about the code under test that no caller made.
+    """
+    monkeypatch.setenv("PYTHONPATH", "/somewhere/else")
+
+    result = run_confined(
+        [sys.executable, "-c", 'import os; print("PYTHONPATH", os.environ.get("PYTHONPATH"))'],
+        scope=tmp_path,
+        timeout=60,
+    )
+
+    assert _reported_python_path(result) == "None", (
+        "the launching shell's PYTHONPATH reached the child, so which code a reward run imports "
+        "is decided by whoever started the verifier"
+    )
 
 
 def test_a_non_darwin_platform_raises_rather_than_running_unsandboxed(
