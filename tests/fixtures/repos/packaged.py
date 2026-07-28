@@ -32,7 +32,8 @@ occupy. A defence that holds against a ``.pth`` holds against a wheel copied int
 ``site-packages`` too.
 
 Offline throughout: ``uv venv`` against this process's own interpreter, and one ``uv pip
-install --offline pytest``, which the suite is already running under.
+install --offline pytest``, resolved from the committed wheelhouse that ``tests/conftest.py``
+puts on ``UV_FIND_LINKS`` rather than from whatever this machine's uv cache happens to hold.
 """
 
 from __future__ import annotations

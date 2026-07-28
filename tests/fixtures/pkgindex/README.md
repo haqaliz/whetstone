@@ -1,5 +1,11 @@
 # `tests/fixtures/pkgindex` — a recorded package index, for one test
 
+**Not to be confused with `tests/fixtures/wheelhouse`.** This directory holds the versions
+**under study**; that one holds `pytest`, which is how any declared test gets executed at all.
+The two are separate directories, resolved by separate commands, and
+`tests/test_runner_wheelhouse.py` asserts they share no distribution — a subject that could also
+be answered from the scaffolding would make the test below prove nothing.
+
 **Nothing in here is a dependency of Whetstone.** `whetstone-fixture-dep` is not on PyPI, is
 never installed into this project's environment, and does nothing. It exists so that
 `tests/test_environment_pins.py` can prove one claim: **`Task.environment.pins` decides the

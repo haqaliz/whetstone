@@ -42,6 +42,8 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as distribution_version
 from pathlib import Path
 
 import pytest
@@ -53,6 +55,7 @@ from fixtures.repos import (
     build_task,
     make_patch,
 )
+from fixtures.runner import WHEELHOUSE
 
 from whetstone.verify.strict import StrictResult, read_report, verify_strict
 from whetstone.verify.task import Task, load_task
@@ -243,9 +246,13 @@ def _provision(venv: Path, requirement: str) -> tuple[Path, tuple[str, ...]]:
     - ``--find-links`` is the index itself.
 
     ``pytest`` is a second, separate install and deliberately *not* constrained to the index:
-    it is the runner, not the thing under test. It comes from uv's cache, which ``uv sync``
-    warms before pytest ever starts, here and in CI. Nothing about which pytest runs is what
-    this file is measuring — the two arms get the same one.
+    it is the runner, not the thing under test. It comes from the committed wheelhouse that
+    ``tests/conftest.py`` names, offline, and never from this index — see
+    ``test_the_scaffolding_cannot_supply_the_subject`` below, which is what keeps that a fact.
+    Nothing about which pytest runs is what this file is measuring; the two arms get the same
+    one. It is a separate command for the same reason it is a separate directory: the
+    ``--find-links`` above is spelled on the command line, which **overrides** the wheelhouse
+    outright, so the two resolutions cannot borrow from each other in either direction.
     """
     _uv(["venv", "--quiet", "--python", sys.executable, str(venv)])
     interpreter = venv / "bin" / "python"
@@ -319,6 +326,36 @@ def test_the_recorded_index_holds_both_versions() -> None:
     ], f"{INDEX} does not hold the two recorded versions; it holds {wheels}"
 
 
+def test_the_scaffolding_cannot_supply_the_subject() -> None:
+    """Nothing outside the recorded index can answer for ``whetstone-fixture-dep``.
+
+    The arms below resolve the subject with ``--offline --no-index --no-cache --find-links
+    <index>``, which is already narrow. This closes the question from the other side, on the two
+    places a copy could plausibly sit and be inherited rather than resolved:
+
+    - the **environment this suite runs in**. Provisioning the runner necessarily widens what a
+      throwaway venv can reach — a wheelhouse it may resolve from, and, were a venv ever built
+      with ``--system-site-packages``, an outer ``site-packages`` it could import from outright.
+      That widening must not be able to supply the thing under study, so the outer environment
+      is asserted not to carry it at all;
+    - the **runner wheelhouse**, which is on ``UV_FIND_LINKS`` for every ``uv`` command in the
+      session. ``tests/test_runner_wheelhouse.py`` asserts the two directories share no
+      distribution; this states the half that matters here by name.
+
+    Neither is hypothetical bookkeeping. If either could answer, ``resolved_version`` would be
+    reporting whatever was inherited, and "the pin decided the verdict" would be a claim about
+    this machine.
+    """
+    with pytest.raises(PackageNotFoundError):
+        distribution_version(FIXTURE_DEP)
+
+    assert not list(WHEELHOUSE.glob(f"{FIXTURE_DEP.replace('-', '_')}-*.whl")), (
+        f"{WHEELHOUSE} carries a {FIXTURE_DEP} wheel. It is on UV_FIND_LINKS for the whole "
+        f"session, so the versions under study would have a second source and the two arms "
+        f"below could resolve from it"
+    )
+
+
 def test_the_two_recorded_versions_really_differ_in_the_keyword(
     arms: tuple[Arm, Arm],
 ) -> None:
@@ -371,6 +408,14 @@ def test_the_recorded_index_is_the_only_place_a_package_can_come_from(tmp_path: 
     a cache, a configured extra index. So a distribution that is *not* in the recorded index is
     installed the same way, and the install must fail. If it succeeds, the two arms above were
     resolving against something this test cannot see, and their versions were never guaranteed.
+
+    **``pytest`` is a particularly sharp choice of absent distribution now, and deliberately
+    kept.** It is not only unmistakably present on PyPI; it is also sitting in the committed
+    wheelhouse that ``tests/conftest.py`` puts on ``UV_FIND_LINKS`` for this entire session. So
+    this control additionally establishes the property the whole arrangement rests on — a
+    ``--find-links`` spelled on the command line **replaces** that variable rather than adding
+    to it — and it establishes it the only way worth having: by failing loudly the day it stops
+    being true.
     """
     venv = tmp_path / "control"
     _uv(["venv", "--quiet", "--python", sys.executable, str(venv)])

@@ -16,9 +16,12 @@ this module picks a version.
 **Nothing here reaches the network, and the flags say so rather than the comment.** Every
 installing command carries `--offline`, so uv may use its own on-disk cache and a local
 `--find-links` directory and nothing else. The consequence is deliberate and is the direction to
-fail in: a donor whose wheels are not already cached fails **loudly**, and the operator warms the
-cache by running `uv sync` in their own repository — which is a thing they do anyway — rather
-than a mint quietly fetching from an index at 3am and pinning whatever came back.
+fail in: a donor whose wheels cannot be answered from those two places fails **loudly**, naming
+the command, rather than a mint quietly fetching from an index at 3am and pinning whatever came
+back. The operator's remedy is to make the answer local — resolve the donor once with a network,
+or point `UV_FIND_LINKS` at a directory of wheels. Note that `uv sync` alone does **not**
+necessarily suffice: it installs what a lock already decided and does not perform the resolution
+that would let `--offline` answer an unpinned requirement such as the runner below.
 
 **Exactly what uv touches:** the donor's `pyproject.toml` and `uv.lock` (read), the venv it is
 told to build, uv's own cache, and a `--find-links` directory when one is given. No index, no
@@ -212,13 +215,17 @@ def capture(
     # `--offline` is the claim — the network is refused, on every command that could fetch.
     # `--no-index` is narrower and is applied only to the lock's own sync: it removes the
     # registry outright, so what the lock names can come from nowhere but the given directory.
-    # The runner is deliberately not constrained that way (measured: `--no-index` makes pytest
-    # unresolvable even from a warm cache), which is the same line `tests/test_environment_pins`
+    #
+    # The runner gets `--offline` and nothing else, and in particular is **not** pointed at
+    # `index`. Two separate reasons, and both are the same line `tests/test_environment_pins.py`
     # draws — pytest is the thing that runs the tests, not one of the versions under study.
+    # `--no-index` makes pytest unresolvable even from a warm cache (measured), and an explicit
+    # `--find-links` would *override* whatever find-links directory the caller's environment
+    # names, which is how a suite hands this install a committed wheelhouse of runner wheels
+    # without ever letting the versions under study near it (`tests/conftest.py`).
     offline: tuple[str, ...] = ("--offline",)
-    locked = offline
+    locked: tuple[str, ...] = offline
     if index is not None:
-        offline += ("--find-links", str(Path(index)))
         locked = ("--offline", "--no-index", "--find-links", str(Path(index)))
 
     # Read before anything is provisioned: a donor whose layout cannot be read is refused for the

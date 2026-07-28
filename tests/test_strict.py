@@ -80,8 +80,11 @@ def alternate_interpreter(tmp_path_factory: pytest.TempPathFactory) -> Path:
     ``--offline`` is not a nicety. Every test in this suite runs without the network, and a
     fixture that reached PyPI would make the reward's own test suite depend on what an index
     served that morning — the precise failure the ``environment`` contract exists to refuse.
-    ``uv sync`` puts pytest in uv's cache before pytest ever runs, here and in CI, so the
-    cache is warm by construction.
+    The pytest it installs comes from the committed wheelhouse ``tests/conftest.py`` puts on
+    ``UV_FIND_LINKS``; it is deliberately **not** taken from uv's cache, because whether a
+    cache can answer is a property of the machine and this fixture must not be. That was not
+    always true here, and the cost of the earlier arrangement is recorded in
+    ``tests/test_runner_wheelhouse.py``.
 
     Session-scoped: it costs about a tenth of a second, and paying that once is the difference
     between a fixture worth having and one a future reader deletes.
