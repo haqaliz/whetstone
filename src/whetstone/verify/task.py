@@ -19,6 +19,20 @@ decoded, and the comparisons downstream (does this patch touch a held path, does
 file match golden) must run on the same bytes throughout. The manifest therefore carries each
 blob base64-encoded, and it is decoded to bytes here and left that way.
 
+**A verdict must not be decided by the dependency resolver's clock.** `environment` pins the
+interpreter and the exact dependency set a task is verified under, and it is required. This is
+not a precaution — it is an incident. SWE-bench's `pallets__flask-5063` declares `click>=8.0`
+with no upper bound; resolved today that is click 8.4.2, which removed `CliRunner(mix_stderr=)`,
+so four `pass_to_pass` tests failed and STRICT returned FAIL for a patch that was correct. A
+**false FAIL**, produced by the calendar rather than by the code. Pinning click 8.1.3, werkzeug
+2.3.0 and jinja2 3.1.2 made the same task fully green. Those pins were chosen by hand; they are
+not derivable from the repository's own metadata, which is why the manifest has to carry them.
+
+No adversary is involved, so this is not one of the ten catalogued cheats — but it corrupts the
+reward identically, and a reward that moves with the index is not execution-grounded. Hence
+every pin must be an exact `==`: a range does not weaken the guarantee, it removes it, handing
+the version — and the verdict — back to whatever the index serves that morning.
+
 **Fail-closed.** A malformed file, a missing field, an unknown field, an empty `test_blobs` —
 each is a named `ValueError`, never a silent default. The failure mode this refuses is
 specific and severe: a Task that silently loaded with no `test_blobs` has no restore source
@@ -34,6 +48,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -54,6 +69,7 @@ _FIELDS = frozenset(
         "source",
         "repo_url",
         "base_commit",
+        "environment",
         "problem_statement",
         "fail_to_pass",
         "pass_to_pass",
@@ -61,6 +77,46 @@ _FIELDS = frozenset(
         "provenance",
     }
 )
+
+#: Exactly the keys an `environment` may carry, enforced for the same reason as `_FIELDS`: a
+#: typo'd `pin` that was ignored would leave the task resolving nothing while looking pinned.
+_ENVIRONMENT_KEYS = frozenset({"python", "pins"})
+
+#: An exact pin, and nothing else. Deliberately stricter than PEP 508, and deliberately parsed
+#: here rather than by a requirements library: the reward path carries zero runtime dependencies,
+#: and everything PEP 508 additionally allows — a range, an extra, an environment marker, a URL —
+#: is a way for the resolved version to depend on the resolving machine or the resolving day.
+#: Only `name==version` cannot. `===` (PEP 440 arbitrary equality) fails the version half, since
+#: its leading `=` is not an alphanumeric; whitespace around the operator fails for the same
+#: reason a non-canonical blob path does — the manifest is not rewritten on the operator's behalf.
+_PIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*==[A-Za-z0-9][A-Za-z0-9._+!-]*$")
+
+#: PEP 503 name normalisation, used ONLY to decide whether two pins name the same package.
+#: `Flask_Login` and `flask-login` are one package, and pinning it twice is the resolver's clock
+#: again — the pin the operator wrote is stored verbatim either way.
+_NAME_SEPARATORS = re.compile(r"[-_.]+")
+
+
+@dataclass(frozen=True)
+class Environment:
+    """The interpreter and the exact dependency set a task is verified under.
+
+    `pins` is a **tuple**, not a list inside a mapping. The difference is the whole point: a
+    `Mapping[str, Any]` would satisfy the manifest and leave the list mutable, so code holding
+    a frozen `Task` could still append a pin between the load and the run — and the set that
+    decided the verdict would no longer be the set the operator declared.
+
+    Empty `pins` is legitimate and is not the same as an absent `environment`. `[]` says
+    *nothing is installed, so nothing can drift*; an absent field says nothing at all, and the
+    resolver would answer for it.
+
+    `python` is checked to be a non-empty string and no further. Which interpreter that names,
+    and how it is provisioned, is the ingester's business — the reward path is a runner, not a
+    package manager.
+    """
+
+    python: str
+    pins: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -71,14 +127,16 @@ class Task:
     exact set of node ids the verifier expects to see executed, which is why neither may
     contain a duplicate. `test_blobs` maps a repository-relative path to that file's golden
     contents **as bytes** — the operator's artifact, and the one thing the policy must never
-    supply. `source` and `provenance` are records of how the task was obtained; they do not
-    change how it is verified.
+    supply. `environment` pins what the task runs under, so the verdict is decided by the
+    patch and not by the day it was resolved. `source` and `provenance` are records of how the
+    task was obtained; they do not change how it is verified.
     """
 
     task_id: str
     source: str
     repo_url: str
     base_commit: str
+    environment: Environment
     problem_statement: str
     fail_to_pass: tuple[str, ...]
     pass_to_pass: tuple[str, ...]
@@ -145,6 +203,7 @@ def load_task(path: Path) -> Task:
         source=source,
         repo_url=_string(raw, "repo_url", where=where),
         base_commit=_string(raw, "base_commit", where=where),
+        environment=_environment(raw, where=where),
         problem_statement=_string(raw, "problem_statement", where=where),
         fail_to_pass=fail_to_pass,
         pass_to_pass=pass_to_pass,
@@ -283,6 +342,82 @@ def _check_blob_path(path: str, *, where: str) -> None:
         )
 
 
+def _environment(raw: dict[str, Any], *, where: str) -> Environment:
+    """The interpreter and the exact dependency set. Required, and exact — never a range.
+
+    A missing `environment` is rejected rather than defaulted because the default would be
+    "whatever the resolver picks", and that is a verdict decided by the calendar: flask's
+    unbounded `click>=8.0` resolves today to a click that removed `CliRunner(mix_stderr=)`,
+    turning a correct patch into a FAIL. A pin that is not an exact `==` is the same failure
+    written out longhand, so it is refused by name — including the extras and markers that make
+    the resolved set depend on the machine doing the resolving.
+    """
+    value = raw["environment"]
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"{where} has a non-object environment ({type(value).__name__}); expected an "
+            "object carrying 'python' and 'pins'"
+        )
+
+    missing = sorted(_ENVIRONMENT_KEYS - value.keys())
+    if missing:
+        named = ", ".join(repr(name) for name in missing)
+        raise ValueError(f"{where} is missing required environment key {named}")
+    unknown = sorted(value.keys() - _ENVIRONMENT_KEYS)
+    if unknown:
+        named = ", ".join(repr(name) for name in unknown)
+        raise ValueError(
+            f"{where} carries unknown environment key {named}; an unknown key is rejected "
+            "rather than ignored, because a typo'd one would leave the task looking pinned "
+            "while pinning nothing"
+        )
+
+    python = value["python"]
+    if not isinstance(python, str):
+        raise ValueError(
+            f"{where} has a non-string environment python ({type(python).__name__}); expected "
+            "an interpreter version such as '3.12'"
+        )
+    if not python:
+        raise ValueError(
+            f"{where} has an empty environment python; an unnamed interpreter is the same "
+            "silence a missing environment would be"
+        )
+
+    pins = value["pins"]
+    if not isinstance(pins, list):
+        raise ValueError(
+            f"{where} has non-list environment pins ({type(pins).__name__}); expected a list "
+            "of exact '==' requirements"
+        )
+
+    seen: dict[str, str] = {}
+    for pin in pins:
+        if not isinstance(pin, str):
+            raise ValueError(
+                f"{where} has a non-string entry in environment pins "
+                f"({type(pin).__name__}); every pin must be a string"
+            )
+        if not _PIN.match(pin):
+            raise ValueError(
+                f"{where} has environment pin {pin!r}, which is not an exact '==' requirement; "
+                "write it as 'name==version'. A range, an extra, or a marker does not weaken "
+                "the pin, it removes it — the version, and with it the verdict, goes back to "
+                "whatever the index serves at resolution time, which is the hole this field "
+                "exists to close"
+            )
+        package = _NAME_SEPARATORS.sub("-", pin.split("==", 1)[0]).lower()
+        if package in seen:
+            raise ValueError(
+                f"{where} pins {package!r} twice ({seen[package]!r} and {pin!r}); two versions "
+                "of one package leaves the choice to the resolver, which is the same hole a "
+                "range opens"
+            )
+        seen[package] = pin
+
+    return Environment(python=python, pins=tuple(pins))
+
+
 def _provenance(raw: dict[str, Any], *, where: str) -> Mapping[str, str]:
     """How the task was obtained, and when. A record — it does not gate the reward.
 
@@ -305,4 +440,4 @@ def _provenance(raw: dict[str, Any], *, where: str) -> Mapping[str, str]:
     return dict(value)
 
 
-__all__ = ["Task", "load_task"]
+__all__ = ["Environment", "Task", "load_task"]

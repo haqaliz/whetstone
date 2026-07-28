@@ -40,11 +40,20 @@ from whetstone.verify.task import Task, load_task
 #: on the way through, the round-trip below cannot survive.
 NON_UTF8_BLOB = b"def test_x():\n    assert b'\xff\xfe' == payload\n"
 
+#: The era-correct dependency set, exact and complete. Every pin is an exact ``==`` because a
+#: range hands the verdict to whatever the resolver serves that morning — see
+#: ``test_a_pin_that_is_not_an_exact_equality_is_rejected`` for the incident this encodes.
+VALID_ENVIRONMENT: dict[str, Any] = {
+    "python": "3.12",
+    "pins": ["click==8.1.3", "werkzeug==2.3.0"],
+}
+
 VALID_MANIFEST: dict[str, Any] = {
     "task_id": "demo-0001",
     "source": "public",
     "repo_url": "https://example.invalid/demo.git",
     "base_commit": "0123456789abcdef0123456789abcdef01234567",
+    "environment": VALID_ENVIRONMENT,
     "problem_statement": "payload comparison is inverted",
     "fail_to_pass": ["tests/test_x.py::test_x"],
     "pass_to_pass": ["tests/test_y.py::test_y"],
@@ -66,6 +75,14 @@ def manifest_without(key: str) -> dict[str, Any]:
 
 def manifest_with(**overrides: Any) -> dict[str, Any]:
     return {**VALID_MANIFEST, **overrides}
+
+
+def environment_with(**overrides: Any) -> dict[str, Any]:
+    return {**VALID_ENVIRONMENT, **overrides}
+
+
+def environment_without(key: str) -> dict[str, Any]:
+    return {k: v for k, v in VALID_ENVIRONMENT.items() if k != key}
 
 
 def test_load_task_round_trips_an_operator_manifest(tmp_path: Path) -> None:
@@ -215,6 +232,142 @@ def test_a_non_canonical_blob_path_is_rejected(tmp_path: Path, path: str) -> Non
 def test_a_non_string_provenance_value_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="provenance"):
         load_task(write_manifest(tmp_path, manifest_with(provenance={"obtained": 2026})))
+
+
+def test_the_environment_round_trips_as_a_frozen_record(tmp_path: Path) -> None:
+    """``pins`` arrives as a tuple, so the dependency set cannot be edited after loading.
+
+    A ``Mapping[str, Any]`` would satisfy the manifest and defeat the contract: the list
+    inside it stays mutable, so code holding a "frozen" Task could still append a pin between
+    the load and the run. The exact set that decided the verdict has to be the exact set the
+    operator declared.
+    """
+    loaded = load_task(write_manifest(tmp_path, VALID_MANIFEST))
+
+    assert loaded.environment.python == "3.12"
+    assert loaded.environment.pins == ("click==8.1.3", "werkzeug==2.3.0")
+
+    with pytest.raises(FrozenInstanceError):
+        loaded.environment = None  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        loaded.environment.pins = ()  # type: ignore[misc]
+
+
+def test_a_missing_environment_is_rejected(tmp_path: Path) -> None:
+    """No defaulted environment. A task that did not say is a task the resolver decides.
+
+    Demonstrated, not theorised: SWE-bench's ``pallets__flask-5063`` declares ``click>=8.0``
+    with no upper bound. Resolved today that is click 8.4.2, which removed
+    ``CliRunner(mix_stderr=)`` — four ``pass_to_pass`` tests fail and STRICT returns FAIL for a
+    correct patch. A **false FAIL**, produced by the calendar.
+    """
+    with pytest.raises(ValueError, match="missing required field 'environment'"):
+        load_task(write_manifest(tmp_path, manifest_without("environment")))
+
+
+@pytest.mark.parametrize(
+    "pin",
+    [
+        "click>=8.0",
+        "click~=8.1",
+        "click<9",
+        "click!=8.2",
+        "click",
+        "click>=8.0,==8.1.3",
+        "click===8.1.3",
+        "click == 8.1.3",
+        "click[colors]==8.1.3",
+        "click==8.1.3; python_version < '3.13'",
+        "==8.1.3",
+        "click==",
+        "",
+    ],
+)
+def test_a_pin_that_is_not_an_exact_equality_is_rejected(tmp_path: Path, pin: str) -> None:
+    """Exact ``==`` or nothing. A range re-opens the exact hole this field exists to close.
+
+    ``click>=8.0`` is not a weaker pin than ``click==8.1.3``; it is *no* pin — it delegates the
+    version, and therefore the verdict, to whatever the index serves at resolution time. The
+    same goes for a marker or an extra, which make the resolved set depend on the resolving
+    machine. Rejected by name rather than narrowed for the operator, because silently choosing
+    a version on their behalf is the very act this field forbids.
+    """
+    manifest = manifest_with(environment=environment_with(pins=[pin]))
+    with pytest.raises(ValueError, match=re.escape(repr(pin))):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_empty_pins_are_allowed(tmp_path: Path) -> None:
+    """A task with no third-party dependencies is legitimate — it is not an unsaid one.
+
+    ``[]`` is a declaration: nothing is installed, so nothing can drift. That is different in
+    kind from a missing ``environment``, which is silence.
+    """
+    manifest = manifest_with(environment=environment_with(pins=[]))
+
+    assert load_task(write_manifest(tmp_path, manifest)).environment.pins == ()
+
+
+def test_two_pins_for_one_package_are_rejected(tmp_path: Path) -> None:
+    """Two versions of one package is the resolver's clock again, wearing a pin's clothes.
+
+    Compared under PEP 503 normalisation, so ``Flask_Login`` and ``flask-login`` are seen as
+    the one package they are. Consistent with ``fail_to_pass``, where a duplicate is rejected
+    rather than collapsed.
+    """
+    pins = ["click==8.1.3", "Click==8.4.2"]
+    with pytest.raises(ValueError, match="click"):
+        load_task(write_manifest(tmp_path, manifest_with(environment=environment_with(pins=pins))))
+
+
+# Every pattern below is a PHRASE from the message, not a bare word. ``tmp_path`` embeds the
+# test's own name, and the error quotes the manifest path — so ``match="python"`` inside
+# ``test_a_non_string_python_is_rejected`` matches the temp directory and passes whatever the
+# loader does. Four of these were watched passing vacuously that way before being tightened.
+
+
+def test_a_non_object_environment_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="non-object environment"):
+        load_task(write_manifest(tmp_path, manifest_with(environment="3.12")))
+
+
+def test_an_unknown_key_inside_the_environment_is_rejected(tmp_path: Path) -> None:
+    """Same reasoning as the top-level rule: a typo'd ``pin`` must not silently pin nothing."""
+    manifest = manifest_with(environment={**VALID_ENVIRONMENT, "pin": ["click==8.1.3"]})
+    with pytest.raises(ValueError, match="unknown environment key 'pin'"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+@pytest.mark.parametrize("key", ["python", "pins"])
+def test_a_missing_key_inside_the_environment_names_the_key(tmp_path: Path, key: str) -> None:
+    manifest = manifest_with(environment=environment_without(key))
+    with pytest.raises(ValueError, match=f"missing required environment key '{key}'"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_a_non_string_python_is_rejected(tmp_path: Path) -> None:
+    manifest = manifest_with(environment=environment_with(python=3.12))
+    with pytest.raises(ValueError, match="non-string environment python"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_an_empty_python_is_rejected(tmp_path: Path) -> None:
+    """An empty interpreter is silence spelled differently, and silence is what this refuses."""
+    manifest = manifest_with(environment=environment_with(python=""))
+    with pytest.raises(ValueError, match="empty environment python"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_non_list_pins_are_rejected(tmp_path: Path) -> None:
+    manifest = manifest_with(environment=environment_with(pins="click==8.1.3"))
+    with pytest.raises(ValueError, match="non-list environment pins"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_a_non_string_pin_entry_is_rejected(tmp_path: Path) -> None:
+    manifest = manifest_with(environment=environment_with(pins=[["click", "8.1.3"]]))
+    with pytest.raises(ValueError, match="non-string entry in environment pins"):
+        load_task(write_manifest(tmp_path, manifest))
 
 
 def test_no_task_is_ever_sourced_from_policy_output(tmp_path: Path) -> None:

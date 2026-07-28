@@ -174,6 +174,10 @@ def build_task(
         "source": "private",
         "repo_url": str(origin),
         "base_commit": base_commit,
+        # No third-party dependency, so nothing to pin — and `[]` says exactly that, which is
+        # why the loader allows it. These repositories are one module and two pytest files;
+        # anything installed here would be a version this fixture could drift on for no gain.
+        "environment": {"python": "3.12", "pins": []},
         "problem_statement": "add() subtracts.",
         "fail_to_pass": list(spec.fail_to_pass),
         "pass_to_pass": list(spec.pass_to_pass),
