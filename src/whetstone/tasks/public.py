@@ -50,6 +50,7 @@ from pathlib import Path
 
 from whetstone import __version__
 from whetstone.tasks.donor import GitFailed, run_git
+from whetstone.tasks.draw import draw, write_selection
 from whetstone.tasks.environment import NotProvisionable, import_roots
 from whetstone.tasks.fetch import DATASET, Instance, read_pool
 from whetstone.tasks.gates import (
@@ -71,6 +72,9 @@ from whetstone.tasks.ledger import Clock, utc_now
 from whetstone.tasks.liveness import Liveness, NotLive, prove_live
 from whetstone.verify.repo import PatchError, apply_patch, declared_paths
 from whetstone.verify.task import load_task
+
+#: The seeded draw's output, written only when a draw was asked for.
+SELECTION_NAME = "selected.json"
 
 #: Where the committed source-A artifacts live, relative to the tasks root. Named here because
 #: this module writes them and `tasks/README.md` documents them; a second spelling would let the
@@ -420,6 +424,52 @@ def run_gates(
     return destination
 
 
+def restrict(
+    instances: Sequence[Instance],
+    *,
+    only: Sequence[str] | None,
+    size: int | None,
+    seed: int,
+    tasks_root: Path,
+) -> tuple[Instance, ...]:
+    """Narrow the pool to what this run will gate, and record a draw when one was made.
+
+    Three ways in, and the ledger's denominator is whichever one was used — which is why
+    `write_ineligible` records it rather than assuming 300.
+
+    - `only` names instances outright. That is how one instance is re-proved without spending the
+      whole funnel again.
+    - `size` draws seeded and stratified, writing `selected.json` so the draw is re-derivable.
+      It exists for the case this corpus is not yet in: a pool larger than the gates can afford,
+      where *which* instances were spent on matters. The committed run gated all 300, because
+      the environment gate refuses in milliseconds when no era-pins are recorded.
+    - neither: the whole pool, which is the honest default.
+
+    `only` and `size` together is a usage error rather than a composition, because "these five,
+    drawn down to three" is a denominator nobody would be able to describe.
+    """
+    if only and size is not None:
+        raise ValueError(
+            "--only and --draw cannot be combined: a named set drawn down to a smaller one is a "
+            "denominator nobody could describe afterwards"
+        )
+    if only:
+        wanted = set(only)
+        chosen = tuple(instance for instance in instances if instance.instance_id in wanted)
+        missing = sorted(wanted - {instance.instance_id for instance in chosen})
+        if missing:
+            raise ValueError(f"the pool carries no instance(s) {missing}")
+        return chosen
+    if size is None:
+        return tuple(instances)
+
+    drawn = draw(instances, size=size, seed=seed)
+    write_selection(
+        Path(tasks_root) / SELECTION_NAME, drawn, seed=seed, pool_size=len(instances)
+    )
+    return drawn
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the filter over the committed pool and write the corpus and the ledger.
 
@@ -458,18 +508,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         metavar="<instance_id>",
         help="restrict the run to these instances; the ledger records the narrowed denominator",
     )
+    parser.add_argument(
+        "--draw",
+        type=int,
+        default=None,
+        metavar="<n>",
+        help="gate a seeded, stratified draw of this size instead of the whole pool",
+    )
+    parser.add_argument("--seed", type=int, default=0, metavar="<n>", help="the draw's seed")
     parser.add_argument("--timeout", type=float, default=900.0)
     args = parser.parse_args(argv)
 
-    instances = read_pool(args.pool)
-    if args.only:
-        wanted = set(args.only)
-        instances = tuple(
-            instance for instance in instances if instance.instance_id in wanted
+    try:
+        instances = restrict(
+            read_pool(args.pool),
+            only=args.only,
+            size=args.draw,
+            seed=args.seed,
+            tasks_root=Path(args.tasks_root),
         )
-        missing = sorted(wanted - {instance.instance_id for instance in instances})
-        if missing:
-            parser.error(f"the pool carries no instance(s) {missing}")
+    except ValueError as exc:
+        parser.error(str(exc))
     table = read_era_pins(args.era_pins)
 
     out = Path(args.tasks_root) / INSTANCES_DIRECTORY
@@ -512,6 +571,7 @@ __all__ = [
     "INSTANCES_DIRECTORY",
     "PASS_TO_PASS_SCOPE",
     "PUBLIC_DIRECTORY",
+    "SELECTION_NAME",
     "Eligible",
     "FilterReport",
     "Runner",
@@ -520,6 +580,7 @@ __all__ = [
     "held_for",
     "main",
     "manifest_for",
+    "restrict",
     "run_gates",
 ]
 

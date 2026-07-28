@@ -33,7 +33,13 @@ import pytest
 
 from whetstone.tasks.fetch import Instance
 from whetstone.tasks.gates import GATE_COLLECTABILITY, GATE_FORMAT, Ineligible, read_ineligible
-from whetstone.tasks.public import declared, filter_instances, held_for, manifest_for
+from whetstone.tasks.public import (
+    declared,
+    filter_instances,
+    held_for,
+    manifest_for,
+    restrict,
+)
 from whetstone.verify.task import load_task
 
 
@@ -324,3 +330,49 @@ def test_a_run_in_which_nothing_survives_still_writes_the_ledger(tmp_path: Path)
     assert not report.eligible
     assert report.ledger is not None and report.ledger.is_file()
     assert read_ineligible(report.ledger).counts["input"] == 1
+
+
+# --------------------------------------------------------------------------------------
+# What a run gates, and the denominator the ledger will then conserve
+# --------------------------------------------------------------------------------------
+
+
+def test_by_default_the_whole_pool_is_gated(tmp_path: Path) -> None:
+    """The honest default: the denominator is the pool, and nobody trimmed it first."""
+    pool = [_instance(f"a__b-{index}") for index in range(4)]
+
+    assert len(restrict(pool, only=None, size=None, seed=0, tasks_root=tmp_path)) == 4
+
+
+def test_naming_instances_narrows_the_run_to_exactly_those(tmp_path: Path) -> None:
+    """How one instance is re-proved without spending the whole funnel again."""
+    pool = [_instance(f"a__b-{index}") for index in range(4)]
+
+    chosen = restrict(pool, only=["a__b-1"], size=None, seed=0, tasks_root=tmp_path)
+
+    assert [instance.instance_id for instance in chosen] == ["a__b-1"]
+
+
+def test_naming_an_instance_the_pool_does_not_carry_is_refused(tmp_path: Path) -> None:
+    """Silently gating three of the four asked for would be a denominator nobody chose."""
+    with pytest.raises(ValueError, match="a__b-9"):
+        restrict([_instance("a__b-1")], only=["a__b-9"], size=None, seed=0, tasks_root=tmp_path)
+
+
+def test_a_draw_records_itself_so_it_can_be_re_derived(tmp_path: Path) -> None:
+    """A draw whose seed is not committed is a corpus only its author can reproduce."""
+    pool = [_instance(f"a__b-{index}") for index in range(6)]
+
+    chosen = restrict(pool, only=None, size=3, seed=7, tasks_root=tmp_path)
+
+    assert len(chosen) == 3
+    assert (tmp_path / "selected.json").is_file()
+    assert '"seed": 7' in (tmp_path / "selected.json").read_text()
+
+
+def test_naming_instances_and_drawing_at_once_is_refused(tmp_path: Path) -> None:
+    """"These five, drawn down to three" is a denominator nobody could describe afterwards."""
+    with pytest.raises(ValueError, match="cannot be combined"):
+        restrict(
+            [_instance("a__b-1")], only=["a__b-1"], size=1, seed=0, tasks_root=tmp_path
+        )
