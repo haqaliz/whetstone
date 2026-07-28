@@ -19,16 +19,21 @@ and built at test time (``tests/fixtures/repos``).
 
 from __future__ import annotations
 
+import dataclasses
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 from fixtures.repos import (
+    BROKEN_ADDER,
     CALC_FIXED,
     DESELECTING_CONFTEST,
     EXITING_CONFTEST,
     HANGING_CONFTEST,
     SKIPPING_CONFTEST,
+    RepoSpec,
     build_task,
     make_patch,
     rename_patch,
@@ -37,8 +42,8 @@ from fixtures.repos import (
 from whetstone.verify.strict import (
     StrictResult,
     _held_among,
-    _read_report,
     _ReportUnreadable,
+    read_report,
     verify_strict,
 )
 from whetstone.verify.verdict import Status
@@ -58,6 +63,90 @@ def _status_of(result: StrictResult, kind: str) -> Status:
     matching = [verdict for verdict in result.verdicts if verdict.kind == kind]
     assert matching, f"no {kind!r} verdict in {[v.kind for v in result.verdicts]}"
     return matching[0].status
+
+
+@pytest.fixture(scope="session")
+def alternate_interpreter(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A second, real Python installation with its own ``pytest``, on its own path.
+
+    A *real* venv rather than a wrapper script, because the claim being tested is that a task
+    can run under an interpreter that is not the verifier's — an installation with its own
+    prefix and its own ``site-packages``, which a shell shim re-execing the verifier's own
+    python would not be. It is built from ``sys.executable``, so no interpreter is ever
+    downloaded and the fixture cannot drift on whichever pythons a machine happens to have;
+    what differs is the installation, not the version, and the installation is the part
+    ``sys.executable`` in the argv decides.
+
+    ``--offline`` is not a nicety. Every test in this suite runs without the network, and a
+    fixture that reached PyPI would make the reward's own test suite depend on what an index
+    served that morning — the precise failure the ``environment`` contract exists to refuse.
+    The pytest it installs comes from the committed wheelhouse ``tests/conftest.py`` puts on
+    ``UV_FIND_LINKS``; it is deliberately **not** taken from uv's cache, because whether a
+    cache can answer is a property of the machine and this fixture must not be. That was not
+    always true here, and the cost of the earlier arrangement is recorded in
+    ``tests/test_runner_wheelhouse.py``.
+
+    Session-scoped: it costs about a tenth of a second, and paying that once is the difference
+    between a fixture worth having and one a future reader deletes.
+    """
+    if shutil.which("uv") is None:
+        raise RuntimeError(
+            "uv is not on PATH, so a second interpreter cannot be built. This suite is run as "
+            "`uv run pytest`; raising rather than skipping, because a silently skipped test of "
+            "the interpreter seam is a green suite that proves nothing about it."
+        )
+
+    venv = tmp_path_factory.mktemp("alternate-interpreter") / "venv"
+    _uv(["venv", "--quiet", "--python", sys.executable, str(venv)])
+    python = venv / "bin" / "python"
+    _uv(["pip", "install", "--quiet", "--offline", "--python", str(python), "pytest"])
+
+    assert list(venv.glob("lib/python*/site-packages/pytest")), (
+        f"{venv} has no pytest of its own, so it is not a second installation and any test "
+        f"passing through it would be proving nothing"
+    )
+    return python
+
+
+def _uv(args: list[str]) -> None:
+    """uv, with its failure surfaced in full — a half-built venv fails later and opaquely."""
+    completed = subprocess.run(["uv", *args], capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        raise RuntimeError(f"uv {' '.join(args)} failed: {completed.stderr.strip()}")
+
+
+def _interpreter_probe_repo(expected: Path) -> RepoSpec:
+    """A repository whose one test passes only when run by the installation at ``expected``.
+
+    This is how "the argv changed" is asserted rather than assumed: a test that merely accepted
+    the ``interpreter`` keyword would pass whether or not the value ever reached the command
+    line. Here the *interpreter under which pytest is running* is the thing under assertion, so
+    the only way to green is for that path to have been exec'd.
+
+    **``sys.prefix``, deliberately, and not ``Path(sys.executable).resolve()``** — the obvious
+    spelling, which was written first and silently passed under both interpreters. A venv's
+    ``bin/python`` is a symlink to the interpreter it was built from, and this fixture builds
+    from ``sys.executable``, so resolving collapses the alternate venv and the verifier's own
+    venv onto the same base binary and compares it against itself. ``sys.prefix`` is the venv
+    directory and survives that, which makes it the thing that actually distinguishes one
+    installation from another. Both sides are still resolved, for the unrelated reason that
+    macOS hands out symlinked temp roots (``/var`` -> ``/private/var``).
+    """
+    prefix = str(expected.parent.parent)
+    source = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "\n"
+        "\n"
+        "def test_runs_under_the_nominated_interpreter():\n"
+        f"    assert Path(sys.prefix).resolve() == Path({prefix!r}).resolve()\n"
+    )
+    return RepoSpec(
+        files={"noop.py": "VALUE = 1\n", "tests/test_interpreter.py": source},
+        fail_to_pass=("tests/test_interpreter.py::test_runs_under_the_nominated_interpreter",),
+        pass_to_pass=(),
+        held=("tests/test_interpreter.py",),
+    )
 
 
 def test_a_patch_that_genuinely_fixes_the_bug_is_a_pass(tmp_path: Path) -> None:
@@ -329,10 +418,10 @@ def test_a_report_that_cannot_be_read_is_refused_rather_than_interpreted(tmp_pat
         report = tmp_path / f"{abs(hash(label))}.xml"
         report.write_text(xml)
         with pytest.raises(_ReportUnreadable):
-            _read_report(report)
+            read_report(report)
 
     with pytest.raises(_ReportUnreadable):
-        _read_report(tmp_path / "never-written.xml")
+        read_report(tmp_path / "never-written.xml")
 
 
 def test_the_parser_reconstructs_node_ids_including_classes_and_parameters(
@@ -357,7 +446,7 @@ def test_the_parser_reconstructs_node_ids_including_classes_and_parameters(
         '</testsuite>'
     )
 
-    cases = _read_report(report)
+    cases = read_report(report)
 
     assert [case.node_id for case in cases] == [
         "tests/test_a.py::test_plain",
@@ -416,3 +505,190 @@ def test_a_patch_addressing_a_held_test_by_a_different_casing_is_refused(tmp_pat
     assert result.status is Status.FAIL, result.verdicts
     assert _status_of(result, "patch-scope") is Status.FAIL
     assert not list(sandbox_root.rglob("*.xml")), "a report exists, so pytest was run anyway"
+
+
+def test_a_task_declaring_a_held_test_non_canonically_cannot_be_built_at_all(
+    tmp_path: Path,
+) -> None:
+    """A held path spelled ``./tests/…`` used to fall out of the rejection set. Now it is refused.
+
+    **What was demonstrated before the loader was fixed**, with this exact fixture and a patch
+    rewriting ``tests/test_addition.py``: ``verify_strict`` produced no ``patch-scope`` verdict
+    whatsoever — the verdicts were ``pytest, skipped, executed-set, fail-to-pass``, meaning the
+    patch reached the sandbox and pytest actually ran. ``_held_among`` compares the manifest's
+    raw key against the path git reports, git reports ``tests/test_addition.py``, and
+    ``./tests/test_addition.py`` matches it neither exactly nor case-folded. The unconditional
+    restore still wrote the golden bytes back, so the run reported FAIL on the merits rather
+    than rewarding the cheat — that is why this was a defence-in-depth hole and not a live
+    reward hole. But the refusal is a separate guarantee from the restore, and it should not
+    have a spelling-shaped hole in it.
+
+    Closed at the door instead: the task can no longer be constructed, so there is no patch to
+    refuse. Asserted end to end through ``build_task`` rather than at the loader — the loader's
+    own cases live in ``tests/test_task_contract.py``, and what this pins is that the shape
+    which reached the reward is now unreachable from a manifest.
+    """
+    with pytest.raises(ValueError, match="non-canonical"):
+        build_task(
+            tmp_path, dataclasses.replace(BROKEN_ADDER, held=("./tests/test_addition.py",))
+        )
+
+
+def test_omitting_the_interpreter_leaves_the_reward_exactly_as_it_was(tmp_path: Path) -> None:
+    """The regression guard for the seam below: saying nothing must still mean ``sys.executable``.
+
+    Asserted two ways, because either alone is weak. The verdict kinds and the PASS pin the
+    result a caller got before the parameter existed; the equality against an *explicitly*
+    nominated ``sys.executable`` pins that the default and the nomination take the same route,
+    so a default that quietly resolved to something else — a venv, a version string, whatever a
+    later reader is tempted to make it — fails here rather than in a training run.
+    """
+    fixture = build_task(tmp_path)
+    patch = make_patch(fixture.origin, {"calc.py": CALC_FIXED})
+
+    default = verify_strict(
+        fixture.task,
+        patch,
+        sandbox_root=tmp_path / "sandbox",
+        timeout=_TIMEOUT,
+        run_id="unnominated",
+    )
+    nominated = verify_strict(
+        fixture.task,
+        patch,
+        sandbox_root=tmp_path / "sandbox",
+        timeout=_TIMEOUT,
+        run_id="nominated",
+        interpreter=sys.executable,
+    )
+
+    assert default.status is Status.PASS, default.verdicts
+    assert [verdict.kind for verdict in default.verdicts] == [
+        "pytest",
+        "skipped",
+        "executed-set",
+        "fail-to-pass",
+    ]
+    assert default == nominated
+
+
+def test_a_nominated_interpreter_is_the_one_the_declared_tests_run_under(
+    tmp_path: Path, alternate_interpreter: Path
+) -> None:
+    """The seam itself, asserted through the running process rather than through the signature.
+
+    The repository's single ``fail_to_pass`` test asserts which interpreter is executing it, so
+    the two runs below differ in exactly one thing and reach opposite verdicts. The second half
+    is the load-bearing one: **without** the nomination the same task, patch and fixture FAIL,
+    which is what makes the first half evidence that the value reached the command line instead
+    of merely being accepted by the function.
+    """
+    fixture = build_task(tmp_path, _interpreter_probe_repo(alternate_interpreter))
+    patch = make_patch(fixture.origin, {"noop.py": "VALUE = 2\n"})
+
+    nominated = verify_strict(
+        fixture.task,
+        patch,
+        sandbox_root=tmp_path / "sandbox",
+        timeout=_TIMEOUT,
+        run_id="nominated",
+        interpreter=alternate_interpreter,
+    )
+    default = verify_strict(
+        fixture.task,
+        patch,
+        sandbox_root=tmp_path / "sandbox",
+        timeout=_TIMEOUT,
+        run_id="unnominated",
+    )
+
+    assert nominated.status is Status.PASS, nominated.verdicts
+    assert default.status is Status.FAIL, default.verdicts
+    assert _status_of(default, "fail-to-pass") is Status.FAIL
+
+
+def test_an_interpreter_that_cannot_run_is_unverified_and_never_a_failure(
+    tmp_path: Path,
+) -> None:
+    """A harness that could not start is not a patch that got the answer wrong.
+
+    The patch is the genuine fix, so every one of these runs would be a PASS under a working
+    interpreter. That is the point: a FAIL here would be Whetstone charging the policy for a
+    broken nomination, and a PASS would be worse. Three shapes, because they leave by three
+    different doors — the first two never reach a child at all and surface through the
+    sandbox's own verdict, while the third exits with a status outside ``{0, 1}`` and no report
+    behind it, which is ``_exit_status_verdict``'s "pytest reached no conclusion".
+    """
+    fixture = build_task(tmp_path)
+    patch = make_patch(fixture.origin, {"calc.py": CALC_FIXED})
+
+    unrunnable = tmp_path / "not-executable"
+    unrunnable.write_text("#!/bin/sh\nexit 0\n")
+    unrunnable.chmod(0o644)
+    stub = tmp_path / "broken-stub"
+    stub.write_text("#!/bin/sh\nexit 3\n")
+    stub.chmod(0o755)
+
+    # The `kind` is asserted too, so this pins the ROUTE and not merely the answer. A later
+    # change that reached UNVERIFIED by some other door — swallowing an OSError, say — would
+    # satisfy a status-only assertion while meaning something quite different.
+    interpreters = {
+        "absent": (tmp_path / "no-such-interpreter", "sandbox-run"),
+        "not-executable": (unrunnable, "sandbox-run"),
+        "broken-stub": (stub, "pytest"),
+    }
+
+    for label, (interpreter, kind) in interpreters.items():
+        result = verify_strict(
+            fixture.task,
+            patch,
+            sandbox_root=tmp_path / "sandbox",
+            timeout=_TIMEOUT,
+            run_id=label,
+            interpreter=interpreter,
+        )
+        assert result.status is Status.UNVERIFIED, (label, result.verdicts)
+        assert result.status is not Status.FAIL, label
+        assert result.status is not Status.PASS, label
+        assert result.executed is None, label
+        assert _status_of(result, kind) is Status.UNVERIFIED, (label, result.verdicts)
+
+
+def test_an_interpreter_outside_the_sandboxs_write_scope_is_still_usable(
+    tmp_path: Path, alternate_interpreter: Path
+) -> None:
+    """The containment claim this feature leans on, asserted rather than assumed.
+
+    ``sandbox.py`` says ``file-read*`` is allowed wholesale and the profile denies only
+    ``network*`` and ``file-write*``, so an interpreter the run can neither write to nor create
+    is still readable and executable. Nothing in the suite pinned that, and it is the whole
+    reason a per-task interpreter can live wherever the ingester provisioned it rather than
+    having to be copied into the run directory — which would be the sandbox quietly dictating
+    the layout of a directory it was only ever asked to confine writes to.
+
+    Anti-vacuity, in three parts, because a naive version of this test passes without the
+    feature existing at all. The repository is the ``sys.prefix`` probe, so a PASS is only
+    reachable by having actually run under the out-of-scope installation — with the ordinary
+    adder fixture this test would go green even if ``interpreter`` were accepted and thrown
+    away. The two assertions before the run then pin the other halves: that the venv is outside
+    the write scope, and that it is not the verifier's own interpreter under another name.
+    """
+    sandbox_root = tmp_path / "sandbox"
+    fixture = build_task(tmp_path, _interpreter_probe_repo(alternate_interpreter))
+    patch = make_patch(fixture.origin, {"noop.py": "VALUE = 3\n"})
+
+    assert not alternate_interpreter.is_relative_to(sandbox_root), (
+        f"{alternate_interpreter} is inside the write scope, so this proves nothing about "
+        f"reading one from outside it"
+    )
+    assert alternate_interpreter != Path(sys.executable)
+
+    result = verify_strict(
+        fixture.task,
+        patch,
+        sandbox_root=sandbox_root,
+        timeout=_TIMEOUT,
+        interpreter=alternate_interpreter,
+    )
+
+    assert result.status is Status.PASS, result.verdicts

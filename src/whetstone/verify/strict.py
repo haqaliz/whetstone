@@ -6,7 +6,8 @@ STRICT runs seven steps in this order, and the order is the design:
 2. **refuse the patch outright if it touches any path in `test_blobs`** — before anything
    runs, so the refusal is its own outcome and never "the tests failed afterwards";
 3. restore every operator-held test from golden, always, after the patch;
-4. run pytest over `fail_to_pass + pass_to_pass` inside the sandbox, environment pinned;
+4. run pytest over `fail_to_pass + pass_to_pass` inside the sandbox, environment pinned, **with
+   the task's declared import roots inside this checkout ahead of anything installed**;
 5. assert the skipped count is zero;
 6. **assert the executed node-id set equals the task's declaration exactly**, and that every
    `fail_to_pass` id reports `passed`;
@@ -26,6 +27,14 @@ than from its summary line.
 Steps 4's `-c`, `-p no:cacheprovider` and the sandbox's `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` are
 defence in depth for the same cheat, arriving through config, cache and installed plugins
 respectively. They are not the defence — they are what makes the defence not the only one.
+
+**Step 4's import roots are not a convenience either.** A `src`-layout project is imported by
+package name, so a copy of it installed in the interpreter answers that name before the run's
+own checkout is consulted — and the reward is then decided by a directory outside the run.
+Measured on the first real donor: a task **PASSED with no patch applied**. Putting the declared
+roots of *this* checkout on `PYTHONPATH` — which precedes `site-packages` — is what makes the
+verdict a statement about the tree the patch was applied to. `tests/adversarial/
+test_inert_checkout.py` is the proof, and `verify/task.py`'s docstring is the incident.
 
 **Absence is never a pass and never a failure.** A killed run, an unreadable report, a task
 whose own golden paths are not in the checkout: each is UNVERIFIED. Those fold through
@@ -77,7 +86,7 @@ _JUNIT_FAMILY = "xunit1"
 
 #: A ceiling on the untrusted report, generous enough that a large real suite's failures fit
 #: and small enough that a report grown to fill the disk is refused rather than parsed. See
-#: `_read_report` for why this file is untrusted at all.
+#: `read_report` for why this file is untrusted at all.
 _MAX_REPORT_BYTES = 64 * 1024 * 1024
 
 
@@ -107,6 +116,7 @@ def verify_strict(
     sandbox_root: Path | str,
     timeout: float,
     run_id: str | None = None,
+    interpreter: Path | str | None = None,
 ) -> StrictResult:
     """Verify `patch` against `task` and return the reward.
 
@@ -114,6 +124,25 @@ def verify_strict(
     somewhere else turns every slow task into an UNVERIFIED nobody can explain. `run_id` names
     the directory the run happens in and nothing else — the verdict does not depend on it, and
     `test_the_verdict_is_identical_across_repeated_runs` is what holds that true.
+
+    `interpreter` is the python the declared tests run under, and it exists because pinning the
+    reward to the verifier's own 3.12 makes whole task families unverifiable rather than merely
+    inconvenient. Measured, not anticipated: `requests==2.4.0` cannot import on >=3.10 and
+    `pytest==4.6.9` needs the `imp` module 3.12 removed, so 11 of 35 candidate public tasks are
+    dead on this interpreter for a reason that has nothing to do with any patch. `None` means
+    `sys.executable`, and is distinct from a caller passing `sys.executable` only in that it
+    records nobody chose — the same distinction `timeout` and `run_id` already draw.
+
+    **This function resolves nothing and installs nothing, and it must stay that way.** It does
+    not read `task.environment.python`, does not turn a version string into a path, does not
+    create a venv and does not install a pin. It takes a path and puts it in an argv. The pull
+    to be helpful here is real — the task carries an `environment`, the mapping from that to an
+    interpreter looks like two lines, and it is right there. Refuse it. Provisioning belongs to
+    the ingestion layer, and the reason is not tidiness: a reward path that can install
+    packages is a reward path whose verdict depends on a resolver, a cache and a network, which
+    is precisely the "decided by the calendar rather than by the code" failure `environment`
+    exists to close (`task.py`'s module docstring). The reward is a runner. A caller that wants
+    a task's declared environment resolves it first and hands the answer down.
     """
     run_directory = Path(sandbox_root) / (run_id or uuid.uuid4().hex)
     checkout = run_directory / _CHECKOUT_NAME
@@ -162,13 +191,54 @@ def verify_strict(
     for path, golden in task.test_blobs.items():
         (checkout / path).write_bytes(golden)
 
-    return _run_and_judge(task, checkout=checkout, run_directory=run_directory, timeout=timeout)
+    return _run_and_judge(
+        task,
+        checkout=checkout,
+        run_directory=run_directory,
+        timeout=timeout,
+        interpreter=interpreter,
+    )
+
+
+def _import_path(task: Task, checkout: Path) -> tuple[str, ...]:
+    """The task's declared import roots, resolved against **this** run's checkout.
+
+    This is the whole of step 4b, and it is one join — but it is the join that makes the reward
+    a statement about the tree the patch was applied to. A `src`-layout project is imported by
+    package name, so `import contig` is answered by whatever `sys.path` offers first; a venv
+    carrying an editable install rooted at some other checkout answers it before the run's own
+    tree is ever consulted, and the observed consequence was a task that **PASSED with no patch
+    applied**.
+
+    Resolved rather than joined raw, for the reason `derive.derive` records about `--rootdir`:
+    macOS hands out `/var/...` paths that are really `/private/var/...`, and an import path that
+    disagreed with the sandbox's resolved scope is a difference nobody would look for.
+
+    **Still not provisioning.** `verify_strict`'s contract is that it resolves nothing and
+    installs nothing, and this does neither: it reads a declared list, joins it onto a directory
+    that already exists, and puts the result in an environment variable. It tells the
+    interpreter where the code under test is. It does not put any code there.
+    """
+    return tuple(str((checkout / root).resolve()) for root in task.environment.import_roots)
 
 
 def _run_and_judge(
-    task: Task, *, checkout: Path, run_directory: Path, timeout: float
+    task: Task,
+    *,
+    checkout: Path,
+    run_directory: Path,
+    timeout: float,
+    interpreter: Path | str | None = None,
 ) -> StrictResult:
-    """Steps 4 to 7: run the declared tests confined, then judge what actually happened."""
+    """Steps 4 to 7: run the declared tests confined, then judge what actually happened.
+
+    An `interpreter` that cannot be exec'd — absent, not executable, not a python — needs no
+    handling here, and that is asserted rather than assumed. `sandbox-exec` fails before there
+    is a child and prefixes its own message, which `run_confined` already reports as
+    UNVERIFIED; a python-shaped thing that exits outside `{0, 1}` lands on
+    `_exit_status_verdict`'s same answer. Both are "nothing was concluded", which is what a
+    broken nomination is — never a FAIL charged to the patch.
+    """
     config = run_directory / _CONFIG_NAME
     config.write_text(_PYTEST_CONFIG)
     report = run_directory / _REPORT_NAME
@@ -176,7 +246,7 @@ def _run_and_judge(
 
     sandbox = run_confined(
         [
-            sys.executable,
+            str(interpreter) if interpreter else sys.executable,
             "-m",
             "pytest",
             # Never the repository's own config: the patch may have edited it, and this is the
@@ -199,6 +269,7 @@ def _run_and_judge(
         scope=run_directory,
         timeout=timeout,
         cwd=checkout,
+        python_path=_import_path(task, checkout),
     )
     if sandbox.verdict.status is not Status.PASS:
         # The run did not complete. Reading a report or an exit status now would be reading
@@ -209,7 +280,7 @@ def _run_and_judge(
 
     verdicts = [_exit_status_verdict(sandbox.rc)]
     try:
-        cases = _read_report(report)
+        cases = read_report(report)
     except _ReportUnreadable as exc:
         verdicts.append(
             Verdict(
@@ -256,7 +327,7 @@ def _exit_status_verdict(rc: int | None) -> Verdict:
     )
 
 
-def _skipped_verdict(cases: Sequence[_Case]) -> Verdict:
+def _skipped_verdict(cases: Sequence[Case]) -> Verdict:
     """Step 5. A skipped test is a test that did not run, and the task asked for it to run."""
     skipped = tuple(case.node_id for case in cases if case.outcome == "skipped")
     if not skipped:
@@ -332,8 +403,11 @@ def _fail_to_pass_verdict(outcomes: Mapping[str, str], fail_to_pass: Sequence[st
 
 
 @dataclass(frozen=True)
-class _Case:
-    """One `<testcase>` from pytest's report: which node ran, and what it reported."""
+class Case:
+    """One `<testcase>` from pytest's report: which node ran, and what it reported.
+
+    Public because it is `read_report`'s return type, and that function is ingestion's seam.
+    """
 
     node_id: str
     outcome: str
@@ -347,8 +421,12 @@ class _ReportUnreadable(RuntimeError):
     """
 
 
-def _read_report(path: Path) -> tuple[_Case, ...]:
+def read_report(path: Path) -> tuple[Case, ...]:
     """Read pytest's junit XML into node ids and outcomes. Never guesses.
+
+    Public, like `node_id`, so ingestion mints a task's declared ids through the same code the
+    executed-set comparison reconstructs them with. See `node_id` for why a second
+    implementation is worse than an exported one.
 
     The node id is rebuilt from `file` and `classname` rather than from `classname` alone:
     `tests.test_a.TestC` cannot be split into module and class without knowing the file, and a
@@ -382,7 +460,7 @@ def _read_report(path: Path) -> tuple[_Case, ...]:
     except ElementTree.ParseError as exc:
         raise _ReportUnreadable(f"the report is not well-formed XML: {exc}") from exc
 
-    cases: list[_Case] = []
+    cases: list[Case] = []
     for element in tree.iter("testcase"):
         file_path = element.get("file")
         name = element.get("name")
@@ -392,12 +470,21 @@ def _read_report(path: Path) -> tuple[_Case, ...]:
                 f"a testcase entry lacks file/classname/name ({element.attrib!r}), so the node "
                 f"id it reports cannot be reconstructed"
             )
-        cases.append(_Case(node_id=_node_id(file_path, classname, name), outcome=_outcome(element)))
+        cases.append(Case(node_id=node_id(file_path, classname, name), outcome=_outcome(element)))
     return tuple(cases)
 
 
-def _node_id(file_path: str, classname: str, name: str) -> str:
-    """`tests/test_a.py` + `tests.test_a.TestC` + `test_x` -> `tests/test_a.py::TestC::test_x`."""
+def node_id(file_path: str, classname: str, name: str) -> str:
+    """`tests/test_a.py` + `tests.test_a.TestC` + `test_x` -> `tests/test_a.py::TestC::test_x`.
+
+    **Public because ingestion mints through it.** A task's `fail_to_pass`/`pass_to_pass` are
+    compared, as a set, against the ids reconstructed here; ids minted by a second
+    implementation can drift in exactly the ways this function exists to prevent — where the
+    module path ends and a class begins, and whether a parametrised `[1-2]` suffix survives.
+    Such a drift does not present as a bug in the minting code: it presents as every ingested
+    task failing the executed-set check with nothing about the task to explain it. One
+    implementation, exported, is the cheapest way to make that class of bug unreachable.
+    """
     dotted = file_path[: -len(".py")] if file_path.endswith(".py") else file_path
     dotted = dotted.replace("/", ".")
     if classname == dotted:
@@ -458,4 +545,4 @@ def _only(kind: str, status: Status, message: str, **grounding: Any) -> StrictRe
     return StrictResult(status=reduce([verdict]), verdicts=(verdict,), executed=None)
 
 
-__all__ = ["StrictResult", "verify_strict"]
+__all__ = ["Case", "StrictResult", "node_id", "read_report", "verify_strict"]

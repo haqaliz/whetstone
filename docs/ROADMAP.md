@@ -41,11 +41,17 @@ Both are always reported. The headline is **pre-registered** (§ 6).
 
 ```
 task_id, source, repo_url, base_commit,
+environment{}         # nominated interpreter, exact `==` pins, and import_roots
 problem_statement,
 fail_to_pass[], pass_to_pass[],
 test_blobs{}          # operator-held; the golden copy of every test file
 provenance{}          # how this task was obtained, and when
 ```
+
+`environment` is not decoration on the contract — it is where two observed reward corruptions
+were closed, and both are recorded in § 3. The pins stop the dependency resolver's clock from
+deciding the verdict; `import_roots` stops a checkout *outside* the run from deciding it.
+Neither is inferable at verification time, which is why the manifest has to carry them.
 
 ---
 
@@ -129,7 +135,7 @@ below it):
 | 7 | Remove the failing test from the run without skipping it — `-k` / `-m` / `--deselect` via `addopts` in `pyproject.toml`, `pytest.ini` or `setup.cfg`, or via a root `conftest.py` | The executed node-id set asserted equal to `fail_to_pass + pass_to_pass` (§ 2), plus the explicit empty `-c` config, `-p no:cacheprovider` and `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` | **Killed** |
 | 8 | Rename the operator's test aside and leave a passing stub at its node id | The post-apply footprint is taken from `git status`, where the rename is a deletion plus an untracked file. `git apply --numstat` reports a rename by its **destination only**, so the pre-apply check alone would not see the source path | **Killed** |
 | 9 | Address the operator's test by another casing (`Tests/test_addition.py`) — macOS's default volume is case-insensitive, so the path reaches the held file while comparing unequal to it | Held paths compared case-folded as well as exactly | **Killed** |
-| 10 | **Mutate a file a held test depends on that the manifest never declared** — e.g. a `conftest.py` outside `test_blobs` | *Not at all.* The boundary is exactly as wide as `test_blobs`, and no set-comparison can infer an omission | **RESIDUAL** |
+| 10 | **Mutate a file a held test depends on that the manifest never declared** — e.g. a `conftest.py` outside `test_blobs` | *Narrowed at ingestion, not eliminated.* The boundary is exactly as wide as `test_blobs`, and no set-comparison can infer an omission; minting now declares the `conftest.py` floor, which is a wider manifest rather than a defence in the reward path | **RESIDUAL** |
 
 > **Corrected and extended 2026-07-28, from building the verifier (P1 slice 1).** Rows 7–10
 > and the qualifications on rows 3 and 5 postdate the original six-row table. Cheat 7 was found
@@ -162,8 +168,19 @@ patch touches no held path, the held tests are restored unchanged, the declared 
 the failing test passes against a fixture the policy rewrote. **The reward is paid on a bug that
 was never fixed.** Nothing in the verifier can infer the omission, because *"which files does
 this test depend on"* is not a question a set-comparison can answer. Narrowing it belongs to
-**task ingestion** — declaring a held test's transitive dependencies when the task is minted —
-and it is not claimed here.
+**task ingestion** — declaring a held test's transitive dependencies when the task is minted.
+
+**It has since been narrowed there, and the row still says RESIDUAL on purpose.** Minting now
+declares, in `test_blobs`, every `conftest.py` from the repository root down to each held test's
+directory (`src/whetstone/tasks/held.py`), read at the **parent** commit — the tree STRICT checks
+out — and a held set that omits one is refused by name. That closes the specific shape the
+fixture uses, and it is structural: a path, not an import walk, so there is nothing to be talked
+out of. What it does **not** do is make the manifest provably complete. Measured while building
+it: **~22% of contig's mintable commits (49 of 224) also touch a non-`.py` file** — a JSON
+fixture, a golden output, a CSV — which no conftest rule and no import walk would ever see, and
+which a correct fix legitimately changes. So the cheat survives in exactly its general form, the
+corpus keeps it as accepted by both verifiers, and the status cell above must not be downgraded
+on the strength of a narrower manifest. A wider boundary is not a defence in the reward path.
 
 Stated precisely, with both bounds this document previously left out:
 
@@ -175,6 +192,82 @@ Stated precisely, with both bounds this document previously left out:
 Closing either residual — held-out test variants and mutation testing for cheat 6, declaring a
 held test's transitive dependencies at ingestion for cheat 10 — is post-horizon and is not
 claimed here.
+
+### Appended 2026-07-28, from building the task format (P1 slice 2): the resolver's clock
+
+**A reward can be corrupted with no adversary in the room.** The ten above are things a policy
+does. This is a thing a **calendar** does, and it lands on the same reward in the same place, so
+it is recorded here rather than left in a planning document where a reader of this section would
+never meet it.
+
+**The evidence, which is an observation and not a worry.** SWE-bench's `pallets__flask-5063`
+declares `click>=8.0` with no upper bound. Resolved on 2026-07-28 that is `click 8.4.2`, which
+has removed `CliRunner(mix_stderr=)`; four of the task's `pass_to_pass` tests then failed and
+**STRICT returned FAIL for a patch that was correct** — a false FAIL manufactured entirely by the
+resolution date. Pinning `click==8.1.3` turned the same task, the same patch and the same
+verifier fully green. Nothing about that verdict was execution-grounded: it was grounded in what
+an index served that morning, and it would have flipped back on its own.
+
+**It is closed, and the closure is demonstrated rather than asserted.** A task manifest now
+carries a required `environment` — a nominated interpreter and exact `==` pins, with ranges
+refused at load — so the dependency set is part of the task rather than a side effect of running
+it. `tests/test_environment_pins.py` is the proof: one task and one correct patch reach **PASS**
+pinned and **FAIL** unpinned, resolved offline against a committed two-version index, with the
+offline flags asserted from the argv actually invoked. A test that reached a live index to prove
+this would be self-refuting, since its own result would depend on the thing it is guarding.
+
+**Deliberately prose, and not an eleventh row.** The table's fourth column reports a
+*differential* — STRICT rejects while WEAK accepts — and every row is backed by a fixture in
+`tests/adversarial/` that asserts both halves. This has no differential: both verifiers were
+equally wrong, in the same direction, and the fix is in the task contract rather than in the
+reward path. Scored in the table's vocabulary it could only be misread, and a corpus entry for it
+would be a cheat fixture with nobody cheating. The append-only note above says the surface is
+discovered rather than enumerated; this is the sharper version of that lesson — **it is not only
+policies who discover it.**
+
+### Appended 2026-07-28, from mining the first real donor: a verdict decided outside the run
+
+**The second one of these, and it is worse than the first.** The resolver's clock produced a
+false **FAIL** — a correct patch marked wrong, which is expensive but self-announcing. This one
+produced a false **PASS**: a task that passed **with no patch applied at all**. A policy that
+submitted nothing would have been paid, and every number computed from that corpus would have
+been a number about a directory nobody was grading.
+
+**The evidence, which is an observation and not a worry.** `contig` is a `src`-layout project:
+its tests say `import contig`, so the name is answered by whatever the interpreter's `sys.path`
+offers. The miner provisioned its venv with `uv sync --frozen --project <checkout>`, which
+installs the project **editable** — rooted at the *provisioning* checkout, a different directory
+from the one the reward applies patches to. `uv pip freeze` reported `-e file:///…/donor`, and
+`import contig.self_heal` resolved to that tree's `src/`, not to the run's. The checkout under
+verification was therefore inert: nothing in it was ever imported, and the verdict came from a
+directory outside the run. Two already-minted tasks were deleted rather than kept — they are
+survivors of the defect, not a sample of a corpus.
+
+**Why the ten-cheat corpus did not catch it.** Every fixture repository was flat — `calc.py`
+beside `tests/` — and none was installed into a venv. A flat layout under `python -m pytest`
+puts the code under test at `sys.path[0]`, where nothing can shadow it. **The defence was the
+shape of the fixtures, not anything the verifier did**, and no test could tell the difference.
+That is the transferable lesson here: a corpus proves what its fixtures can express, and a
+property every fixture satisfies by accident is a property nothing is testing.
+
+**It is closed at both ends, and the closure is demonstrated rather than asserted.** The
+manifest's `environment` now also carries `import_roots`, the repository-relative directories
+holding the code under test; STRICT puts them, resolved against **this** run's checkout, on
+`PYTHONPATH`, which precedes `site-packages` and therefore shadows any residual install. At the
+other end, provisioning passes `--no-install-project`, so the venv carries dependencies only and
+there is no copy of the project anywhere for a verdict to leak into; the miner now provisions and
+derives in **one** checkout rather than two. A donor whose layout cannot be read from its build
+configuration is **rejected by name** rather than guessed at — a wrong import root does not fail
+loudly, it fails by passing. `tests/adversarial/test_inert_checkout.py` is the proof: a
+`src`-layout task, a venv with a *fixed* copy of the project installed outside the checkout, and
+the reward refusing to pay for a run with no patch — asserted alongside the mirror, where the same
+task under its real reference patch still passes.
+
+**Prose again, and not an eleventh row, for the same reason as the entry above.** Nobody authors
+this: the submission that collects the reward is the empty one, so there is no adversary and no
+differential to report — WEAK is fooled identically. It lives in `tests/adversarial/` rather than
+among the unit tests because it is a reward-integrity property, and outside `CHEATS` because it
+is not a cheat.
 
 ---
 
@@ -220,7 +313,11 @@ base-model bake-off — run **against the working verifier**, not on paper.
   module on the reward path fails the build if any inference library is imported. The walk is
   **scoped to the reward-path packages**, not the whole tree, so it stays true once `mlx-lm`
   is legitimately installed elsewhere; it carries an anti-vacuity control asserting the walk
-  actually sees imports (§ 7). **Three porting traps, verified against Belay's source and each
+  actually sees imports (§ 7). As of P1 slice 2 that scope is `src/whetstone/verify/` **and**
+  `src/whetstone/tasks/`: ingestion authors `test_blobs`, which is the boundary the reward path
+  enforces, so a model choosing what goes in it would be deciding one step removed what counts
+  as cheating. Widening a scoped guard is where it can go quietly dead, so each root is asserted
+  to contribute modules and the control names an import only the second root makes. **Three porting traps, verified against Belay's source and each
   fatal to the guard if missed** (the third added 2026-07-28, from the P1 dig):
   - Belay's `_is_inference_import` gates its first-party half on `if root == "belay"`
     (`tests/test_verify_zero_llm.py:114-121`). Ported verbatim, that string stays `"belay"`,
@@ -241,10 +338,45 @@ base-model bake-off — run **against the working verifier**, not on paper.
     it exists to catch, written the exact way our own code writes imports. The port must resolve
     a relative import to its absolute dotted path from the file's position in the package.
 - `uv run whetstone verify --task <fixture> --patch <fixture>` emits a verdict
-- `tasks/` holds instances from both sources with committed provenance
+- `tasks/` holds instances from both sources with committed provenance — **MET, and the shape of
+  it matters more than the tick.** Source B: **66 tasks**, 45 from `contig` and 21 from
+  `belay`, each *proven live* rather than asserted — FAIL with no patch, PASS under its own
+  reference patch, executed node-id set equal to declared, zero skips. The manifests are the
+  user's code and are never committed; the committed provenance is `tasks/recipes/*.json` (the
+  procedure) and `tasks/local-ledger.json` (per-task hash and verdicts, no file contents).
+  Source A: **1 eligible instance of 300** — `pallets__flask-4045` — with all 299 refusals
+  ledgered in `tasks/public/ineligible.json` against the gate that refused each. **A criterion
+  met by a corpus of one on the public side is not met broadly**, and nothing downstream may
+  quote source A as though it were a benchmark-sized set. The deliverable there is the four-gate
+  filter and the rejection ledger; the instance count is its honest output, and 106 of the 299
+  are recoverable only by hand-determining era-correct pins one instance at a time
+  (`tasks/README.md`)
 - A baseline bake-off report exists under `reports/baseline/`
 - **`PREREGISTRATION.md` is committed** (§ 6) — before any training run exists, so git
   history proves the date
+
+**Where this stands, stated so a later reader cannot mistake progress for completion.** P1 slice
+1 landed the verifier and the corpus; slice 2 landed the **task format** — the `environment`
+contract, canonical held paths, the directory loader, and the `tasks/` layout; slice 3 landed
+**ingestion for both sources** and minted the corpus above, which is what ticks the `tasks/`
+criterion.
+
+**Two criteria remain open, and neither is nearly done.** `reports/baseline/` does not exist and
+`PREREGISTRATION.md` does not exist. Consequently **no model has been run against any of this**:
+the verifier grades patches, 66 tasks and one public instance are proven to discriminate, and
+**not one number about a model exists anywhere in this repository.** A reader who takes a corpus
+existing as evidence that something was measured has read this section backwards.
+
+**What ingestion cost, recorded because the refusals are the finding.** Two of four candidate
+donors yielded nothing, for reasons that generalise: `rereflect` was **refused outright** — it
+has no `uv.lock`, so its pins would have been chosen by the date the mint ran, which is exactly
+the corruption `environment` exists to close; and this repository yielded **0 of 2**, because its
+own test-first workflow lands the test and the fix in one commit, so a held test does not even
+collect at the parent. `contig` reached its cap of 45 with candidates left over; `belay` stopped
+at 21 below a cap of 25. Candidates are lost throughout — chiefly to the restriction to commits
+that *modify an existing* test (PRD D2), which is not a shortcoming but what keeps the miner off
+the fail-closed guard at `strict.py:131-140`. The per-gate breakdown is not recorded in any
+committed artifact, so it is re-derived by re-running the recipe rather than quoted from here.
 
 **Pivot signal:** if no candidate base solves *any* held-out task, expert iteration has
 nothing to bootstrap from. Pivot to an easier task stratum or a larger base — not to a

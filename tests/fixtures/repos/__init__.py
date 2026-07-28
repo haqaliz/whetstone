@@ -22,7 +22,15 @@ writes a real manifest and loads it.
 materialised into ``tmp_path`` at test time. A checked-in ``tests/fixtures/repos/…/test_x.py``
 would be picked up by ``testpaths = ["tests"]`` and run — as part of Whetstone's own suite —
 which is exactly the confusion of "the tests under test" with "the tests" that this package is
-about avoiding. Zero third-party imports, millisecond runtime, deterministic.
+about avoiding. Millisecond runtime, deterministic.
+
+**One repository has a third-party dependency, and it is the exception that is the point.**
+``GREETER`` imports ``whetstone_fixture_dep``, which is not installed in this project's
+environment and never will be: it comes from the recorded local index at
+``tests/fixtures/pkgindex`` and exists only so ``tests/test_environment_pins.py`` can resolve
+it twice and watch the verdict move. Verifying ``GREETER`` under the verifier's own interpreter
+is therefore a collection error, not a task — it must be handed a provisioned ``interpreter``.
+Every other repository here imports nothing at all.
 """
 
 from __future__ import annotations
@@ -51,7 +59,10 @@ CALC_SPECIAL_CASED = (
     "def add(a, b):\n    if (a, b) == (2, 3):\n        return 5\n    return a - b\n"
 )
 
-_FAIL_TO_PASS_SOURCE = """\
+#: The two test files every adder repository here declares. Public because ``repos.packaged``
+#: builds the same pair over a ``src`` layout, and a second copy of the source would let the two
+#: drift — at which point the src-layout repository would no longer be the flat one moved.
+FAIL_TO_PASS_SOURCE = """\
 from calc import add
 
 
@@ -59,7 +70,7 @@ def test_add_is_addition():
     assert add(2, 3) == 5
 """
 
-_PASS_TO_PASS_SOURCE = """\
+PASS_TO_PASS_SOURCE = """\
 from calc import add
 
 
@@ -75,12 +86,26 @@ class RepoSpec:
     ``held`` is what becomes ``test_blobs``: both the restore source and the rejection set.
     It is spelled out rather than inferred from the ``tests/`` prefix, because a task family
     where "the test files" is a guess is a task family with a hole in the boundary.
+
+    ``problem_statement`` is carried here rather than passed to ``build_task`` so a repository
+    and the sentence describing its bug cannot drift apart. It is a record — nothing in the
+    reward reads it — but a manifest whose problem statement describes a different repository
+    is a fixture that misleads whoever debugs against it next.
+
+    ``import_roots`` is carried here for a stronger version of the same reason: it is a fact
+    about the repository's **layout**, so a repository and its import roots cannot be
+    materialised apart. It defaults to ``(".",)`` because every repository here except
+    ``repos.packaged``'s is flat, and ``"."`` states that rather than leaving it implied — a
+    flat layout already has its code at ``sys.path[0]``, so the entry changes nothing it runs
+    and everything about what a reader can tell from the manifest.
     """
 
     files: Mapping[str, str]
     fail_to_pass: tuple[str, ...]
     pass_to_pass: tuple[str, ...]
     held: tuple[str, ...]
+    problem_statement: str = "add() subtracts."
+    import_roots: tuple[str, ...] = (".",)
 
 
 #: One source file with a bug, the test that fails because of it, and a test that already
@@ -89,12 +114,76 @@ class RepoSpec:
 BROKEN_ADDER = RepoSpec(
     files={
         "calc.py": CALC_BUGGY,
-        "tests/test_addition.py": _FAIL_TO_PASS_SOURCE,
-        "tests/test_identity.py": _PASS_TO_PASS_SOURCE,
+        "tests/test_addition.py": FAIL_TO_PASS_SOURCE,
+        "tests/test_identity.py": PASS_TO_PASS_SOURCE,
     },
     fail_to_pass=("tests/test_addition.py::test_add_is_addition",),
     pass_to_pass=("tests/test_identity.py::test_adding_zero_is_the_identity",),
     held=("tests/test_addition.py", "tests/test_identity.py"),
+)
+
+#: The distribution the greeter repository needs, spelled the way a real repository spells it:
+#: by name, with no upper bound. That spelling is the hole — ``pallets__flask-5063`` declares
+#: ``click>=8.0`` and nothing else, so the version, and with it the verdict, is chosen by
+#: whatever the index serves at resolution time. It resolves here against the recorded local
+#: index at ``tests/fixtures/pkgindex``, never against PyPI.
+FIXTURE_DEP = "whetstone-fixture-dep"
+
+#: The exact pin that makes the greeter task verifiable. 1.0.0 is the version whose ``greet``
+#: still accepts ``loud=``; 2.0.0 removed it, and 2.0.0 is what the unbounded requirement above
+#: resolves to.
+FIXTURE_DEP_PIN = f"{FIXTURE_DEP}==1.0.0"
+
+#: The bug: ``announce`` accepts ``loud`` and then drops it on the floor.
+GREETER_BUGGY = """\
+from whetstone_fixture_dep import greet
+
+
+def announce(name, *, loud=False):
+    return greet(name)
+"""
+
+#: The genuine fix — and it is the same fix under either resolved version of the dependency,
+#: which is what makes the greeter task a clean instrument: nothing about the patch changes
+#: between the two arms, so nothing about the patch can explain the two verdicts.
+GREETER_FIXED = """\
+from whetstone_fixture_dep import greet
+
+
+def announce(name, *, loud=False):
+    return greet(name, loud=loud)
+"""
+
+_GREETER_TEST_SOURCE = """\
+from greeter import announce
+from whetstone_fixture_dep import greet
+
+
+def test_announcing_loudly_shouts():
+    assert announce("world", loud=True) == "HELLO, WORLD"
+
+
+def test_the_dependency_greets_quietly():
+    assert greet("world", loud=False) == "hello, world"
+"""
+
+#: A task that can only be verified once its dependency has been resolved — and that reaches a
+#: different verdict depending on WHICH resolution it got. Both declared tests call
+#: ``greet(..., loud=...)``, the keyword ``whetstone-fixture-dep`` 2.0.0 removed, so under the
+#: unpinned resolution both fail with ``TypeError`` at call time while the module still imports
+#: and pytest still collects exactly the declared set. That shape is deliberate: the failure has
+#: to be the declared tests FAILING, not the suite failing to start, or the demonstration would
+#: be of a broken install rather than of a corrupted reward.
+GREETER = RepoSpec(
+    files={
+        "greeter.py": GREETER_BUGGY,
+        "requirements.txt": f"{FIXTURE_DEP}\n",
+        "tests/test_announce.py": _GREETER_TEST_SOURCE,
+    },
+    fail_to_pass=("tests/test_announce.py::test_announcing_loudly_shouts",),
+    pass_to_pass=("tests/test_announce.py::test_the_dependency_greets_quietly",),
+    held=("tests/test_announce.py",),
+    problem_statement="announce() ignores loud=.",
 )
 
 #: A conftest that removes the failing test from the run WITHOUT skipping it and WITHOUT
@@ -147,12 +236,19 @@ def build_task(
     *,
     task_id: str = "synthetic-broken-adder",
     extra_blobs: Mapping[str, bytes] | None = None,
+    pins: tuple[str, ...] = (),
 ) -> Fixture:
     """Create the origin repository under ``root`` and load a Task pointing at it.
 
     ``extra_blobs`` adds operator-held paths that are NOT in the repository, which is how the
     malformed-task case ("a ``test_blobs`` path is missing from the checkout") is provoked
     without hand-editing a manifest.
+
+    ``pins`` becomes ``environment.pins``. It defaults to empty because almost every repository
+    here imports nothing, and ``[]`` says exactly that; ``GREETER`` is the one that needs it.
+    The manifest is written to ``root / "task.json"``, and that path is part of this fixture's
+    contract — ``tests/test_environment_pins.py`` re-reads it to derive a second task that
+    differs from the first in the pins and in nothing else.
     """
     origin = Path(root) / "origin"
     origin.mkdir(parents=True)
@@ -174,7 +270,17 @@ def build_task(
         "source": "private",
         "repo_url": str(origin),
         "base_commit": base_commit,
-        "problem_statement": "add() subtracts.",
+        # Usually no third-party dependency, so nothing to pin — and `[]` says exactly that,
+        # which is why the loader allows it. Most of these repositories are one module and two
+        # pytest files; anything installed there would be a version this fixture could drift on
+        # for no gain. `import_roots` comes from the spec, because it is the one part of this
+        # manifest that a repository's own shape decides — see `RepoSpec`.
+        "environment": {
+            "python": "3.12",
+            "pins": list(pins),
+            "import_roots": list(spec.import_roots),
+        },
+        "problem_statement": spec.problem_statement,
         "fail_to_pass": list(spec.fail_to_pass),
         "pass_to_pass": list(spec.pass_to_pass),
         "test_blobs": {
@@ -260,7 +366,14 @@ __all__ = [
     "CALC_SPECIAL_CASED",
     "DESELECTING_CONFTEST",
     "EXITING_CONFTEST",
+    "FAIL_TO_PASS_SOURCE",
+    "FIXTURE_DEP",
+    "FIXTURE_DEP_PIN",
+    "GREETER",
+    "GREETER_BUGGY",
+    "GREETER_FIXED",
     "HANGING_CONFTEST",
+    "PASS_TO_PASS_SOURCE",
     "SKIPPING_CONFTEST",
     "Fixture",
     "RepoSpec",

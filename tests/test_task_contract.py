@@ -25,6 +25,7 @@ selector keyed on a return annotation that never matches — before being truste
 import base64
 import inspect
 import json
+import re
 from collections.abc import Callable
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -39,11 +40,25 @@ from whetstone.verify.task import Task, load_task
 #: on the way through, the round-trip below cannot survive.
 NON_UTF8_BLOB = b"def test_x():\n    assert b'\xff\xfe' == payload\n"
 
+#: The era-correct dependency set, exact and complete. Every pin is an exact ``==`` because a
+#: range hands the verdict to whatever the resolver serves that morning — see
+#: ``test_a_pin_that_is_not_an_exact_equality_is_rejected`` for the incident this encodes.
+VALID_ENVIRONMENT: dict[str, Any] = {
+    "python": "3.12",
+    "pins": ["click==8.1.3", "werkzeug==2.3.0"],
+    # Where the code under test lives inside the checkout. Required for the same reason the pins
+    # are: without it the declared tests import whatever the interpreter happens to have
+    # installed, which need not be the tree the patch was applied to — see
+    # ``tests/adversarial/test_inert_checkout.py``, where that reached PASS with no patch.
+    "import_roots": ["src"],
+}
+
 VALID_MANIFEST: dict[str, Any] = {
     "task_id": "demo-0001",
     "source": "public",
     "repo_url": "https://example.invalid/demo.git",
     "base_commit": "0123456789abcdef0123456789abcdef01234567",
+    "environment": VALID_ENVIRONMENT,
     "problem_statement": "payload comparison is inverted",
     "fail_to_pass": ["tests/test_x.py::test_x"],
     "pass_to_pass": ["tests/test_y.py::test_y"],
@@ -65,6 +80,14 @@ def manifest_without(key: str) -> dict[str, Any]:
 
 def manifest_with(**overrides: Any) -> dict[str, Any]:
     return {**VALID_MANIFEST, **overrides}
+
+
+def environment_with(**overrides: Any) -> dict[str, Any]:
+    return {**VALID_ENVIRONMENT, **overrides}
+
+
+def environment_without(key: str) -> dict[str, Any]:
+    return {k: v for k, v in VALID_ENVIRONMENT.items() if k != key}
 
 
 def test_load_task_round_trips_an_operator_manifest(tmp_path: Path) -> None:
@@ -183,9 +206,263 @@ def test_a_blob_path_escaping_the_checkout_is_rejected(tmp_path: Path) -> None:
         load_task(write_manifest(tmp_path, manifest_with(test_blobs={"../tests/x.py": blob})))
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "./tests/test_x.py",
+        "tests//test_x.py",
+        "tests/test_x.py/",
+        "tests/./test_x.py",
+        ".",
+        "",
+    ],
+)
+def test_a_non_canonical_blob_path_is_rejected(tmp_path: Path, path: str) -> None:
+    """A blob path is compared LITERALLY, so a second spelling of it is a second file.
+
+    None of these escape the checkout, and every one of them opens the same hole: the key is
+    stored raw and ``strict._held_among`` compares that raw string against the path git
+    reports, which is always canonical. ``./tests/test_x.py`` therefore drops out of the
+    patch-**rejection** set while still naming the file the restore writes over — the refusal
+    and the restore stop agreeing about which files the operator holds.
+
+    Rejected rather than normalised: this loader's contract is that nothing loads as a silent
+    default, and quietly rewriting the operator's manifest is one.
+    """
+    blob = base64.b64encode(NON_UTF8_BLOB).decode("ascii")
+    with pytest.raises(ValueError, match=f"test_blobs path {re.escape(repr(path))}"):
+        load_task(write_manifest(tmp_path, manifest_with(test_blobs={path: blob})))
+
+
 def test_a_non_string_provenance_value_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="provenance"):
         load_task(write_manifest(tmp_path, manifest_with(provenance={"obtained": 2026})))
+
+
+def test_the_environment_round_trips_as_a_frozen_record(tmp_path: Path) -> None:
+    """``pins`` arrives as a tuple, so the dependency set cannot be edited after loading.
+
+    A ``Mapping[str, Any]`` would satisfy the manifest and defeat the contract: the list
+    inside it stays mutable, so code holding a "frozen" Task could still append a pin between
+    the load and the run. The exact set that decided the verdict has to be the exact set the
+    operator declared.
+    """
+    loaded = load_task(write_manifest(tmp_path, VALID_MANIFEST))
+
+    assert loaded.environment.python == "3.12"
+    assert loaded.environment.pins == ("click==8.1.3", "werkzeug==2.3.0")
+    assert loaded.environment.import_roots == ("src",)
+
+    with pytest.raises(FrozenInstanceError):
+        loaded.environment = None  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        loaded.environment.pins = ()  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        loaded.environment.import_roots = ()  # type: ignore[misc]
+
+
+def test_a_missing_environment_is_rejected(tmp_path: Path) -> None:
+    """No defaulted environment. A task that did not say is a task the resolver decides.
+
+    Demonstrated, not theorised: SWE-bench's ``pallets__flask-5063`` declares ``click>=8.0``
+    with no upper bound. Resolved today that is click 8.4.2, which removed
+    ``CliRunner(mix_stderr=)`` — four ``pass_to_pass`` tests fail and STRICT returns FAIL for a
+    correct patch. A **false FAIL**, produced by the calendar.
+    """
+    with pytest.raises(ValueError, match="missing required field 'environment'"):
+        load_task(write_manifest(tmp_path, manifest_without("environment")))
+
+
+@pytest.mark.parametrize(
+    "pin",
+    [
+        "click>=8.0",
+        "click~=8.1",
+        "click<9",
+        "click!=8.2",
+        "click",
+        "click>=8.0,==8.1.3",
+        "click===8.1.3",
+        "click == 8.1.3",
+        "click[colors]==8.1.3",
+        "click==8.1.3; python_version < '3.13'",
+        "==8.1.3",
+        "click==",
+        "",
+    ],
+)
+def test_a_pin_that_is_not_an_exact_equality_is_rejected(tmp_path: Path, pin: str) -> None:
+    """Exact ``==`` or nothing. A range re-opens the exact hole this field exists to close.
+
+    ``click>=8.0`` is not a weaker pin than ``click==8.1.3``; it is *no* pin — it delegates the
+    version, and therefore the verdict, to whatever the index serves at resolution time. The
+    same goes for a marker or an extra, which make the resolved set depend on the resolving
+    machine. Rejected by name rather than narrowed for the operator, because silently choosing
+    a version on their behalf is the very act this field forbids.
+    """
+    manifest = manifest_with(environment=environment_with(pins=[pin]))
+    with pytest.raises(ValueError, match=re.escape(repr(pin))):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_empty_pins_are_allowed(tmp_path: Path) -> None:
+    """A task with no third-party dependencies is legitimate — it is not an unsaid one.
+
+    ``[]`` is a declaration: nothing is installed, so nothing can drift. That is different in
+    kind from a missing ``environment``, which is silence.
+    """
+    manifest = manifest_with(environment=environment_with(pins=[]))
+
+    assert load_task(write_manifest(tmp_path, manifest)).environment.pins == ()
+
+
+def test_two_pins_for_one_package_are_rejected(tmp_path: Path) -> None:
+    """Two versions of one package is the resolver's clock again, wearing a pin's clothes.
+
+    Compared under PEP 503 normalisation, so ``Flask_Login`` and ``flask-login`` are seen as
+    the one package they are. Consistent with ``fail_to_pass``, where a duplicate is rejected
+    rather than collapsed.
+    """
+    pins = ["click==8.1.3", "Click==8.4.2"]
+    with pytest.raises(ValueError, match="click"):
+        load_task(write_manifest(tmp_path, manifest_with(environment=environment_with(pins=pins))))
+
+
+# Every pattern below is a PHRASE from the message, not a bare word. ``tmp_path`` embeds the
+# test's own name, and the error quotes the manifest path — so ``match="python"`` inside
+# ``test_a_non_string_python_is_rejected`` matches the temp directory and passes whatever the
+# loader does. Four of these were watched passing vacuously that way before being tightened.
+
+
+def test_a_non_object_environment_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="non-object environment"):
+        load_task(write_manifest(tmp_path, manifest_with(environment="3.12")))
+
+
+def test_an_unknown_key_inside_the_environment_is_rejected(tmp_path: Path) -> None:
+    """Same reasoning as the top-level rule: a typo'd ``pin`` must not silently pin nothing."""
+    manifest = manifest_with(environment={**VALID_ENVIRONMENT, "pin": ["click==8.1.3"]})
+    with pytest.raises(ValueError, match="unknown environment key 'pin'"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+@pytest.mark.parametrize("key", ["python", "pins", "import_roots"])
+def test_a_missing_key_inside_the_environment_names_the_key(tmp_path: Path, key: str) -> None:
+    manifest = manifest_with(environment=environment_without(key))
+    with pytest.raises(ValueError, match=f"missing required environment key '{key}'"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_a_non_string_python_is_rejected(tmp_path: Path) -> None:
+    manifest = manifest_with(environment=environment_with(python=3.12))
+    with pytest.raises(ValueError, match="non-string environment python"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_an_empty_python_is_rejected(tmp_path: Path) -> None:
+    """An empty interpreter is silence spelled differently, and silence is what this refuses."""
+    manifest = manifest_with(environment=environment_with(python=""))
+    with pytest.raises(ValueError, match="empty environment python"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_non_list_pins_are_rejected(tmp_path: Path) -> None:
+    manifest = manifest_with(environment=environment_with(pins="click==8.1.3"))
+    with pytest.raises(ValueError, match="non-list environment pins"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_a_non_string_pin_entry_is_rejected(tmp_path: Path) -> None:
+    manifest = manifest_with(environment=environment_with(pins=[["click", "8.1.3"]]))
+    with pytest.raises(ValueError, match="non-string entry in environment pins"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_the_import_roots_round_trip_in_the_order_they_were_declared(tmp_path: Path) -> None:
+    """Order is preserved rather than sorted, because it is the order the interpreter searches.
+
+    Two roots that both provide a module is not a malformed manifest — it is a repository with a
+    vendored package alongside its own — and the operator who listed one first meant it. Sorting
+    would silently answer that question differently, and the symptom would be a task importing
+    the wrong copy of something with nothing in the manifest to explain it.
+    """
+    manifest = manifest_with(environment=environment_with(import_roots=["src", "vendor"]))
+
+    loaded = load_task(write_manifest(tmp_path, manifest))
+
+    assert loaded.environment.import_roots == ("src", "vendor")
+
+
+def test_empty_import_roots_are_allowed(tmp_path: Path) -> None:
+    """A flat repository needs nothing added to the import path, and ``[]`` says exactly that.
+
+    The same distinction ``pins`` draws: ``[]`` is a declaration about the repository, while an
+    absent key is silence — and silence here means the tests import whatever is installed.
+    """
+    manifest = manifest_with(environment=environment_with(import_roots=[]))
+
+    assert load_task(write_manifest(tmp_path, manifest)).environment.import_roots == ()
+
+
+def test_the_checkout_root_is_a_legitimate_import_root(tmp_path: Path) -> None:
+    """``"."`` is what a flat layout declares, and it must not trip the canonical-path check.
+
+    This is the one place the import-root rules deliberately differ from ``test_blobs``: a blob
+    path must name a file, so an empty path is refused there, while an import root may name the
+    checkout itself. Asserted rather than assumed, because sharing the blob check would have
+    forbidden the commonest root in the corpus.
+    """
+    manifest = manifest_with(environment=environment_with(import_roots=["."]))
+
+    assert load_task(write_manifest(tmp_path, manifest)).environment.import_roots == (".",)
+
+
+def test_non_list_import_roots_are_rejected(tmp_path: Path) -> None:
+    manifest = manifest_with(environment=environment_with(import_roots="src"))
+    with pytest.raises(ValueError, match="non-list environment import_roots"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_a_non_string_import_root_entry_is_rejected(tmp_path: Path) -> None:
+    manifest = manifest_with(environment=environment_with(import_roots=[["src"]]))
+    with pytest.raises(ValueError, match="non-string entry in environment import_roots"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+def test_an_absolute_import_root_is_rejected(tmp_path: Path) -> None:
+    """An absolute root ignores the checkout entirely, which is the whole failure.
+
+    The field exists so the reward imports the tree the patch was applied to. A root spelled
+    ``/Users/…/donor/src`` points at a directory no patch ever touched, and the verdict it
+    produced would be about that directory — the inert-checkout defect, written into the manifest
+    instead of leaking in through an install.
+    """
+    manifest = manifest_with(environment=environment_with(import_roots=["/opt/donor/src"]))
+    with pytest.raises(ValueError, match="absolute environment import root"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+@pytest.mark.parametrize("root", ["../donor/src", "src/../../elsewhere"])
+def test_an_import_root_that_escapes_the_checkout_is_rejected(tmp_path: Path, root: str) -> None:
+    """``..`` is the relative spelling of the same escape, and is refused the same way."""
+    manifest = manifest_with(environment=environment_with(import_roots=[root]))
+    with pytest.raises(ValueError, match="escape the checkout under test"):
+        load_task(write_manifest(tmp_path, manifest))
+
+
+@pytest.mark.parametrize("root", ["./src", "src/", "", "src//lib"])
+def test_a_non_canonical_import_root_is_rejected_rather_than_normalised(
+    tmp_path: Path, root: str
+) -> None:
+    """Rejected, not rewritten — the same discipline every other path in this manifest gets.
+
+    ``""`` is in the list because it is the tempting spelling of "the checkout root" and it is
+    not the one the contract accepts: ``"."`` is. Silently rewriting either into the other would
+    be the loader choosing on the operator's behalf, which is what it refuses everywhere else.
+    """
+    manifest = manifest_with(environment=environment_with(import_roots=[root]))
+    with pytest.raises(ValueError, match="non-canonical environment import root"):
+        load_task(write_manifest(tmp_path, manifest))
 
 
 def test_no_task_is_ever_sourced_from_policy_output(tmp_path: Path) -> None:

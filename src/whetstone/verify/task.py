@@ -19,6 +19,31 @@ decoded, and the comparisons downstream (does this patch touch a held path, does
 file match golden) must run on the same bytes throughout. The manifest therefore carries each
 blob base64-encoded, and it is decoded to bytes here and left that way.
 
+**A verdict must not be decided by the dependency resolver's clock.** `environment` pins the
+interpreter and the exact dependency set a task is verified under, and it is required. This is
+not a precaution — it is an incident. SWE-bench's `pallets__flask-5063` declares `click>=8.0`
+with no upper bound; resolved today that is click 8.4.2, which removed `CliRunner(mix_stderr=)`,
+so four `pass_to_pass` tests failed and STRICT returned FAIL for a patch that was correct. A
+**false FAIL**, produced by the calendar rather than by the code. Pinning click 8.1.3, werkzeug
+2.3.0 and jinja2 3.1.2 made the same task fully green. Those pins were chosen by hand; they are
+not derivable from the repository's own metadata, which is why the manifest has to carry them.
+
+No adversary is involved, so this is not one of the ten catalogued cheats — but it corrupts the
+reward identically, and a reward that moves with the index is not execution-grounded. Hence
+every pin must be an exact `==`: a range does not weaken the guarantee, it removes it, handing
+the version — and the verdict — back to whatever the index serves that morning.
+
+**Nor may a verdict be decided by a checkout outside the run.** `environment.import_roots` is
+the second half of the same requirement, and it is an incident too. A `src`-layout project is
+imported by package name (`import contig`, never `import src.contig`), so the name resolves
+through whatever the interpreter's `sys.path` offers — and a venv provisioned with an editable
+install rooted at some *other* checkout answers it first. Measured on the first real donor: a
+task **PASSED with no patch applied**, because the tree that satisfied its tests was the
+provisioning checkout, not the one the patch was applied to. Declaring the import roots is what
+lets the reward put the run's own checkout ahead of any residual install, so the verdict is a
+statement about *this* checkout. Like the pins, they cannot be inferred from the repository at
+verification time, which is why the manifest has to carry them.
+
 **Fail-closed.** A malformed file, a missing field, an unknown field, an empty `test_blobs` —
 each is a named `ValueError`, never a silent default. The failure mode this refuses is
 specific and severe: a Task that silently loaded with no `test_blobs` has no restore source
@@ -34,6 +59,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -54,6 +80,7 @@ _FIELDS = frozenset(
         "source",
         "repo_url",
         "base_commit",
+        "environment",
         "problem_statement",
         "fail_to_pass",
         "pass_to_pass",
@@ -61,6 +88,52 @@ _FIELDS = frozenset(
         "provenance",
     }
 )
+
+#: Exactly the keys an `environment` may carry, enforced for the same reason as `_FIELDS`: a
+#: typo'd `pin` that was ignored would leave the task resolving nothing while looking pinned.
+_ENVIRONMENT_KEYS = frozenset({"python", "pins", "import_roots"})
+
+#: An exact pin, and nothing else. Deliberately stricter than PEP 508, and deliberately parsed
+#: here rather than by a requirements library: the reward path carries zero runtime dependencies,
+#: and everything PEP 508 additionally allows — a range, an extra, an environment marker, a URL —
+#: is a way for the resolved version to depend on the resolving machine or the resolving day.
+#: Only `name==version` cannot. `===` (PEP 440 arbitrary equality) fails the version half, since
+#: its leading `=` is not an alphanumeric; whitespace around the operator fails for the same
+#: reason a non-canonical blob path does — the manifest is not rewritten on the operator's behalf.
+_PIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*==[A-Za-z0-9][A-Za-z0-9._+!-]*$")
+
+#: PEP 503 name normalisation, used ONLY to decide whether two pins name the same package.
+#: `Flask_Login` and `flask-login` are one package, and pinning it twice is the resolver's clock
+#: again — the pin the operator wrote is stored verbatim either way.
+_NAME_SEPARATORS = re.compile(r"[-_.]+")
+
+
+@dataclass(frozen=True)
+class Environment:
+    """The interpreter, the exact dependency set, and where the code under test lives.
+
+    `pins` is a **tuple**, not a list inside a mapping. The difference is the whole point: a
+    `Mapping[str, Any]` would satisfy the manifest and leave the list mutable, so code holding
+    a frozen `Task` could still append a pin between the load and the run — and the set that
+    decided the verdict would no longer be the set the operator declared.
+
+    Empty `pins` is legitimate and is not the same as an absent `environment`. `[]` says
+    *nothing is installed, so nothing can drift*; an absent field says nothing at all, and the
+    resolver would answer for it.
+
+    `python` is checked to be a non-empty string and no further. Which interpreter that names,
+    and how it is provisioned, is the ingester's business — the reward path is a runner, not a
+    package manager.
+
+    `import_roots` are the repository-relative directories the interpreter is told to import
+    from: `["src"]` for a `src` layout, `["."]` for a flat one. Empty is legitimate and means
+    *nothing needs adding* — a flat repository already has its code at `sys.path[0]` under
+    `python -m pytest`. See `_import_roots` for why the field is required rather than inferred.
+    """
+
+    python: str
+    pins: tuple[str, ...]
+    import_roots: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -71,14 +144,17 @@ class Task:
     exact set of node ids the verifier expects to see executed, which is why neither may
     contain a duplicate. `test_blobs` maps a repository-relative path to that file's golden
     contents **as bytes** — the operator's artifact, and the one thing the policy must never
-    supply. `source` and `provenance` are records of how the task was obtained; they do not
-    change how it is verified.
+    supply. `environment` pins what the task runs under and says where its code lives, so the
+    verdict is decided by the patch — not by the day it was resolved, and not by a checkout
+    somewhere else on the disk. `source` and `provenance` are records of how the task was
+    obtained; they do not change how it is verified.
     """
 
     task_id: str
     source: str
     repo_url: str
     base_commit: str
+    environment: Environment
     problem_statement: str
     fail_to_pass: tuple[str, ...]
     pass_to_pass: tuple[str, ...]
@@ -145,6 +221,7 @@ def load_task(path: Path) -> Task:
         source=source,
         repo_url=_string(raw, "repo_url", where=where),
         base_commit=_string(raw, "base_commit", where=where),
+        environment=_environment(raw, where=where),
         problem_statement=_string(raw, "problem_statement", where=where),
         fail_to_pass=fail_to_pass,
         pass_to_pass=pass_to_pass,
@@ -205,7 +282,8 @@ def _test_blobs(raw: dict[str, Any], *, where: str) -> Mapping[str, bytes]:
 
     Decoded from base64 to `bytes` and left there. The paths are checked to be relative and
     non-escaping because STRICT restores each one into a checkout, and a path that resolved
-    outside it would write wherever the manifest said.
+    outside it would write wherever the manifest said — and canonical, because it also
+    compares them literally against what git reports. See `_check_blob_path`.
     """
     value = raw["test_blobs"]
     if not isinstance(value, dict):
@@ -241,7 +319,22 @@ def _test_blobs(raw: dict[str, Any], *, where: str) -> Mapping[str, bytes]:
 
 
 def _check_blob_path(path: str, *, where: str) -> None:
-    """Repository-relative, and staying inside the repository."""
+    """Repository-relative, staying inside the repository, and spelled the way git spells it.
+
+    The third of those is not cosmetic. A blob path is stored as the raw manifest string and
+    is compared **literally** downstream: STRICT asks whether a patch touched one of these
+    paths by matching the strings git reports against these keys. Git always reports its own
+    canonical spelling, so a key written `./tests/x.py` matches nothing git ever says and
+    drops straight out of the patch-REJECTION set — while `checkout / "./tests/x.py"` still
+    resolves to the very file the restore writes golden bytes over. The refusal and the
+    restore would then disagree about which files the operator holds, and the disagreement is
+    invisible: the manifest looks right, the file is right, only the comparison is blind.
+
+    **Rejected, not normalised.** Rewriting the operator's path for them would be exactly the
+    silent default this loader refuses everywhere else — and the caller who wrote a
+    non-canonical path has a bug worth hearing about, not a spelling worth fixing behind
+    their back. An ingester emits canonical paths; a human is told which one to write.
+    """
     pure = PurePosixPath(path)
     if pure.is_absolute() or path.startswith("/"):
         raise ValueError(
@@ -253,6 +346,153 @@ def _check_blob_path(path: str, *, where: str) -> None:
             f"{where} has a test_blobs path {path!r} that would escape the repository under "
             "test; blob paths must stay inside the checkout"
         )
+    if not pure.parts:
+        raise ValueError(
+            f"{where} has an empty test_blobs path {path!r}; a blob path must name a file "
+            "inside the repository under test"
+        )
+    canonical = str(pure)
+    if canonical != path:
+        raise ValueError(
+            f"{where} has a non-canonical test_blobs path {path!r}; write it as {canonical!r}. "
+            "Blob paths are compared literally against the paths git reports, so a second "
+            "spelling of a held test is a path the patch-rejection check will never match"
+        )
+
+
+def _environment(raw: dict[str, Any], *, where: str) -> Environment:
+    """The interpreter, the exact dependency set, and the import roots. All three required.
+
+    A missing `environment` is rejected rather than defaulted because the default would be
+    "whatever the resolver picks", and that is a verdict decided by the calendar: flask's
+    unbounded `click>=8.0` resolves today to a click that removed `CliRunner(mix_stderr=)`,
+    turning a correct patch into a FAIL. A pin that is not an exact `==` is the same failure
+    written out longhand, so it is refused by name — including the extras and markers that make
+    the resolved set depend on the machine doing the resolving.
+
+    `import_roots` is required for the same reason and not a weaker one, which is worth stating
+    because `[]` is a legal value and looks like a default. It is not: `[]` is the operator
+    saying *this repository needs nothing added to the import path*, which is true of a flat
+    layout and false of every `src` layout. An **absent** field would have to mean "nobody
+    said", and the code that ran would then be whatever the interpreter happened to have
+    installed — the inert-checkout hole in the module docstring, reopened by omission.
+    """
+    value = raw["environment"]
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"{where} has a non-object environment ({type(value).__name__}); expected an "
+            "object carrying 'python', 'pins' and 'import_roots'"
+        )
+
+    missing = sorted(_ENVIRONMENT_KEYS - value.keys())
+    if missing:
+        named = ", ".join(repr(name) for name in missing)
+        raise ValueError(f"{where} is missing required environment key {named}")
+    unknown = sorted(value.keys() - _ENVIRONMENT_KEYS)
+    if unknown:
+        named = ", ".join(repr(name) for name in unknown)
+        raise ValueError(
+            f"{where} carries unknown environment key {named}; an unknown key is rejected "
+            "rather than ignored, because a typo'd one would leave the task looking pinned "
+            "while pinning nothing"
+        )
+
+    python = value["python"]
+    if not isinstance(python, str):
+        raise ValueError(
+            f"{where} has a non-string environment python ({type(python).__name__}); expected "
+            "an interpreter version such as '3.12'"
+        )
+    if not python:
+        raise ValueError(
+            f"{where} has an empty environment python; an unnamed interpreter is the same "
+            "silence a missing environment would be"
+        )
+
+    pins = value["pins"]
+    if not isinstance(pins, list):
+        raise ValueError(
+            f"{where} has non-list environment pins ({type(pins).__name__}); expected a list "
+            "of exact '==' requirements"
+        )
+
+    seen: dict[str, str] = {}
+    for pin in pins:
+        if not isinstance(pin, str):
+            raise ValueError(
+                f"{where} has a non-string entry in environment pins "
+                f"({type(pin).__name__}); every pin must be a string"
+            )
+        if not _PIN.match(pin):
+            raise ValueError(
+                f"{where} has environment pin {pin!r}, which is not an exact '==' requirement; "
+                "write it as 'name==version'. A range, an extra, or a marker does not weaken "
+                "the pin, it removes it — the version, and with it the verdict, goes back to "
+                "whatever the index serves at resolution time, which is the hole this field "
+                "exists to close"
+            )
+        package = _NAME_SEPARATORS.sub("-", pin.split("==", 1)[0]).lower()
+        if package in seen:
+            raise ValueError(
+                f"{where} pins {package!r} twice ({seen[package]!r} and {pin!r}); two versions "
+                "of one package leaves the choice to the resolver, which is the same hole a "
+                "range opens"
+            )
+        seen[package] = pin
+
+    return Environment(
+        python=python, pins=tuple(pins), import_roots=_import_roots(value, where=where)
+    )
+
+
+def _import_roots(value: dict[str, Any], *, where: str) -> tuple[str, ...]:
+    """Where the code under test lives, relative to the checkout. Never absolute, never escaping.
+
+    Each entry is joined onto the run's own checkout and handed to the interpreter as an import
+    path, ahead of anything installed. The three checks below are the three ways that join could
+    stop being about this checkout: an absolute path ignores it outright, a `..` segment climbs
+    out of it, and a non-canonical spelling is the trap `_check_blob_path` documents at length —
+    written here as its own function rather than shared, because the two differ in exactly one
+    place and it matters. A blob path must name a **file**, so an empty path is rejected there;
+    an import root may name the **checkout root itself**, which is the flat layout and is spelled
+    `"."`. Sharing the check would have meant either allowing an empty blob path or forbidding
+    the commonest import root.
+
+    Order is preserved, not sorted: it is the order the interpreter will search, and a manifest
+    that listed two roots both providing a module meant the first one.
+    """
+    roots = value["import_roots"]
+    if not isinstance(roots, list):
+        raise ValueError(
+            f"{where} has non-list environment import_roots ({type(roots).__name__}); expected "
+            "a list of repository-relative directories such as ['src']"
+        )
+    for root in roots:
+        if not isinstance(root, str):
+            raise ValueError(
+                f"{where} has a non-string entry in environment import_roots "
+                f"({type(root).__name__}); every import root must be a string"
+            )
+        pure = PurePosixPath(root)
+        if pure.is_absolute() or root.startswith("/"):
+            raise ValueError(
+                f"{where} has an absolute environment import root {root!r}; import roots are "
+                "relative to the checkout under test, and an absolute one would point the run "
+                "at code no patch was applied to"
+            )
+        if ".." in pure.parts:
+            raise ValueError(
+                f"{where} has an environment import root {root!r} that would escape the "
+                "checkout under test; the code under test must be the checkout the patch was "
+                "applied to"
+            )
+        canonical = str(pure)
+        if canonical != root:
+            raise ValueError(
+                f"{where} has a non-canonical environment import root {root!r}; write it as "
+                f"{canonical!r}"
+            )
+    return tuple(roots)
 
 
 def _provenance(raw: dict[str, Any], *, where: str) -> Mapping[str, str]:
@@ -277,4 +517,4 @@ def _provenance(raw: dict[str, Any], *, where: str) -> Mapping[str, str]:
     return dict(value)
 
 
-__all__ = ["Task", "load_task"]
+__all__ = ["Environment", "Task", "load_task"]

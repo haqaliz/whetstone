@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "whetstone-fixture-dep"
+version = "1.0.0"
+description = "A test fixture, not a real dependency. See tests/fixtures/pkgindex/README.md."
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/whetstone_fixture_dep"]
