@@ -2,7 +2,7 @@
 
 This file orients a coding agent working in this repository. Read it first.
 
-> **Status — what exists on `master` today.** `docs/ROADMAP.md` is written and is the
+> **Status — what exists in this tree today.** `docs/ROADMAP.md` is written and is the
 > **authoritative technical document** until `docs/technical/ARCHITECTURE.md` is written;
 > that file does not exist yet. This file and `VISION.md` remain the narrative source of
 > truth (thesis, moat, guardrails).
@@ -20,15 +20,30 @@ This file orients a coding agent working in this repository. Read it first.
 > cheat 10 (a held test's undeclared dependency). A scoped AST guard keeps inference libraries
 > off the reward path.
 >
-> **What is not built.** The rest of P1: `tasks/` ingestion for either source and the on-disk
-> task format, the base-model bake-off and `reports/baseline/`, and `PREREGISTRATION.md`. Then
-> all of P2–P4: no rollouts, no training, no promotion gate, no report, no dashboard. **No
-> number has been produced** — the verifier grades patches; nothing has graded a model. No
-> version has been released and there are no tags.
+> **P1 slice 2 — the on-disk task format — is done** (`docs/ROADMAP.md` § 3; plan at
+> `docs/planning/p1-task-ingestion/`). A manifest now declares its `environment` — exact `==`
+> pins and a nominated interpreter — so the verdict stops depending on what the package index
+> served that morning; `tests/test_environment_pins.py` demonstrates that, showing one task and
+> one correct patch reaching **PASS** pinned and **FAIL** unpinned, resolved offline against a
+> committed index. Held test paths are refused unless spelled canonically. `src/whetstone/tasks/`
+> reads a whole directory of manifests — nothing skipped, an empty directory is a usage error
+> rather than a vacuous pass — and `whetstone verify` accepts one, reducing worst-status-wins so
+> a single `UNVERIFIED` task can never exit 0. `tasks/` carries the layout that splits committed
+> provenance from local data. The reward-path guard now covers `src/whetstone/tasks/` as well as
+> `src/whetstone/verify/`.
 >
-> Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. State what
-> is true of `master`, not what is in flight on a branch — a status that names in-progress work
-> is stale the moment that work merges, which has already happened once here.
+> **What is not built.** The rest of P1 — and note that slice 2 built the task **format**, not
+> the corpus: **no task instances exist yet**, so ingestion for either source (the public-benchmark
+> filter, the own-repo miner), the base-model bake-off and `reports/baseline/`, and
+> `PREREGISTRATION.md` are all still open. Then all of P2–P4: no rollouts, no training, no
+> promotion gate, no report, no dashboard. **No number has been produced** — the verifier grades
+> patches; nothing has graded a model. No version has been released and there are no tags.
+>
+> Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. Describe the
+> state of the tree this file ships in, and never work in flight on a branch — a status that
+> names in-progress work is stale the moment that work merges, which has already happened once
+> here. A capability is written up in the same commit that lands it, so the claim and the code
+> arrive together and neither can outlive the other.
 
 ---
 

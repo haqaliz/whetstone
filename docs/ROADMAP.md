@@ -176,6 +176,38 @@ Closing either residual — held-out test variants and mutation testing for chea
 held test's transitive dependencies at ingestion for cheat 10 — is post-horizon and is not
 claimed here.
 
+### Appended 2026-07-28, from building the task format (P1 slice 2): the resolver's clock
+
+**A reward can be corrupted with no adversary in the room.** The ten above are things a policy
+does. This is a thing a **calendar** does, and it lands on the same reward in the same place, so
+it is recorded here rather than left in a planning document where a reader of this section would
+never meet it.
+
+**The evidence, which is an observation and not a worry.** SWE-bench's `pallets__flask-5063`
+declares `click>=8.0` with no upper bound. Resolved on 2026-07-28 that is `click 8.4.2`, which
+has removed `CliRunner(mix_stderr=)`; four of the task's `pass_to_pass` tests then failed and
+**STRICT returned FAIL for a patch that was correct** — a false FAIL manufactured entirely by the
+resolution date. Pinning `click==8.1.3` turned the same task, the same patch and the same
+verifier fully green. Nothing about that verdict was execution-grounded: it was grounded in what
+an index served that morning, and it would have flipped back on its own.
+
+**It is closed, and the closure is demonstrated rather than asserted.** A task manifest now
+carries a required `environment` — a nominated interpreter and exact `==` pins, with ranges
+refused at load — so the dependency set is part of the task rather than a side effect of running
+it. `tests/test_environment_pins.py` is the proof: one task and one correct patch reach **PASS**
+pinned and **FAIL** unpinned, resolved offline against a committed two-version index, with the
+offline flags asserted from the argv actually invoked. A test that reached a live index to prove
+this would be self-refuting, since its own result would depend on the thing it is guarding.
+
+**Deliberately prose, and not an eleventh row.** The table's fourth column reports a
+*differential* — STRICT rejects while WEAK accepts — and every row is backed by a fixture in
+`tests/adversarial/` that asserts both halves. This has no differential: both verifiers were
+equally wrong, in the same direction, and the fix is in the task contract rather than in the
+reward path. Scored in the table's vocabulary it could only be misread, and a corpus entry for it
+would be a cheat fixture with nobody cheating. The append-only note above says the surface is
+discovered rather than enumerated; this is the sharper version of that lesson — **it is not only
+policies who discover it.**
+
 ---
 
 ## 4. Phases
@@ -220,7 +252,11 @@ base-model bake-off — run **against the working verifier**, not on paper.
   module on the reward path fails the build if any inference library is imported. The walk is
   **scoped to the reward-path packages**, not the whole tree, so it stays true once `mlx-lm`
   is legitimately installed elsewhere; it carries an anti-vacuity control asserting the walk
-  actually sees imports (§ 7). **Three porting traps, verified against Belay's source and each
+  actually sees imports (§ 7). As of P1 slice 2 that scope is `src/whetstone/verify/` **and**
+  `src/whetstone/tasks/`: ingestion authors `test_blobs`, which is the boundary the reward path
+  enforces, so a model choosing what goes in it would be deciding one step removed what counts
+  as cheating. Widening a scoped guard is where it can go quietly dead, so each root is asserted
+  to contribute modules and the control names an import only the second root makes. **Three porting traps, verified against Belay's source and each
   fatal to the guard if missed** (the third added 2026-07-28, from the P1 dig):
   - Belay's `_is_inference_import` gates its first-party half on `if root == "belay"`
     (`tests/test_verify_zero_llm.py:114-121`). Ported verbatim, that string stays `"belay"`,
@@ -245,6 +281,13 @@ base-model bake-off — run **against the working verifier**, not on paper.
 - A baseline bake-off report exists under `reports/baseline/`
 - **`PREREGISTRATION.md` is committed** (§ 6) — before any training run exists, so git
   history proves the date
+
+**Where this stands, stated so a later reader cannot mistake progress for completion.** P1 slice
+1 landed the verifier and the corpus; slice 2 landed the **task format** — the `environment`
+contract, canonical held paths, the directory loader, and the `tasks/` layout. The `tasks/`
+criterion above is about **instances**, and **no instance exists**: a layout in place is not that
+criterion met, and neither is a format that could hold one. That criterion, the bake-off report
+and `PREREGISTRATION.md` are all open.
 
 **Pivot signal:** if no candidate base solves *any* held-out task, expert iteration has
 nothing to bootstrap from. Pivot to an easier task stratum or a larger base — not to a

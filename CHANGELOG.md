@@ -11,7 +11,45 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
-Nothing yet.
+P1's moat: the reward, and the contract it grades against. Nothing has been tagged since
+`0.1.0`, so everything below is unreleased. No model has been run against any of it — the
+verifier grades patches, and no number exists.
+
+### Added
+
+- The verifier core (`src/whetstone/verify/`): the frozen `Task` contract, verdict semantics in
+  which `UNVERIFIED` ranks above `PASS`, a Seatbelt sandbox that denies the network and confines
+  writes, and the STRICT verifier — the reward — alongside the WEAK one, which is measurement
+  only. Both reachable as `whetstone verify`.
+- An adversarial corpus (`tests/adversarial/`) putting ten cheats through both verifiers: eight
+  killed, and two reported rather than patched — special-casing the known input, and mutating a
+  file a held test depends on that the manifest never declared.
+- An AST guard that fails the build if any inference library is reachable from the reward path,
+  scoped to the reward-path packages so it stays true once `mlx-lm` is legitimately installed
+  elsewhere. Extended in this cycle to cover `src/whetstone/tasks/`, because ingestion authors
+  the very boundary the reward path enforces; each guarded root is now asserted to contribute
+  modules, so widening the scope cannot leave a root silently watching nothing.
+- `environment` on every task manifest — a nominated interpreter and exact `==` pins, with
+  ranges refused at load rather than defaulted. Without it a verdict depends on the resolution
+  date: `pallets__flask-5063` declares `click>=8.0`, today's `click 8.4.2` has removed
+  `CliRunner(mix_stderr=)`, four `pass_to_pass` tests fail, and a correct patch is scored FAIL.
+  `tests/test_environment_pins.py` shows one task and one correct patch reaching PASS pinned and
+  FAIL unpinned, resolved offline against a committed two-version index.
+- A per-task interpreter, so a task is verified under the Python era it was written for instead
+  of whichever one happens to be running the verifier.
+- Non-canonical held test paths are refused at load — `./tests/x.py`, `tests//x.py`, a trailing
+  slash, a bare `.` component, an empty path. Each is a second spelling of a held file that the
+  patch-scope refusal compares against git's canonical output and never matches. Refused, never
+  silently rewritten: the error names the canonical spelling and stops.
+- `whetstone verify --task` accepts a directory of manifests, reducing worst-status-wins through
+  the existing verdict semantics, so one `UNVERIFIED` task among passes can never exit 0. No new
+  exit code. Nothing is skipped — a non-manifest entry fails the invocation loudly — and an empty
+  directory is a usage error rather than a set of zero tasks that all passed.
+- The `tasks/` layout, splitting what may be committed from what may not: public benchmark
+  instances and the mining recipe and liveness ledger are committed; the user's own mined tasks
+  never are. `tasks/README.md` states the rule and `tests/test_tasks_layout.py` asserts git's own
+  answer in both directions. **No task instances exist yet** — this is the format and the layout,
+  not the corpus.
 
 ## [0.1.0] - 2026-07-27
 

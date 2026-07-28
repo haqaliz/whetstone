@@ -18,6 +18,11 @@ module whose name is inference-shaped. A docstring may say "model" as often as i
 would be false the moment P2 lands, and a guard that has to be weakened is a guard that
 gets weakened. The ban applies to the reward path and nowhere else.
 
+**Two roots since P1 slice 2**, ``verify/`` and ``tasks/`` — see ``GUARDED_ROOTS`` for why
+ingestion is inside the line rather than next to it. Widening a scoped guard is the moment
+it can go quietly dead, so ``_modules`` now asserts **each** root contributes modules and
+control A names an import only the second root makes.
+
 **Ported from ``belay/tests/test_verify_zero_llm.py`` with three fixes**, each of which is
 a live bypass here rather than a theoretical one, and each proven by a planted-violation
 test below:
@@ -56,10 +61,20 @@ import pytest
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 
-#: The reward path, and only the reward path. ``verify/`` decides PASS/FAIL by running the
-#: task's own tests in a sandbox and reading the executed set; nothing it does needs a
-#: model, so nothing it imports may provide one.
-GUARDED_ROOTS = (SRC / "whetstone" / "verify",)
+#: The reward path and what authors it, and nothing else. ``verify/`` decides PASS/FAIL by
+#: running the task's own tests in a sandbox and reading the executed set; nothing it does
+#: needs a model, so nothing it imports may provide one.
+#:
+#: ``tasks/`` is inside the guard because it is where ``test_blobs`` is written, and
+#: ``test_blobs`` *is* the boundary the reward path enforces — the set of paths a patch may
+#: not touch and that are restored from golden before pytest runs. A model that decided
+#: which files belong in that set would be deciding, one step removed, which edits count as
+#: cheating, and it would do so with none of re-execution's determinism. The guard reaches
+#: one layer up from the verdict for the same reason it exists at the verdict: an authored
+#: boundary and a graded run are the same claim, and only one of them was previously watched.
+#: Verified 2026-07-28 that this root was unguarded: a planted ``from .judge import score``
+#: under ``src/whetstone/tasks/`` passed the whole file green until this tuple was widened.
+GUARDED_ROOTS = (SRC / "whetstone" / "verify", SRC / "whetstone" / "tasks")
 
 #: Third-party inference clients: hosted model SDKs, local-inference runtimes, training
 #: adapters, and LLM-orchestration frameworks. The set is deliberately broad — a reward
@@ -126,9 +141,25 @@ _FIRST_PARTY_ROOT = "whetstone"
 
 
 def _modules(roots: tuple[Path, ...] = GUARDED_ROOTS) -> list[Path]:
-    files = sorted(p for root in roots for p in root.rglob("*.py"))
-    assert files, f"no modules found under {roots} — this guard would pass vacuously"
-    return files
+    """Every module under every guarded root, asserting **each root** contributes one.
+
+    Per-root rather than in aggregate, and that distinction is the whole point once there is
+    more than one root: a misspelled or since-moved root matches nothing, and an aggregate
+    ``assert files`` stays green on the strength of the roots that still exist. The dead root
+    would then be watching nothing while reading, in the failure message, as though it were
+    guarded — a guard that has quietly stopped guarding half of what it names.
+    """
+    assert roots, "no guarded roots — this guard would pass vacuously"
+    files: list[Path] = []
+    for root in roots:
+        found = sorted(root.rglob("*.py"))
+        assert found, (
+            f"no modules found under the guarded root {root} — the root is dead (moved, "
+            "renamed, or misspelled) and is guarding nothing, while the other roots keep "
+            "this file green."
+        )
+        files.extend(found)
+    return sorted(files)
 
 
 def _dotted_package(path: Path, src_root: Path) -> str:
@@ -277,6 +308,11 @@ def test_the_guard_sees_the_imports_the_reward_path_actually_makes() -> None:
     assert any(name.startswith("whetstone.verify.sandbox") for name in seen), seen
     # And stdlib imports are seen too, so the walk is not somehow first-party-only.
     assert "subprocess" in seen, seen
+    # Named because `load_task` is imported by `whetstone/tasks/manifest.py` and by nothing
+    # else under the guarded roots: it is the one observation that can only come from the
+    # ingestion root, so it proves the second root is really being read rather than merely
+    # listed. `_modules` proves the root has files; this proves those files are parsed.
+    assert "whetstone.verify.task.load_task" in seen, seen
 
 
 def test_the_first_party_predicate_is_live_for_whetstone_not_belay() -> None:
