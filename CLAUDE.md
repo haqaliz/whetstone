@@ -8,10 +8,23 @@ This file orients a coding agent working in this repository. Read it first.
 > truth (thesis, moat, guardrails).
 >
 > **P0 (scaffold) is done:** packaging, the `whetstone` CLI, strict ruff/mypy, pytest, and CI
-> on `macos-latest`. **Nothing else is built** — there is no verifier, no reward, no nightly
-> loop, no promotion gate, no report, and no dashboard. No version has been released and
-> there are no tags. **P1 — the task contract and the verifier — is next** (`docs/ROADMAP.md`
-> § 4); it is the moat, and everything downstream is blocked on it.
+> on `macos-latest`.
+>
+> **P1 slice 1 — the task contract and the verifier core — is done** (`docs/ROADMAP.md` § 2, § 3;
+> plan at `docs/planning/p1-verifier-core/`). `src/whetstone/verify/` holds the frozen `Task`
+> contract, the ported verdict semantics (`UNVERIFIED` ranks above `PASS`), the Seatbelt sandbox
+> (network denied, writes confined, environment pinned), the **STRICT** verifier — the reward —
+> and the **WEAK** verifier — measurement only — reachable as `whetstone verify`. The
+> adversarial corpus (`tests/adversarial/`) runs ten cheats through both verifiers: eight are
+> killed, and **two are documented residuals**, cheat 6 (special-casing the known input) and
+> cheat 10 (a held test's undeclared dependency). A scoped AST guard keeps inference libraries
+> off the reward path.
+>
+> **What is not built.** The rest of P1: `tasks/` ingestion for either source and the on-disk
+> task format, the base-model bake-off and `reports/baseline/`, and `PREREGISTRATION.md`. Then
+> all of P2–P4: no rollouts, no training, no promotion gate, no report, no dashboard. **No
+> number has been produced** — the verifier grades patches; nothing has graded a model. No
+> version has been released and there are no tags.
 >
 > Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. State what
 > is true of `master`, not what is in flight on a branch — a status that names in-progress work
@@ -89,7 +102,9 @@ Belay (`~/dev/at/belay`) is the execution-grounded **verification engine**. Whet
 Belay proves a run is correct; Whetstone uses that kind of proof as an unhackable reward.
 `docs/ROADMAP.md` § 7 records exactly what we take and what we decline. **Taken:** the verdict
 semantics (`UNVERIFIED` ranked above `PASS`), the provenance boundary, the corpus metrics, the
-AST guard that keeps inference libraries off the reward path, and the eval instances/scripts.
+AST guard that keeps inference libraries off the reward path, the **Seatbelt sandbox approach**
+(the profile shape and its SBPL escaping — we wrote our own minimal deny-all profile rather than
+vendoring the 417-line module), and the eval instances/scripts.
 **Declined: the replay substrate** — for four stated reasons: it answers a harder question than
 our reward needs (trace fidelity vs. does the end state pass an operator-held check), its
 throughput is built for auditing rather than generating rollouts, parallel calls deliberately

@@ -61,7 +61,9 @@ STRICT (the reward)
   3. restore every operator-held test from golden  — always, after the patch
   4. run pytest over fail_to_pass + pass_to_pass
        └── assert skipped-test count == 0
-  5. reward := exit status
+       └── assert the EXECUTED node-id set == fail_to_pass + pass_to_pass, exactly,
+           and that every fail_to_pass id reports `passed`
+  5. reward := exit status, folded with the assertions above
 
 WEAK (measurement only — never trains anything)
   1. checkout base_commit
@@ -70,6 +72,22 @@ WEAK (measurement only — never trains anything)
   4. run pytest
   5. verdict := exit status
 ```
+
+**Step 4's executed-set assertion, added 2026-07-28.** It is not a refinement of the
+skipped-count check; it closes a hole that check never covered (cheat 7 below). An exit status
+answers *"did anything fail?"* — it cannot answer *"were these the tests?"*, and the reward
+rests on the second question. **Deselection is not skipping:** `-k`, `-m` and `--deselect`
+remove tests from a run without producing a single skip, and they arrive from
+`pyproject.toml` / `pytest.ini` / `setup.cfg` or from a root `conftest.py` — *configuration,
+not test files*, so none of them are in `test_blobs`, and such a patch survives step 2's
+rejection and step 3's restore untouched, leaves the skipped count at zero, and exits 0 with
+the failing test simply absent.
+
+The executed set is read from pytest's own machine-readable report, never from its summary
+line. Three further pins make the config door not the only lock: pytest is invoked with an
+explicit `-c` at a config that configures nothing (so a patched `pyproject.toml` is never
+read), with `-p no:cacheprovider`, and with `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` in the pinned
+environment. They are defence in depth — the assertion is the defence.
 
 ### The provenance boundary
 
@@ -94,28 +112,69 @@ intent is not observable, so we do not claim to measure it.
 
 ---
 
-## 3. The cheat surface — and its honest residual
+## 3. The cheat surface — and its honest residuals
 
-`prd-interview` requires treating *"it can't cheat"* as an unfinished answer. The full
-enumeration:
+`prd-interview` requires treating *"it can't cheat"* as an unfinished answer. The
+enumeration, **which is provisional and append-only rather than complete** (see the note
+below it):
 
 | # | Cheat | Defeated by | Status |
 |---|---|---|---|
 | 1 | Edit the test file to delete or weaken the failing assertion | Patch rejected if it touches a test path; tests restored from golden post-patch | **Killed** |
 | 2 | Weaken an assert in place (`assertEqual` → `assertTrue`) | Same boundary | **Killed** |
-| 3 | Mutate a fixture or `conftest.py` | Same boundary — fixtures are operator-held | **Killed** |
-| 4 | `sys.exit(0)` / `os._exit(0)` before assertions run | Exit status read from the runner; `pass_to_pass` must also hold | **Killed** |
-| 5 | Monkeypatch the runner, or register a `conftest` plugin that skips | Boundary, plus skipped-test count asserted zero | **Killed** |
+| 3 | Mutate a fixture or `conftest.py` | Same boundary — **but only for the files the manifest actually declares.** "Fixtures are operator-held" is a statement about task authoring, not about the verifier; see cheat 10 | **Killed when declared** |
+| 4 | `sys.exit(0)` / `os._exit(0)` before assertions run | Exit status read from the runner; `pass_to_pass` must also hold; and a run with no report behind it is `UNVERIFIED`, never `PASS` | **Killed** |
+| 5 | Monkeypatch the runner, or register a `conftest` plugin that skips | Boundary, plus skipped-test count asserted zero. **That count does not cover deselection** — deselected tests produce no skip at all, which is cheat 7 | **Killed** |
 | 6 | **Special-case the known input** — hardcode the expected output instead of fixing the bug | *Partially.* Sits entirely inside the boundary. | **RESIDUAL** |
+| 7 | Remove the failing test from the run without skipping it — `-k` / `-m` / `--deselect` via `addopts` in `pyproject.toml`, `pytest.ini` or `setup.cfg`, or via a root `conftest.py` | The executed node-id set asserted equal to `fail_to_pass + pass_to_pass` (§ 2), plus the explicit empty `-c` config, `-p no:cacheprovider` and `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` | **Killed** |
+| 8 | Rename the operator's test aside and leave a passing stub at its node id | The post-apply footprint is taken from `git status`, where the rename is a deletion plus an untracked file. `git apply --numstat` reports a rename by its **destination only**, so the pre-apply check alone would not see the source path | **Killed** |
+| 9 | Address the operator's test by another casing (`Tests/test_addition.py`) — macOS's default volume is case-insensitive, so the path reaches the held file while comparing unequal to it | Held paths compared case-folded as well as exactly | **Killed** |
+| 10 | **Mutate a file a held test depends on that the manifest never declared** — e.g. a `conftest.py` outside `test_blobs` | *Not at all.* The boundary is exactly as wide as `test_blobs`, and no set-comparison can infer an omission | **RESIDUAL** |
+
+> **Corrected and extended 2026-07-28, from building the verifier (P1 slice 1).** Rows 7–10
+> and the qualifications on rows 3 and 5 postdate the original six-row table. Cheat 7 was found
+> in the P1 PRD's self-critique, 8 and 9 while implementing the patch-scope check, and 10 while
+> writing the corpus — **four of the ten entries arrived after the table read as an enumeration
+> of the surface.** The honest conclusion is not that the list is now finished; it is that a
+> cheat surface is discovered, never enumerated up front. Treat it as append-only and never
+> describe it as exhaustive. Every row is backed by a fixture in
+> `tests/adversarial/test_cheats.py`, which asserts **both** halves of the differential (STRICT
+> rejects *and* WEAK accepts) and asserts *which* sub-verdict fired, so a rejection for an
+> unrelated reason cannot read as a defence.
+
+**Two of the ten get through, and neither is buried.**
 
 **Cheat 6 is not solved, and this document will not pretend otherwise.** A patch that
 special-cases the exact test input satisfies every structural check above. It is mitigated —
 `pass_to_pass` catches the crude version, and held-out evaluation means a policy that only
-memorises training tasks shows no held-out gain — but it is **not eliminated**.
+memorises training tasks shows no held-out gain — but it is **not eliminated**. The sandbox
+does not narrow it: it confines what the run can **write**, never what it can **read**
+(`file-read*` is allowed wholesale, observed on this machine 2026-07-28 —
+`docs/planning/_card/understanding.md` § 2c), and the golden tests are restored *into* the
+checkout before pytest runs. The information needed to special-case is available to the policy
+**by construction**; no claim of read-blindness may be made anywhere.
 
-Stated precisely: **the verifier guarantees that the tests genuinely pass on unmodified
-tests. It does not guarantee that the fix generalises.** Closing the gap (held-out test
-variants, mutation testing) is post-horizon and is not claimed here.
+**Cheat 10 is a second residual, found in P1 and reported rather than patched.** Row 3's
+original defence — *"fixtures are operator-held"* — described how a task ought to be authored,
+not anything the verifier enforces. If a held test reads its expected value from a
+`conftest.py` the manifest does not list in `test_blobs`, that file is outside the boundary: the
+patch touches no held path, the held tests are restored unchanged, the declared tests run, and
+the failing test passes against a fixture the policy rewrote. **The reward is paid on a bug that
+was never fixed.** Nothing in the verifier can infer the omission, because *"which files does
+this test depend on"* is not a question a set-comparison can answer. Narrowing it belongs to
+**task ingestion** — declaring a held test's transitive dependencies when the task is minted —
+and it is not claimed here.
+
+Stated precisely, with both bounds this document previously left out:
+
+> **The verifier guarantees that the operator-held tests, as the operator wrote them, genuinely
+> ran and genuinely passed.** It does **not** guarantee that the fix generalises (cheat 6); the
+> guarantee extends only as far as the manifest is complete (cheat 10); and the sandbox confines
+> what the run can write, **not** what it can read.
+
+Closing either residual — held-out test variants and mutation testing for cheat 6, declaring a
+held test's transitive dependencies at ingestion for cheat 10 — is post-horizon and is not
+claimed here.
 
 ---
 
@@ -152,16 +211,17 @@ base-model bake-off — run **against the working verifier**, not on paper.
 
 **Exit criteria**
 - `uv run pytest tests/adversarial/` exits 0, where the suite asserts, per cheat fixture:
-  - cheats 1–5: **STRICT rejects AND WEAK accepts** — proving the differential is real
-    rather than vacuously zero
-  - cheat 6: accepted by both, asserted as the *documented, expected* residual so a future
-    reader cannot mistake silence for coverage
+  - the killed cheats (§ 3 — 1–5 and 7–9): **STRICT rejects AND WEAK accepts** — proving the
+    differential is real rather than vacuously zero — *and* which sub-verdict fired, so a
+    rejection for an unrelated reason cannot pass for a defence
+  - the residuals (§ 3 — cheats 6 and 10): accepted by both, asserted as *documented, expected*
+    residuals so a future reader cannot mistake silence for coverage
 - `uv run pytest tests/test_no_inference_on_reward_path.py` exits 0 — an AST walk over every
   module on the reward path fails the build if any inference library is imported. The walk is
   **scoped to the reward-path packages**, not the whole tree, so it stays true once `mlx-lm`
   is legitimately installed elsewhere; it carries an anti-vacuity control asserting the walk
-  actually sees imports (§ 7). **Two porting traps, verified against Belay's source and both
-  fatal to the guard if missed:**
+  actually sees imports (§ 7). **Three porting traps, verified against Belay's source and each
+  fatal to the guard if missed** (the third added 2026-07-28, from the P1 dig):
   - Belay's `_is_inference_import` gates its first-party half on `if root == "belay"`
     (`tests/test_verify_zero_llm.py:114-121`). Ported verbatim, that string stays `"belay"`,
     so `whetstone.judge` and `whetstone.model` pass straight through and the ban silently
@@ -172,6 +232,14 @@ base-model bake-off — run **against the working verifier**, not on paper.
   - Belay's `_INFERENCE_CLIENTS` list contains no `mlx`, `mlx_lm`, `peft`, or `accelerate` —
     it had no reason to. Those are exactly the libraries Whetstone installs, so the inherited
     list has a hole shaped like our own stack. Extend it explicitly; do not port it as-is.
+  - **Relative imports are invisible to the walk.** Belay's `ImportFrom` branch is guarded by
+    `if node.level == 0` (`tests/test_verify_zero_llm.py:105-111`), so any `from .x import y`
+    records nothing at all. Belay gets away with it because its first-party detection keys on
+    the dotted `belay.judge` form, which only an absolute import produces. **Our reward path is
+    a single package whose modules import each other relatively**, so ported as-is the guard
+    would watch `whetstone/verify/` and never see `from .judge import score` — the exact import
+    it exists to catch, written the exact way our own code writes imports. The port must resolve
+    a relative import to its absolute dotted path from the file's position in the package.
 - `uv run whetstone verify --task <fixture> --patch <fixture>` emits a verdict
 - `tasks/` holds instances from both sources with committed provenance
 - A baseline bake-off report exists under `reports/baseline/`
@@ -308,6 +376,7 @@ is over half docstring, so the bare figure means little without its scope.
 | `verify/invariants.py` | The provenance boundary — operator policy never sourced from the agent's own evidence. Verified — `invariants.py:9-16`, and the boundary is carried by the *signature*: `load_invariants(path: Path)` (`:69`) takes a filesystem path and never trace records. Belay pins this with `tests/test_invariants.py:55 test_no_invariant_is_ever_sourced_from_a_trace`; port that test, not just the module |
 | `corpus/metrics.py` | Precision / recall / **coverage**, with `UNVERIFIED` excluded from the confusion matrix but **kept in coverage's denominator** — verified at `metrics.py:142-144` (`if verdict == "UNVERIFIED": unverified += 1; continue`) and `:157-166` (`adjudicable = decided + unverified`; `coverage = decided / adjudicable`). **Caveat for P3:** the module documents *two* honesty rules, and we inherit only this one. The other is the **label trap** (`metrics.py:15-29`) — cases lacking independent human ground truth are dropped from P/R *and* from coverage entirely, because counting every FAIL as a true positive makes precision 1.0 by construction. Our reward is an exit status with no human adjudication, so that rule has no analogue here. It is **declined as inapplicable, not overlooked** — recorded so a P3 implementer reading `metrics.py` knows which of the two paths to port |
 | `tests/test_verify_zero_llm.py` | The AST guard proving no model sits on the reward path. It bans inference clients (`openai`, `anthropic`, `torch`, `transformers`, `ollama`, `vllm`, `langchain`, …) *and* inference-shaped first-party module names (`llm`, `judge`, `model`, `inference`, `prompt`), and it is **scoped to named packages rather than the whole tree** — Belay's own non-shipped `eval/` tree legitimately imports `anthropic`/`openai`. The scoping matters more for us than for Belay: Whetstone will have `mlx-lm` genuinely installed, so an accidental inference import on the reward path is easy to make and invisible without a guard aimed at exactly that path. It also ships an anti-vacuity control asserting the AST walk really observes the imports the guarded layer makes |
+| `sandbox/seatbelt.py` | **The Seatbelt approach, not the module** — added 2026-07-28, after the P1 dig found this table listing no sandbox while § 2 requires one. Verified **separable from the declined replay substrate**: `seatbelt.py:44-56` imports only stdlib, one exception class (`snapshot.bth1.UnsupportedPlatform`) and an optional `TraceWriter` whose own docstring says *"Containment does not depend on it: the boundary is the kernel's"* (`:357-358`); nothing under `sandbox/` imports `belay.replay`, while `proxy.py:595-596` and `cli.py:84,141,190,260` import the sandbox. **Replay depends on the sandbox; the sandbox never depends on replay** — so declining replay costs us nothing here. What we take is the *shape*: `(allow default)`, then `(deny network*)` and `(deny file-write*)`, then one escaped `subpath` allow, executed as `sandbox-exec -f <profile> <command>`. What we do **not** take is the file: 417 lines carrying an `allow-ports` mode, a closed `NetworkPolicy` enum and a denial-from-stderr parser this reward never uses, all of which would have to satisfy `mypy --strict`. Ours is a six-line deny-all profile. **The `_quote` SBPL escaping (`seatbelt.py:87-95`) is taken as a requirement, not an option** — an unescaped `"` in a scope path is a policy injection into the boundary that enforces the policy, and our profile being smaller does not make that hole smaller |
 | `eval/instances/` + `eval/scripts/` | SWE-bench-Lite eligibility filter and the pure, offline, seeded stratified draw |
 
 **Declined — the replay substrate.** `CLAUDE.md:79` says *"reuse Belay's verifier/replay
