@@ -42,6 +42,44 @@ def expected_sum():
     return 5
 """
 
+#: A second conftest, one level down, so the floor has a *path* to walk rather than a single
+#: root file. It is load-bearing too: ``expected_quotient`` is what the division test asserts
+#: against.
+DONOR_TESTS_CONFTEST = """\
+import pytest
+
+
+@pytest.fixture
+def expected_quotient():
+    return 2
+"""
+
+#: A conftest that is NOT on the path to any held test. A floor implemented as "every
+#: ``conftest.py`` in the repository" would hold this one, and holding a file the task has no
+#: relationship to is not free: it is one more path the policy may not touch and one more blob
+#: the manifest carries, both justified by nothing.
+DONOR_UNRELATED_CONFTEST = """\
+import pytest
+
+
+@pytest.fixture
+def unrelated():
+    return object()
+"""
+
+#: A conftest that exists at the CHILD and not at the parent — added by the same commit that
+#: modifies the test below it. The floor is read at the parent, so this must not be held: a held
+#: path absent from the checkout is exactly what ``strict.py:151-160`` answers UNVERIFIED for,
+#: and a task that is UNVERIFIED forever is worse than one that was never minted.
+DONOR_UNIT_CONFTEST = """\
+import pytest
+
+
+@pytest.fixture
+def not_yet_used():
+    return None
+"""
+
 #: The same file after the commit that (wrongly, for a miner) touches it: see
 #: ``Fix subtraction and relax the conftest``, the over-declaration candidate.
 DONOR_CONFTEST_TOUCHED = """\
@@ -76,6 +114,10 @@ def subtract(a, b):
 
 def is_even(n):
     return n % 2 == 1
+
+
+def round_half(n):
+    return int(n)
 """
 
 DONOR_CALC_ADD_FIXED = DONOR_CALC_SEED.replace(
@@ -104,6 +146,10 @@ DONOR_CALC_SUBTRACT_FIXED = DONOR_CALC_DIVIDE_FIXED.replace(
 
 DONOR_CALC_PARITY_FIXED = DONOR_CALC_SUBTRACT_FIXED.replace(
     "def is_even(n):\n    return n % 2 == 1", "def is_even(n):\n    return n % 2 == 0"
+)
+
+DONOR_CALC_ROUNDING_FIXED = DONOR_CALC_PARITY_FIXED.replace(
+    "def round_half(n):\n    return int(n)", "def round_half(n):\n    return int(n + 0.5)"
 )
 
 _ADDITION_SEED = """\
@@ -154,8 +200,28 @@ def test_dividing_by_one_is_the_identity():
     assert divide(4, 1) == 4
 
 
-def test_division_halves():
-    assert divide(4, 2) == 2
+def test_division_halves(expected_quotient):
+    assert divide(4, 2) == expected_quotient
+"""
+
+_EDGE_SEED = """\
+from calc import round_half
+
+
+def test_rounding_down_stays_down():
+    assert round_half(1.2) == 1
+"""
+
+_EDGE_FIXED = """\
+from calc import round_half
+
+
+def test_rounding_down_stays_down():
+    assert round_half(1.2) == 1
+
+
+def test_rounding_up_rounds_up():
+    assert round_half(1.6) == 2
 """
 
 _SUBTRACTION_SEED = """\
@@ -253,6 +319,8 @@ class DonorCommit:
 #: | Fix subtraction and relax the conftest | **rejected in Phase 2** | its gold patch
 #:   touches the root `conftest.py`, which the conftest floor would hold |
 #: | Fix parity | **selected** | modifies a test file and a source file; its test is flaky |
+#: | Fix rounding and add a unit conftest | **selected** | its added `tests/unit/conftest.py`
+#:   is absent from the parent, so the floor must not hold it |
 DONOR_HISTORY: tuple[DonorCommit, ...] = (
     DonorCommit(
         subject="Seed the calculator",
@@ -260,10 +328,13 @@ DONOR_HISTORY: tuple[DonorCommit, ...] = (
             "README.md": _README_SEED,
             "calc.py": DONOR_CALC_SEED,
             "conftest.py": DONOR_CONFTEST,
+            "tests/conftest.py": DONOR_TESTS_CONFTEST,
+            "other/conftest.py": DONOR_UNRELATED_CONFTEST,
             "tests/test_addition.py": _ADDITION_SEED,
             "tests/test_division.py": _DIVISION_SEED,
             "tests/test_subtraction.py": _SUBTRACTION_SEED,
             "tests/test_parity.py": _PARITY_SEED,
+            "tests/unit/test_edge.py": _EDGE_SEED,
         },
     ),
     DonorCommit(
@@ -313,6 +384,17 @@ DONOR_HISTORY: tuple[DonorCommit, ...] = (
         changes={
             "calc.py": DONOR_CALC_PARITY_FIXED,
             "tests/test_parity.py": _PARITY_FIXED,
+        },
+    ),
+    DonorCommit(
+        subject="Fix rounding and add a unit conftest",
+        changes={
+            "calc.py": DONOR_CALC_ROUNDING_FIXED,
+            "tests/unit/test_edge.py": _EDGE_FIXED,
+            # ADDED by this commit, so it is not in the parent's tree. The floor is read at the
+            # parent; a floor read at the child would hold this and mint a task STRICT can only
+            # ever call UNVERIFIED.
+            "tests/unit/conftest.py": DONOR_UNIT_CONFTEST,
         },
     ),
 )
@@ -369,10 +451,14 @@ def commit_shas(donor: Path) -> dict[str, str]:
 __all__ = [
     "DONOR_CALC_ADD_FIXED",
     "DONOR_CALC_PARITY_FIXED",
+    "DONOR_CALC_ROUNDING_FIXED",
     "DONOR_CALC_SEED",
     "DONOR_CONFTEST",
     "DONOR_CONFTEST_TOUCHED",
     "DONOR_HISTORY",
+    "DONOR_TESTS_CONFTEST",
+    "DONOR_UNIT_CONFTEST",
+    "DONOR_UNRELATED_CONFTEST",
     "DonorCommit",
     "build_donor",
     "commit_shas",

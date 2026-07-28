@@ -98,6 +98,7 @@ def test_candidates_are_returned_in_history_order(donor: Path) -> None:
         "Fix division on the sidecar",
         "Fix subtraction and relax the conftest",
         "Fix parity",
+        "Fix rounding and add a unit conftest",
     ]
 
 
