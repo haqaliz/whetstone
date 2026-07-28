@@ -19,11 +19,13 @@ and built at test time (``tests/fixtures/repos``).
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 from pathlib import Path
 
 import pytest
 from fixtures.repos import (
+    BROKEN_ADDER,
     CALC_FIXED,
     DESELECTING_CONFTEST,
     EXITING_CONFTEST,
@@ -416,3 +418,30 @@ def test_a_patch_addressing_a_held_test_by_a_different_casing_is_refused(tmp_pat
     assert result.status is Status.FAIL, result.verdicts
     assert _status_of(result, "patch-scope") is Status.FAIL
     assert not list(sandbox_root.rglob("*.xml")), "a report exists, so pytest was run anyway"
+
+
+def test_a_task_declaring_a_held_test_non_canonically_cannot_be_built_at_all(
+    tmp_path: Path,
+) -> None:
+    """A held path spelled ``./tests/…`` used to fall out of the rejection set. Now it is refused.
+
+    **What was demonstrated before the loader was fixed**, with this exact fixture and a patch
+    rewriting ``tests/test_addition.py``: ``verify_strict`` produced no ``patch-scope`` verdict
+    whatsoever — the verdicts were ``pytest, skipped, executed-set, fail-to-pass``, meaning the
+    patch reached the sandbox and pytest actually ran. ``_held_among`` compares the manifest's
+    raw key against the path git reports, git reports ``tests/test_addition.py``, and
+    ``./tests/test_addition.py`` matches it neither exactly nor case-folded. The unconditional
+    restore still wrote the golden bytes back, so the run reported FAIL on the merits rather
+    than rewarding the cheat — that is why this was a defence-in-depth hole and not a live
+    reward hole. But the refusal is a separate guarantee from the restore, and it should not
+    have a spelling-shaped hole in it.
+
+    Closed at the door instead: the task can no longer be constructed, so there is no patch to
+    refuse. Asserted end to end through ``build_task`` rather than at the loader — the loader's
+    own cases live in ``tests/test_task_contract.py``, and what this pins is that the shape
+    which reached the reward is now unreachable from a manifest.
+    """
+    with pytest.raises(ValueError, match="non-canonical"):
+        build_task(
+            tmp_path, dataclasses.replace(BROKEN_ADDER, held=("./tests/test_addition.py",))
+        )

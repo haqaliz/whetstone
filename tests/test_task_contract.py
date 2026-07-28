@@ -25,6 +25,7 @@ selector keyed on a return annotation that never matches — before being truste
 import base64
 import inspect
 import json
+import re
 from collections.abc import Callable
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -181,6 +182,34 @@ def test_a_blob_path_escaping_the_checkout_is_rejected(tmp_path: Path) -> None:
     blob = base64.b64encode(NON_UTF8_BLOB).decode("ascii")
     with pytest.raises(ValueError, match="escape"):
         load_task(write_manifest(tmp_path, manifest_with(test_blobs={"../tests/x.py": blob})))
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "./tests/test_x.py",
+        "tests//test_x.py",
+        "tests/test_x.py/",
+        "tests/./test_x.py",
+        ".",
+        "",
+    ],
+)
+def test_a_non_canonical_blob_path_is_rejected(tmp_path: Path, path: str) -> None:
+    """A blob path is compared LITERALLY, so a second spelling of it is a second file.
+
+    None of these escape the checkout, and every one of them opens the same hole: the key is
+    stored raw and ``strict._held_among`` compares that raw string against the path git
+    reports, which is always canonical. ``./tests/test_x.py`` therefore drops out of the
+    patch-**rejection** set while still naming the file the restore writes over — the refusal
+    and the restore stop agreeing about which files the operator holds.
+
+    Rejected rather than normalised: this loader's contract is that nothing loads as a silent
+    default, and quietly rewriting the operator's manifest is one.
+    """
+    blob = base64.b64encode(NON_UTF8_BLOB).decode("ascii")
+    with pytest.raises(ValueError, match=f"test_blobs path {re.escape(repr(path))}"):
+        load_task(write_manifest(tmp_path, manifest_with(test_blobs={path: blob})))
 
 
 def test_a_non_string_provenance_value_is_rejected(tmp_path: Path) -> None:

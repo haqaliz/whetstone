@@ -205,7 +205,8 @@ def _test_blobs(raw: dict[str, Any], *, where: str) -> Mapping[str, bytes]:
 
     Decoded from base64 to `bytes` and left there. The paths are checked to be relative and
     non-escaping because STRICT restores each one into a checkout, and a path that resolved
-    outside it would write wherever the manifest said.
+    outside it would write wherever the manifest said — and canonical, because it also
+    compares them literally against what git reports. See `_check_blob_path`.
     """
     value = raw["test_blobs"]
     if not isinstance(value, dict):
@@ -241,7 +242,22 @@ def _test_blobs(raw: dict[str, Any], *, where: str) -> Mapping[str, bytes]:
 
 
 def _check_blob_path(path: str, *, where: str) -> None:
-    """Repository-relative, and staying inside the repository."""
+    """Repository-relative, staying inside the repository, and spelled the way git spells it.
+
+    The third of those is not cosmetic. A blob path is stored as the raw manifest string and
+    is compared **literally** downstream: STRICT asks whether a patch touched one of these
+    paths by matching the strings git reports against these keys. Git always reports its own
+    canonical spelling, so a key written `./tests/x.py` matches nothing git ever says and
+    drops straight out of the patch-REJECTION set — while `checkout / "./tests/x.py"` still
+    resolves to the very file the restore writes golden bytes over. The refusal and the
+    restore would then disagree about which files the operator holds, and the disagreement is
+    invisible: the manifest looks right, the file is right, only the comparison is blind.
+
+    **Rejected, not normalised.** Rewriting the operator's path for them would be exactly the
+    silent default this loader refuses everywhere else — and the caller who wrote a
+    non-canonical path has a bug worth hearing about, not a spelling worth fixing behind
+    their back. An ingester emits canonical paths; a human is told which one to write.
+    """
     pure = PurePosixPath(path)
     if pure.is_absolute() or path.startswith("/"):
         raise ValueError(
@@ -252,6 +268,18 @@ def _check_blob_path(path: str, *, where: str) -> None:
         raise ValueError(
             f"{where} has a test_blobs path {path!r} that would escape the repository under "
             "test; blob paths must stay inside the checkout"
+        )
+    if not pure.parts:
+        raise ValueError(
+            f"{where} has an empty test_blobs path {path!r}; a blob path must name a file "
+            "inside the repository under test"
+        )
+    canonical = str(pure)
+    if canonical != path:
+        raise ValueError(
+            f"{where} has a non-canonical test_blobs path {path!r}; write it as {canonical!r}. "
+            "Blob paths are compared literally against the paths git reports, so a second "
+            "spelling of a held test is a path the patch-rejection check will never match"
         )
 
 
