@@ -1,120 +1,150 @@
-# feat p1-verifier-core — The task contract and the strict/weak verifier core (ROADMAP P1, slice 1)
+# feat p1-task-ingestion — `tasks/` ingestion and the on-disk task format (ROADMAP P1, slice 2)
 
 ## Source
 
-**FALLBACK path.** No GitHub issue exists. `gh issue list --state all` returns "No Issues"
-against `haqaliz/whetstone` (Issues reachable, repo empty of them), and the `id` is a slug,
-not a number. Per `references/gather-context.md` §0 this is the expected case for this repo —
-the same path P0 took (card preserved in history at `3662255`).
+**FALLBACK path.** No GitHub issue exists. `gh issue list --limit 10` returns "No Issues"
+against `haqaliz/whetstone`, and the `id` is a slug, not a number. This is the expected case
+for this repo — the same path P0 (`3662255`) and P1 slice 1 (`621831e`) took.
 
-The upstream spec is committed: `docs/ROADMAP.md` § 4 "P1 — Task contract + verifier", merged
-to `master` in PR #2 (`347655a`). The roadmap, not this card, is the authority on P1's exit
-criteria.
+The upstream spec is committed: `docs/ROADMAP.md` § 4 "P1 — Task contract + verifier"
+(exit criteria at `:243-247`) and § 1 "The task family" (`:13-48`). The roadmap, not this
+card, is the authority on P1's exit criteria.
 
 ## Brief
 
 Reproduced verbatim from the `whetstone-next` handoff the user acted on by invoking
-`wbf feat p1-verifier-core`:
+`wbf feat p1-task-ingestion`:
 
-> Build the first slice of ROADMAP P1 (docs/ROADMAP.md:144-176): the task contract and the
-> strict/weak verifier core, so the reward exists and is provably ungameable for cheats 1-5.
-> In scope: the task contract fields (ROADMAP.md:42-48); STRICT and WEAK as specified at
-> :56-72; the sandbox at /_sandbox/<run_id>/ with no network and a fixed seed; Belay's verdict
-> semantics ported (UNVERIFIED ranked above PASS, empty set reduces to UNVERIFIED — take the
-> test at belay tests/test_invariants.py:55, not just the module); the adversarial cheat corpus;
-> and the AST inference-guard. Out of scope for this slice: tasks/ ingestion, the base-model
-> bake-off, reports/baseline/, and PREREGISTRATION.md — later P1 slices.
+> Build `tasks/` ingestion and the on-disk task format — the remaining unblocked P1 exit
+> criterion (docs/ROADMAP.md:243-245). Source B (private: a local commit that turns a failing
+> test green) is the on-thesis headline and must be pure and offline; source A (SWE-bench-Lite,
+> pure-Python subset) follows docs/ROADMAP.md:420-422 — human-run fetch, committed output,
+> seeded offline draw. This slice owns two things slice 1 handed forward: per-instance
+> environment provisioning, flagged High/deferred/UNESTIMATED at
+> docs/planning/p1-verifier-core/prd.md:358 and named as P1's schedule risk at :378-380 — size
+> it in the dig and scope source A down if it doesn't fit rather than faking coverage — and the
+> open question at :365 of whether `whetstone verify` takes a task directory or a manifest file.
 >
-> Caveat for the dig: ROADMAP § 7's "Taken" table lists no sandbox module even though the
-> verifier needs a no-network sandbox, while the older PRD (docs/planning/roadmap-and-task-
-> family/prd.md:58) assumed Belay's Seatbelt ports for free — that claim predates the § 7
-> decline of the replay substrate and is unverified. Establish whether src/belay/sandbox/
-> seatbelt.py is separable from replay/ before designing around it. Also: real SWE-bench
-> instances need per-task Python environments and the usual harness answer is Docker, which the
-> macOS-only decision rules out — build this slice's corpus from synthetic fixture repos with no
-> third-party dependencies, and record the environment-provisioning question as open rather than
-> assuming it away. Finally, ROADMAP.md:166-174 documents two verified AST-guard porting traps
-> (the hardcoded `root == "belay"` first-party gate, and _INFERENCE_CLIENTS missing mlx/mlx_lm/
-> peft/accelerate); honour both.
+> Acceptance criteria (written first — the repo is test-first):
+> 1. A documented on-disk task format; an ingested task round-trips through `load_task`
+>    unchanged, with `test_blobs` byte-identical (no str decode — src/whetstone/verify/task.py).
+> 2. Source B ingestion runs offline over a local repo and emits a valid manifest with committed
+>    provenance; a test asserts no network call on this path.
+> 3. Source A's draw is deterministic: same seed -> same instance set, asserted over repeats.
+> 4. Liveness, not vacuity: for every ingested task, the empty patch yields STRICT FAIL (the
+>    fail_to_pass tests really fail at base_commit) and the reference patch yields STRICT PASS.
+>    A task that passes with no patch is an ingestion bug and must fail the build.
+> 5. Cheat 10 (docs/ROADMAP.md:160-166): the format declares a held test's transitive
+>    dependencies, and ingestion either populates them or records the gap as the documented
+>    residual with a test asserting it — never silence.
+> 6. `uv run ruff check .` and `uv run mypy src/` exit 0; CI green on macos-latest.
 >
-> Acceptance criteria, written first — the repo is test-first:
-> 1. `uv run pytest tests/adversarial/` exits 0, asserting per cheat fixture that cheats 1-5 are
->    STRICT-rejected AND WEAK-accepted (proving the differential is real, not vacuously zero),
->    and that cheat 6 is accepted by both as the documented, expected residual.
-> 2. `uv run pytest tests/test_no_inference_on_reward_path.py` exits 0 — an AST walk scoped to
->    the reward-path packages, carrying both anti-vacuity controls: one asserting the walk
->    really observes imports, and a second asserting the first-party predicate actually fires on
->    a synthetic `whetstone.judge` import.
-> 3. `uv run whetstone verify --task <fixture> --patch <fixture>` emits a verdict, with
->    UNVERIFIED never collapsed into PASS.
-> 4. A determinism test: same task + same patch + same seed → identical verdict.
-> 5. `uv run ruff check .` and `uv run mypy src/` still exit 0, and CI stays green on master.
+> No model is invoked anywhere in this slice; the reward-path import guard
+> (tests/test_no_inference_on_reward_path.py) must stay green.
+
+## Why this slice, per the `whetstone-next` ranking
+
+- It is the only **unblocked** P1 exit criterion. `docs/ROADMAP.md:243-247` leaves three open:
+  `tasks/` instances from both sources with committed provenance, a bake-off report under
+  `reports/baseline/`, and `PREREGISTRATION.md`. Neither `tasks/` nor `reports/` exists on
+  `master` (verified 2026-07-28).
+- The bake-off is defined as running **against the working verifier** (`docs/ROADMAP.md:210`),
+  so it needs task instances — ingestion is its hard dependency, and P2's rollouts depend on
+  both.
+- Ingestion is where cheat 10 gets narrowed: `docs/ROADMAP.md:160-166` assigns the
+  undeclared-dependency residual to task ingestion explicitly — *"declaring a held test's
+  transitive dependencies when the task is minted"*.
 
 ## The upstream spec (authoritative)
 
-`docs/ROADMAP.md:144-184`, P1. Its six exit criteria, and which this slice takes:
+`docs/ROADMAP.md:243-247`, P1's six exit criteria, and which this slice takes:
 
 | # | P1 exit criterion | This slice |
 |---|---|---|
-| 1 | `uv run pytest tests/adversarial/` exits 0 — cheats 1–5 STRICT-reject AND WEAK-accept; cheat 6 accepted by both as documented residual | **In** |
-| 2 | `uv run pytest tests/test_no_inference_on_reward_path.py` exits 0 — reward-path-scoped AST walk + anti-vacuity controls, honouring the two porting traps (`:166-174`) | **In** |
-| 3 | `uv run whetstone verify --task <fixture> --patch <fixture>` emits a verdict | **In** |
-| 4 | `tasks/` holds instances from both sources with committed provenance | **Deferred** — later P1 slice |
-| 5 | A baseline bake-off report exists under `reports/baseline/` | **Deferred** — needs a base model |
-| 6 | `PREREGISTRATION.md` is committed | **Deferred** — later P1 slice, before any training run |
+| 1 | `uv run pytest tests/adversarial/` exits 0 | **Shipped** (PR #5) — must stay green |
+| 2 | `uv run pytest tests/test_no_inference_on_reward_path.py` exits 0 | **Shipped** (PR #5) — must stay green |
+| 3 | `uv run whetstone verify --task <fixture> --patch <fixture>` emits a verdict | **Shipped** (PR #5); this slice may extend its input form (see open question 2) |
+| 4 | `tasks/` holds instances from both sources with committed provenance | **In — the whole slice** |
+| 5 | A baseline bake-off report exists under `reports/baseline/` | **Out** — blocked on this slice, then needs a base model |
+| 6 | `PREREGISTRATION.md` is committed | **Out** — separate, unblocked; named as the `whetstone-next` alternate |
 
-The verifier spec itself is `docs/ROADMAP.md:52-93` (STRICT / WEAK / the provenance boundary /
-the definition of `N`); the task contract fields are `:42-48`; the cheat enumeration and its
-residual are `:98-118`.
+Task family and contract: `docs/ROADMAP.md:13-48`. The two sources (`:28-38`): **A — public**
+(SWE-bench-Lite, pure-Python subset; comparability, contamination-exposed) and **B — private**
+(mined from the user's own repos; the pre-registered headline, uncontaminated, never leaves the
+box). Both are always reported.
 
-**P1's pivot signal** (`:182-184`) belongs to the bake-off, not to this slice: *"if no candidate
-base solves any held-out task, expert iteration has nothing to bootstrap from. Pivot to an
-easier task stratum or a larger base — not to a looser verifier."* This slice cannot trigger it,
-because it runs no model at all.
+**The one declared network exception** (`docs/ROADMAP.md:420-422`): *"fetching public SWE-bench
+instances touches the network. Following Belay's precedent, the fetch is human-run, its output
+committed, and the draw itself pure and offline. Source B never touches the network at all."*
+
+**P1's pivot signal** (`docs/ROADMAP.md:249-252`) belongs to the bake-off, not to this slice —
+this slice runs no model. But it is this slice's ingestion that decides whether the bake-off has
+a stratum to run against at all.
+
+## Handed forward from P1 slice 1 (this slice owns both)
+
+| Item | Where recorded | Status |
+|---|---|---|
+| Per-instance environment provisioning for real SWE-bench instances — Belay's pool carries no `FAIL_TO_PASS`/`PASS_TO_PASS`/test patch, and its `eval/` never executes an instance | `docs/planning/p1-verifier-core/prd.md:358` — **High, deferred, unestimated**; named as P1's schedule risk at `:378-380` | **Open — size it in the dig** |
+| Whether `whetstone verify` accepts a task *directory* or a single manifest file | `docs/planning/p1-verifier-core/prd.md:365` — *"deferred to the ingestion slice, which owns the on-disk task format"* | **Open — this slice decides** |
 
 ## Shipped state this builds on
 
-- **P0 merged** (PR #3 `3662255`, plus PR #4 `b8022d0`). `master` @ `b8022d0`.
-- `src/whetstone/__init__.py` (20 L) + `src/whetstone/cli.py` (72 L) — the CLI exposes exactly
-  `--help` and `--version`; there are no subcommand stubs. `verify` would be the first subcommand.
-- `uv run pytest -q` → **19 passed** (verified in this worktree, 2026-07-28). CI green on
-  `macos-latest`, last three runs ok.
-- Zero runtime dependencies; `mlx-lm` is an **optional** group proven only to resolve and import
-  in CI (`docs/planning/p0-scaffold/prd.md` decision 2). Nothing sits on a reward path today
-  because no reward path exists yet.
+- `master` @ `621831e`. P0 (PR #3) and P1 slice 1 (PR #5) merged. No tags; nothing released.
+- `src/whetstone/verify/` — `task.py` (the frozen `Task` contract + `load_task`), `verdict.py`,
+  `sandbox.py`, `strict.py`, `weak.py`, `repo.py`. `src/whetstone/cli.py` exposes
+  `whetstone verify --task <manifest.json> --patch <file>` (`cli.py:93-100`).
+- `Task` fields (`src/whetstone/verify/task.py`): `task_id`, `source` ∈ {`public`,`private`},
+  `repo_url`, `base_commit`, `problem_statement`, `fail_to_pass`, `pass_to_pass`,
+  `test_blobs` (path → **bytes**, base64 in the manifest), `provenance`. The loader is
+  **fail-closed**: missing field, unknown field, or empty `test_blobs` is a named `ValueError`.
+  Unknown-field rejection means **any new manifest field this slice adds is a contract change**,
+  not an additive one.
+- `tests/adversarial/` — the ten-cheat corpus; eight killed, cheats 6 and 10 asserted as
+  documented residuals.
+- Zero runtime dependencies. `mlx-lm` is an optional group; nothing on the reward path imports
+  it, enforced by `tests/test_no_inference_on_reward_path.py`.
 
 ## Open questions carried in from the selection (for the dig to close)
 
-1. **Is Belay's Seatbelt sandbox separable from the declined replay substrate?**
-   `docs/ROADMAP.md` § 7's "Taken" table lists **no** sandbox module, yet the verifier requires a
-   no-network sandbox (`:54`). `docs/planning/roadmap-and-task-family/prd.md:58` asserted
-   *"Belay's Seatbelt sandbox and APFS `clonefile` snapshot work natively; no porting phase
-   required"* — but that predates § 7's decline and was never re-verified.
-   `~/dev/at/belay/src/belay/sandbox/seatbelt.py` exists (17.9 KB) alongside `gate.py`,
-   `launch.py`, `scope.py`. Establish the dependency direction before designing around it.
-2. **Per-task environment provisioning.** Real SWE-bench instances need per-instance Python
-   environments; the standard harness answer is Docker, which the macOS-only platform decision
-   (`docs/planning/roadmap-and-task-family/prd.md:58`) rules out. This slice can sidestep it with
-   synthetic fixture repos that have no third-party dependencies — but the question must be
-   recorded as open, not assumed away, because P1 exit criterion 4 and all of P2 depend on it.
-3. **The two AST-guard porting traps** (`docs/ROADMAP.md:166-174`) are already verified against
-   Belay's source. Confirm they still hold, and design the second anti-vacuity control that
-   Belay itself lacks.
+1. **How far does environment provisioning actually get on macOS with no Docker?** Slice 1's
+   corpus used synthetic fixture repos with no third-party dependencies precisely to sidestep
+   this. Real source-A instances need per-instance Python environments. Decide with evidence
+   whether any SWE-bench-Lite subset is provisionable under `uv` alone on this machine, and if
+   the answer is "few", **scope source A down and say so** rather than shipping an empty `tasks/`
+   directory that reads as coverage.
+2. **Directory or manifest?** The format decision (`prd.md:365`). A directory can carry blobs as
+   real files and a committed provenance record; a single JSON keeps `load_task`'s fail-closed
+   parse exactly as shipped. Whichever is chosen, `load_task`'s byte-identity discipline for
+   `test_blobs` is non-negotiable.
+3. **Cheat 10 and the transitive-dependency declaration.** `docs/ROADMAP.md:160-166` says
+   narrowing it *"belongs to task ingestion"*. Establish what is actually computable offline
+   (import graph? runtime-observed reads?) versus what must be declared by hand — and if the
+   honest answer is "the residual stands", it must be re-asserted as a documented residual, not
+   quietly dropped.
+4. **Source B needs a real donor repo.** "A commit that turns a failing test green" must be mined
+   from something. Which local repo(s) are in scope, and does mining them stay inside the
+   no-egress guardrail (it should — everything is local by construction)?
 
 ## Related work
 
-- **PR #3** (`3662255`) — P0 scaffold. The direct upstream; its `docs/planning/p0-scaffold/`
-  artifacts are the format precedent.
-- **PR #2** (`347655a`) — `docs/ROADMAP.md` and its PRD. The authoritative spec.
-- **Belay** (`~/dev/at/belay`) — v0.7.0, shipped. Source of the verdict semantics, the
-  provenance boundary, the corpus metrics, the AST guard, and the eval instances
-  (`docs/ROADMAP.md:303-311`). Its replay substrate is **declined** (`:313-336`).
+- **PR #5** (`621831e`) — P1 slice 1, the direct upstream. `docs/planning/p1-verifier-core/` is
+  the format precedent for this slice's artifacts.
+- **PR #2** (`347655a`) — `docs/ROADMAP.md` and its PRD; the authoritative spec.
+- **Belay** (`~/dev/at/belay`) — `eval/instances/` + `eval/scripts/` are listed as **taken**
+  (`docs/ROADMAP.md:380`): the SWE-bench-Lite eligibility filter and the pure, offline, seeded
+  stratified draw. That is this slice's most direct inheritance, and its known gap is recorded
+  above (no `FAIL_TO_PASS`/`PASS_TO_PASS`/test patch in the pool).
+
+## Labels / comments
+
+None — no issue exists, so there are no labels, linked PRs, or comments to gather.
 
 ## Note on this file
 
 `docs/planning/_card/issue.md` is id-free by design (`whetstone-begin-fast` § Phase 1) and each
 unit of work **overwrites** the previous one's card on its own branch. P0's card is preserved in
-history at `3662255`. Flagged as a workflow wart, not a blocker.
+history at `3662255`, P1 slice 1's at `621831e`. Flagged as a workflow wart, not a blocker.
 
 ## Attachments
 
