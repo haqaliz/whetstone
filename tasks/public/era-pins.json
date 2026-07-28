@@ -2,6 +2,18 @@
   "schema": "whetstone-source-a-era-pins/1",
   "note": "Hand-determined install sets, one per source-A instance. They are NOT derivable from the repository or from the dataset: a repository declares ranges (flask says 'click>=8.0' at every commit it has ever had), so environment_setup_commit cannot answer which versions the era used. Source B escapes this because a donor's uv.lock is its owner's own recorded resolution; source A has no such artifact. Every entry here was found by hand, one incident at a time, and an instance with no entry is REJECTED at gate 3 and recorded in ineligible.json rather than resolved on the day the filter happened to run. Requirements are exact '==' only, validated against the loader's own predicate. The list is the complete install set: the runtime dependencies AND the runner, because a pin set that cannot run pytest describes an environment no task was ever verified in.",
   "instances": {
+    "pallets__flask-4045": {
+      "python": "3.12",
+      "requirements": [
+        "click==8.0.1",
+        "itsdangerous==2.0.1",
+        "jinja2==3.0.1",
+        "markupsafe==2.0.1",
+        "pytest==7.4.4",
+        "werkzeug==2.0.1"
+      ],
+      "determined_by": "Found by hand for this instance's 2021-05-13 base commit (d8c37f43724c), whose setup.py declares only Werkzeug>=2.0, Jinja2>=3.0, itsdangerous>=2.0 and click>=7.1.2 - four unbounded ranges, so the era is not derivable from the repository. The .0.1 point releases of each are the versions contemporary with that commit. pytest is the runner rather than a version under study, so it is pinned to a release that runs on the nominated interpreter (the same line environment.capture draws when it installs pytest outside the lock); pytest 6.x, the era-contemporary choice, does not run on 3.12 at all."
+    },
     "pallets__flask-5063": {
       "python": "3.12",
       "requirements": [
@@ -13,7 +25,7 @@
         "pytest==7.4.4",
         "werkzeug==2.3.0"
       ],
-      "determined_by": "Found by hand in the p1-task-ingestion dig. Resolved without pins, uv selected click 8.4.2, which removed CliRunner(mix_stderr=); four pass_to_pass tests failed and STRICT returned FAIL for a patch that was correct - a false FAIL produced by the resolution date. click==8.1.3, werkzeug==2.3.0 and jinja2==3.1.2 made the same task fully green (54 passed, executed == declared, zero skips). blinker, itsdangerous, markupsafe and pytest are era-contemporary companions of that set."
+      "determined_by": "Found by hand in the p1-task-ingestion dig. Resolved without pins, uv selected click 8.4.2, which removed CliRunner(mix_stderr=); four pass_to_pass tests failed and STRICT returned FAIL for a patch that was correct - a false FAIL produced by the resolution date. click==8.1.3, werkzeug==2.3.0 and jinja2==3.1.2 made the same task fully green. blinker, itsdangerous, markupsafe and pytest are era-contemporary companions of that set. NOTE: this instance is nonetheless INELIGIBLE, and its entry is kept so the ledger records the true reason. Two of the node ids SWE-bench declares in its PASS_TO_PASS are truncated mid-parameter in the dataset itself - 'tests/test_cli.py::test_locate_app[cliapp.factory-create_app2(\"foo\",' and 'tests/test_cli.py::test_locate_app[cliapp.factory-' - so pytest exits 4 and gate 2 refuses it. Without this entry it would have been recorded as rejected at gate 3 for having no pins, which is not what is wrong with it."
     }
   }
 }

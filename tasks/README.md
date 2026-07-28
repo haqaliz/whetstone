@@ -5,9 +5,23 @@ from this repository**, and this file exists so that absence reads as a design d
 than as a gap or a cherry-pick. If you came here wondering where the other tasks are, this is
 the answer.
 
-Nothing here is populated yet: ingestion is the slice being built. The layout and its rules land
-first, because a corpus directory whose rules are decided after the data arrives is a corpus
-directory whose rules are decided by the data.
+Source A is populated. **Of SWE-bench-Lite's 300 instances, exactly one is eligible** —
+`pallets__flask-4045` — and `ineligible.json` records all 299 refusals with the gate that made
+each one. That is not a placeholder: it is the honest yield of a filter that proves eligibility
+per instance instead of assuming it, and the funnel below is the deliverable.
+
+| Stage | Refused | Why |
+|---|---:|---|
+| format | 192 | django declares its tests in its own unittest runner's form, sympy declares bare names with no file path. Neither is addressable by pytest |
+| environment | 106 | no era-pins have been determined by hand for them. A repository declares ranges, so nothing in the dataset answers which versions its era used, and resolving at filter time would decide the verdict by the calendar |
+| collectability | 1 | `pallets__flask-5063`: two of the node ids SWE-bench itself declares for it are truncated mid-parameter, so pytest exits 4 |
+| liveness | 0 | nothing reached this gate and failed it |
+| **eligible** | **1** | `pallets__flask-4045` — STRICT PASS, 52 declared node ids, executed == declared, zero skips |
+
+**106 of those refusals are ours to reduce, and the way to reduce them is by hand.** Each needs
+an era-correct install set determined one incident at a time and added to `era-pins.json` with
+how it was determined. That is the honest cost of a pinned corpus, and it is why the number is
+one rather than an estimate.
 
 ---
 
@@ -18,7 +32,7 @@ tasks/
 ├── README.md                   # this file
 ├── public/                     # COMMITTED — source A, public benchmark instances
 │   ├── pool.json               # the fetch output, with a provenance header
-│   ├── selected.json           # the seeded, offline, reproducible draw
+│   ├── era-pins.json           # HAND-DETERMINED install sets, one per instance (an INPUT)
 │   ├── ineligible.json         # the rejection ledger: instance -> the gate that rejected it
 │   └── instances/<id>.json     # one task manifest per eligible instance
 ├── recipes/                    # COMMITTED — HOW source B is mined, never WHAT it produced
@@ -81,6 +95,7 @@ padding but the half that keeps the whole number auditable.
 | Path | Committed? | Why |
 |---|---|---|
 | `public/**` | **Yes** | Public benchmark data. A corpus nobody can inspect cannot support a published number |
+| `public/era-pins.json` | **Yes** | An *input*, not an output: versions found by hand, with how each set was determined. Without it every instance is refused at gate 3, which is the correct behaviour and not a useful corpus |
 | `recipes/**` | **Yes** | A procedure, not the user's code. It is what makes source B re-derivable |
 | `local-ledger.json` | **Yes** | Hashes and verdicts only — evidence about the data, never the data |
 | `local/**` | **Never** | The user's own source, tests and paths. `.gitignore` enforces this; `tests/test_tasks_layout.py` asserts git's own answer, in both directions |
@@ -92,3 +107,33 @@ contains a little of both is not a borderline case — it is the user's code.
 **`local/` is not a staging area.** Nothing is moved from it into a committed directory later.
 If a source-B task is worth publishing, it is re-derived from the recipe against a donor whose
 owner published it.
+
+
+---
+
+## How source A is produced
+
+Two **human-run** steps, in order. Both touch the network, and that is why neither is a
+`whetstone` subcommand — every subcommand the CLI advertises claims to be offline, and a
+networked one would make that claim conditional on which flag was passed. Their **output** is
+committed, and everything else — the whole test suite included — reads only the output.
+
+```
+python -m whetstone.tasks.fetch     # SWE-bench-Lite -> public/pool.json  (no row filter)
+python -m whetstone.tasks.public    # pool -> four gates -> instances/ + ineligible.json
+```
+
+The four gates are numbered as the PRD defines them and **execute** in the order
+`format, environment, collectability, liveness`, which the ledger records. Proving an id
+collectable in the real checkout requires the checkout to be importable, and that is the
+environment gate's answer; run before it, the collectability gate would refuse every instance for
+a reason that has nothing to do with its ids.
+
+To re-prove a single instance without spending the whole funnel again:
+
+```
+python -m whetstone.tasks.public --only pallets__flask-4045
+```
+
+Note that `--only` narrows the ledger's denominator to exactly what was run, which is why the
+ledger records that denominator rather than assuming 300.
