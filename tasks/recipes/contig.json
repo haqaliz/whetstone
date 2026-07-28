@@ -1,0 +1,18 @@
+{
+  "donor": "/Users/aliz/dev/at/contig",
+  "donor_head": "6423297cb7f1e720f781c440ae464d696769cb59",
+  "mined_at": "2026-07-28T18:51:04Z",
+  "pass_to_pass_scope": "held-files",
+  "python": "3.12.13",
+  "schema": "whetstone-source-b-recipe/1",
+  "selection": {
+    "filters": "single-parent commits reachable from HEAD; at least one existing test .py modified (status M); at least one non-test .py touched",
+    "limit": "45",
+    "seed": "1"
+  },
+  "tools": {
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
+    "whetstone": "0.1.0"
+  }
+}
