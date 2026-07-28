@@ -55,12 +55,32 @@ The roadmap it produces must, in turn, define the project's first real metric:
 | # | Decision | Choice |
 |---|---|---|
 | 1 | **Task family** | Python repo bug-fixing, verified by operator-held pytest (`FAIL_TO_PASS` + `PASS_TO_PASS`). **Two task sources, one family:** public SWE-bench-Lite instances (comparable, publishable) and the user's own repos (private, uncontaminated, on-thesis). Identical task contract and identical verifier for both — only provenance differs, so this satisfies `CLAUDE.md` #5's "ONE task family". |
-| 2 | **Platform** | macOS, Apple Silicon. Belay's Seatbelt sandbox and APFS `clonefile` snapshot work natively; **no porting phase required**. |
+| 2 | **Platform** | macOS, Apple Silicon. Belay's Seatbelt sandbox and APFS `clonefile` snapshot work natively; **no porting phase required**. **[†] Half of this is wrong — see the correction below the table.** |
 | 3 | **`N` counter** | **Differential against a deliberately weak verifier.** Every rollout is scored twice — strict (tests restored from golden, patch confined to non-test files) and weak (accept as submitted). `N` = rollouts the weak check PASSed and the strict check FAILed. Reported as *"N attempts a weaker check would have scored as wins."* |
 | 4 | **Horizon** | Through the first honest number. Distillation, the signed morning report, the dashboard, GRPO, and any second family are explicitly **post-horizon**. |
 | 5 | **Improvement method** | Rejection sampling / expert iteration: sample *k* per task, keep only strict-PASS rollouts, LoRA-SFT on those. Every training example is verified-by-construction. |
 | 6 | **Promotion gate** | Strict improvement **and** zero per-task regression **and** full coverage: `promote iff solved_new > solved_old AND regressed == 0 AND unverified == 0`. Otherwise `rejected`, or `UNVERIFIED` when the eval could not complete. **See § Gate Liveness — the zero-unverified term needs a retry policy or the gate may never fire.** |
 | 7 | **Base + runtime** | MLX end-to-end (`mlx-lm`) for both rollouts and LoRA. The specific open base is chosen by a P1 bake-off **against the working verifier**, not on paper — consistent with `CLAUDE.md` #4 (keep the base swappable). |
+
+> **[†] Correction, 2026-07-28 (P1 slice 1 — the row is left standing rather than rewritten, so
+> the record shows what was decided and what it got wrong).** Decision 2's *"Belay's Seatbelt
+> sandbox and APFS `clonefile` snapshot work natively; no porting phase required"* is **half
+> right**.
+>
+> - **The Seatbelt half holds, and is now built.** `seatbelt.py` was verified separable from the
+>   replay substrate (`docs/ROADMAP.md` § 7's `sandbox/seatbelt.py` row), and P1 took the
+>   approach rather than the module: `src/whetstone/verify/sandbox.py` is our own six-line
+>   deny-all SBPL profile, with network denial and write confinement observed on this machine.
+> - **The `clonefile` half does not hold.** It refers to `belay/snapshot/`, which **is part of
+>   the replay substrate `docs/ROADMAP.md` § 7 declines** — the snapshot/restore machinery is
+>   what replay is built on (`snapshot/clone.py:280-298`). This slice takes the sandbox and does
+>   **not** take the snapshot machinery; STRICT materialises each run with a fresh git checkout
+>   into `/_sandbox/<run_id>/` instead. Nothing was ported and nothing is owed, but the sentence
+>   as written implies we inherited a snapshot layer we do not use.
+>
+> The claim's *reason* also needs qualifying: "no porting phase required" was about macOS
+> compatibility, and that is not the same as "nothing to build". Platform compatibility was never
+> the cost — the cost was proving denial rather than assuming it.
 
 ## Requirements for `docs/ROADMAP.md`
 

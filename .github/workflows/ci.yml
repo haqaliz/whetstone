@@ -30,6 +30,48 @@ jobs:
       - run: uv run ruff check .
       - run: uv run mypy src/
       - run: uv run pytest
+      - name: the sandbox actually denies the network on this runner
+        # Asserts the boundary WORKS here, not that a binary is installed — the same standard
+        # as the mlx step below.
+        #
+        # It is a separate step because `uv run pytest` above can go green while proving
+        # nothing about containment. `tests/test_sandbox.py`'s `reachable_network` fixture
+        # SKIPS both network tests when the unsandboxed control cannot reach the network,
+        # because on a runner with restricted egress a kernel refusal and an absent route are
+        # indistinguishable from the probe's side. That skip is the honest answer inside the
+        # suite and an invisible one in CI: the run still reports success, and nobody reading
+        # the log learns that the denial went undemonstrated. So the file is re-run here with
+        # `-rs`, which reports skips, and any skip becomes a named marker in the log and on the
+        # job summary. A silently-skipped sandbox assertion is a green CI that proves nothing,
+        # which is the same class of lie as rendering UNVERIFIED as PASS.
+        run: |
+          set -uo pipefail
+          log="${RUNNER_TEMP}/sandbox.log"
+          if [ ! -x /usr/bin/sandbox-exec ]; then
+            echo "::error::SANDBOX-ABSENT: /usr/bin/sandbox-exec is missing on this runner, so the verifier has no containment boundary here and no reward computed on it would be bounded by one."
+            exit 1
+          fi
+          status=0
+          uv run pytest tests/test_sandbox.py -rs -q > "$log" 2>&1 || status=$?
+          cat "$log"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::SANDBOX-FAILED: the containment suite did not pass on this runner. The fix is a working sandbox, never a weaker profile."
+            exit "$status"
+          fi
+          if grep -q '^SKIPPED' "$log"; then
+            {
+              echo "### UNPROVEN: SANDBOX-NETWORK-DENIAL"
+              echo
+              echo "The containment suite passed, but part of it did not run:"
+              echo
+              grep '^SKIPPED' "$log" | while read -r line; do echo "- \`${line}\`"; done
+              echo
+              echo "The network tests skip when the unsandboxed control cannot reach the network, because a denial is then indistinguishable from an absent route. This job therefore does NOT establish that Seatbelt denies the network on \`macos-latest\` — treat the sandbox as undemonstrated here until the skip is gone."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::UNPROVEN: SANDBOX-NETWORK-DENIAL — the sandbox suite passed with skips, so the denial was NOT demonstrated on this runner. See the job summary."
+          else
+            echo "PROVEN: on this runner the sandboxed probe was refused the network, the unsandboxed control reached it, and no test skipped."
+          fi
       - name: mlx resolves and imports on this runner
         # Asserts `import mlx.core`, not that installation exited 0. An install-exit-0
         # check passes on a runner where the engine is absent, which is exactly the
