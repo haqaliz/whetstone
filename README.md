@@ -16,8 +16,9 @@
 > (`whetstone verify`), an adversarial corpus of ten cheats with its two residuals reported
 > rather than hidden, and a first corpus of real tasks (`whetstone mine`). **No loop, no gate,
 > and no report exist yet; no model has been run, so no number about a model exists; and
-> nothing has been released.** [`VISION.md`](VISION.md) holds the thesis,
-> [`CLAUDE.md`](CLAUDE.md) the guardrails.
+> nothing has been released.** [`PREREGISTRATION.md`](PREREGISTRATION.md) was committed while
+> that was still true — it fixes what any future number may claim, and its value is its date.
+> [`VISION.md`](VISION.md) holds the thesis, [`CLAUDE.md`](CLAUDE.md) the guardrails.
 
 Point Whetstone at your tasks. Each night a local loop runs self-play / RL against an
 **execution-grounded verifier** — never an LLM judge it can fool — distils the wins into a

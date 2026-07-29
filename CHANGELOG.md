@@ -74,6 +74,64 @@ against any of it — the verifier grades patches, and no number about a model e
 - Donors whose layout cannot be read from their build configuration, and donors with no lockfile,
   are refused **by name** rather than guessed at. A wrong import root does not fail loudly; it
   fails by passing, and an unpinned donor would have its versions chosen by the date the mint ran.
+- `PREREGISTRATION.md`, committed at the repository root **before any number about a model
+  existed** — which is the whole of its value, since a headline rule chosen once results are
+  visible describes them rather than constraining them. It fixes the headline as the change in
+  STRICT-PASS **count** on the held-out source-B split, published over its denominator with
+  coverage and `N` beside it and never as a rate; defines every metric before any is measured;
+  carries the baseline protocol, including what it means for a changed pinned input to invalidate
+  a series; and commits to publishing both sources together, with a disagreement between them
+  reported as a finding rather than resolved by picking the flattering one.
+- **No numeric success threshold is pre-registered, and none may be added once a number exists.**
+  No baseline has been measured and no base chosen, so any bar set today would be invented — and
+  one set later would be post-hoc selection wearing the costume of rigour. Three items are named
+  as open instead of guessed, each with the dated amendment that closes it and the measurement it
+  must precede: the held-out split, the retry count `R`, and which open base is fine-tuned.
+- Five limitations disclosed in advance rather than discovered in the result: source B's
+  self-selection — **and that its stated mitigation did not land**, since `rereflect` was refused
+  for having no `uv.lock`; source A being 1 eligible instance of 300 and reported per-instance;
+  cheats 6 and 10 surviving into any reported `N`, with the verifier's bound that it confines what
+  a run may write and not what it may read; source B's data never leaving the box, which limits
+  what an outsider can audit; and that pre-registration is a timing control and **not** an
+  independence control, this being a solo project.
+- Guards in `tests/test_docs.py` holding the document shut: every section present, **no
+  placeholder in any spelling** — Belay's `PHASE0_RESULTS.md` carried `TO-BE-FILLED` for ten days
+  — **no figure about a model**, banned as glyph and as word so the rule cannot be spelled around,
+  and nothing under `reports/` in a tree lacking the file. That last guard is exercised against
+  two synthetic trees, because `reports/` does not exist yet and a guard nobody has watched fail
+  may be passing vacuously. It proves co-existence, not ordering: a single commit adding both
+  would satisfy it, and the document states that limit itself rather than letting the test read
+  as stronger than it is.
+
+- **Every `docs/ROADMAP.md` citation the pre-registration makes is resolved against the lines it
+  names**, each paired with an anchor that must appear inside that exact range, and the pairing
+  asserted exhaustive in both directions so a new citation cannot be added without an anchor. This
+  guard exists because the slice broke it: the same commit corrected a paragraph in § 4, which
+  pushed every later section down by about twenty lines, and five citations written against the
+  pre-edit file pointed into the wrong section by the time it landed. An adversarial review caught
+  it and nothing in the suite did, because a substring assertion does not know what line it is on.
+  **A document whose stated value is that a stranger can check it cannot ship pointers that
+  dissolve when their target moves.**
+
+### Fixed (documentation)
+
+- Five stale `docs/ROADMAP.md:NNN-MMM` citations in `PREREGISTRATION.md`, and three
+  `CLAUDE.md:NNN` citations — one in `PREREGISTRATION.md`, two in `docs/ROADMAP.md` § 11 — that
+  this cycle's own insertion into `CLAUDE.md` pushed further out of place. Two further stale
+  citations are **left standing and reported rather than quietly fixed**: `docs/ROADMAP.md:289`
+  cites `CLAUDE.md:93` for the licence in a P0 block whose parenthetical *"the file is absent
+  today"* is separately stale, and `docs/ROADMAP.md:536` quotes a `CLAUDE.md` sentence that no
+  longer exists anywhere in that file — it was removed as a stale claim and `tests/test_docs.py`
+  now forbids its return. Both need a decision about historical framing rather than a new line
+  number, which is a different change from this one.
+- **`docs/ROADMAP.md` § 4, P4 overstated a sibling project's failure.** It asserted that Belay's
+  `PHASE0_RESULTS.md` carried 20 `TO-BE-FILLED` markers; that was exact on 2026-07-28 and false
+  about ten hours later, when the document was filled and recorded a **PIVOT** — a negative
+  result, published. Verified by `grep -c`: 0. A claim about another project's honesty, inside our
+  own section about publishing honestly, is the worst sentence in the document to leave stale. The
+  transferable lesson replaces it and is sharper: Belay's criteria were fixed in a **planning
+  file** and never copied into the document that publishes the number before the gate ran — which
+  is why `PREREGISTRATION.md` sits at the repository root and not under `docs/planning/`.
 
 ### Fixed
 

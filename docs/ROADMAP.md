@@ -359,13 +359,19 @@ base-model bake-off — run **against the working verifier**, not on paper.
 1 landed the verifier and the corpus; slice 2 landed the **task format** — the `environment`
 contract, canonical held paths, the directory loader, and the `tasks/` layout; slice 3 landed
 **ingestion for both sources** and minted the corpus above, which is what ticks the `tasks/`
-criterion.
+criterion; slice 4 landed **`PREREGISTRATION.md`**, which ticks criterion 6.
 
-**Two criteria remain open, and neither is nearly done.** `reports/baseline/` does not exist and
-`PREREGISTRATION.md` does not exist. Consequently **no model has been run against any of this**:
-the verifier grades patches, 66 tasks and one public instance are proven to discriminate, and
-**not one number about a model exists anywhere in this repository.** A reader who takes a corpus
-existing as evidence that something was measured has read this section backwards.
+**One criterion remains open, and it is not nearly done.** `reports/baseline/` does not exist.
+Consequently **no model has been run against any of this**: the verifier grades patches, 66 tasks
+and one public instance are proven to discriminate, and **not one number about a model exists
+anywhere in this repository.** A reader who takes a corpus existing as evidence that something was
+measured has read this section backwards.
+
+**That ordering was the point of doing the pre-registration first.** The bake-off scores candidate
+bases per source, and those are the first numbers this project will hold; a headline rule fixed
+after they are visible is not a commitment. `PREREGISTRATION.md` is therefore committed with the
+bake-off still unrun, and `tests/test_docs.py` fails the build if anything ever appears under
+`reports/` in a tree that lacks it.
 
 **What ingestion cost, recorded because the refusals are the finding.** Two of four candidate
 donors yielded nothing, for reasons that generalise: `rereflect` was **refused outright** — it
@@ -454,10 +460,26 @@ Run the loop against both sources, publish the harness and the result.
 - The harness is public and reproduces the reported number from the pinned inputs
 
 **Pivot signal:** none. **A zero or negative delta is a valid, publishable outcome** —
-`CLAUDE.md` #5 requires shipping the honest number even when gains are modest. The failure
-mode this phase exists to prevent is Belay's own: its `PHASE0_RESULTS.md`, the document
-gating PROCEED vs PIVOT, still carries 20 `TO-BE-FILLED` markers. *The engine working* and
-*the empirical claim being established* are two different milestones.
+`CLAUDE.md` #5 requires shipping the honest number even when gains are modest. *The engine
+working* and *the empirical claim being established* are two different milestones.
+
+> **Corrected 2026-07-29, while writing `PREREGISTRATION.md`.** This paragraph used to assert, in
+> the present tense, that Belay's `PHASE0_RESULTS.md` carried 20 `TO-BE-FILLED` markers — a
+> document gating PROCEED vs PIVOT with its numbers unfilled. That was exact at
+> belay's `801b457` (2026-07-28) and false about ten hours later: `77adc8f` (2026-07-29) filled
+> the document and recorded a **PIVOT** — a negative result, published rather than buried, which
+> is the behaviour `CLAUDE.md` #5 asks for. Verified here by `grep -c TO-BE-FILLED`: **0**. A
+> claim about another project's honesty, inside our own section on publishing honestly, is the
+> worst sentence in this document to leave stale, so it is corrected rather than quietly dropped.
+>
+> **The transferable lesson survives, and it is sharper than the one we had.** Belay's own
+> § *Ordering: what actually happened* records that its gate criteria were fixed in a **planning
+> file** on 2026-07-21 and **was not copied into the document that publishes the number** before
+> the gate ran — *"That did not happen, and this document will not pretend otherwise."* So the
+> failure mode P4 must avoid is not an unfilled template; it is pre-registering somewhere other
+> than where the claim is published. That is why `PREREGISTRATION.md` sits at the repository root
+> rather than under `docs/planning/`, and why `tests/test_docs.py` guards this correction: unlike
+> a live marker count, a historical admission cannot re-stale.
 
 ---
 
@@ -577,7 +599,7 @@ testing · Linux portability.
 
 ## 11. Grounded facts
 
-The only external claims this project cites (`CLAUDE.md:108-119`):
+The only external claims this project cites (`CLAUDE.md:215-224`):
 
 1. **RLVR** is the live frontier for tasks with checkable outcomes, and **reward-hacking** is
    its central documented failure mode — **METR** observed a model rewriting a timer instead
@@ -592,5 +614,5 @@ Anything else is **unverified and must be labeled so**. Belay cites two further 
 use. `VISION.md` restates facts 1 and 2 without attribution and gives the venue as "Sequoia
 2026" — `CLAUDE.md`'s attributed form is the one to quote.
 
-> `CLAUDE.md:119` — *"If you need a statistic that isn't here, do not invent one; say it's
+> `CLAUDE.md:224` — *"If you need a statistic that isn't here, do not invent one; say it's
 > unverified."*

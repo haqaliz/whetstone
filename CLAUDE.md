@@ -56,13 +56,27 @@ This file orients a coding agent working in this repository. Read it first.
 > (`--no-install-project`), and a `PYTHONPATH` naming the run's own checkout so it shadows any
 > residual install; `tests/adversarial/test_inert_checkout.py` holds it shut.
 >
-> **What is not built.** The rest of P1: the base-model bake-off and `reports/baseline/`, and
-> `PREREGISTRATION.md` — both still open. Then all of P2–P4: no rollouts, no training, no
-> promotion gate, no report, no dashboard. **No model has been run against any of this, and no
-> number about a model exists** — the verifier grades patches, and a corpus existing is not a
-> measurement. Cheat 6 and cheat 10 remain documented residuals; ingestion narrowed cheat 10 with
-> a `conftest.py` floor but did **not** close it. No version has been released and there are no
-> tags.
+> **P1 slice 4 — the pre-registration — is done** (`docs/ROADMAP.md` § 6; plan at
+> `docs/planning/p1-preregistration/`). `PREREGISTRATION.md` is committed at the repository root,
+> **before any number about a model exists**, which is its entire value: it fixes the headline —
+> the change in STRICT-PASS *count* on the held-out source-B split, published over its
+> denominator and never as a rate — along with every metric definition, the baseline protocol,
+> and the rule that both sources are always published together and a disagreement between them is
+> reported as a finding. It pre-registers **no numeric success threshold**, because none could be
+> grounded before a baseline exists, and forbids one being added once a number does. Three items
+> are named as open with the amendment that closes each: the held-out split, the retry count `R`,
+> and the base. Five limitations are disclosed up front, including that source B's self-selection
+> mitigation (a third donor) **did not land** — `rereflect` was refused for having no `uv.lock`.
+> `tests/test_docs.py` holds it shut: no placeholder, no figure about a model in any spelling, and
+> nothing may exist under `reports/` in a tree lacking the file. That last guard proves
+> co-existence, not ordering — the temporal claim is `git log`'s, and the document says so itself.
+>
+> **What is not built.** The rest of P1: the base-model bake-off and `reports/baseline/` — the
+> last open criterion. Then all of P2–P4: no rollouts, no training, no promotion gate, no report,
+> no dashboard. **No model has been run against any of this, and no number about a model exists**
+> — the verifier grades patches, and a corpus existing is not a measurement. Cheat 6 and cheat 10
+> remain documented residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did
+> **not** close it. No version has been released and there are no tags.
 >
 > Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. Describe the
 > state of the tree this file ships in, and never work in flight on a branch — a status that
@@ -229,6 +243,7 @@ README.md                       # Repo front door
 VISION.md                       # Narrative thesis, moat, non-goals
 CLAUDE.md                       # This file
 CONTRIBUTING.md                 # Dev setup, test-first contract, ground rules
+PREREGISTRATION.md              # What P4 may claim, fixed before any number existed
 RELEASING.md                    # Tag-push release mechanism (nothing released yet)
 .claude/skills/                 # The repo's own workflow skills (see below)
 docs/
