@@ -1,140 +1,149 @@
-# feat p1-task-ingestion — `tasks/` ingestion and the on-disk task format (ROADMAP P1, slice 2)
+# feat p1-baseline-bakeoff — the base-model bake-off and `reports/baseline/` (ROADMAP P1, slice 5)
 
 ## Source
 
-**FALLBACK path.** No GitHub issue exists. `gh issue list --limit 10` returns "No Issues"
-against `haqaliz/whetstone`, and the `id` is a slug, not a number. This is the expected case
-for this repo — the same path P0 (`3662255`) and P1 slice 1 (`621831e`) took.
+**FALLBACK path.** No GitHub issue exists. `gh issue list --state all --limit 30` returns
+"No Issues" against `haqaliz/whetstone`, and the `id` is a slug, not a number. This is the
+expected case for this repo — every prior unit of work took it (P0 `3662255`, P1 slice 1
+`621831e`, slice 2/3 PR #6, slice 4 `f317b89`).
 
-The upstream spec is committed: `docs/ROADMAP.md` § 4 "P1 — Task contract + verifier"
-(exit criteria at `:243-247`) and § 1 "The task family" (`:13-48`). The roadmap, not this
-card, is the authority on P1's exit criteria.
+The upstream spec is committed: `docs/ROADMAP.md` § 4 "P1" exit criterion 5 (`:354`), its
+status note (`:364-374`), the pivot signal (`:387-389`), the baseline protocol (§ 5, `:486-496`),
+and `PREREGISTRATION.md` §§ 2–4 and § 7.3. **The roadmap and `PREREGISTRATION.md`, not this card,
+are the authority** — and where they disagree with each other, `PREREGISTRATION.md` is the
+committed public commitment and wins.
 
 ## Brief
 
 Reproduced verbatim from the `whetstone-next` handoff the user acted on by invoking
-`wbf feat p1-task-ingestion`:
+`wbf feat p1-baseline-bakeoff`:
 
-> Build `tasks/` ingestion and the on-disk task format — the remaining unblocked P1 exit
-> criterion (docs/ROADMAP.md:243-245). Source B (private: a local commit that turns a failing
-> test green) is the on-thesis headline and must be pure and offline; source A (SWE-bench-Lite,
-> pure-Python subset) follows docs/ROADMAP.md:420-422 — human-run fetch, committed output,
-> seeded offline draw. This slice owns two things slice 1 handed forward: per-instance
-> environment provisioning, flagged High/deferred/UNESTIMATED at
-> docs/planning/p1-verifier-core/prd.md:358 and named as P1's schedule risk at :378-380 — size
-> it in the dig and scope source A down if it doesn't fit rather than faking coverage — and the
-> open question at :365 of whether `whetstone verify` takes a task directory or a manifest file.
+> Close the last open P1 exit criterion (docs/ROADMAP.md:354, :364): a base-model bake-off run
+> against the working STRICT verifier, committing reports/baseline/ with full provenance (candidate
+> model revisions, seeds, task set hash, interpreter and tool versions), scoring each candidate open
+> MLX base on the 66 source-B tasks (tasks/local-ledger.json) and on source A's single instance
+> pallets__flask-4045 — reported per-instance, never as a rate, per PREREGISTRATION.md:149-155.
+> Its output closes PREREGISTRATION.md §7.3 (which base is fine-tuned).
 >
-> Acceptance criteria (written first — the repo is test-first):
-> 1. A documented on-disk task format; an ingested task round-trips through `load_task`
->    unchanged, with `test_blobs` byte-identical (no str decode — src/whetstone/verify/task.py).
-> 2. Source B ingestion runs offline over a local repo and emits a valid manifest with committed
->    provenance; a test asserts no network call on this path.
-> 3. Source A's draw is deterministic: same seed -> same instance set, asserted over repeats.
-> 4. Liveness, not vacuity: for every ingested task, the empty patch yields STRICT FAIL (the
->    fail_to_pass tests really fail at base_commit) and the reference patch yields STRICT PASS.
->    A task that passes with no patch is an ingestion bug and must fail the build.
-> 5. Cheat 10 (docs/ROADMAP.md:160-166): the format declares a held test's transitive
->    dependencies, and ingestion either populates them or records the gap as the documented
->    residual with a test asserting it — never silence.
-> 6. `uv run ruff check .` and `uv run mypy src/` exit 0; CI green on macos-latest.
+> Caveat to settle in the dig before any code: this is base SELECTION, not the pinned baseline.
+> PREREGISTRATION.md:126-138 scores the pinned baseline on the held-out source-B split, which does
+> not exist yet (§7.1, closed in P3), and "measured once, re-measured never" must not accidentally
+> bind to a bake-off number. The report must state which measurement it is. Also: inference enters
+> the repo here for the first time — put rollout/generation in a NEW package, do not widen
+> tests/test_no_inference_on_reward_path.py to cover it, and keep the model boundary injectable so
+> the suite still runs without mlx (pyproject.toml:25-29).
 >
-> No model is invoked anywhere in this slice; the reward-path import guard
-> (tests/test_no_inference_on_reward_path.py) must stay green.
+> Acceptance criteria, written first (test-first repo):
+> 1. A test proves the reward path guard still passes with the new inference package present, and
+>    that the guard's scope was not widened to include it.
+> 2. A test proves the scoring harness runs end-to-end against a fake/stub model with zero mlx
+>    import, and that a model-authored patch touching a held test file is REFUSED by STRICT.
+> 3. A determinism test: same seed + same pinned inputs -> byte-identical bake-off report payload.
+> 4. A test asserts the committed report carries every provenance field PREREGISTRATION.md:126-128
+>    names, and that it labels itself base-selection rather than the pinned held-out baseline.
+> 5. A docs test asserts CLAUDE.md and docs/ROADMAP.md are updated in the SAME commit, so "no number
+>    about a model exists" stops being claimed the moment one does.
 
 ## Why this slice, per the `whetstone-next` ranking
 
-- It is the only **unblocked** P1 exit criterion. `docs/ROADMAP.md:243-247` leaves three open:
-  `tasks/` instances from both sources with committed provenance, a bake-off report under
-  `reports/baseline/`, and `PREREGISTRATION.md`. Neither `tasks/` nor `reports/` exists on
-  `master` (verified 2026-07-28).
-- The bake-off is defined as running **against the working verifier** (`docs/ROADMAP.md:210`),
-  so it needs task instances — ingestion is its hard dependency, and P2's rollouts depend on
-  both.
-- Ingestion is where cheat 10 gets narrowed: `docs/ROADMAP.md:160-166` assigns the
-  undeclared-dependency residual to task ingestion explicitly — *"declaring a held test's
-  transitive dependencies when the task is minted"*.
+- It is the **only open P1 exit criterion**. `docs/ROADMAP.md:364` — *"One criterion remains open,
+  and it is not nearly done. `reports/baseline/` does not exist."* Slices 1–4 tick the other five.
+- Its **ordering is now legal**. `PREREGISTRATION.md:255-259` (§ 7.3) says which base is fine-tuned
+  is decided *by* this bake-off, and the report's commit *"must be later than this file's"* — that
+  file landed in `f317b89`, so the bake-off is both unblocked and pre-registered.
+- It is the **only** work that can fire P1's pivot signal (`docs/ROADMAP.md:387` — *"if no candidate
+  base solves any held-out task, expert iteration has nothing to bootstrap from"*) or answer the
+  Apple Silicon capacity question (`:594-596`, *"discovered in the P1 bake-off, before the loop is
+  built around it"*). P2's rollouts are blocked on knowing which base to sample from.
+- It produces **the project's first number about a model.** Every status block in the repo
+  currently asserts that none exists; those assertions become false in this commit.
 
 ## The upstream spec (authoritative)
 
-`docs/ROADMAP.md:243-247`, P1's six exit criteria, and which this slice takes:
+`docs/ROADMAP.md:305-356`, P1's six exit criteria, and which this slice takes:
 
 | # | P1 exit criterion | This slice |
 |---|---|---|
 | 1 | `uv run pytest tests/adversarial/` exits 0 | **Shipped** (PR #5) — must stay green |
-| 2 | `uv run pytest tests/test_no_inference_on_reward_path.py` exits 0 | **Shipped** (PR #5) — must stay green |
-| 3 | `uv run whetstone verify --task <fixture> --patch <fixture>` emits a verdict | **Shipped** (PR #5); this slice may extend its input form (see open question 2) |
-| 4 | `tasks/` holds instances from both sources with committed provenance | **In — the whole slice** |
-| 5 | A baseline bake-off report exists under `reports/baseline/` | **Out** — blocked on this slice, then needs a base model |
-| 6 | `PREREGISTRATION.md` is committed | **Out** — separate, unblocked; named as the `whetstone-next` alternate |
+| 2 | `tests/test_no_inference_on_reward_path.py` exits 0 | **Shipped** (PR #5, widened PR #6) — must stay green, and **must not be widened to the new inference package** |
+| 3 | `whetstone verify --task … --patch …` emits a verdict | **Shipped** (PR #5/#6) — this slice becomes its first programmatic caller |
+| 4 | `tasks/` holds instances from both sources with committed provenance | **Shipped** (PR #6) — 66 source-B, 1 source-A; this slice is the first thing to *score* them |
+| 5 | A baseline bake-off report exists under `reports/baseline/` | **In — the whole slice** |
+| 6 | `PREREGISTRATION.md` is committed | **Shipped** (`f317b89`) — this slice must not contradict it |
 
-Task family and contract: `docs/ROADMAP.md:13-48`. The two sources (`:28-38`): **A — public**
-(SWE-bench-Lite, pure-Python subset; comparability, contamination-exposed) and **B — private**
-(mined from the user's own repos; the pre-registered headline, uncontaminated, never leaves the
-box). Both are always reported.
+## The one thing this card exists to prevent
 
-**The one declared network exception** (`docs/ROADMAP.md:420-422`): *"fetching public SWE-bench
-instances touches the network. Following Belay's precedent, the fetch is human-run, its output
-committed, and the draw itself pure and offline. Source B never touches the network at all."*
+**This bake-off is base *selection*. It is not the pinned baseline.** They are different
+measurements with different task sets and different rules, and merging them would corrupt the
+headline this project has already pre-registered.
 
-**P1's pivot signal** (`docs/ROADMAP.md:249-252`) belongs to the bake-off, not to this slice —
-this slice runs no model. But it is this slice's ingestion that decides whether the bake-off has
-a stratum to run against at all.
+- `PREREGISTRATION.md:126-128` — the pinned baseline is *"the untrained open base, scored on the
+  **held-out set**"*.
+- `PREREGISTRATION.md:242-247` (§ 7.1) — **the held-out split does not exist**, is open, and is
+  closed in P3 *"by a dated amendment … committed before the split is used to score anything"*.
+- `PREREGISTRATION.md:129-138` — *"measured once, re-measured never"*, and a change to any pinned
+  input *"invalidates the series"*.
 
-## Handed forward from P1 slice 1 (this slice owns both)
-
-| Item | Where recorded | Status |
-|---|---|---|
-| Per-instance environment provisioning for real SWE-bench instances — Belay's pool carries no `FAIL_TO_PASS`/`PASS_TO_PASS`/test patch, and its `eval/` never executes an instance | `docs/planning/p1-verifier-core/prd.md:358` — **High, deferred, unestimated**; named as P1's schedule risk at `:378-380` | **Open — size it in the dig** |
-| Whether `whetstone verify` accepts a task *directory* or a single manifest file | `docs/planning/p1-verifier-core/prd.md:365` — *"deferred to the ingestion slice, which owns the on-disk task format"* | **Open — this slice decides** |
+So: a bake-off number computed over all 66 source-B tasks **cannot** be published as the pinned
+baseline, and must not be allowed to bind the once-only rule. `docs/ROADMAP.md:354` names the
+artifact *"a baseline bake-off report"* and `:370` describes its job as *"scores candidate bases per
+source"* — selection. The report must say so in its own text, in a form a test can check.
 
 ## Shipped state this builds on
 
-- `master` @ `621831e`. P0 (PR #3) and P1 slice 1 (PR #5) merged. No tags; nothing released.
-- `src/whetstone/verify/` — `task.py` (the frozen `Task` contract + `load_task`), `verdict.py`,
-  `sandbox.py`, `strict.py`, `weak.py`, `repo.py`. `src/whetstone/cli.py` exposes
-  `whetstone verify --task <manifest.json> --patch <file>` (`cli.py:93-100`).
-- `Task` fields (`src/whetstone/verify/task.py`): `task_id`, `source` ∈ {`public`,`private`},
-  `repo_url`, `base_commit`, `problem_statement`, `fail_to_pass`, `pass_to_pass`,
-  `test_blobs` (path → **bytes**, base64 in the manifest), `provenance`. The loader is
-  **fail-closed**: missing field, unknown field, or empty `test_blobs` is a named `ValueError`.
-  Unknown-field rejection means **any new manifest field this slice adds is a contract change**,
-  not an additive one.
-- `tests/adversarial/` — the ten-cheat corpus; eight killed, cheats 6 and 10 asserted as
-  documented residuals.
-- Zero runtime dependencies. `mlx-lm` is an optional group; nothing on the reward path imports
-  it, enforced by `tests/test_no_inference_on_reward_path.py`.
+- `master` @ `b6f8228`, no tags, nothing released. `uv sync` + `uv run pytest` in this worktree:
+  **396 passed** (verified 2026-07-30) — the "greenfield / `uv sync` will fail" language in
+  `whetstone-next` and `whetstone-worktrees` is stale.
+- `src/whetstone/verify/` — the reward: `task.py` (frozen `Task` + `load_task`), `verdict.py`
+  (`UNVERIFIED` ranks above `PASS`), `sandbox.py` (Seatbelt deny-all), `strict.py`, `weak.py`,
+  `repo.py`. `strict.py:120-145` is explicit that the reward **resolves nothing and installs
+  nothing**: *"A caller that wants a task's declared environment resolves it first and hands the
+  answer down."* This slice is that caller.
+- `src/whetstone/tasks/` — 14 modules: the manifest contract, `environment`, canonical held paths,
+  the directory loader, the source-B miner, the source-A four-gate filter, the liveness prover and
+  the ledger.
+- The corpus: 66 source-B tasks in gitignored `tasks/local/` with committed evidence in
+  `tasks/recipes/*.json` + `tasks/local-ledger.json`; 1 source-A instance `pallets__flask-4045`
+  with 299 refusals in `tasks/public/ineligible.json`.
+- `pyproject.toml:20` — `dependencies = []`, with `mlx = ["mlx-lm>=0.31"]` as an optional extra
+  (`:25-29`) whose comment says the test suite **must not** depend on mlx. This slice is the first
+  code to use that extra.
 
 ## Open questions carried in from the selection (for the dig to close)
 
-1. **How far does environment provisioning actually get on macOS with no Docker?** Slice 1's
-   corpus used synthetic fixture repos with no third-party dependencies precisely to sidestep
-   this. Real source-A instances need per-instance Python environments. Decide with evidence
-   whether any SWE-bench-Lite subset is provisionable under `uv` alone on this machine, and if
-   the answer is "few", **scope source A down and say so** rather than shipping an empty `tasks/`
-   directory that reads as coverage.
-2. **Directory or manifest?** The format decision (`prd.md:365`). A directory can carry blobs as
-   real files and a committed provenance record; a single JSON keeps `load_task`'s fail-closed
-   parse exactly as shipped. Whichever is chosen, `load_task`'s byte-identity discipline for
-   `test_blobs` is non-negotiable.
-3. **Cheat 10 and the transitive-dependency declaration.** `docs/ROADMAP.md:160-166` says
-   narrowing it *"belongs to task ingestion"*. Establish what is actually computable offline
-   (import graph? runtime-observed reads?) versus what must be declared by hand — and if the
-   honest answer is "the residual stands", it must be re-asserted as a documented residual, not
-   quietly dropped.
-4. **Source B needs a real donor repo.** "A commit that turns a failing test green" must be mined
-   from something. Which local repo(s) are in scope, and does mining them stay inside the
-   no-egress guardrail (it should — everything is local by construction)?
+1. **What is the bake-off's task set, given the held-out split doesn't exist?** All 66, or a
+   declared subset? Whatever is chosen must not pre-empt § 7.1, and the report must record the set
+   by hash so a later held-out split can be defined against a known input.
+2. **Which candidate bases, and where do the weights come from?** § 7.3 forbids naming one in
+   advance; the bake-off decides it. But downloading MLX weights is a **network operation on a new
+   path**, and `docs/ROADMAP.md:420-422` currently declares exactly one network exception (the
+   public-instance fetch). Either this is a second declared, human-run, provenance-committed
+   exception or it is a violation — decide and write it down.
+3. **How does a base model turn a task into a patch?** There is no prompting or diff-extraction
+   surface in the tree. What the model is shown (problem statement? repository files? which?) and
+   how its output becomes a patch is the whole generation contract, and it is unbuilt.
+4. **Can this machine actually run it?** `docs/ROADMAP.md:594-596` makes capacity an open question
+   to be answered *here*. Measure it rather than assume it, and if the answer bounds the candidate
+   set or the task set, that bound is a finding to publish, not a detail to hide.
+5. **What does a bake-off number mean when the generator is untrained and unprompted?** If every
+   candidate scores zero STRICT-PASS, that is the pivot signal (`:387`) — and it must be
+   distinguishable in the report from "the harness was broken", or the pivot cannot be trusted.
+6. **`UNVERIFIED` accounting.** A candidate whose task errors out is not a candidate that failed.
+   The report needs the same three-way discipline the verifier has, and `UNVERIFIED` may never be
+   folded into the failure count to make a base look worse or better.
 
 ## Related work
 
-- **PR #5** (`621831e`) — P1 slice 1, the direct upstream. `docs/planning/p1-verifier-core/` is
-  the format precedent for this slice's artifacts.
-- **PR #2** (`347655a`) — `docs/ROADMAP.md` and its PRD; the authoritative spec.
-- **Belay** (`~/dev/at/belay`) — `eval/instances/` + `eval/scripts/` are listed as **taken**
-  (`docs/ROADMAP.md:380`): the SWE-bench-Lite eligibility filter and the pure, offline, seeded
-  stratified draw. That is this slice's most direct inheritance, and its known gap is recorded
-  above (no `FAIL_TO_PASS`/`PASS_TO_PASS`/test patch in the pool).
+- **`f317b89`** (P1 slice 4) — `PREREGISTRATION.md`, the direct upstream and the binding
+  constraint. `docs/planning/p1-preregistration/` is the artifact precedent.
+- **PR #6** (`201be6d`) — slices 2 and 3: the corpus this scores, plus `import_roots` and the
+  false-PASS fix that makes scoring an unfamiliar patch trustworthy at all.
+- **PR #5** (`621831e`) — slice 1: the STRICT verifier this calls, and the ten-cheat corpus
+  (cheats 6 and 10 remain documented residuals).
+- **Belay** (`~/dev/at/belay`) — `docs/ROADMAP.md` § 7 lists what is taken; nothing in Belay
+  generates rollouts, and the replay substrate is declined explicitly *because* "parallel calls
+  deliberately yield `UNVERIFIED` so batched rollouts produce no signal" (`CLAUDE.md`). No help
+  is coming from there for this slice's generation half.
 
 ## Labels / comments
 
@@ -144,7 +153,8 @@ None — no issue exists, so there are no labels, linked PRs, or comments to gat
 
 `docs/planning/_card/issue.md` is id-free by design (`whetstone-begin-fast` § Phase 1) and each
 unit of work **overwrites** the previous one's card on its own branch. P0's card is preserved in
-history at `3662255`, P1 slice 1's at `621831e`. Flagged as a workflow wart, not a blocker.
+history at `3662255`, P1 slice 1's at `621831e`, slice 2/3's at `201be6d`. Flagged as a workflow
+wart, not a blocker.
 
 ## Attachments
 
