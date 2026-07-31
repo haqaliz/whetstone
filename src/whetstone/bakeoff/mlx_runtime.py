@@ -269,8 +269,19 @@ def _load(model_path: Path, revision: str) -> tuple[Any, Any]:
             " this project a model may never appear."
         ) from error
 
-    model, tokenizer = load(str(model_path), revision=revision)
-    return model, tokenizer
+    # `load` is typed as returning EITHER `(model, tokenizer)` OR `(model, tokenizer, config)`,
+    # selected by `return_config` — which defaults to `False`, so the two-tuple is what arrives
+    # here. mypy cannot narrow that union from a default argument, so unpacking two names
+    # directly is an error. Indexing is total over both arms and needs no runtime check.
+    #
+    # Found by installing the extra locally, and it is worth recording why it survived review:
+    # CI runs `uv run mypy src/` under plain `uv sync`, WITHOUT the mlx extra, so every symbol
+    # in this module resolves to `Any` there and no call into `mlx_lm` is type-checked at all.
+    # The `[[tool.mypy.overrides]]` that makes the import tolerable off-Darwin is exactly what
+    # blinds the check on it. `.github/workflows/ci.yml` now runs mypy a second time with the
+    # extra installed, so this class of error stops depending on someone happening to install it.
+    loaded = load(str(model_path), revision=revision)
+    return loaded[0], loaded[1]
 
 
 def _generate(model: Any, tokenizer: Any, prompt: str, *, max_tokens: int, sampler: Any) -> Any:

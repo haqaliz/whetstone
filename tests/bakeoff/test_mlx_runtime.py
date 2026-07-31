@@ -647,7 +647,7 @@ def test_the_installed_mlx_lm_is_the_version_these_call_shapes_were_read_against
         " because the thing being pinned is a reading, not a dependency."
     )
 
-    from mlx_lm.generate import stream_generate
+    from mlx_lm.generate import generate_step, stream_generate
     from mlx_lm.utils import load
 
     assert "revision" in inspect.signature(load).parameters, (
@@ -656,12 +656,35 @@ def test_the_installed_mlx_lm_is_the_version_these_call_shapes_were_read_against
         " If the library stopped accepting it, this adapter is passing an argument into"
         " `**kwargs` and recording a pin that pins nothing."
     )
-    assert "sampler" in inspect.signature(stream_generate).parameters, (
-        "mlx_lm no longer accepts an injected `sampler` callable.\n\n"
+    # Corrected 2026-07-31, by this canary firing the first time the extra was installed. It
+    # used to assert `sampler` on `stream_generate`, and that was simply wrong about 0.31.3:
+    # neither `generate` nor `stream_generate` names it. Both take `**kwargs` and forward, and
+    # `generate_step` is the function that actually names `sampler`. The old assertion would
+    # have failed on a correct library forever — a canary that cries on a healthy bird is worse
+    # than none, because the documented response to it firing is "re-read the API", and a
+    # reader who did that would have concluded the injection had been removed when it had not.
+    assert "sampler" not in inspect.signature(stream_generate).parameters, (
+        "mlx_lm.generate.stream_generate now names `sampler` directly.\n\n"
+        "WHY THIS IS A FAILURE: not because it is broken, but because the call path this"
+        " adapter was read against has changed shape. Re-read where the sampler is consumed"
+        " before trusting the greedy claim."
+    )
+    step = inspect.signature(generate_step).parameters
+    assert "sampler" in step, (
+        "mlx_lm.generate.generate_step no longer accepts an injected `sampler` callable.\n\n"
         "WHY THIS IS A FAILURE: greedy decoding is asserted in this repository by passing the"
-        " sampler explicitly. If the parameter is gone, the explicit greedy request is being"
-        " swallowed by `**kwargs` and the real decoding rule is once again whatever the library"
-        " chose — which is the exact silent regression the explicit sampler exists to prevent."
+        " sampler explicitly through `generate`'s `**kwargs`. `generate_step` is where that"
+        " keyword lands, so if the name is gone the explicit greedy request no longer reaches"
+        " anything and the real decoding rule is once again whatever the library chose — the"
+        " exact silent regression the explicit sampler exists to prevent."
+    )
+    assert not any(p.kind is p.VAR_KEYWORD for p in step.values()), (
+        "mlx_lm.generate.generate_step grew a `**kwargs`.\n\n"
+        "WHY THIS IS A FAILURE: today the absence of `**kwargs` here is a real safety property"
+        " — the sampler keyword travels through two pass-through layers, and `generate_step`"
+        " raising TypeError on an unknown keyword is what stops a renamed parameter from being"
+        " swallowed in silence. With `**kwargs` present, a future rename would leave this"
+        " adapter passing a sampler nothing reads, and every test here would still be green."
     )
 
 
