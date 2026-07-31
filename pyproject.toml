@@ -49,5 +49,16 @@ strict = true
 # has to keep earning its place.
 warn_unused_ignores = true
 
+# `mlx-lm` ships no type stubs, and it is an OPTIONAL extra: CI type-checks under a
+# plain `uv sync` (`ci.yml:29-31`), where `import mlx_lm` cannot be resolved at all.
+# Without this, `mypy src/` fails on the one module allowed to import it —
+# `whetstone/bakeoff/mlx_runtime.py`. A per-line `# type: ignore` is the wrong tool
+# here twice over: it would be UNUSED on a machine that has run `uv sync --extra mlx`,
+# and `warn_unused_ignores` above turns that into an error, so the check would pass in
+# exactly one of the two environments this project supports.
+[[tool.mypy.overrides]]
+module = ["mlx.*", "mlx_lm.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
