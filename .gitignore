@@ -23,6 +23,11 @@ dist/
 /reports/local/
 /_sandbox/
 
+# Model weights — the bake-off loads local MLX checkpoints (13.4 GiB for the
+# three candidates), and a blob committed once is in the history for good.
+# Pre-declared: this directory doesn't exist yet: nothing has been fetched.
+/weights/
+
 # Dashboard
 node_modules/
 .next/
