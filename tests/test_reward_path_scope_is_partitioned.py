@@ -55,7 +55,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import pytest
-from test_no_inference_on_reward_path import GUARDED_ROOTS
+from test_no_inference_on_reward_path import GUARDED_ROOTS, _imported_names, _modules
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 
@@ -80,17 +80,41 @@ _NOT_SOURCE = frozenset({"__pycache__", ".DS_Store"})
 #: verdict. The bake-off package, when it lands, is exempt because nothing guarded may import
 #: it and the dependency runs one way only — not because it is harmless.
 #:
-#: **It is empty, and empty is the right resting state.** Every child of the package is
-#: currently guarded, which is the strongest configuration this file can report and the one a
-#: reader should expect to find. An earlier draft of this change exempted ``__init__.py`` as a
-#: documented residual; it is guarded instead, because closing it cost one line and a residual
-#: is for a hole that is hard to close, not one nobody had to accept.
+#: **It holds exactly one entry, and it held none until the bake-off landed.** Every other
+#: child of the package is guarded, and a reader should expect that to stay true: the only
+#: thing that belongs here is code the inference ban would be *wrong* about, and there is one
+#: such package. ``bakeoff`` is it — the first code in this tree that consults a model, and
+#: therefore the first thing that could not be guarded without the ban failing honestly. An
+#: earlier draft of this change also exempted ``__init__.py`` as a documented residual; it is
+#: guarded instead, because closing it cost one line and a residual is for a hole that is hard
+#: to close, not one nobody had to accept.
 #:
-#: Note what an empty mapping does *not* weaken: the two assertions that read it iterate
-#: nothing here, and their teeth come from the synthetic controls below, which run the same
-#: functions over trees that do have exemptions. That is the arrangement
+#: Note what a one-entry mapping does *not* weaken: the assertions that read it barely iterate,
+#: and their teeth come from the synthetic controls below, which run the same functions over
+#: trees carrying exemptions this repository does not have. That is the arrangement
 #: ``tests/test_docs.py:173-185`` uses for a guard whose real-tree answer is "nothing wrong".
-EXEMPT: Mapping[str, str] = {}
+#:
+#: The exemption's own reason names the assertion it depends on, and that assertion sits at
+#: the foot of this file for the same reason the reason sits here: a justification and its proof
+#: that live in different files drift apart without either one looking wrong.
+EXEMPT: Mapping[str, str] = {
+    "bakeoff": (
+        "the bake-off harness, which imports mlx_lm legitimately in a later phase in order to "
+        "run a base model against the verifier — the measurement that settles which open base "
+        "P1 starts from. Nothing guarded imports it, and the dependency is one-directional by "
+        "design: bakeoff imports whetstone.verify for the Task contract and never the reverse, "
+        "so no verdict can reach this code. Guarding it instead would fail the inference ban "
+        "the moment the MLX adapter lands, and the pressure would then land on the ban itself. "
+        "The one-way edge is asserted directly, by "
+        "test_no_module_on_the_reward_path_imports_the_bakeoff_package at the foot of this "
+        "file, because the AST ban would not notice it being reversed: it flags first-party "
+        "imports whose dotted name carries an inference-shaped component, and neither "
+        "'bakeoff' nor 'generator' is one. It lives here rather than beside the bake-off's "
+        "own tests deliberately — this exemption is only sound while that assertion holds, "
+        "and a reason whose proof sits in a file that may be restructured for unrelated "
+        "reasons is a reason that can quietly stop being true."
+    )
+}
 
 
 def _scope(package_root: Path) -> list[str]:
@@ -327,3 +351,40 @@ def test_an_empty_tree_enumerates_nothing(synthetic: Callable[..., Path]) -> Non
     unfalsifiable and would be protecting nothing.
     """
     assert _scope(synthetic()) == []
+
+
+def test_no_module_on_the_reward_path_imports_the_bakeoff_package() -> None:
+    """The one-way dependency, enforced — the claim the written exemption rests on.
+
+    ``bakeoff`` is kept off the AST ban by an exemption in
+    ``tests/test_reward_path_scope_is_partitioned.py``, and that exemption's reason is that the
+    dependency runs one way: bake-off imports ``whetstone.verify`` for the ``Task`` type, and
+    nothing guarded imports bake-off.
+
+    **Nothing was enforcing that, and the obvious candidate does not.** The AST ban only flags
+    first-party imports whose dotted name contains an inference-shaped component (``judge``,
+    ``model``, ``llm``, …); ``whetstone.bakeoff.generator`` contains none, so
+    ``_is_inference_import`` returns `False` for it and a ``from whetstone.bakeoff import
+    generate`` inside ``verify/`` would leave every guard in this tree green while putting a
+    model exactly one call away from the verdict. This is that assertion.
+    """
+    modules = _modules()
+    seen = {dotted for path in modules for dotted, _lineno in _imported_names(path, SRC)}
+    assert seen, (
+        "the walk over the guarded roots observed no imports at all.\n\n"
+        "WHY THIS IS A FAILURE: the assertion below is a statement about the members of this"
+        " set, so an empty set satisfies it vacuously — the strongest possible result reported"
+        " by the weakest possible run."
+    )
+
+    offenders = sorted(name for name in seen if name.split(".")[:2] == ["whetstone", "bakeoff"])
+    assert not offenders, (
+        "the reward path imports the bake-off package: " + ", ".join(offenders) + "\n\n"
+        "WHY THIS IS A FAILURE: bakeoff/ is exempt from the inference ban only because nothing"
+        " guarded can reach it — the dependency is supposed to run one way, bakeoff -> verify."
+        " An import in the other direction puts mlx_lm on the reward path transitively while"
+        " every other guard stays green, because the AST ban keys on inference-SHAPED names and"
+        " 'bakeoff' is not one. Move the shared code into verify/ or tasks/, or invert the"
+        " dependency; do not add bakeoff to GUARDED_ROOTS, which would fail the ban the moment"
+        " the MLX adapter lands and put the pressure on the ban itself."
+    )
