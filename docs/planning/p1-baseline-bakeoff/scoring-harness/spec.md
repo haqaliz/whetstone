@@ -30,8 +30,35 @@ it could have reached both `PASS` and `FAIL`.
 5. **The control arm** (M5): per candidate, on the same task set with the same provisioning, the
    inert patch must reach `FAIL` and a reference patch must reach `PASS`.
 6. **Reference-patch re-derivation** — from `provenance.commit` vs `provenance.parent` in the donor
-   checkout. **This is the first task of this aspect**, because M5's value halves if it is
+   checkout. **This was the first task of this aspect**, because M5's value halves if it is
    unreachable. Declared fallback: source A's gold patch from `tasks/public/pool.json`.
+
+   > **RETIRED 2026-07-31, with measurement.** Re-derivation works, and the risk is closed:
+   > **66 of 66** manifests produce a non-test reference patch that applies cleanly to the
+   > checkout `verify/repo.py` builds (`clone --no-checkout` → `checkout --detach base_commit` →
+   > `git apply --whitespace=nowarn --check`), in ~39 s for the whole corpus. Three were carried
+   > all the way through the **shipped STRICT verifier**: `inert_patch()` → **FAIL**, re-derived
+   > reference → **PASS**, executed set equal to declared, zero skips. All 132 donor shas are
+   > still reachable, and the whole procedure ran under a `(deny network*)` Seatbelt profile.
+   >
+   > The mechanism already existed: `derive.gold_patch()` (`derive.py:194-208`) diffs
+   > parent→commit restricted to non-test paths *precisely so* the reference cannot trip
+   > `patch-scope`, and `donor._classify()` (`donor.py:191-210`) does the splitting. The harness
+   > re-uses those rather than reimplementing them, and asserts
+   > `set(paths).isdisjoint(task.test_blobs)` as a pre-flight — it never fired across 66, costs
+   > nothing, and turns the exact failure this spec worried about into a skip-with-reason.
+   >
+   > **First real timing evidence in this repository:** ~2–4 s per task end-to-end including venv
+   > provisioning on a warm uv cache. That materially lowers R2 — the verifier half looks far
+   > cheaper than the "402 sandboxed runs will dominate" estimate feared — but it is three tasks
+   > on one machine with a warm cache, so aspect 4's probe still governs and this figure does not
+   > replace it.
+   >
+   > **Two operational constraints it also settled**, both binding on the runner: the control arm
+   > must go through the library (`environment.capture()` → `verify_strict(interpreter=…)`) rather
+   > than `whetstone verify`, which passes no interpreter; and `capture()` needs a checkout at
+   > `base_commit` to read `uv.lock` from, so provisioning and verification should share one
+   > checkout — the `import_roots` / inert-checkout lesson again.
 7. **Resumability** (S2): checkpoint per (candidate, task) so an interrupted overnight run resumes.
 
 ## Out of scope
