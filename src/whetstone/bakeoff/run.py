@@ -317,9 +317,29 @@ def freeze(tasks: Sequence[Task]) -> Contract:
     )
 
 
+def load_task_roots(roots: Sequence[Path]) -> tuple[Task, ...]:
+    """Union several corpus directories into one task set, in the order given.
+
+    The miner writes one directory per donor (`tasks/README.md`), so the real source-B corpus is
+    two directories rather than one, and `load_tasks` deliberately refuses their parent — it will
+    not descend into a subdirectory, because *"a skipped task is a missing denominator"*
+    (`whetstone/tasks/manifest.py:79-83`). That refusal is right and is left alone; what changes is
+    that the caller may name more than one root.
+
+    Nothing is deduplicated. Two roots naming the same task would be a corpus that counts a task
+    twice, and silently collapsing them would hide it — `load_tasks` already fails closed on a
+    malformed root, and a repeated one is the operator's error to see.
+    """
+    assert roots, "no task roots — a run over nothing is a malformed invocation, not a verdict"
+    collected: list[Task] = []
+    for root in roots:
+        collected.extend(load_tasks(root))
+    return tuple(collected)
+
+
 def conduct(
     *,
-    tasks: Path,
+    tasks: Sequence[Path],
     public: Path,
     funnel: Path,
     weights: Path,
@@ -346,7 +366,7 @@ def conduct(
     os.environ[HF_HUB_OFFLINE] = "1"
 
     private_tasks, public_tasks, declared = _partition(
-        load_tasks(tasks), load_tasks(public), dev_subset
+        load_task_roots(tasks), load_tasks(public), dev_subset
     )
     contract = freeze((*private_tasks, *public_tasks))
     fetched = load_weights(weights)
@@ -441,13 +461,12 @@ def conduct(
     )
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """Parse an operator's invocation and run it. The whole CLI surface of the bake-off.
+def build_parser() -> argparse.ArgumentParser:
+    """The CLI surface, built separately so tests can exercise it without running anything.
 
-    Every path and every limit is **required**, with no defaults anywhere. A default output
-    directory, workspace or timeout would each put a night's work — or a night's failure — somewhere
-    the operator did not choose, which is the argument `sweep` already makes for refusing to
-    default its journal and `score` makes for refusing to default its timeout.
+    Split out of ``main`` when ``--tasks`` became repeatable: a flag whose accumulation is the
+    difference between scoring a corpus and scoring one donor of it deserves an assertion, and
+    an assertion needs a parser it can reach without a weights provenance and a night to spare.
     """
     parser = argparse.ArgumentParser(
         prog="python -m whetstone.bakeoff.run",
@@ -461,8 +480,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--tasks",
         type=Path,
         required=True,
-        help="source B: the private corpus directory. Read by path and never copied — it is the "
-        "user's own code and lives outside any worktree.",
+        action="append",
+        metavar="DIR",
+        help="source B: a private corpus directory, repeatable. The miner writes one directory "
+        "per donor, so the real corpus is `tasks/local/belay` and `tasks/local/contig` rather "
+        "than their parent — `load_tasks` refuses a directory holding subdirectories, on the "
+        "ground that a skipped task is a missing denominator. Name each donor; the roots are "
+        "unioned. Read by path and never copied: it is the user's own code and lives outside "
+        "any worktree.",
     )
     parser.add_argument(
         "--public",
@@ -530,6 +555,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="checkpoint file, so an interrupted overnight run resumes instead of restarting. "
         "Optional and undefaulted: a default would resume from a run somebody had forgotten.",
     )
+    
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Parse an operator's invocation and run it. The whole CLI surface of the bake-off.
+
+    Every path and every limit is **required**, with no defaults anywhere. A default output
+    directory, workspace or timeout would each put a night's work — or a night's failure — somewhere
+    the operator did not choose, which is the argument `sweep` already makes for refusing to
+    default its journal and `score` makes for refusing to default its timeout.
+    """
+    parser = build_parser()
     arguments = parser.parse_args(argv)
 
     conducted = conduct(

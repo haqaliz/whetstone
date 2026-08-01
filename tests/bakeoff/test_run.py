@@ -176,7 +176,9 @@ def _run(tmp_path: Path, **overrides: Any) -> Conducted:
     private = overrides.pop("private", ("alpha", "beta", "gamma"))
     vacuous = overrides.pop("vacuous", "")
     arguments: dict[str, Any] = {
-        "tasks": _corpus(tmp_path, "private", private, vacuous=vacuous),
+        # `--tasks` is repeatable, because the real corpus is one directory per donor; a single
+        # root is still the common case and is passed as a one-element sequence.
+        "tasks": (_corpus(tmp_path, "private", private, vacuous=vacuous),),
         "public": _corpus(tmp_path, "public", ("pallets__flask-4045",)),
         "funnel": _funnel(tmp_path / "ledger" / "ineligible.json"),
         "weights": _weights(tmp_path / "weights", "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit"),
