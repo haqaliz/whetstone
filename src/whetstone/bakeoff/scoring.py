@@ -66,6 +66,7 @@ from whetstone.bakeoff.patch import Extracted, extract_patch
 from whetstone.bakeoff.rendering import prompt_hash, render_prompt
 from whetstone.bakeoff.sources import oracle_sources
 from whetstone.tasks.environment import NotProvisionable, capture
+from whetstone.tasks.gates import Ineligible, check_environment
 from whetstone.verify.repo import CheckoutError, materialise
 from whetstone.verify.strict import verify_strict
 from whetstone.verify.task import Task
@@ -205,6 +206,44 @@ class Rollout:
 Provision = Callable[[Task, Path], Path]
 
 
+def provision(task: Task, into: Path) -> Path:
+    """Build `task`'s environment, preferring what the manifest declares over what a donor holds.
+
+    **The manifest is the authority at verification time.** A task's `environment.pins` are exact
+    `==` pins and its `environment.python` is a nominated interpreter; together they are the whole
+    reason a verdict does not depend on what an index served that morning
+    (`whetstone/verify/task.py`). `capture` exists to *derive* that answer when a task is minted,
+    from a donor's `uv.lock`. Re-deriving it when a task is *graded* asks a question the manifest
+    already answered, and it asks it of an artifact the task is not required to have.
+
+    That is not hypothetical. It aborted the first complete bake-off on its last task:
+    `pallets__flask-4045` sits at a 2021 commit of a project that never used uv, so the lock route
+    refused the donor with `NoLockfile`, its control arm skipped, and `rankable` — correctly — would
+    not rank a candidate whose harness had proved nothing. The refusal was right about the donor and
+    wrong about the task, which declares nine exact pins of its own.
+
+    A task declaring no pins falls through to the lock route, which is where every source-B task
+    that was proven live went. Nothing about that route changes here.
+    """
+    if task.environment.pins:
+        checkout = into / "checkout"
+        materialise(task, checkout)
+        try:
+            return check_environment(
+                list(task.environment.pins),
+                venv=into / "venv",
+                python=task.environment.python,
+            ).interpreter
+        except Ineligible as failure:
+            # One provisioning-failure type crosses this boundary. `check_environment` belongs to
+            # the ingestion gates and raises their `Ineligible`; the caller catches the
+            # provisioning error and records UNPROVISIONED. Letting a second type through would
+            # mean an environment that could not be built escaped as a crash instead of being
+            # recorded as a task nobody could grade — charged to the run rather than to coverage.
+            raise NotProvisionable(str(failure)) from failure
+    return provision_from_lock(task, into)
+
+
 def provision_from_lock(task: Task, into: Path) -> Path:
     """Materialise `task` at its base commit and build its environment from that checkout's lock.
 
@@ -273,7 +312,7 @@ class Interpreters:
     workspace: Path
 
     #: How to build one. Defaults to the real thing; substituted in tests.
-    provision: Provision = provision_from_lock
+    provision: Provision = provision
 
     #: Pin set -> what came of building it. `init=False` so the cache cannot be seeded from
     #: outside, which would make "provisioned once" a claim about the caller.

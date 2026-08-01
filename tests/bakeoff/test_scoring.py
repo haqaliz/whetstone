@@ -296,7 +296,13 @@ def test_an_unbuildable_environment_is_never_charged_to_the_candidate(
         "verified. One wasted generation is nothing; 66 tasks times every candidate, overnight, "
         "is the bake-off not finishing"
     )
-    assert "uv.lock" in record.detail, (
+    # The substring moved when provisioning learned to prefer a task's declared pins over a
+    # donor's lockfile: this fixture DECLARES a pin, so it now takes the pins route and fails at
+    # resolution rather than at a missing `uv.lock`. What the assertion is actually about is
+    # unchanged — the record must name the reason — so it names the requirement that could not be
+    # resolved. A test asserting the old substring would now be asserting which route ran, which
+    # is not what it was written to protect.
+    assert "whetstone-fixture-dep==1.0.0" in record.detail, (
         "WHY THIS IS A FAILURE: the record does not say why provisioning failed, so whoever "
         f"reads a run of UNPROVISIONED records cannot tell a missing lockfile from a resolver "
         f"error from a wrong interpreter. Got {record.detail!r}"
