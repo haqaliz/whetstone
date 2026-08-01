@@ -79,7 +79,13 @@ from enum import Enum
 from pathlib import Path
 
 from whetstone.bakeoff.scoring import Interpreters
-from whetstone.bakeoff.sources import changed_paths
+
+# `Origin` is defined in `sources` rather than here, and re-exported below for the callers
+# that already read it from this module. Both the reference patch and the oracle path set
+# are obtained by one of the same two routes, so the enum recording which one ran has to
+# live at the end of the import edge that does not point back — this module imports
+# `sources`, never the reverse.
+from whetstone.bakeoff.sources import Origin, changed_paths
 from whetstone.tasks.derive import gold_patch
 from whetstone.tasks.donor import Candidate, GitFailed
 from whetstone.tasks.fetch import read_pool
@@ -124,30 +130,6 @@ class Control(str, Enum):
     #: does not carry the instance (or was never offered), or the fix touches an operator-held
     #: path. Not a failure of the harness, and deliberately not counted as one.
     SKIPPED = "SKIPPED"
-
-
-class Origin(str, Enum):
-    """Where a reference patch came from. Recorded, never inferred from the source afterwards.
-
-    `str` mixin for the same reason `Control` has one: it serialises as its name into the journal
-    and reads as itself in a report.
-
-    The two live routes are not equally strong evidence, which is the whole reason this exists.
-    `DONOR` means the diff was computed here, now, from a commit on this machine. `POOL` means it
-    was read verbatim out of a committed dataset artefact that nobody in this project re-derived
-    from anything. Publishing both as "the task's own reference patch" would claim the first for
-    the second.
-    """
-
-    #: Re-derived from `provenance.commit` against `provenance.parent` in the task's own donor.
-    DONOR = "DONOR"
-
-    #: Read from the source-A pool's `patch` field, keyed by instance id. Source A only.
-    POOL = "POOL"
-
-    #: No reference was obtained. Distinct from the two above rather than folded into a `None`,
-    #: so a skip can never be read off the record as a derivation that happened.
-    NONE = "NONE"
 
 
 @dataclass(frozen=True)
@@ -268,7 +250,10 @@ def _from_donor(task: Task) -> Reference:
             ),
             origin=Origin.NONE,
         )
-    return Reference(diff=diff, reason="", origin=Origin.DONOR)
+    # `changed.origin` rather than a literal `Origin.DONOR`: the route was chosen by the
+    # derivation above, and a second statement of it here would be a second answer to "where did
+    # this come from" — with only one of the two consulted by whoever reads the record.
+    return Reference(diff=diff, reason="", origin=changed.origin)
 
 
 def _from_pool(task: Task, pool: Path | None) -> Reference:

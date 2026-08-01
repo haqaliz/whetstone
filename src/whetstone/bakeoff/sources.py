@@ -54,10 +54,32 @@ The second is the load-bearing claim and it is asserted, not asserted-to:
 renders one task under both budgets and requires the two prompts and their hashes to be identical.
 Should the budget ever become a truncation point, that test fails before anything is scored.
 
+**Two routes, chosen by what the task carries, and they never blend.** A mined task names a commit
+on this machine and the set is re-derived from it. A public SWE-bench instance names no commit —
+its fixing commit is not here — so the set comes from the **paths its committed gold patch
+touches**, read out of the source-A pool by `verify.repo.declared_paths`: git's own parse of a
+diff, performed without applying it. Nothing is derived on that route; the scope is given, and the
+only thing taken from the pool is *which files*, never their contents. Those still come from the
+checkout at `base_commit`, so what the base is shown is the broken file rather than the answer.
+
+That second route is why source A can be asked anything at all. Under the donor derivation alone
+the one eligible instance came back with no oracle and was never posed to a base — a source that
+`PREREGISTRATION.md:142-143` requires be published beside source B while contributing a funnel, a
+harness verdict, and no scored result.
+
+**Neither route falls back to the other**, in either direction, and `Origin` records which one
+ran. A private task whose donor is missing is a skip about that donor: reaching into a public
+dataset on an id collision would scope it by a patch for another repository entirely, and the
+prompt built from it would be about neither. A public instance has nothing to re-derive from, and
+its `repo_url` is a GitHub URL — a fall-through to the donor route would put a network call where
+a refusal belongs.
+
 **Held paths never leave here.** The path set is filtered by `is_test_path` and then pre-flighted
-against `task.test_blobs`; a collision is a skip carrying its reason, never a partial answer.
-`rendering.render_prompt` refuses a held path a second time, at the point of rendering, because
-this module is not the only thing that can build a source map.
+against `task.test_blobs` — on **both** routes, and the pool route is the one that needs it most:
+that patch is a dataset artefact nobody in this project wrote or re-derived. A collision is a skip
+carrying its reason, never a partial answer. `rendering.render_prompt` refuses a held path a
+second time, at the point of rendering, because this module is not the only thing that can build a
+source map.
 
 **Off the reward path.** `whetstone.bakeoff` imports `whetstone.verify` and `whetstone.tasks`;
 neither may import back. Nothing here consults a model — it reads git and a checkout.
@@ -70,10 +92,12 @@ import subprocess
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from whetstone.tasks.donor import GitFailed, is_test_path, run_git
-from whetstone.verify.repo import CheckoutError, materialise
+from whetstone.tasks.fetch import read_pool
+from whetstone.verify.repo import CheckoutError, PatchError, declared_paths, materialise
 from whetstone.verify.task import Task
 
 #: The provenance keys a mined task carries, and the two the derivation needs. Named because
@@ -81,6 +105,11 @@ from whetstone.verify.task import Task
 #: the read site would let the two drift with nothing failing.
 _COMMIT = "commit"
 _PARENT = "parent"
+
+#: The provenance key a source-A manifest carries in place of a commit. `whetstone.tasks.public`
+#: writes the instance id into both this key and `task_id`; both are consulted below, in that
+#: order, so a manifest that ever stops using its instance id as its task id still resolves.
+_INSTANCE = "instance_id"
 
 #: The git statuses whose record carries **two** paths rather than one — a rename and a copy both
 #: name a source and a destination. Spelled as a prefix set because git suffixes them with a
@@ -126,6 +155,34 @@ ORACLE_BUDGET_CHARS = 80_000
 _MAX_BYTES_PER_CHARACTER = 4
 
 
+class Origin(str, Enum):
+    """Where a task's fix — and therefore its scope — came from. Recorded, never inferred later.
+
+    `str` mixin so it serialises as its name into the journal and reads as itself in a report,
+    matching `Status` and `Control`.
+
+    Defined here rather than in `control`, which is where it is also used: `control` imports this
+    module for the path derivation, so the enum both of them record has to live at the end that
+    does not import back. It is re-exported from `control` for the callers that already read it
+    there.
+
+    The two live routes are not equally strong evidence, which is the whole reason this exists.
+    `DONOR` means the fix was computed here, now, from a commit on this machine. `POOL` means it
+    was read verbatim out of a committed dataset artefact that nobody in this project re-derived
+    from anything. Publishing both as "the task's own fix" would claim the first for the second.
+    """
+
+    #: Re-derived from `provenance.commit` against `provenance.parent` in the task's own donor.
+    DONOR = "DONOR"
+
+    #: Read from the source-A pool's `patch` field, keyed by instance id. Source A only.
+    POOL = "POOL"
+
+    #: Nothing was obtained. Distinct from the two above rather than folded into a `None`, so a
+    #: skip can never be read off the record as a derivation that happened.
+    NONE = "NONE"
+
+
 @dataclass(frozen=True)
 class Changed:
     """The non-test paths a task's fix touches, or the reason they could not be established.
@@ -141,6 +198,12 @@ class Changed:
 
     #: Why there are none, or an empty string when there are.
     reason: str
+
+    #: Which route produced them — the user's own commit, or the committed pool — or `NONE` when
+    #: neither did. Carried rather than reconstructed from `task.source` afterwards, because the
+    #: route is chosen by what the task carries and a later reader guessing from the source label
+    #: would be re-deriving a fact this module already knew.
+    origin: Origin
 
 
 @dataclass(frozen=True)
@@ -159,34 +222,44 @@ class Sources:
     #: Why there are none, or an empty string when there are.
     reason: str
 
+    #: Which route decided *which files* these are. The contents are always the checkout's, on
+    #: both routes; this says where the scope came from, and it is the same distinction `control`
+    #: records about the reference patch.
+    origin: Origin
 
-def changed_paths(task: Task) -> Changed:
-    """The non-test paths `task`'s own fix touches, re-derived from its donor.
+
+def changed_paths(task: Task, *, pool: Path | None = None) -> Changed:
+    """The non-test paths `task`'s own fix touches — from its donor, or from `pool`.
 
     Returns rather than raises, because every reason this can fail is an ordinary property of a
-    corpus rather than a defect: a public task has no donor commit to diff, a private task's donor
-    may not be on this machine, and a commit may legitimately touch a held path. Each of those is
-    a skip with a name on it, and a raise would turn the first one into an aborted bake-off.
+    corpus rather than a defect: a private task's donor may not be on this machine, a commit may
+    legitimately touch a held path, and a pool may not carry the instance it was asked for. Each
+    of those is a skip with a name on it, and a raise would turn the first one into an aborted
+    bake-off.
 
-    The pre-flight against `task.test_blobs` is the assertion worth reading. For the control arm,
-    a reference patch touching a held path is refused by STRICT before anything runs — so using it
-    would report the reward's own scope check as "the harness cannot reach PASS". For the oracle,
-    the same collision would put the graded assertions into the context window. One check, two
-    failures, and it is done here so that no caller can obtain a path set this module has not
-    already vouched for.
+    **The route is chosen by what the task carries, and only by that** — the same rule, for the
+    same reasons, that `control.reference_patch` follows: a donor commit means the donor, no donor
+    commit means the pool, and neither falls back to the other. `pool` is an argument rather than a
+    path this module knows, because a hardcoded `tasks/public/pool.json` would make every test
+    either read a 3.2 MB committed artefact or exercise a different code path from the one that
+    runs at night. Omitting it makes every source-A task a skip that says so, and changes nothing
+    about source B.
+
+    The pre-flight against `task.test_blobs` is the assertion worth reading, and it applies to
+    whichever route ran. For the control arm, a reference patch touching a held path is refused by
+    STRICT before anything runs — so using it would report the reward's own scope check as "the
+    harness cannot reach PASS". For the oracle, the same collision would put the graded assertions
+    into the context window. One check, two failures, and it is done here so that no caller can
+    obtain a path set this module has not already vouched for.
     """
-    commit = task.provenance.get(_COMMIT)
-    parent = task.provenance.get(_PARENT)
-    if not commit or not parent:
-        return Changed(
-            paths=None,
-            reason=(
-                f"task {task.task_id!r} carries no donor commit in its provenance, so the set of "
-                f"files its fix touches cannot be re-derived: the harness cannot be shown to "
-                f"reach PASS on it and the base cannot be shown the code it is asked to patch"
-            ),
-        )
+    if not (task.provenance.get(_COMMIT) and task.provenance.get(_PARENT)):
+        return _from_pool(task, pool)
+    return _from_donor(task)
 
+
+def _from_donor(task: Task) -> Changed:
+    """Source B's route: the paths the mined commit itself touched, read from git now."""
+    commit = task.provenance[_COMMIT]
     donor = Path(task.repo_url)
     try:
         touched = _touched_paths(donor, commit)
@@ -197,6 +270,7 @@ def changed_paths(task: Task) -> Changed:
                 f"the donor for task {task.task_id!r} could not be read at {str(donor)!r}: "
                 f"{type(exc).__name__}: {exc}"
             ),
+            origin=Origin.NONE,
         )
 
     paths = tuple(sorted(path for path in touched if not is_test_path(path)))
@@ -208,8 +282,100 @@ def changed_paths(task: Task) -> Changed:
                 f"neither a reference patch to apply — `git apply` refuses an empty diff — nor a "
                 f"file to show the base"
             ),
+            origin=Origin.NONE,
+        )
+    return _vouched(task, paths, Origin.DONOR)
+
+
+def _from_pool(task: Task, pool: Path | None) -> Changed:
+    """Source A's route: the non-test paths the instance's committed gold patch declares.
+
+    Nothing is derived here — the patch is given — so the only question is which files it names,
+    and that is asked of `verify.repo.declared_paths`: `git apply --numstat`, which parses and
+    reports without writing. It is the same parse STRICT runs on a patch before applying it, and a
+    second parser in this module would be a second answer to "what does this diff touch" with only
+    one of them reviewed. The scratch directory it runs in need not be a repository, and nothing
+    is applied anywhere.
+
+    Only the **paths** come from the pool. Their contents are read out of the checkout at
+    `base_commit` by `_read`, exactly as on the donor route, because the pool's copy of the file
+    would be the fixed one — the answer rather than the question.
+
+    The gold patch of a SWE-bench instance touches no test by construction, since the dataset
+    splits each record into `patch` and `test_patch` precisely so it does not. That is the
+    dataset's claim about itself and it is checked rather than trusted: `is_test_path` filters,
+    and `_vouched` then refuses any survivor the operator holds.
+    """
+    instance = str(task.provenance.get(_INSTANCE) or task.task_id)
+    if pool is None:
+        return Changed(
+            paths=None,
+            reason=(
+                f"task {task.task_id!r} carries no donor commit in its provenance and no source-A "
+                f"pool was offered, so the files its fix touches cannot be established: they are "
+                f"declared by the gold patch in the pool, keyed by instance {instance!r}, and "
+                f"nothing here was told where that pool is"
+            ),
+            origin=Origin.NONE,
         )
 
+    try:
+        instances = read_pool(Path(pool))
+    except ValueError as exc:
+        return Changed(
+            paths=None,
+            reason=f"the source-A pool for task {task.task_id!r} could not be read: {exc}",
+            origin=Origin.NONE,
+        )
+
+    found = [one for one in instances if one.instance_id == instance]
+    if not found or not found[0].patch.strip():
+        return Changed(
+            paths=None,
+            reason=(
+                f"the source-A pool at {str(pool)!r} carries no usable gold patch for instance "
+                f"{instance!r} of task {task.task_id!r} ({len(instances)} instances read), so "
+                f"there is no statement of which files this task's fix touches and the base "
+                f"cannot be shown the code it is asked to patch"
+            ),
+            origin=Origin.NONE,
+        )
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="whetstone-pool-") as scratch:
+            touched = declared_paths(found[0].patch, Path(scratch))
+    except (PatchError, subprocess.SubprocessError, OSError) as exc:
+        return Changed(
+            paths=None,
+            reason=(
+                f"the gold patch for instance {instance!r} of task {task.task_id!r} could not be "
+                f"parsed: {type(exc).__name__}: {exc}"
+            ),
+            origin=Origin.NONE,
+        )
+
+    paths = tuple(sorted(path for path in touched if not is_test_path(path)))
+    if not paths:
+        return Changed(
+            paths=None,
+            reason=(
+                f"the gold patch for instance {instance!r} of task {task.task_id!r} declares no "
+                f"non-test path, so there is no file to show the base — a dataset row whose fix "
+                f"is entirely test code is not a task this contract can pose"
+            ),
+            origin=Origin.NONE,
+        )
+    return _vouched(task, paths, Origin.POOL)
+
+
+def _vouched(task: Task, paths: tuple[str, ...], origin: Origin) -> Changed:
+    """The pre-flight both routes end in: no path the operator holds, whatever produced it.
+
+    Shared rather than written twice because it is the boundary itself. It matters most on the
+    pool route, whose patch is a dataset artefact nobody in this project wrote or re-derived — and
+    a path that survived `is_test_path` while sitting in `test_blobs` (a root `conftest.py` is the
+    real case) is exactly the one a naming convention would wave through.
+    """
     collisions = sorted(set(paths) & set(task.test_blobs))
     if collisions:
         return Changed(
@@ -220,12 +386,17 @@ def changed_paths(task: Task) -> Changed:
                 f"report the reward's own scope check as `the harness cannot reach PASS`, and "
                 f"showing it to a base would hand over the assertions the reward is computed from"
             ),
+            origin=Origin.NONE,
         )
-    return Changed(paths=paths, reason="")
+    return Changed(paths=paths, reason="", origin=origin)
 
 
-def oracle_sources(task: Task) -> Sources:
-    """The files `task`'s fix touches, read out of the donor **at `base_commit`**.
+def oracle_sources(task: Task, *, pool: Path | None = None) -> Sources:
+    """The files `task`'s fix touches, read out of the checkout **at `base_commit`**.
+
+    `pool` decides only where the *path set* comes from for a task with no donor commit — see
+    `changed_paths`. The contents are read from the checkout on both routes, so what a source-A
+    base is shown is the file as it stands at `base_commit`, never the pool's copy of the fix.
 
     At `base_commit` and nowhere else, for two reasons that both end in `NOT_APPLIED`. The
     checkout `verify_strict` patches is at `base_commit`, so a file quoted from after the fix
@@ -244,9 +415,9 @@ def oracle_sources(task: Task) -> Sources:
     over text can carry. If nothing readable remains, that is a refusal with a reason, because an
     empty oracle is the sourceless question wearing the oracle's name.
     """
-    changed = changed_paths(task)
+    changed = changed_paths(task, pool=pool)
     if changed.paths is None:
-        return Sources(files=None, reason=changed.reason)
+        return Sources(files=None, reason=changed.reason, origin=changed.origin)
 
     workspace = Path(tempfile.mkdtemp(prefix="whetstone-oracle-"))
     try:
@@ -260,16 +431,22 @@ def oracle_sources(task: Task) -> Sources:
                     f"the donor for task {task.task_id!r} could not be checked out at "
                     f"{task.base_commit}: {type(exc).__name__}: {exc}"
                 ),
+                origin=Origin.NONE,
             )
-        return _read(task, checkout, changed.paths)
+        return _read(task, checkout, changed.paths, changed.origin)
     finally:
         # Removed whatever happened. An oracle checkout left behind per task per candidate is a
         # copy of the user's repository accumulating in a temporary directory nobody chose.
         shutil.rmtree(workspace, ignore_errors=True)
 
 
-def _read(task: Task, checkout: Path, paths: tuple[str, ...]) -> Sources:
+def _read(task: Task, checkout: Path, paths: tuple[str, ...], origin: Origin) -> Sources:
     """Read `paths` out of `checkout`, refusing the whole set if it is over the budget.
+
+    `origin` is carried through rather than re-decided here: what a file is read from is the
+    checkout, always, and which route chose the path set was settled by `changed_paths`. A refusal
+    returns `Origin.NONE`, because no oracle was obtained and a record saying otherwise would name
+    a derivation that produced nothing.
 
     The budget is checked over the **total**, and the refusal is of everything rather than of the
     largest file. Dropping one file and showing the rest would be truncation with extra steps: the
@@ -286,14 +463,18 @@ def _read(task: Task, checkout: Path, paths: tuple[str, ...]) -> Sources:
         if not target.is_file():
             continue
         if target.stat().st_size > ORACLE_BUDGET_CHARS * _MAX_BYTES_PER_CHARACTER:
-            return Sources(files=None, reason=_over(task, path, target.stat().st_size))
+            return Sources(
+                files=None,
+                reason=_over(task, path, target.stat().st_size),
+                origin=Origin.NONE,
+            )
         try:
             text = target.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
         total += len(text)
         if total > ORACLE_BUDGET_CHARS:
-            return Sources(files=None, reason=_over(task, path, total))
+            return Sources(files=None, reason=_over(task, path, total), origin=Origin.NONE)
         files[path] = text
 
     if not files:
@@ -305,8 +486,9 @@ def _read(task: Task, checkout: Path, paths: tuple[str, ...]) -> Sources:
                 f"text, so there is no source to show and the prompt would ask for a diff against "
                 f"files the base has never seen"
             ),
+            origin=Origin.NONE,
         )
-    return Sources(files=files, reason="")
+    return Sources(files=files, reason="", origin=origin)
 
 
 def _over(task: Task, path: str, measured: int) -> str:
@@ -347,6 +529,7 @@ def _touched_paths(donor: Path, commit: str) -> frozenset[str]:
 __all__ = [
     "ORACLE_BUDGET_CHARS",
     "Changed",
+    "Origin",
     "Sources",
     "changed_paths",
     "oracle_sources",

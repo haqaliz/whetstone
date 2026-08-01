@@ -31,6 +31,8 @@ import dataclasses
 from pathlib import Path
 
 import pytest
+from fixtures.pool import write_pool
+from fixtures.repos import CALC_FIXED, build_task, make_patch
 from fixtures.repos.mined import build_mined_task
 
 from whetstone.bakeoff.control import Control, reference_patch
@@ -173,15 +175,11 @@ def test_resuming_produces_the_record_set_an_uninterrupted_run_would_have(tmp_pa
     solved = reference_patch(tasks[0]).diff
     assert solved is not None, "the fixture's own reference patch must be derivable"
     answers = {posed(tasks[0]): solved} | {posed(task): REFUSAL for task in tasks[1:]}
-    partial = {
-        prompt: answer for prompt, answer in answers.items() if prompt != posed(tasks[2])
-    }
+    partial = {prompt: answer for prompt, answer in answers.items() if prompt != posed(tasks[2])}
 
     journal = Journal(path=tmp_path / "night.jsonl")
     with pytest.raises(UnstubbedPrompt):
-        _run(
-            tmp_path, tasks, candidate="base-a", answers=partial, journal=journal, where="crashed"
-        )
+        _run(tmp_path, tasks, candidate="base-a", answers=partial, journal=journal, where="crashed")
 
     checkpointed = journal.replay()
     assert len(checkpointed) == 2, (
@@ -226,3 +224,41 @@ def _untimed(steps: tuple[Step, ...]) -> list[Step]:
         )
         for step in steps
     ]
+
+
+def test_the_pool_reaches_the_rollout_and_not_only_the_control(tmp_path: Path) -> None:
+    """A public task in a sweep is *asked* its question, not merely controlled for.
+
+    `sweep` already handed the pool to the control arm, which is why source A's harness could be
+    proven sound while every one of its rollouts came back `NO_ORACLE`: the gold patch declares
+    which files the fix touches, and the rollout is the half that needs to show them. A sweep in
+    which the control passes and the rollout is never posed produces exactly the shape P1 must not
+    publish — a source with a harness verdict, a denominator, and no scored result in it.
+
+    The generator is stubbed on the posed prompt alone. If the pool failed to reach `score` the
+    prompt would never be rendered, the stub would go unused, and the outcome would be the skip
+    this asserts against.
+    """
+    fixture = build_task(tmp_path / "task", task_id="pallets__flask-4045")
+    gold = make_patch(fixture.origin, {"calc.py": CALC_FIXED})
+    pool = write_pool(tmp_path / "pool.json", {"pallets__flask-4045": gold})
+    sources = oracle_sources(fixture.task, pool=pool)
+    assert sources.files is not None, sources.reason
+
+    run = sweep(
+        candidate="answers-with-the-fix",
+        tasks=[fixture.task],
+        generator=StubGenerator({render_prompt(fixture.task, sources.files): gold}),
+        sandbox_root=tmp_path / "runs",
+        timeout=TIMEOUT,
+        interpreters=Interpreters(workspace=tmp_path / "envs"),
+        pool=pool,
+    )
+
+    step = run.steps[0]
+    assert (step.probe.control, step.rollout.outcome) == (Control.INTACT, Outcome.SOLVED), (
+        f"WHY THIS IS A FAILURE: the pool reached one half of the sweep and not the other. A "
+        f"control arm that proves the harness grades a task nobody was asked is a proof about an "
+        f"experiment that did not run. Got {step.probe.control!r} and "
+        f"{step.rollout.outcome!r}: {step.rollout.detail or step.probe.detail}"
+    )

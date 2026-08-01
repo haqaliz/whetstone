@@ -40,10 +40,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fixtures.pool import write_pool
+from fixtures.repos import CALC_FIXED, build_task, make_patch
 from fixtures.repos.mined import build_mined_task
 
 from whetstone.bakeoff import rendering, scoring
 from whetstone.bakeoff.generator import Generator
+from whetstone.bakeoff.rendering import prompt_hash, render_prompt
 from whetstone.bakeoff.run import (
     COST_FILE,
     PROBE_FILE,
@@ -55,6 +58,7 @@ from whetstone.bakeoff.run import (
     main,
     mlx_engine,
 )
+from whetstone.bakeoff.sources import oracle_sources
 from whetstone.bakeoff.sweep import HarnessNotProven
 from whetstone.bakeoff.weights import PROVENANCE_FILE, PROVENANCE_SCHEMA, Weights, load_weights
 from whetstone.tasks.fetch import POOL_SCHEMA
@@ -465,3 +469,48 @@ def test_the_entry_point_refuses_an_invocation_that_names_no_output(
         "night's work lands or how long it is allowed to take"
     )
     assert "required" in capsys.readouterr().err.lower()
+
+
+def test_a_donorless_public_task_is_sealed_and_scored_from_its_pool(tmp_path: Path) -> None:
+    """The seam `freeze` sits in: a question that is asked must have been sealed before it was.
+
+    The public corpus every other test in this file uses is a *mined* fixture wearing the instance
+    id, so it carries a donor commit and never opens the pool. The real one does not: source A's
+    scope is declared by the gold patch committed beside it, and until that reached `score` the
+    single eligible instance came back `NO_ORACLE` on every candidate — a source with a proven
+    harness, a denominator, and nothing scored inside it.
+
+    Two things have to be true together, which is why they are asserted together. `freeze` must
+    seal the public prompt, and `score` must render exactly that prompt: the sealed generator
+    refuses anything else, so a pool that reached one and not the other does not produce a wrong
+    number here, it produces a run that dies — which is the correct behaviour and useless as
+    evidence that the task was posed. So the contract is checked for the prompt's hash *and* the
+    published coverage is checked for the rollout.
+    """
+    public = tmp_path / "public-donorless"
+    public.mkdir(parents=True)
+    fixture = build_task(tmp_path / "instance", task_id="pallets__flask-4045")
+    shutil.copy(tmp_path / "instance" / "task.json", public / "pallets__flask-4045.json")
+    gold = make_patch(fixture.origin, {"calc.py": CALC_FIXED})
+    # Not `tmp_path / "pool"`: `_run` evaluates its defaults before applying the overrides, so the
+    # empty pool it builds for the mined public corpus would be written over this one — and the
+    # symptom is a control arm skipping for want of an instance that was there a moment ago.
+    (tmp_path / "source-a").mkdir(parents=True, exist_ok=True)
+    pool = write_pool(tmp_path / "source-a" / "pool.json", {"pallets__flask-4045": gold})
+    sources = oracle_sources(fixture.task, pool=pool)
+    assert sources.files is not None, sources.reason
+
+    conducted = _run(tmp_path, public=public, pool=pool)
+
+    assert prompt_hash(render_prompt(fixture.task, sources.files)) in conducted.contract.prompts, (
+        "WHY THIS IS A FAILURE: the frozen contract does not carry the question the public task "
+        "is asked. Either the seal was taken without the pool — in which case every scored run "
+        "dies at the first public rollout — or the task is unposable again and source A publishes "
+        "no result beside source B's, which `PREREGISTRATION.md:142-143` does not permit"
+    )
+    assert conducted.report is not None
+    assert [tally.covered for tally in conducted.report.public] == [1], (
+        f"WHY THIS IS A FAILURE: the one eligible public instance reached no verdict, so source A "
+        f"contributes a funnel and a harness verdict and nothing scored. Got "
+        f"{[(tally.candidate, tally.covered) for tally in conducted.report.public]}"
+    )

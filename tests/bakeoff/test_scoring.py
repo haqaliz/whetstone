@@ -40,7 +40,8 @@ import sys
 from pathlib import Path
 
 import pytest
-from fixtures.repos import build_task, make_patch
+from fixtures.pool import write_pool
+from fixtures.repos import CALC_FIXED, build_task, make_patch
 from fixtures.repos.mined import MINED_CALC_BUGGY, MINED_CALC_FIXED, build_mined_task
 
 from whetstone.bakeoff.generator import StubGenerator
@@ -94,15 +95,19 @@ def test_add_is_addition():
 """
 
 
-def posed(task: Task) -> str:
+def posed(task: Task, *, pool: Path | None = None) -> str:
     """The prompt `score` will actually render for `task`, oracle sources and all.
 
     Every stub in this file is keyed on the exact prompt, so a test that rendered the sourceless
     prompt would hand the harness a table it cannot hit and fail with `UnstubbedPrompt` rather
     than with anything it meant to assert. This is also the assertion that the oracle is
     derivable at all for these fixtures.
+
+    `pool` is passed through for a task with no donor commit, whose file set is declared by the
+    committed gold patch rather than by a commit on this machine. It must be the same value the
+    matching `score` call is given, or the two render different prompts and the stub is missed.
     """
-    sources = oracle_sources(task)
+    sources = oracle_sources(task, pool=pool)
     assert sources.files is not None, sources.reason
     return render_prompt(task, sources.files)
 
@@ -116,9 +121,7 @@ def test_the_three_zeroes_are_told_apart(tmp_path: Path) -> None:
     """
     fixture = build_mined_task(tmp_path / "task")
     prompt = posed(fixture.task)
-    applies_and_fails = make_patch(
-        fixture.donor, {"calc.py": STILL_BROKEN}, at=fixture.parent
-    )
+    applies_and_fails = make_patch(fixture.donor, {"calc.py": STILL_BROKEN}, at=fixture.parent)
 
     records = {
         name: score(
@@ -627,4 +630,52 @@ def test_timing_is_recorded_and_stays_out_of_the_verdict(tmp_path: Path) -> None
         "WHY THIS IS A FAILURE: the same candidate, the same task and the same patch produced "
         "two different records once the clocks are set aside. A bake-off whose result moves "
         f"between runs cannot settle which base to start from.\n{first}\n{second}"
+    )
+
+
+def test_a_public_task_is_posed_and_scored_when_the_pool_is_offered(tmp_path: Path) -> None:
+    """Source A reaches a verdict, and the same task without a pool reaches none. Both asserted.
+
+    The control arm already proved the harness reaches PASS on the one eligible public instance,
+    from the gold patch committed in the pool. The task itself was still never *asked*: its file
+    set is declared by that same patch, `score` did not have it, and every public rollout was
+    `NO_ORACLE`. Source A therefore contributed a funnel and a harness verdict and no scored
+    result, while `PREREGISTRATION.md:142-143` requires it be published beside source B.
+
+    The contrast in the second half is the whole point of threading the argument rather than
+    reaching for a path: the pool is what changes a skip into a score, so it must be visible at
+    the call site of anything that scores.
+    """
+    fixture = build_task(tmp_path / "task", task_id="pallets__flask-4045")
+    gold = make_patch(fixture.origin, {"calc.py": CALC_FIXED})
+    pool = write_pool(tmp_path / "pool.json", {"pallets__flask-4045": gold})
+
+    record = score(
+        candidate="answers-with-the-fix",
+        task=fixture.task,
+        generator=StubGenerator({posed(fixture.task, pool=pool): gold}),
+        sandbox_root=tmp_path / "runs",
+        timeout=TIMEOUT,
+        interpreters=Interpreters(workspace=tmp_path / "envs"),
+        pool=pool,
+    )
+    without = score(
+        candidate="never-asked",
+        task=fixture.task,
+        generator=StubGenerator({}),
+        sandbox_root=tmp_path / "runs-without",
+        timeout=TIMEOUT,
+        interpreters=Interpreters(workspace=tmp_path / "envs"),
+    )
+
+    assert (record.outcome, record.strict) == (Outcome.SOLVED, Status.PASS), (
+        f"WHY THIS IS A FAILURE: the one eligible public instance still cannot be scored even "
+        f"with its committed gold patch to hand, so source A publishes a column of skips beside "
+        f"source B's real numbers. Got {record.outcome!r}, strict={record.strict!r}: "
+        f"{record.detail}"
+    )
+    assert without.outcome is Outcome.NO_ORACLE, (
+        f"WHY THIS IS A FAILURE: a public task was posed with no pool to declare its scope, so "
+        f"something was invented for it — either a file set from nowhere or the sourceless "
+        f"prompt, which is a different experiment in the same denominator. Got {without.outcome!r}"
     )

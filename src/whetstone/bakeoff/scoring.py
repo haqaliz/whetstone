@@ -323,6 +323,7 @@ def score(
     sandbox_root: Path | str,
     timeout: float,
     interpreters: Interpreters,
+    pool: Path | None = None,
 ) -> Rollout:
     """Ask `candidate` for a patch to `task`, verify it both ways, and record what happened.
 
@@ -340,6 +341,14 @@ def score(
     **The environment is built before the base is asked anything.** A task that cannot be
     provisioned can never be verified, so generating a patch for it is model time spent on a
     rollout that has no possible verdict — negligible on one task, hours across a corpus.
+
+    `pool` is the source-A pool, passed through to the oracle derivation and read by nothing here.
+    A task carrying a donor commit never consults it — the file set is re-derived from that commit
+    — and a task carrying none has nowhere else to get one, so omitting it makes every public task
+    a skip with a reason and changes nothing about source B. It is an argument rather than a path
+    this module knows for the reason `control` gives: a hardcoded `tasks/public/pool.json` would
+    make every test either read a 3.2 MB committed artefact or exercise a different code path from
+    the one that runs at night.
 
     **The oracle is derived before the prompt exists**, for the same reason and one more: there is
     no prompt to render without it. Provisioning is checked first because a task can fail both
@@ -363,7 +372,7 @@ def score(
             detail=acquired.failure,
         )
 
-    sources = oracle_sources(task)
+    sources = oracle_sources(task, pool=pool)
     if sources.files is None:
         # Neither the base nor a verifier is reached, for the same reason the empty string is
         # never handed to STRICT: a prompt with no source in it is a different question, and one

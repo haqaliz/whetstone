@@ -285,7 +285,7 @@ def mlx_engine(weights: Weights) -> Generator:
     return MlxGenerator(weights.local_dir, revision=weights.revision)
 
 
-def freeze(tasks: Sequence[Task]) -> Contract:
+def freeze(tasks: Sequence[Task], *, pool: Path | None = None) -> Contract:
     """Fix the question, over the scored set, before anything is loaded or generated.
 
     Takes the tasks rather than reading the template's source. A source digest would move when a
@@ -303,11 +303,18 @@ def freeze(tasks: Sequence[Task]) -> Contract:
     A task whose oracle cannot be derived contributes **no digest**, because `score` records it as
     skipped-with-reason and never asks a base anything about it. Sealing a prompt that is never
     sent would be sealing a question that does not exist.
+
+    **`pool` must be the one `score` is given, and this is the seam where that bites.** A public
+    task's file set is declared by its committed gold patch, so a seal taken without the pool omits
+    a prompt the rollout then renders — and the sealed generator, correctly, refuses to send a
+    question the contract does not carry. The run dies at the first public rollout, after the
+    weights are loaded and the private sweep is under way. Passing it in both places is not
+    plumbing: it is what makes the question that gets asked the question that was fixed.
     """
     digests = tuple(
         sorted(
             prompt_hash(render_prompt(task, sources.files))
-            for task, sources in ((task, oracle_sources(task)) for task in tasks)
+            for task, sources in ((task, oracle_sources(task, pool=pool)) for task in tasks)
             if sources.files is not None
         )
     )
@@ -377,7 +384,7 @@ def conduct(
     private_tasks, public_tasks, declared = _partition(
         load_task_roots(tasks), load_tasks(public), dev_subset
     )
-    contract = freeze((*private_tasks, *public_tasks))
+    contract = freeze((*private_tasks, *public_tasks), pool=pool)
     fetched = load_weights(weights)
 
     interpreters = Interpreters(workspace=workspace / "environments")
