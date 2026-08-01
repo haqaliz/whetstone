@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from whetstone.bakeoff.control import Control, Probe
+from whetstone.bakeoff.control import Control, Origin, Probe
 from whetstone.bakeoff.scoring import Outcome, Rollout
 from whetstone.verify.verdict import Status
 
@@ -146,6 +146,7 @@ def _encode(step: Step) -> dict[str, Any]:
             "control": probe.control.value,
             "without_patch": None if probe.without_patch is None else probe.without_patch.value,
             "with_reference": None if probe.with_reference is None else probe.with_reference.value,
+            "origin": probe.origin.value,
             "detail": probe.detail,
             "seconds": probe.seconds,
         },
@@ -181,6 +182,7 @@ def _decode(raw: Any) -> Step:
             control=Control(probe["control"]),
             without_patch=_status(probe["without_patch"]),
             with_reference=_status(probe["with_reference"]),
+            origin=Origin(probe["origin"]),
             detail=probe["detail"],
             seconds=float(probe["seconds"]),
         ),

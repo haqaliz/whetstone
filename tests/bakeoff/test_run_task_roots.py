@@ -93,6 +93,7 @@ def test_the_flag_is_repeatable_and_required() -> None:
             "--tasks", "/corpus/belay",
             "--tasks", "/corpus/contig",
             "--public", "/pub",
+            "--pool", "/pool.json",
             "--funnel", "/funnel.json",
             "--weights", "/w",
             "--out", "/out",

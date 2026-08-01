@@ -341,6 +341,7 @@ def conduct(
     *,
     tasks: Sequence[Path],
     public: Path,
+    pool: Path,
     funnel: Path,
     weights: Path,
     out: Path,
@@ -362,6 +363,14 @@ def conduct(
 
     `probe` is D7's timing sample and not `control.probe`: it runs the first `probe` tasks of the
     private source, writes what they cost, and publishes **no counts at all**.
+
+    `pool` is required rather than optional, and that is the lesson of the first scored run. Source
+    A's tasks carry no donor commit, so their control arm has nothing to re-derive and reads the
+    committed gold patch from the pool instead. Without one, every public probe is a SKIPPED,
+    source A reaches no INTACT, and `rankable` refuses the entire night — after the generation has
+    been paid for. `--public` is already required and neither source may be published alone
+    (`PREREGISTRATION.md:142-143`), so there is no sound invocation of this function that does not
+    need it.
     """
     os.environ[HF_HUB_OFFLINE] = "1"
 
@@ -384,6 +393,7 @@ def conduct(
             timeout=timeout,
             interpreters=interpreters,
             engine=engine,
+            pool=pool,
         )
 
     entrants: list[Entrant] = []
@@ -401,6 +411,7 @@ def conduct(
                 timeout=timeout,
                 interpreters=interpreters,
                 journal=checkpoint,
+                pool=pool,
             )
             for source, source_tasks in (("private", private_tasks), ("public", public_tasks))
         }
@@ -497,6 +508,16 @@ def build_parser() -> argparse.ArgumentParser:
         "(PREREGISTRATION.md:142-143); neither source may appear alone.",
     )
     parser.add_argument(
+        "--pool",
+        type=Path,
+        required=True,
+        help="source A's committed pool (tasks/public/pool.json). A public instance has no donor "
+        "commit, so its control arm reads the gold patch from here rather than re-deriving one. "
+        "Required, not optional: without it every public probe is a skip, source A proves nothing "
+        "about the harness, and the whole run is refused a ranking after the generation is paid "
+        "for — which is exactly how the first scored run ended. Never read for source B.",
+    )
+    parser.add_argument(
         "--funnel",
         type=Path,
         required=True,
@@ -573,6 +594,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     conducted = conduct(
         tasks=arguments.tasks,
         public=arguments.public,
+        pool=arguments.pool,
         funnel=arguments.funnel,
         weights=arguments.weights,
         out=arguments.out,
@@ -604,6 +626,7 @@ def _probe(
     timeout: float,
     interpreters: Interpreters,
     engine: Engine,
+    pool: Path,
 ) -> Conducted:
     """D7's timing sample: run `tasks`, write what they cost, and derive not one count.
 
@@ -626,6 +649,7 @@ def _probe(
             timeout=timeout,
             interpreters=interpreters,
             journal=None,
+            pool=pool,
         )
         costs.append(_cost(one.repo_id, (run,), time.perf_counter() - started))
 

@@ -30,6 +30,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+import pytest
 from fixtures.repos import build_task
 from fixtures.repos.mined import (
     MINED_CALC_BUGGY,
@@ -39,7 +40,14 @@ from fixtures.repos.mined import (
     build_mined_task,
 )
 
+from whetstone.bakeoff import sources as sources_module
+from whetstone.bakeoff.rendering import prompt_hash, render_prompt
 from whetstone.bakeoff.sources import ORACLE_BUDGET_CHARS, oracle_sources
+
+#: The budget this contract shipped with, before a run measured what it excluded. Kept as a literal
+#: rather than imported, because the assertion below is precisely that the number moved and that
+#: nothing a reader can observe moved with it — an import would make it move too.
+PREVIOUS_BUDGET_CHARS = 40_000
 
 
 def test_the_oracle_is_the_non_test_files_the_fix_touches_as_they_stand_at_base_commit(
@@ -266,4 +274,60 @@ def test_an_oracle_within_the_budget_is_shown_whole(tmp_path: Path) -> None:
     assert sum(len(text) for text in sources.files.values()) <= ORACLE_BUDGET_CHARS, (
         "WHY THIS IS A FAILURE: the returned oracle is itself over the budget, so the check "
         "measures something other than what it returns"
+    )
+
+
+def test_raising_the_budget_cannot_move_a_prompt_that_already_fitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """*(the honesty control on the raise)* A task under the old budget renders byte-identically.
+
+    The budget was raised **after** observing that it excluded 20 of 63 private tasks — on a run
+    that aborted and published nothing, but a measurement taken during a run all the same. That
+    ordering is what separates a fix from tuning, and only one property makes it defensible: the
+    change can move a task from *not posable* to *posable* and can move nothing else. A task
+    already inside the old budget must be shown the same files with the same contents in the same
+    order, and must therefore hash to the same `prompt_sha256` under both.
+
+    So the old budget is reinstated here and the prompt rendered under it is compared, byte for
+    byte and hash for hash, with the prompt rendered under the new one. If a later change ever
+    makes the budget a *truncation point* rather than a bound — the tempting way to fit more in —
+    this is the assertion that fails, and it fails before anything is scored under it.
+    """
+    fixture = build_mined_task(tmp_path / "task", bulk_chars=PREVIOUS_BUDGET_CHARS // 2)
+
+    monkeypatch.setattr(sources_module, "ORACLE_BUDGET_CHARS", PREVIOUS_BUDGET_CHARS)
+    before = oracle_sources(fixture.task)
+    monkeypatch.undo()
+    after = oracle_sources(fixture.task)
+
+    assert ORACLE_BUDGET_CHARS > PREVIOUS_BUDGET_CHARS, (
+        f"WHY THIS IS A FAILURE: the anti-vacuity check. This test only says anything while the "
+        f"budget has actually been raised above the {PREVIOUS_BUDGET_CHARS} that excluded a third "
+        f"of the corpus; at or below it, the two renders are identical because they are the same "
+        f"render. Got {ORACLE_BUDGET_CHARS}"
+    )
+    assert before.files is not None and after.files is not None, (
+        f"WHY THIS IS A FAILURE: this fixture is comfortably inside BOTH budgets, so a refusal "
+        f"under either means the comparison never happened: {before.reason or after.reason}"
+    )
+    assert before.files == after.files, (
+        f"WHY THIS IS A FAILURE: raising the budget changed which files a task under the old one "
+        f"is shown, or what they contain. That makes the raise a change to the question rather "
+        f"than to which questions can be asked, and every already-posable task's rollout would be "
+        f"a different experiment from the one the old contract posed. Got {sorted(before.files)} "
+        f"then {sorted(after.files)}"
+    )
+
+    old_prompt = render_prompt(fixture.task, before.files)
+    new_prompt = render_prompt(fixture.task, after.files)
+    assert old_prompt == new_prompt, (
+        "WHY THIS IS A FAILURE: the rendered prompt moved for a task that already fitted, so the "
+        "budget is reaching into what the base is shown rather than deciding whether it can be "
+        "shown anything at all"
+    )
+    assert prompt_hash(old_prompt) == prompt_hash(new_prompt), (
+        "WHY THIS IS A FAILURE: the prompt hash moved. That hash is this run's provenance and the "
+        "seal `run.freeze` fixes the question with — a budget that could move it would invalidate "
+        "every honest run under M7b's rule with nothing about the question having changed"
     )

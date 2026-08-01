@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-from whetstone.bakeoff.control import Control, Probe
+from whetstone.bakeoff.control import Control, Origin, Probe
 from whetstone.bakeoff.journal import Step
 from whetstone.bakeoff.report import (
     Entrant,
@@ -118,6 +118,10 @@ def _sweep(
                 control=control,
                 without_patch=Status.FAIL,
                 with_reference=Status.PASS,
+                # These are source-B-shaped records, so the reference is the donor's. Source A's
+                # is read from the committed pool instead, and the record says which — see
+                # `control.Origin`.
+                origin=Origin.DONOR,
                 detail="",
                 seconds=3.0,
             ),

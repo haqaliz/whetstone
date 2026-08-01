@@ -31,6 +31,29 @@ This is the standard SWE-bench oracle condition and it is adopted deliberately, 
 run exists (PRD M7b permits exactly that: develop the contract against a declared dev subset, then
 freeze it). It is a bound on what the number means, not a defect to be fixed later in silence.
 
+**The character budget was raised after a run had been observed, and that has to be said plainly.**
+`ORACLE_BUDGET_CHARS` shipped at 40,000 — chosen on paper as "about a third of a 32k window" — and
+the first scored bake-off then skipped **20 of 63** private tasks as over-budget: `src/contig/
+cli.py`, `src/belay/cli.py`, `CHANGELOG.md` and their neighbours are simply larger than that. The
+limit was excluding a third of the corpus from being asked a question at all. It is now 80,000,
+with the arithmetic written out at the constant.
+
+Changing a parameter after looking at a run is how tuning starts, so the two facts that make this
+one defensible are recorded here rather than in a commit message:
+
+1. **the run that revealed it ABORTED and published no report.** Its control arm refused source A,
+   `sweep.rankable` refused the sweep, and nothing about any base was written down. There is no
+   number this change could have been made to improve, because there is no number;
+2. **it cannot alter any already-posable task.** The budget decides *whether* an oracle is returned
+   and never *what* one contains — a task inside the old limit renders the same files, with the
+   same contents, in the same order, to the same `prompt_sha256`. The change moves tasks from *not
+   posable* to *posable*; it moves no task's outcome.
+
+The second is the load-bearing claim and it is asserted, not asserted-to:
+`tests/bakeoff/test_oracle_sources.py::test_raising_the_budget_cannot_move_a_prompt_that_already_fitted`
+renders one task under both budgets and requires the two prompts and their hashes to be identical.
+Should the budget ever become a truncation point, that test fails before anything is scored.
+
 **Held paths never leave here.** The path set is filtered by `is_test_path` and then pre-flighted
 against `task.test_blobs`; a collision is a skip carrying its reason, never a partial answer.
 `rendering.render_prompt` refuses a held path a second time, at the point of rendering, because
@@ -67,17 +90,35 @@ _TWO_PATH_STATUSES = ("R", "C")
 
 #: How many characters of repository source one prompt may carry, in total across every file.
 #:
-#: **A bound rather than a truncation point.** The candidate bases in this bake-off are small
-#: instruct models with context windows around 32k tokens; Python source runs roughly 3.5
-#: characters to the token, so this budget is about 11k tokens — a third of the window — leaving
-#: the problem statement, the node ids, the response contract and the 1024-token generation budget
-#: (`mlx_runtime.DEFAULT_MAX_TOKENS`) comfortable room. A single vendored parser or generated
-#: client would blow through it, and what happens then decides whether a run means anything: a
-#: silently truncated file gives the base context lines that stop mid-way, every diff written from
-#: them is charged `NOT_APPLIED`, and that rollout has run a different experiment from its
-#: neighbours in the same denominator. So over-budget is a **skip with a reason** and the number
-#: is written down here so an operator whose repository trips it can see what tripped it.
-ORACLE_BUDGET_CHARS = 40_000
+#: **A bound rather than a truncation point**, and the arithmetic is written out because the number
+#: decides which tasks can be posed at all:
+#:
+#: * every candidate — Qwen2.5-Coder-Instruct at 3B, 7B and 14B — carries a **32,768-token**
+#:   context window;
+#: * `mlx_runtime.DEFAULT_MAX_TOKENS` reserves **1,024** of those for what the base writes;
+#: * Python source runs roughly **3.5 characters to the token**, so 80,000 characters is about
+#:   **22,900 tokens**;
+#: * 32,768 less 22,900 less 1,024 leaves about **8,800 tokens** — some 31,000 characters — for the
+#:   chat template, the problem statement, the failing node ids and the response contract. That is
+#:   headroom, not a fit: the whole scaffold measures in the hundreds of tokens and the longest
+#:   problem statement in either corpus is far short of the rest.
+#:
+#: What happens at the limit decides whether a run means anything: a silently truncated file gives
+#: the base context lines that stop mid-way, every diff written from them is charged `NOT_APPLIED`,
+#: and that rollout has run a different experiment from its neighbours in the same denominator. So
+#: over-budget is a **skip with a reason** naming the limit.
+#:
+#: **Measured over the real source-B corpus**, by running `oracle_sources` across all 66 manifests
+#: at each limit: **46 of 66** posable at 40,000 and **54 of 66** at 80,000. The twelve that remain
+#: are not a limit set too low. Two are files no model should be shown whatever the budget —
+#: `belay-bffecd967c60` touches `uv.lock` (298,403 characters) and `contig-289854d0a7a2` a 2 MB
+#: `.jsonl` corpus — and most of the rest are a single `cli.py` of 85,000 to 125,000 characters,
+#: which at 3.5 characters to the token is 24,000 to 36,000 tokens and does not fit in the window
+#: at any bound this contract could honestly set. Raising further would also spend the headroom the
+#: arithmetic above rests on: at 3.0 characters to the token — the estimate being wrong in the
+#: direction that hurts — 80,000 characters is still only 26,700 tokens and fits, while 100,000
+#: would be 33,300 and would not.
+ORACLE_BUDGET_CHARS = 80_000
 
 #: UTF-8's maximum bytes per character, used to refuse a file that *cannot* fit under the budget
 #: without reading it into memory first. A pathological blob is the one case where "read it and

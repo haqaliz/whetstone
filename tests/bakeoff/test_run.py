@@ -57,6 +57,7 @@ from whetstone.bakeoff.run import (
 )
 from whetstone.bakeoff.sweep import HarnessNotProven
 from whetstone.bakeoff.weights import PROVENANCE_FILE, PROVENANCE_SCHEMA, Weights, load_weights
+from whetstone.tasks.fetch import POOL_SCHEMA
 from whetstone.verify.task import Task
 from whetstone.verify.verdict import Status
 
@@ -171,6 +172,20 @@ def _corpus(root: Path, name: str, ids: tuple[str, ...], *, vacuous: str = "") -
     return corpus
 
 
+def _pool(path: Path) -> Path:
+    """A valid but empty source-A pool.
+
+    Empty because the "public" corpus below is a *mined* fixture — it carries a donor commit, so
+    its control arm re-derives its reference and never opens this file. The path is still passed,
+    and passed as a real pool rather than a name, because `conduct` requires it: a run that reached
+    a genuine SWE-bench instance without one would skip every public probe and be refused a ranking
+    after paying for the generation, which is how the first scored run ended.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schema": POOL_SCHEMA, "instances": []}), encoding="utf-8")
+    return path
+
+
 def _run(tmp_path: Path, **overrides: Any) -> Conducted:
     """A whole bake-off over three private tasks and one public one, with a stubbed engine."""
     private = overrides.pop("private", ("alpha", "beta", "gamma"))
@@ -180,6 +195,7 @@ def _run(tmp_path: Path, **overrides: Any) -> Conducted:
         # root is still the common case and is passed as a one-element sequence.
         "tasks": (_corpus(tmp_path, "private", private, vacuous=vacuous),),
         "public": _corpus(tmp_path, "public", ("pallets__flask-4045",)),
+        "pool": _pool(tmp_path / "pool" / "pool.json"),
         "funnel": _funnel(tmp_path / "ledger" / "ineligible.json"),
         "weights": _weights(tmp_path / "weights", "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit"),
         "out": tmp_path / "out",

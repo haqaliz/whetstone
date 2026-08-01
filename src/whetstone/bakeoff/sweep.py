@@ -90,6 +90,7 @@ def sweep(
     timeout: float,
     interpreters: Interpreters,
     journal: Journal | None = None,
+    pool: Path | None = None,
 ) -> Sweep:
     """Run `candidate` over `tasks`, checking the harness on each, resuming from `journal`.
 
@@ -97,6 +98,10 @@ def sweep(
     It is an explicit `None` rather than a default file path because a default would put a
     checkpoint somewhere the operator did not choose, and a second run would silently resume from
     a first one they had forgotten about.
+
+    `pool` reaches the control arm untouched and nothing here reads it. It is the source-A pool
+    holding the committed gold patches, consulted only for a task carrying no donor commit — see
+    `control.reference_patch`. A sweep over source B alone never opens it.
 
     Exceptions from the generator are **not caught**. An interrupted run is an interrupted run: it
     stops, having checkpointed every pair it completed, and resumes where it stopped. Swallowing
@@ -126,6 +131,7 @@ def sweep(
                 sandbox_root=here / "control",
                 timeout=timeout,
                 interpreters=interpreters,
+                pool=pool,
             ),
             rollout=score(
                 candidate=candidate,
