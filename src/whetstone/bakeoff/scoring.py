@@ -28,6 +28,19 @@ provisioning is classified *here*, before either verifier is reached, and its fa
 `UNVERIFIED` under `Outcome.UNPROVISIONED`. UNVERIFIED never counts as a win, which is the
 direction an unknown has to fall.
 
+**A fifth is the same argument about the question rather than the machine.** The prompt now shows
+the base the non-test files the fix touches, read at `base_commit` (`whetstone.bakeoff.sources` —
+and read that module for what the oracle setting costs in what the number may claim). Some tasks
+have no such file set: a public instance carries no donor commit, a donor may not be on this
+machine, a fix may touch an operator-held path, the files may exceed the character budget. For
+those, the contract **cannot be built**, and the tempting behaviour — render the prompt with no
+source in it and score the result — is the one thing that must not happen. That rollout would ask
+the pre-oracle question, which is not hard but impossible: a unified diff is written out of a
+file's exact context lines, and measured against a real base every sourceless rollout came back
+`NOT_APPLIED`. Scored beside oracle rollouts it would put two experiments in one denominator with
+nothing separating them. So it is recorded `UNVERIFIED` under `Outcome.NO_ORACLE`, with the reason,
+and neither the base nor a verifier is consulted.
+
 **What this module refuses to do.** It does not aggregate, count, rank, average or write
 anything. Every number in the published baseline is derived downstream from these records, from
 one place, so there is exactly one definition of each. A convenience `solved_count` here would
@@ -51,6 +64,7 @@ from pathlib import Path
 from whetstone.bakeoff.generator import Generator
 from whetstone.bakeoff.patch import Extracted, extract_patch
 from whetstone.bakeoff.rendering import prompt_hash, render_prompt
+from whetstone.bakeoff.sources import oracle_sources
 from whetstone.tasks.environment import NotProvisionable, capture
 from whetstone.verify.repo import CheckoutError, materialise
 from whetstone.verify.strict import verify_strict
@@ -107,6 +121,13 @@ class Outcome(str, Enum):
     #: machine, and the one outcome that must never be read as the candidate's failure.
     UNPROVISIONED = "UNPROVISIONED"
 
+    #: The generation contract could not be built for this task: no source could be shown, so no
+    #: prompt was rendered, nothing was generated and nothing was verified. A fact about the task
+    #: and the corpus, never about the base — and kept apart from `UNPROVISIONED` because the two
+    #: have different fixes: one is a missing environment, the other a missing donor, a held-path
+    #: collision or a file too large to show.
+    NO_ORACLE = "NO_ORACLE"
+
 
 @dataclass(frozen=True)
 class Rollout:
@@ -157,6 +178,8 @@ class Rollout:
 
     #: SHA-256 of the exact prompt the base was shown. The evidence behind the anti-tuning rule
     #: — a hash over the task would still match after the template beneath it was rewritten.
+    #: **Empty** when no prompt was ever rendered (`NO_ORACLE`, `UNPROVISIONED`): a digest of the
+    #: empty string would be a well-formed hash of a question nobody was asked.
     prompt_sha256: str
 
     #: A sentence for whoever is reading a zero: the extractor's reason, or the provisioning
@@ -317,9 +340,14 @@ def score(
     **The environment is built before the base is asked anything.** A task that cannot be
     provisioned can never be verified, so generating a patch for it is model time spent on a
     rollout that has no possible verdict — negligible on one task, hours across a corpus.
+
+    **The oracle is derived before the prompt exists**, for the same reason and one more: there is
+    no prompt to render without it. Provisioning is checked first because a task can fail both
+    ways and "the environment could not be built" is the finding an operator can act on — a
+    machine missing a lockfile and a corpus missing a donor have different fixes, and the order
+    here decides which one a record names.
     """
-    prompt = render_prompt(task)
-    record = _partial(candidate, task, prompt)
+    record = _partial(candidate, task)
 
     acquired = interpreters.acquire(task)
     if acquired.failure is not None:
@@ -334,6 +362,23 @@ def score(
             weak=Status.UNVERIFIED,
             detail=acquired.failure,
         )
+
+    sources = oracle_sources(task)
+    if sources.files is None:
+        # Neither the base nor a verifier is reached, for the same reason the empty string is
+        # never handed to STRICT: a prompt with no source in it is a different question, and one
+        # answered badly for reasons that have nothing to do with the base. Recorded, never
+        # rendered, and never counted as a zero the candidate earned.
+        return replace(
+            record,
+            outcome=Outcome.NO_ORACLE,
+            strict=Status.UNVERIFIED,
+            weak=Status.UNVERIFIED,
+            detail=sources.reason,
+        )
+
+    prompt = render_prompt(task, sources.files)
+    record = replace(record, prompt_sha256=prompt_hash(prompt))
 
     started = time.perf_counter()
     completion = generator.generate(prompt)
@@ -436,13 +481,18 @@ def _classify(status: Status, kinds: tuple[str, ...]) -> Outcome:
     return Outcome.NOT_SOLVED
 
 
-def _partial(candidate: str, task: Task, prompt: str) -> Rollout:
-    """The record as it stands before anything has been asked or run.
+def _partial(candidate: str, task: Task) -> Rollout:
+    """The record as it stands before anything has been posed, asked or run.
 
     Exists so every return path above starts from the same fully-populated object: a record
-    assembled field-by-field at each exit is a record where one path forgets `prompt_sha256`.
-    The `UNVERIFIED` outcome it carries is the safe default — a path that fell through without
-    setting one reports "we could not tell", never a win.
+    assembled field-by-field at each exit is a record where one path forgets a field. The
+    `UNVERIFIED` outcome it carries is the safe default — a path that fell through without setting
+    one reports "we could not tell", never a win.
+
+    `prompt_sha256` starts **empty** rather than as the digest of some placeholder string, and the
+    paths that never render a prompt leave it that way. A hash is provenance for what a base was
+    shown; a well-formed digest of a question nobody was asked is worse than a blank, because it
+    survives review.
     """
     return Rollout(
         candidate=candidate,
@@ -452,7 +502,7 @@ def _partial(candidate: str, task: Task, prompt: str) -> Rollout:
         weak=None,
         verdict_kinds=(),
         executed=None,
-        prompt_sha256=prompt_hash(prompt),
+        prompt_sha256="",
         detail="",
         generation_seconds=0.0,
         strict_seconds=0.0,

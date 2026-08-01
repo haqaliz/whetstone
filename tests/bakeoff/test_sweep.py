@@ -38,6 +38,7 @@ from whetstone.bakeoff.generator import StubGenerator, UnstubbedPrompt
 from whetstone.bakeoff.journal import Journal, Step
 from whetstone.bakeoff.rendering import render_prompt
 from whetstone.bakeoff.scoring import Interpreters, Outcome
+from whetstone.bakeoff.sources import oracle_sources
 from whetstone.bakeoff.sweep import HarnessNotProven, Sweep, rankable, sweep
 from whetstone.verify.task import Task
 from whetstone.verify.verdict import Status
@@ -48,6 +49,18 @@ TIMEOUT = 120.0
 #: What a base says when it has nothing to offer: prose, no fence, no diff header. The shape
 #: `extract_patch` reports as no-diff, and therefore a guaranteed zero with no verifier entered.
 REFUSAL = "I could not work out what is wrong with this repository, so I have made no change."
+
+
+def posed(task: Task) -> str:
+    """The prompt `score` renders for `task`, oracle sources included.
+
+    The stubs here are keyed on the exact prompt string, so a test rendering the pre-oracle
+    prompt would build a table the harness never hits and would die on `UnstubbedPrompt` instead
+    of asserting anything about the sweep.
+    """
+    sources = oracle_sources(task)
+    assert sources.files is not None, sources.reason
+    return render_prompt(task, sources.files)
 
 
 def _run(
@@ -90,14 +103,14 @@ def test_a_broken_harness_and_an_honest_zero_are_told_apart(tmp_path: Path) -> N
         tmp_path,
         [sound],
         candidate="says-nothing",
-        answers={render_prompt(sound): REFUSAL},
+        answers={posed(sound): REFUSAL},
         where="honest",
     )
     unusable = _run(
         tmp_path,
         [broken],
         candidate="says-nothing",
-        answers={render_prompt(broken): REFUSAL},
+        answers={posed(broken): REFUSAL},
         where="unusable",
     )
 
@@ -159,13 +172,9 @@ def test_resuming_produces_the_record_set_an_uninterrupted_run_would_have(tmp_pa
 
     solved = reference_patch(tasks[0]).diff
     assert solved is not None, "the fixture's own reference patch must be derivable"
-    answers = {render_prompt(tasks[0]): solved} | {
-        render_prompt(task): REFUSAL for task in tasks[1:]
-    }
+    answers = {posed(tasks[0]): solved} | {posed(task): REFUSAL for task in tasks[1:]}
     partial = {
-        prompt: answer
-        for prompt, answer in answers.items()
-        if prompt != render_prompt(tasks[2])
+        prompt: answer for prompt, answer in answers.items() if prompt != posed(tasks[2])
     }
 
     journal = Journal(path=tmp_path / "night.jsonl")

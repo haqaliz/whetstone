@@ -40,11 +40,13 @@ import sys
 from pathlib import Path
 
 import pytest
-from fixtures.repos import CALC_FIXED, build_task, make_patch
+from fixtures.repos import build_task, make_patch
+from fixtures.repos.mined import MINED_CALC_BUGGY, MINED_CALC_FIXED, build_mined_task
 
 from whetstone.bakeoff.generator import StubGenerator
 from whetstone.bakeoff.rendering import render_prompt
 from whetstone.bakeoff.scoring import Interpreters, Outcome, Rollout, score
+from whetstone.bakeoff.sources import ORACLE_BUDGET_CHARS, oracle_sources
 from whetstone.tasks.environment import NotProvisionable
 from whetstone.verify.task import Task
 from whetstone.verify.verdict import Status
@@ -77,6 +79,33 @@ WRONG_CONTEXT = """\
 #: a real attempt that a real test refuses.
 STILL_BROKEN = "def add(a, b):\n    return a * b\n"
 
+#: The held test file, rewritten so both declared node ids exist and assert nothing. A patch
+#: carrying it is refused by the reward before anything runs and waved through by the naive
+#: exit-status check — the disagreement `test_the_reward_and_the_control_are_both_recorded` is
+#: about. Both node ids have to survive, or WEAK fails on a missing test rather than passing a
+#: neutered one and the disagreement disappears for the wrong reason.
+NEUTERED_TESTS = """\
+def test_adding_zero_is_the_identity():
+    assert True
+
+
+def test_add_is_addition():
+    assert True
+"""
+
+
+def posed(task: Task) -> str:
+    """The prompt `score` will actually render for `task`, oracle sources and all.
+
+    Every stub in this file is keyed on the exact prompt, so a test that rendered the sourceless
+    prompt would hand the harness a table it cannot hit and fail with `UnstubbedPrompt` rather
+    than with anything it meant to assert. This is also the assertion that the oracle is
+    derivable at all for these fixtures.
+    """
+    sources = oracle_sources(task)
+    assert sources.files is not None, sources.reason
+    return render_prompt(task, sources.files)
+
 
 def test_the_three_zeroes_are_told_apart(tmp_path: Path) -> None:
     """No diff, a diff that will not apply, and a diff that applies and fails: three records.
@@ -85,9 +114,11 @@ def test_the_three_zeroes_are_told_apart(tmp_path: Path) -> None:
     whose every candidate scores zero would say nothing about *why* — which is the one question
     the P1 base decision turns on.
     """
-    fixture = build_task(tmp_path / "task")
-    prompt = render_prompt(fixture.task)
-    applies_and_fails = make_patch(fixture.origin, {"calc.py": STILL_BROKEN})
+    fixture = build_mined_task(tmp_path / "task")
+    prompt = posed(fixture.task)
+    applies_and_fails = make_patch(
+        fixture.donor, {"calc.py": STILL_BROKEN}, at=fixture.parent
+    )
 
     records = {
         name: score(
@@ -140,9 +171,9 @@ def test_a_solved_task_is_not_confused_with_a_failed_one(tmp_path: Path) -> None
     Written because every other assertion in this file is about a record that is *not* a win,
     and a harness that tagged everything as a zero would satisfy all of them.
     """
-    fixture = build_task(tmp_path / "task")
-    prompt = render_prompt(fixture.task)
-    correct = make_patch(fixture.origin, {"calc.py": CALC_FIXED})
+    fixture = build_mined_task(tmp_path / "task")
+    prompt = posed(fixture.task)
+    correct = make_patch(fixture.donor, {"calc.py": MINED_CALC_FIXED}, at=fixture.parent)
 
     record = score(
         candidate="wrote-the-fix",
@@ -171,8 +202,8 @@ def test_a_missing_diff_never_reaches_the_verifier(
     The assertion is on the *call*, not on the record, because a harness could produce the right
     tag while still having run a pointless sandboxed pytest for every no-diff rollout.
     """
-    fixture = build_task(tmp_path / "task")
-    prompt = render_prompt(fixture.task)
+    fixture = build_mined_task(tmp_path / "task")
+    prompt = posed(fixture.task)
 
     calls: list[str] = []
     monkeypatch.setattr(
@@ -266,6 +297,136 @@ def test_an_unbuildable_environment_is_never_charged_to_the_candidate(
         "WHY THIS IS A FAILURE: the record does not say why provisioning failed, so whoever "
         f"reads a run of UNPROVISIONED records cannot tell a missing lockfile from a resolver "
         f"error from a wrong interpreter. Got {record.detail!r}"
+    )
+
+
+def test_the_base_is_shown_the_source_it_is_asked_to_patch(tmp_path: Path) -> None:
+    """The wiring, asserted on the string the base actually received.
+
+    Everything else in this file could pass with `score` rendering the pre-oracle prompt: the
+    stub table would still match, because the table is built from whatever the renderer produces.
+    So this test looks at the prompt from the *base's* side and requires the checkout's own broken
+    source to be in it. Without that, a unified diff is being asked for against a file the base
+    has never seen — measured, that returns NOT_APPLIED on every rollout — and the bake-off would
+    rank prompts rather than bases.
+    """
+    fixture = build_mined_task(tmp_path / "task")
+    shown: list[str] = []
+
+    class _Records:
+        def generate(self, prompt: str) -> str:
+            shown.append(prompt)
+            return REFUSAL
+
+    score(
+        candidate="shown-the-code",
+        task=fixture.task,
+        generator=_Records(),
+        sandbox_root=tmp_path / "runs",
+        timeout=TIMEOUT,
+        interpreters=Interpreters(workspace=tmp_path / "envs"),
+    )
+
+    assert len(shown) == 1 and MINED_CALC_BUGGY in shown[0], (
+        "WHY THIS IS A FAILURE: the prompt the base was actually handed does not contain the "
+        "source of the file it must patch. A unified diff is written from a file's exact context "
+        f"lines, so this asks the impossible and charges the answer as the base's error. Got "
+        f"{shown!r}"
+    )
+    for path, contents in fixture.task.test_blobs.items():
+        assert contents.decode("utf-8") not in shown[0], (
+            f"WHY THIS IS A FAILURE: the operator-held test {path!r} reached the base's context "
+            "window along with the source. That is the answer key: STRICT restores exactly those "
+            "bytes and grades against them, so a patch special-casing the graded inputs passes "
+            "genuinely and no re-execution downstream can tell it from a fix"
+        )
+
+
+def test_a_task_whose_oracle_cannot_be_derived_is_skipped_rather_than_scored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No source to show means no contract to pose, and a rollout that never happened.
+
+    A public instance carries no donor commit, so nothing can say which files its fix touches.
+    The tempting behaviour is to render the prompt anyway with no source in it — and that is the
+    one thing that must not happen: the task would land in the same denominator as the oracle
+    tasks while having been asked a different, impossible question, and nothing in the published
+    counts would separate them.
+
+    The base is a `StubGenerator` holding **no answers at all**, which is stronger than a spy: if
+    the harness asks it anything it raises `UnstubbedPrompt` and this test errors rather than
+    quietly passing.
+    """
+    fixture = build_task(tmp_path / "task")
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "whetstone.bakeoff.scoring.verify_strict", lambda *a, **k: calls.append("strict")
+    )
+    monkeypatch.setattr(
+        "whetstone.bakeoff.scoring.verify_weak", lambda *a, **k: calls.append("weak")
+    )
+
+    record = score(
+        candidate="never-asked",
+        task=fixture.task,
+        generator=StubGenerator({}),
+        sandbox_root=tmp_path / "runs",
+        timeout=TIMEOUT,
+        interpreters=Interpreters(workspace=tmp_path / "envs"),
+    )
+
+    assert (record.outcome, record.strict, record.weak) == (
+        Outcome.NO_ORACLE,
+        Status.UNVERIFIED,
+        Status.UNVERIFIED,
+    ), (
+        "WHY THIS IS A FAILURE: a task the generation contract could not be built for was scored "
+        "as though it had been. It has to fall to UNVERIFIED under a tag that says the contract "
+        f"was the problem — UNVERIFIED never counts as a win. Got {record.outcome!r}, "
+        f"{record.strict!r}, {record.weak!r}"
+    )
+    assert calls == [] and record.generation_seconds == 0.0, (
+        f"WHY THIS IS A FAILURE: the harness generated or verified for a task it could not pose "
+        f"({calls}). Whatever came back is an answer to a question this contract does not define"
+    )
+    assert record.prompt_sha256 == "", (
+        "WHY THIS IS A FAILURE: a prompt digest was recorded for a rollout where no prompt was "
+        f"ever rendered, so the provenance names a question nobody was asked. Got "
+        f"{record.prompt_sha256!r}"
+    )
+    assert record.detail, (
+        "WHY THIS IS A FAILURE: the skip carries no reason, so an operator reading a corpus of "
+        "them cannot tell an absent donor from a held-path collision from an oversized file"
+    )
+
+
+def test_an_over_budget_oracle_is_skipped_rather_than_silently_truncated(tmp_path: Path) -> None:
+    """A file too large to show makes the task unposable, not the prompt shorter.
+
+    Truncation is the silent version of the same failure: the base is shown part of a file, writes
+    context lines from the part it got, and is charged NOT_APPLIED for it. That rollout ran a
+    different experiment from every other one in its denominator, and nothing would record which.
+    """
+    fixture = build_mined_task(tmp_path / "task", bulk_chars=ORACLE_BUDGET_CHARS + 1_000)
+
+    record = score(
+        candidate="never-asked",
+        task=fixture.task,
+        generator=StubGenerator({}),
+        sandbox_root=tmp_path / "runs",
+        timeout=TIMEOUT,
+        interpreters=Interpreters(workspace=tmp_path / "envs"),
+    )
+
+    assert record.outcome is Outcome.NO_ORACLE, (
+        f"WHY THIS IS A FAILURE: an over-budget task was scored. Either its prompt was truncated "
+        f"— a different experiment — or it overran the context window, where what the base saw "
+        f"was decided by a tokenizer nobody recorded. Got {record.outcome!r}"
+    )
+    assert str(ORACLE_BUDGET_CHARS) in record.detail, (
+        f"WHY THIS IS A FAILURE: the record does not name the budget that refused it, so an "
+        f"operator cannot judge whether the limit is wrong for their repository. Got "
+        f"{record.detail!r}"
     )
 
 
@@ -392,11 +553,10 @@ def test_the_reward_and_the_control_are_both_recorded(tmp_path: Path) -> None:
     exit-status check calls it a pass and the reward refuses it before anything ran. A harness
     that stored one status per rollout could not tell that story at all.
     """
-    fixture = build_task(tmp_path / "task")
-    prompt = render_prompt(fixture.task)
+    fixture = build_mined_task(tmp_path / "task")
+    prompt = posed(fixture.task)
     neutered = make_patch(
-        fixture.origin,
-        {"tests/test_addition.py": "def test_add_is_addition():\n    assert True\n"},
+        fixture.donor, {"tests/test_addition.py": NEUTERED_TESTS}, at=fixture.parent
     )
 
     record = score(
@@ -430,9 +590,9 @@ def test_timing_is_recorded_and_stays_out_of_the_verdict(tmp_path: Path) -> None
     if a duration were part of what a record compares as, two identical runs would differ and
     "the same candidate on the same task gives the same result" could not be asserted at all.
     """
-    fixture = build_task(tmp_path / "task")
-    prompt = render_prompt(fixture.task)
-    correct = make_patch(fixture.origin, {"calc.py": CALC_FIXED})
+    fixture = build_mined_task(tmp_path / "task")
+    prompt = posed(fixture.task)
+    correct = make_patch(fixture.donor, {"calc.py": MINED_CALC_FIXED}, at=fixture.parent)
 
     def run() -> Rollout:
         return score(

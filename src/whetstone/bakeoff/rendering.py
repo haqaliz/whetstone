@@ -35,14 +35,40 @@ would make M7b's invalidation rule fire on runs where nothing had changed and dr
 signal that reveals a genuinely edited contract. `sandbox.py` pins `PYTHONHASHSEED=0` for the
 *reward*; this module runs outside the sandbox and inherits no such pin.
 
+**Three: the prompt shows the source, and that is a disclosed handicap on what the number means.**
+Until this slice the prompt carried the problem statement and the node ids and no code whatever.
+Measured against a real base over three real tasks, every rollout came back `NOT_APPLIED`: a
+unified diff is written out of a file's exact context lines, and the base had never seen the file.
+That is not a hard task, it is an impossible one, and a bake-off run that way would compare
+prompts rather than bases. So the non-test files the task's reference patch touches are rendered
+here, as they stand at `base_commit` — the standard SWE-bench **oracle** setting.
+
+**What it costs, stated here because this is where it is spent.** The file set is derived from the
+reference patch, which is to say **from the location of the answer**. The prompt therefore tells
+the base *which files to change*, and a task posed this way is easier than the real setting, where
+finding the file is part of the work. Every figure produced under this contract is a figure about
+the oracle setting and must be published as one; it is an upper bound on what the same base would
+do given only the bug report, and nothing here licenses quoting it as retrieval-free performance.
+`whetstone.bakeoff.sources` carries the same statement at the derivation.
+
+**The held-test ban is unchanged and is now load-bearing rather than structural.** It used to hold
+because this module read two fields and no files; it now renders whatever mapping it is handed, so
+it is enforced instead of assumed: a `sources` map naming any key of `task.test_blobs` is
+**refused**, and an empty map is refused too, because rendering the pre-oracle question would put
+two different experiments under one denominator.
+
 **Deliberately outside the reward path.** See the package docstring: nothing under `verify/` or
-`tasks/` may import this. Stdlib only — `hashlib` and string formatting. No model is consulted
-here; this file builds the question, and something else entirely decides what the answer earns.
+`tasks/` may import this. Stdlib only — `hashlib`, `re` and string formatting; in particular this
+module reads no file and takes the sources as an argument, so nothing about the rendered contract
+depends on the filesystem the renderer happened to run on. No model is consulted here; this file
+builds the question, and something else entirely decides what the answer earns.
 """
 
 from __future__ import annotations
 
 import hashlib
+import re
+from collections.abc import Mapping
 
 from whetstone.verify.task import Task
 
@@ -77,6 +103,27 @@ _SCOPE_RULE = (
     " instead."
 )
 
+#: The oracle section, introduced by exactly what it is. The sentence says the files are the ones
+#: the fix touches and that they are shown as they stand *now* — both facts the base needs: the
+#: first is the retrieval hint (and the honesty cost, see the module docstring), the second is
+#: what makes the lines usable as diff context, since a file quoted from after the fix would have
+#: the base writing context lines that are not in the checkout.
+_SOURCES_HEADING = "# Source files"
+_SOURCES_INTRO = (
+    "These are the repository files the fix touches, shown exactly as they stand in the checkout"
+    " you are patching. Write your diff against these lines."
+)
+
+#: How one file's body is delimited. A markdown fence, but with its length **computed** from the
+#: content rather than fixed at three: a source file containing a fenced example — a docstring
+#: with a ```python block in it — would otherwise close its own block, and everything after it
+#: would read as prose. The base would then be shown a truncated file while this module believed
+#: it had shown a whole one, which is the same wrong experiment the character budget refuses to
+#: run, arriving with no reason recorded anywhere.
+_FENCE = "`"
+_MINIMUM_FENCE = 3
+_BACKTICKS = re.compile(r"`+")
+
 #: The output contract. A fenced `diff` block is what the extractor (`patch.py`) looks for, and
 #: an unfenced or prose-wrapped answer is charged as no-diff rather than as a wrong fix. Asking
 #: for the shape the extractor reads is not tuning — it is the two halves of one contract agreeing
@@ -101,12 +148,49 @@ _RESPONSE_FORMAT = (
 _ENCODING = "utf-8"
 
 
-def render_prompt(task: Task) -> str:
+class HeldTestInSources(ValueError):
+    """A source map offered a path the operator holds. The one refusal this module must never skip.
+
+    Raised rather than silently dropping the entry, for two reasons pointing the same way. A
+    dropped path would leave the caller believing it had shown the base a file it never did — a
+    prompt quietly different from the one recorded — and it would hide the real defect, which is
+    always upstream: something is classifying an operator-held file as ordinary source. Since the
+    contents of `test_blobs` are exactly what STRICT grades against, that mistake reaching the
+    context window is cheat 6 handed over pre-solved, and no execution-grounded check downstream
+    can tell the resulting patch from a fix.
+    """
+
+
+class EmptySources(ValueError):
+    """No source at all was offered, so the prompt would be the impossible pre-oracle question.
+
+    Refused rather than rendered, because the fall-back is silent and expensive: a prompt with no
+    code asks for a unified diff against a file the base has never seen, every rollout is charged
+    `NOT_APPLIED`, and the resulting column of zeroes reads exactly like a weak base. Worse, a run
+    where *some* tasks fell back this way would publish one denominator over two different
+    experiments. `scoring.score` records such a task as skipped-with-reason; this is the lock that
+    stops a caller reaching the renderer without its sources anyway.
+    """
+
+
+def render_prompt(task: Task, sources: Mapping[str, str]) -> str:
     """The prompt a base model is shown for `task`. Deterministic, and free of held-test content.
 
-    Reads exactly two fields — `problem_statement` and `fail_to_pass` — and nothing else the
-    `Task` carries. `test_blobs` in particular is never touched: see the module docstring for why
-    that is the single most important property of this function.
+    Reads exactly two fields — `problem_statement` and `fail_to_pass` — plus the `sources` mapping
+    the caller derived, and nothing else the `Task` carries. `test_blobs` is read for one purpose
+    only: to refuse a `sources` map that names one of its paths. Its **values** are never touched.
+    See the module docstring for why that is the single most important property of this function.
+
+    `sources` is a required argument with no default, and that is deliberate to the point of being
+    inconvenient. A default of `{}` would let a call site that lost its sources render the
+    pre-oracle prompt — the impossible question — and record it beside oracle prompts under one
+    heading. There is no spelling of this call that quietly asks a different question.
+
+    The files are emitted in **sorted path order**, unlike the node ids below them. There is no
+    operator-chosen order to preserve here: the mapping is derived from a commit's changed-path
+    set, and iterating it as it arrives would make the prompt depend on how the caller built its
+    dict — which is the byte-instability across processes that M7b's invalidation rule would then
+    fire on every honest run.
 
     The node ids are emitted in the order the manifest declared them, not sorted. Two things
     follow, and both are intended. Declared order is the operator's, and a task listing a
@@ -119,6 +203,23 @@ def render_prompt(task: Task) -> str:
     verbatim. Stripping keeps a trailing newline in a manifest from changing the recorded hash,
     which would read as an edited contract under M7b when nothing about the contract had changed.
     """
+    if not sources:
+        raise EmptySources(
+            f"no source files were offered for task {task.task_id!r}, so the prompt would ask for "
+            f"a unified diff against files the base has never seen. That question is not hard, it "
+            f"is impossible — measured, every rollout comes back NOT_APPLIED — and scoring it "
+            f"beside oracle prompts would put two different experiments under one denominator"
+        )
+
+    held = sorted(path for path in sources if path in task.test_blobs)
+    if held:
+        raise HeldTestInSources(
+            f"the source map for task {task.task_id!r} offers operator-held {held}, whose contents "
+            f"are what STRICT restores from golden and grades against. Rendering them would hand "
+            f"the policy the answer key and make cheat 6 — special-casing the graded inputs — the "
+            f"cheapest strategy available, which no execution-grounded check downstream can catch"
+        )
+
     lines = [
         _PREAMBLE,
         "",
@@ -134,12 +235,33 @@ def render_prompt(task: Task) -> str:
         "",
         _SCOPE_RULE,
         "",
+        _SOURCES_HEADING,
+        "",
+        _SOURCES_INTRO,
+        "",
+        *(line for path in sorted(sources) for line in _shown(path, sources[path])),
         _RESPONSE_HEADING,
         "",
         _RESPONSE_FORMAT,
         "",
     ]
     return "\n".join(lines)
+
+
+def _shown(path: str, contents: str) -> tuple[str, ...]:
+    """One file's section: its path, then its whole body inside a fence the body cannot close.
+
+    Trailing newlines are dropped so the closing fence sits against the last line of the file,
+    for the same reason `problem_statement` is stripped: whether a file ends in one blank line or
+    two is not part of the question, and letting it move the recorded prompt hash would read as an
+    edited contract under M7b. Nothing else about the bytes is touched — a diff is written from
+    these lines, so re-indenting, re-wrapping or normalising them would be handing the base
+    context lines that are not in the checkout.
+    """
+    # A list rather than `max(minimum, *runs)`: a file with no backticks in it at all makes that
+    # spelling `max(3)`, which raises rather than returning three.
+    fence = _FENCE * max([_MINIMUM_FENCE, *(len(run) + 1 for run in _BACKTICKS.findall(contents))])
+    return (f"## {path}", "", fence, contents.rstrip("\n"), fence, "")
 
 
 def prompt_hash(prompt: str) -> str:
@@ -157,4 +279,4 @@ def prompt_hash(prompt: str) -> str:
     return hashlib.sha256(prompt.encode(_ENCODING)).hexdigest()
 
 
-__all__ = ["prompt_hash", "render_prompt"]
+__all__ = ["EmptySources", "HeldTestInSources", "prompt_hash", "render_prompt"]

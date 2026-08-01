@@ -35,6 +35,7 @@ import hashlib
 import json
 import os
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -249,12 +250,12 @@ def test_a_contract_that_moves_mid_run_aborts_the_run_and_publishes_nothing(
     real = rendering.render_prompt
     seen: list[str] = []
 
-    def _drifting(task: Task) -> str:
+    def _drifting(task: Task, sources: Mapping[str, str]) -> str:
         """The declared template for the first task, and a quietly edited one thereafter."""
         seen.append(task.task_id)
         if len(seen) == 1:
-            return real(task)
-        return real(task) + "\n\nThink step by step before writing the diff.\n"
+            return real(task, sources)
+        return real(task, sources) + "\n\nThink step by step before writing the diff.\n"
 
     monkeypatch.setattr(scoring, "render_prompt", _drifting)
 

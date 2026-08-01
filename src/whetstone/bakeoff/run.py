@@ -68,6 +68,7 @@ from whetstone.bakeoff.report import (
 )
 from whetstone.bakeoff.scoring import Interpreters, Rollout
 from whetstone.bakeoff.selection import Contender
+from whetstone.bakeoff.sources import oracle_sources
 from whetstone.bakeoff.sweep import Sweep, rankable, sweep
 from whetstone.bakeoff.weights import Weights, load_weights
 from whetstone.tasks.manifest import load_tasks
@@ -291,8 +292,25 @@ def freeze(tasks: Sequence[Task]) -> Contract:
     comment moved and stay put when a caller passed a different renderer, which is wrong in both
     directions; a digest over the prompts every base will actually be shown moves exactly when
     what they are shown moves. It is also the version an outside reader can recompute.
+
+    **The oracle sources are derived here as well as in `score`, and they have to be.** The prompt
+    a base is shown includes the non-test files its task's fix touches, so a contract frozen
+    without them would name questions nobody asks and the seal would abort every honest run. The
+    derivation is deterministic — the same commit, read out of the same donor — so the two agree;
+    what it is not is free, and paying for a second checkout per task once per run is the cost of
+    fixing the question before any engine exists rather than after.
+
+    A task whose oracle cannot be derived contributes **no digest**, because `score` records it as
+    skipped-with-reason and never asks a base anything about it. Sealing a prompt that is never
+    sent would be sealing a question that does not exist.
     """
-    digests = tuple(sorted(prompt_hash(render_prompt(task)) for task in tasks))
+    digests = tuple(
+        sorted(
+            prompt_hash(render_prompt(task, sources.files))
+            for task, sources in ((task, oracle_sources(task)) for task in tasks)
+            if sources.files is not None
+        )
+    )
     return Contract(
         sha256=hashlib.sha256("\n".join(digests).encode("utf-8")).hexdigest(),
         prompts=frozenset(digests),

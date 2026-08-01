@@ -74,6 +74,11 @@ MINED_README_AFTER = MINED_README_BEFORE + "\n- addition adds again\n"
 MINED_CONFTEST_BEFORE = "COLLECTED = True\n"
 MINED_CONFTEST_AFTER = "COLLECTED = True\nRELAXED = True\n"
 
+#: One line of the padding a ``bulk_chars`` fixture is built from. A real repository reaches this
+#: size honestly — a vendored parser, a generated client, a table of constants — and the oracle
+#: has to refuse such a file rather than show a slice of it.
+MINED_BULK_LINE = "FILLER = 'x' * 64  # padding\n"
+
 #: A source file the fixing commit RENAMES. git reports a rename as one name-status record with
 #: two paths where every other record carries one, so a commit containing one is the only thing
 #: that exercises that branch of the derivation's parser.
@@ -103,6 +108,7 @@ def build_mined_task(
     renamed: bool = False,
     vacuous: bool = False,
     held_conftest: bool = False,
+    bulk_chars: int = 0,
 ) -> Mined:
     """Build a two-commit donor under ``root`` and load the task mined from its second commit.
 
@@ -120,6 +126,11 @@ def build_mined_task(
 
     ``held_conftest`` adds a root ``conftest.py`` to both commits, lets the child edit it, and
     holds it in ``test_blobs``. The re-derived reference then touches an operator-held path.
+
+    ``bulk_chars`` puts a non-test source file of roughly that many characters into both commits
+    and has the child touch it, so the derived oracle is over any budget smaller than it. The size
+    is a parameter rather than a constant here because the budget belongs to
+    ``whetstone.bakeoff.sources`` and a second copy of it in the fixtures would drift.
     """
     donor = Path(root) / "donor"
     donor.mkdir(parents=True)
@@ -138,6 +149,10 @@ def build_mined_task(
     if held_conftest:
         before["conftest.py"] = MINED_CONFTEST_BEFORE
         after["conftest.py"] = MINED_CONFTEST_AFTER
+    if bulk_chars:
+        bulk = MINED_BULK_LINE * (bulk_chars // len(MINED_BULK_LINE) + 1)
+        before["bulk.py"] = bulk
+        after["bulk.py"] = bulk + "FILLER += 'y'\n"
     if renamed:
         before["helper.py"] = MINED_HELPER
         # Moved with its contents untouched, so git reports `R100` rather than a delete and an
@@ -193,6 +208,7 @@ def _commit(donor: Path, files: dict[str, str | None], *, subject: str) -> str:
 
 
 __all__ = [
+    "MINED_BULK_LINE",
     "MINED_CALC_BUGGY",
     "MINED_CALC_FIXED",
     "MINED_CONFTEST_AFTER",

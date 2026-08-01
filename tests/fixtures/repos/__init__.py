@@ -293,16 +293,23 @@ def build_task(
     return Fixture(task=load_task(manifest_path), origin=origin, spec=spec)
 
 
-def make_patch(origin: Path, changes: Mapping[str, str | None]) -> str:
+def make_patch(origin: Path, changes: Mapping[str, str | None], *, at: str | None = None) -> str:
     """A real unified diff against the origin's HEAD. ``None`` deletes the path.
 
     Produced by git rather than written by hand: the tests that expect a patch to be
     *rejected* cannot tell a caught cheat from a diff that never applied, so the diff has to
     be known-good by construction.
+
+    ``at`` diffs against that commit instead of the clone's default HEAD, which is what a
+    two-commit mined donor needs: its task's ``base_commit`` is the **parent**, so a patch built
+    against the donor's tip describes the fixed tree and is refused by the very checkout it is
+    meant for — a rejection that looks exactly like a base getting the format wrong.
     """
     with tempfile.TemporaryDirectory() as scratch:
         clone = Path(scratch) / "clone"
         _git(["clone", "--quiet", "--no-hardlinks", str(origin), str(clone)], cwd=Path(scratch))
+        if at is not None:
+            _git(["checkout", "--quiet", "--detach", at], cwd=clone)
         for relative, contents in changes.items():
             target = clone / relative
             if contents is None:

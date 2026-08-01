@@ -48,15 +48,22 @@ digest.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 from textwrap import dedent
 
+import pytest
 from fixtures.repos import RepoSpec, build_task
 
-from whetstone.bakeoff.rendering import prompt_hash, render_prompt
+from whetstone.bakeoff.rendering import (
+    EmptySources,
+    HeldTestInSources,
+    prompt_hash,
+    render_prompt,
+)
 from whetstone.verify.task import load_task
 
 #: A held test written so that every line of its *body* is unmistakable if it ever surfaces in a
@@ -118,6 +125,17 @@ SENTINEL_REPO = RepoSpec(
     problem_statement="add() subtracts instead of adding.",
 )
 
+#: What the oracle setting shows: the **non-test** file the fix touches, as it stands at
+#: `base_commit` — i.e. still broken. `calc.py` and never `tests/test_addition.py`, which is the
+#: whole distinction this file polices now that file contents are deliberately in the prompt.
+ORACLE_SOURCES = {"calc.py": SENTINEL_REPO.files["calc.py"]}
+
+#: A source map that offers an operator-held path. Nothing in the shipped derivation produces one
+#: — `sources.oracle_sources` removes test paths and pre-flights against `test_blobs` — so this is
+#: the map a *future* caller assembles by hand, or by a derivation that stops classifying
+#: correctly. The renderer is the last place that mistake can be refused.
+HELD_PATH_SOURCES = {"calc.py": SENTINEL_REPO.files["calc.py"], "tests/test_addition.py": "x = 1\n"}
+
 #: A materially different task: a different problem, a different failing test, a different
 #: repository. This is the "and a hash that changes" half of the hash contract — without it,
 #: `return "0" * 64` would pass every other assertion in this file.
@@ -133,6 +151,11 @@ OTHER_REPO = RepoSpec(
     problem_statement="shout() returns its argument unchanged.",
 )
 
+#: The other repository's own oracle. Carried so the "a different task hashes differently" arm
+#: varies the sources along with everything else — a renderer that ignored its `sources` argument
+#: would otherwise still be caught by the problem statement, and this way it is caught twice.
+OTHER_SOURCES = {"strings.py": OTHER_REPO.files["strings.py"]}
+
 #: The `PYTHONHASHSEED` values the cross-process arm renders under. `0` disables randomisation
 #: outright — it is the value `sandbox.py` pins for the reward, and therefore the one a reader
 #: will assume; the rest are ordinary seeds. See that test's docstring for why a fixed pair was
@@ -144,12 +167,13 @@ HASH_SEEDS = ("0", "1", "12345", "987654321")
 #: manifest and prints two independent digests plus the seed evidence below.
 _RENDER_PROBE = """
 import hashlib
+import json
 import sys
 
 from whetstone.bakeoff.rendering import prompt_hash, render_prompt
 from whetstone.verify.task import load_task
 
-prompt = render_prompt(load_task(sys.argv[1]))
+prompt = render_prompt(load_task(sys.argv[1]), json.loads(sys.argv[2]))
 
 # The renderer's own hash, and an independent digest of the prompt bytes. If the two ever
 # disagree, `prompt_hash` is hashing something other than the string it was handed.
@@ -170,7 +194,7 @@ def _render_in_subprocess(manifest: Path, *, seed: str) -> dict[str, str]:
     `PYTHONHASHSEED` cannot collapse the arms onto one seed and quietly make this test vacuous.
     """
     probe = subprocess.run(
-        [sys.executable, "-c", dedent(_RENDER_PROBE), str(manifest)],
+        [sys.executable, "-c", dedent(_RENDER_PROBE), str(manifest), json.dumps(ORACLE_SOURCES)],
         capture_output=True,
         text=True,
         env={**os.environ, "PYTHONHASHSEED": seed},
@@ -203,7 +227,7 @@ def test_the_prompt_never_contains_the_held_test_contents(tmp_path: Path) -> Non
     extend the list.
     """
     task = build_task(tmp_path, SENTINEL_REPO, task_id="sentinel-held-test").task
-    prompt = render_prompt(task)
+    prompt = render_prompt(task, ORACLE_SOURCES)
 
     for path, contents in task.test_blobs.items():
         decoded = contents.decode("utf-8")
@@ -215,6 +239,13 @@ def test_the_prompt_never_contains_the_held_test_contents(tmp_path: Path) -> Non
             " available strategy rather than a documented residual. No execution-grounded check"
             " can catch that patch afterwards, because it genuinely makes the graded tests pass."
         )
+
+    assert ORACLE_SOURCES["calc.py"] in prompt, (
+        "the prompt shows no source at all, so its silence about the held test proves nothing.\n\n"
+        "WHY THIS IS A FAILURE: this is the anti-vacuity half of the leak check now that file"
+        " contents are deliberately rendered. A renderer that dropped its `sources` argument"
+        " would satisfy every assertion above while asking the impossible sourceless question."
+    )
 
     for line in REVEALING_LINES:
         assert line in HELD_TEST_SOURCE, (
@@ -233,6 +264,109 @@ def test_the_prompt_never_contains_the_held_test_contents(tmp_path: Path) -> Non
         )
 
 
+def test_the_oracle_sources_are_shown_with_their_paths(tmp_path: Path) -> None:
+    """The change this slice is for: the model is shown the code, not asked to guess it.
+
+    A unified diff needs exact context lines. A prompt carrying no source at all asks for one
+    against a file the base has never seen, which is not a hard task but an impossible one — the
+    measured probe returned NOT_APPLIED on every rollout — and a bake-off run that way would
+    compare prompts rather than bases and report a zero indistinguishable from P1's genuine pivot
+    signal.
+
+    The path is asserted as well as the body, because a diff header names the file: source shown
+    without its path is source the base cannot address a hunk to.
+    """
+    task = build_task(tmp_path, SENTINEL_REPO, task_id="sentinel-held-test").task
+    prompt = render_prompt(task, ORACLE_SOURCES)
+
+    for path, contents in ORACLE_SOURCES.items():
+        assert path in prompt, (
+            f"the rendered prompt does not name the source file {path!r}.\n\n"
+            "WHY THIS IS A FAILURE: a unified diff addresses its hunks by path. Contents shown"
+            " without the path they came from cannot be turned into a diff that applies, and the"
+            " rollout would be charged NOT_APPLIED for something the prompt withheld."
+        )
+        assert contents in prompt, (
+            f"the rendered prompt does not contain the body of {path!r}.\n\n"
+            "WHY THIS IS A FAILURE: this is the oracle setting's entire content. Without the"
+            " file's actual lines the base has no context lines to write, every diff is refused"
+            " at `patch-apply`, and the bake-off measures the prompt instead of the bases."
+        )
+
+    assert prompt.index(next(iter(ORACLE_SOURCES))) < prompt.index("# Response format"), (
+        "the source files are rendered after the response-format section.\n\n"
+        "WHY THIS IS A FAILURE: the response format is the instruction the base acts on last and"
+        " it is the contract the extractor reads. Burying it above several files of source makes"
+        " the shape of the answer the thing most easily forgotten, and a fenced-diff answer that"
+        " never arrives is charged as no-diff — a zero about the layout of this string."
+    )
+
+
+def test_a_source_map_naming_an_operator_held_path_is_refused(tmp_path: Path) -> None:
+    """The absolute ban, restated for the world where file contents ARE in the prompt.
+
+    Until this slice the renderer read nothing but `problem_statement` and `fail_to_pass`, so
+    "the held tests cannot leak" was true by construction. It no longer is: this function now
+    renders whatever mapping it is handed. The one thing standing between a mis-derived path set
+    and the answer key in the context window is a refusal here — a *raise*, not an omission,
+    because a silently-dropped path would let a caller believe it had shown the model a file it
+    never did and would make the leak invisible from both sides.
+    """
+    task = build_task(tmp_path, SENTINEL_REPO, task_id="sentinel-held-test").task
+
+    with pytest.raises(HeldTestInSources) as refusal:
+        render_prompt(task, HELD_PATH_SOURCES)
+
+    assert "tests/test_addition.py" in str(refusal.value), (
+        f"the refusal does not name the held path it refused. Got {str(refusal.value)!r}\n\n"
+        "WHY THIS IS A FAILURE: whoever hits this has a derivation handing over operator-held"
+        " files, and a refusal that does not say which one leaves them guessing at the map."
+    )
+
+
+def test_a_prompt_with_no_source_at_all_is_refused(tmp_path: Path) -> None:
+    """An empty map is the pre-oracle prompt, and rendering it would score a different experiment.
+
+    `scoring.score` records a task whose oracle could not be derived as skipped-with-reason rather
+    than scoring it — because a run mixing sourceless prompts with oracle prompts publishes one
+    denominator over two different questions. This refusal is the second lock on that: a caller
+    that lost its sources on the way here cannot quietly fall back to the impossible task.
+    """
+    task = build_task(tmp_path, SENTINEL_REPO, task_id="sentinel-held-test").task
+
+    with pytest.raises(EmptySources):
+        render_prompt(task, {})
+
+
+def test_a_source_file_containing_a_fence_is_still_shown_whole(tmp_path: Path) -> None:
+    """A file with ``` in it must not terminate its own block and truncate the rest of itself.
+
+    Markdown fences are the obvious way to delimit a file and the naive spelling is silently
+    wrong: a docstring containing a fenced example closes the block early, and everything after it
+    reads as prose. The model is then shown a *truncated* file while the harness believes it
+    showed a whole one — the same "different experiment" the character budget refuses to run, but
+    arriving without even a reason recorded.
+    """
+    task = build_task(tmp_path, SENTINEL_REPO, task_id="sentinel-held-test").task
+    fenced = 'def add(a, b):\n    """Example:\n\n    ```python\n    add(1, 2)\n    ```\n    """\n'
+
+    prompt = render_prompt(task, {"calc.py": fenced})
+
+    assert fenced in prompt, (
+        "a source file containing a fence was not rendered whole.\n\n"
+        "WHY THIS IS A FAILURE: the file is what the base writes its context lines from. Any"
+        " truncation makes a correct diff impossible for a reason nothing records, and the"
+        " rollout is charged NOT_APPLIED as though the base had got the format wrong."
+    )
+    opening, _, tail = prompt.partition(fenced)
+    fence = opening.splitlines()[-1]
+    assert fence.startswith("````") and tail.lstrip("\n").startswith(fence), (
+        f"the block around a fence-carrying file is delimited by {fence!r}, which the file's own"
+        " content can close.\n\nWHY THIS IS A FAILURE: the delimiter has to be longer than the"
+        " longest run of backticks inside the file, or the file closes its own block."
+    )
+
+
 def test_the_declared_node_ids_are_shown_even_though_their_bodies_are_not(
     tmp_path: Path,
 ) -> None:
@@ -243,7 +377,7 @@ def test_the_declared_node_ids_are_shown_even_though_their_bodies_are_not(
     the task the bake-off measures into "guess which behaviour is wanted".
     """
     task = build_task(tmp_path, SENTINEL_REPO, task_id="sentinel-held-test").task
-    prompt = render_prompt(task)
+    prompt = render_prompt(task, ORACLE_SOURCES)
 
     for node_id in task.fail_to_pass:
         assert node_id in prompt, (
@@ -263,7 +397,7 @@ def test_the_prompt_contains_the_problem_statement(tmp_path: Path) -> None:
     the rest of the file from being satisfied by nothing.
     """
     task = build_task(tmp_path, SENTINEL_REPO, task_id="sentinel-held-test").task
-    prompt = render_prompt(task)
+    prompt = render_prompt(task, ORACLE_SOURCES)
 
     assert task.problem_statement in prompt, (
         f"the rendered prompt does not contain the problem statement "
@@ -290,8 +424,8 @@ def test_rendering_the_same_task_twice_is_byte_identical(tmp_path: Path) -> None
     """
     task = build_task(tmp_path, SENTINEL_REPO, task_id="sentinel-held-test").task
 
-    first = render_prompt(task).encode("utf-8")
-    repeats = [render_prompt(task).encode("utf-8") for _ in range(10)]
+    first = render_prompt(task, ORACLE_SOURCES).encode("utf-8")
+    repeats = [render_prompt(task, ORACLE_SOURCES).encode("utf-8") for _ in range(10)]
 
     assert all(rendered == first for rendered in repeats), (
         "rendering the same task twice produced different bytes.\n\n"
@@ -312,7 +446,9 @@ def test_two_tasks_loaded_from_one_manifest_render_identically(tmp_path: Path) -
     build_task(tmp_path, SENTINEL_REPO, task_id="sentinel-held-test")
     manifest = tmp_path / "task.json"
 
-    assert render_prompt(load_task(manifest)) == render_prompt(load_task(manifest))
+    assert render_prompt(load_task(manifest), ORACLE_SOURCES) == render_prompt(
+        load_task(manifest), ORACLE_SOURCES
+    )
 
 
 def test_the_hash_is_the_sha256_of_the_prompt_bytes(tmp_path: Path) -> None:
@@ -323,7 +459,7 @@ def test_the_hash_is_the_sha256_of_the_prompt_bytes(tmp_path: Path) -> None:
     in P4 can be checked by a reader with nothing but the prompt and a stdlib.
     """
     task = build_task(tmp_path, SENTINEL_REPO, task_id="sentinel-held-test").task
-    prompt = render_prompt(task)
+    prompt = render_prompt(task, ORACLE_SOURCES)
 
     expected = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
     assert prompt_hash(prompt) == expected, (
@@ -344,13 +480,15 @@ def test_a_materially_different_task_hashes_differently(tmp_path: Path) -> None:
     one = build_task(tmp_path / "a", SENTINEL_REPO, task_id="sentinel-held-test").task
     other = build_task(tmp_path / "b", OTHER_REPO, task_id="other-task").task
 
-    assert render_prompt(one) != render_prompt(other), (
+    assert render_prompt(one, ORACLE_SOURCES) != render_prompt(other, OTHER_SOURCES), (
         "two materially different tasks rendered to the same prompt.\n\n"
         "WHY THIS IS A FAILURE: the tasks differ in their problem statement, their failing node"
         " id and their repository. A renderer that collapses them is discarding the task, and"
         " every base would be asked the same question regardless of what it was pointed at."
     )
-    assert prompt_hash(render_prompt(one)) != prompt_hash(render_prompt(other)), (
+    assert prompt_hash(render_prompt(one, ORACLE_SOURCES)) != prompt_hash(
+        render_prompt(other, OTHER_SOURCES)
+    ), (
         "two different prompts produced the same hash.\n\n"
         "WHY THIS IS A FAILURE: a hash that never changes is not a hash. M7b is enforceable only"
         " because a change to the generation contract shows up as a different recorded digest —"
@@ -415,7 +553,7 @@ def test_the_prompt_is_byte_identical_across_processes_and_hash_seeds(tmp_path: 
 
     # Safe to unpack: the assertion above has already established there is exactly one digest.
     (agreed_digest,) = set(digests.values())
-    in_process = prompt_hash(render_prompt(load_task(manifest)))
+    in_process = prompt_hash(render_prompt(load_task(manifest), ORACLE_SOURCES))
     assert in_process == agreed_digest, (
         f"the prompt hashed differently in this process ({in_process}) than in a fresh one"
         f" ({agreed_digest}).\n\n"

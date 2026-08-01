@@ -73,6 +73,9 @@ VERDICTS: dict[Outcome, tuple[Status | None, Status | None]] = {
     Outcome.NO_DIFF: (None, None),
     Outcome.UNVERIFIED: (Status.UNVERIFIED, Status.UNVERIFIED),
     Outcome.UNPROVISIONED: (Status.UNVERIFIED, None),
+    # No prompt was rendered and no verifier ran: the generation contract could not be built for
+    # the task, so both statuses are the honest unknown rather than anything a base earned.
+    Outcome.NO_ORACLE: (Status.UNVERIFIED, Status.UNVERIFIED),
 }
 
 
@@ -376,6 +379,56 @@ def test_unverified_lowers_coverage_and_never_leaves_the_denominator() -> None:
     assert counted.solved + counted.failed + counted.unverified == counted.denominator, (
         "WHY THIS IS A FAILURE: the three disjoint counts do not sum to the denominator, so a "
         "record was dropped, double-counted, or invented somewhere between the run and the report"
+    )
+
+
+def test_a_task_the_contract_could_not_be_built_for_is_not_charged_to_the_base() -> None:
+    """*(adversarial)* `NO_ORACLE` is an absent question, not a failed answer.
+
+    A task whose source files could not be derived is never posed and never generated for: no
+    donor on this machine, no donor commit at all, a fix touching an operator-held path, or files
+    over the character budget. Counting it among the failures would publish "this base could not
+    fix it" about a task the base was never shown — the same lie as charging an unbuildable
+    environment to the candidate, arriving through the prompt rather than through the venv.
+
+    It stays in the denominator for the same reason `UNVERIFIED` does: dropping it produces the
+    hundred-out-of-hundred-by-construction figure `PREREGISTRATION.md:111-114` refuses by name.
+    """
+    records = _records("small", [Outcome.SOLVED, Outcome.NOT_SOLVED, Outcome.NO_ORACLE])
+    counted = tally("small", records)
+
+    assert counted.denominator == 3, (
+        "WHY THIS IS A FAILURE: the unposable task left the denominator, which is the coverage "
+        f"lie the pre-registration refuses by name. Got {counted.denominator}"
+    )
+    assert (counted.solved, counted.failed, counted.unverified) == (1, 1, 1), (
+        "WHY THIS IS A FAILURE: a task the generation contract could not be built for was counted "
+        "as something the base got wrong. The base was never shown it — no prompt was rendered "
+        f"and no verifier ran. Got solved={counted.solved}, failed={counted.failed}, "
+        f"unverified={counted.unverified}"
+    )
+
+
+def test_the_report_discloses_that_the_base_was_shown_which_files_to_change() -> None:
+    """The oracle setting is a handicap on what the number means, so the number carries it.
+
+    The prompt shows the base the non-test files the fix touches, which is what makes writing a
+    unified diff possible at all — without them every rollout is charged `NOT_APPLIED` against a
+    file the base has never seen. It also *tells the base where the answer is*, because that file
+    set is derived from the reference patch. A count published without saying so reads as
+    performance on a bug report, which is a harder task than the one that was actually scored.
+    """
+    document = _build(_standard())
+
+    assert "oracle" in document.lower(), (
+        "WHY THIS IS A FAILURE: the report never names the retrieval setting it was measured "
+        "under. A reader comparing this figure to a published SWE-bench number would be "
+        "comparing two different tasks"
+    )
+    assert "upper bound" in document.lower(), (
+        "WHY THIS IS A FAILURE: the disclosure does not say which way the handicap points. "
+        "Showing the base which files to change makes the task easier, so the figure bounds what "
+        "the same base would do from the bug report alone rather than estimating it"
     )
 
 

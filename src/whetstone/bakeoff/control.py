@@ -34,7 +34,10 @@ precisely its job — and that refusal is indistinguishable, from the outside, f
 cannot reach PASS". The control arm would then raise a false alarm about the one thing it exists
 to rule out. Checking the derived paths against `task.test_blobs` first costs one set comparison,
 never fired across the 66 mined manifests, and turns a would-be control failure into a
-`SKIPPED` carrying its reason.
+`SKIPPED` carrying its reason. That check, and the path derivation it guards, live in
+`whetstone.bakeoff.sources` — the rollout's oracle prompt is built from the *same* path set, and
+two derivations of "which files does this fix touch" would be two definitions of the task's scope
+with only one of them reviewed.
 
 **No model here.** The control arm never asks a base for anything; it is about the harness. That
 is why it takes no generator, and why it can be run before a single token has been generated.
@@ -50,24 +53,19 @@ from enum import Enum
 from pathlib import Path
 
 from whetstone.bakeoff.scoring import Interpreters
+from whetstone.bakeoff.sources import changed_paths
 from whetstone.tasks.derive import gold_patch
-from whetstone.tasks.donor import Candidate, GitFailed, is_test_path, run_git
+from whetstone.tasks.donor import Candidate, GitFailed
 from whetstone.tasks.liveness import inert_patch
 from whetstone.verify.strict import verify_strict
 from whetstone.verify.task import Task
 from whetstone.verify.verdict import Status
 
-#: The provenance keys a mined task carries, and the two the reference derivation needs. Named
-#: because `whetstone.tasks.mine` writes them and this module reads them, and a literal spelled
-#: inline at the read site would let the two drift with nothing failing.
+#: The provenance key naming the commit a task was mined from. Read here only to build the
+#: `Candidate` `gold_patch` diffs; the derivation that decides whether it is usable at all lives
+#: in `whetstone.bakeoff.sources`.
 _COMMIT = "commit"
 _PARENT = "parent"
-
-#: The git statuses whose record carries **two** paths rather than one — a rename and a copy both
-#: name a source and a destination. Spelled as a prefix set because git suffixes them with a
-#: similarity score (`R100`, `C075`), and a parser that matched the bare letter would consume the
-#: destination path as if it were the next status and desynchronise for the rest of the commit.
-_TWO_PATH_STATUSES = ("R", "C")
 
 
 class Control(str, Enum):
@@ -156,57 +154,18 @@ def reference_patch(task: Task) -> Reference:
     may not be on this machine, and a commit may legitimately touch a held path. Each of those is
     a skip with a name on it, and a raise would turn the first one into an aborted bake-off.
 
-    The pre-flight against `task.test_blobs` is the assertion worth reading — see the module
-    docstring. It is checked here, at the derivation, rather than at the call site, so that no
-    caller can obtain a reference this module has not already vouched for.
+    The path set — and the pre-flight against `task.test_blobs` that guards it — comes from
+    `sources.changed_paths`, the same derivation the rollout's oracle prompt is built from. Both
+    the provenance keys read below are therefore known present: `changed_paths` refused the task
+    otherwise, which is why they are indexed rather than fetched with a default.
     """
-    commit = task.provenance.get(_COMMIT)
-    parent = task.provenance.get(_PARENT)
-    if not commit or not parent:
-        return Reference(
-            diff=None,
-            reason=(
-                f"task {task.task_id!r} carries no donor commit in its provenance, so the fix it "
-                f"was mined from cannot be re-derived and the harness cannot be shown to reach "
-                f"PASS on it"
-            ),
-        )
-
+    changed = changed_paths(task)
+    if changed.paths is None:
+        return Reference(diff=None, reason=changed.reason)
+    paths = changed.paths
+    commit = task.provenance[_COMMIT]
+    parent = task.provenance[_PARENT]
     donor = Path(task.repo_url)
-    try:
-        touched = _touched_paths(donor, commit)
-    except (GitFailed, subprocess.SubprocessError, OSError) as exc:
-        return Reference(
-            diff=None,
-            reason=(
-                f"the donor for task {task.task_id!r} could not be read at {str(donor)!r}: "
-                f"{type(exc).__name__}: {exc}"
-            ),
-        )
-
-    paths = sorted(path for path in touched if not is_test_path(path))
-    if not paths:
-        return Reference(
-            diff=None,
-            reason=(
-                f"commit {commit} of task {task.task_id!r} touched no non-test path, so its "
-                f"reference patch would be empty and `git apply` refuses an empty diff"
-            ),
-        )
-
-    # The pre-flight. STRICT refuses a patch touching a held path before anything runs, so a
-    # reference that collided here would be recorded as the harness failing to reach PASS — the
-    # exact false alarm this arm exists to avoid. Cheap, and it never fired across 66 manifests.
-    collisions = sorted(set(paths) & set(task.test_blobs))
-    if collisions:
-        return Reference(
-            diff=None,
-            reason=(
-                f"the reference patch for task {task.task_id!r} would touch operator-held "
-                f"{collisions}, which STRICT refuses as a cheat before anything runs. Using it "
-                f"would report the reward's own scope check as `the harness cannot reach PASS`"
-            ),
-        )
 
     candidate = Candidate(
         sha=commit,
@@ -375,30 +334,6 @@ def harness_status(probes: Iterable[Probe]) -> Status:
     if not any(one.control is Control.INTACT for one in seen):
         return Status.UNVERIFIED
     return Status.PASS
-
-
-def _touched_paths(donor: Path, commit: str) -> frozenset[str]:
-    """Every path `commit` touched, read from git's own name-status record.
-
-    `-z` because a repository is allowed to hold a path with a newline or a quote in it, and
-    git's default output quotes those — a parser splitting on newlines would silently drop such a
-    file from the reference patch, producing a patch that does not reproduce the commit.
-
-    A rename or a copy record carries **two** paths and every other carries one, so the fields are
-    consumed by status rather than by position. Both halves of a rename are kept: the commit
-    removed one path and created the other, and a reference patch missing either does not apply.
-    """
-    raw = run_git(["show", "--format=", "--name-status", "-z", commit], cwd=donor)
-    fields = [field for field in raw.split("\0") if field.strip()]
-
-    paths: set[str] = set()
-    index = 0
-    while index < len(fields):
-        status = fields[index]
-        wanted = 2 if status.startswith(_TWO_PATH_STATUSES) else 1
-        paths.update(fields[index + 1 : index + 1 + wanted])
-        index += 1 + wanted
-    return frozenset(paths)
 
 
 __all__ = [

@@ -53,7 +53,26 @@ from whetstone.verify.verdict import Status
 #: The outcomes that mean no verdict was reached. They lower coverage and stay in the denominator.
 #: `UNPROVISIONED` is here because a machine that could not build the environment is a fact about
 #: the machine, and charging it to the candidate would be a figure about a base nobody scored.
-_UNCOVERED = frozenset({Outcome.UNVERIFIED, Outcome.UNPROVISIONED})
+#: `NO_ORACLE` is here for the same reason one step earlier: the generation contract could not be
+#: built for that task, so no prompt was rendered and the base was never shown it. Counting it as
+#: a failure would publish "this base could not fix it" about a question nobody asked.
+_UNCOVERED = frozenset({Outcome.UNVERIFIED, Outcome.UNPROVISIONED, Outcome.NO_ORACLE})
+
+#: The retrieval setting, disclosed beside the contract that produced the number. The prompt shows
+#: the base the non-test files its task's fix touches — without them a unified diff is being asked
+#: for against a file the base has never seen, and measured, every such rollout came back
+#: NOT_APPLIED. The cost is that the file set is derived from the reference patch, so the prompt
+#: names where the answer lives. That makes the scored task **easier** than the real setting, in
+#: one direction only, which is why the sentence says upper bound rather than "approximately".
+_ORACLE_DISCLOSURE = (
+    "**Retrieval: the oracle setting, disclosed.** Each prompt shows the base the non-test files "
+    "that task's reference patch touches, as they stand at `base_commit` (the standard SWE-bench "
+    "oracle condition, `whetstone.bakeoff.sources`). Without them a unified diff is being asked "
+    "for against a file the base has never seen; with them the prompt also names which files to "
+    "change, which is work the unassisted setting includes. Every count here is therefore a "
+    "figure about the oracle setting and an upper bound on what the same base would do from the "
+    "bug report alone. It may not be compared with a published figure measured without retrieval."
+)
 
 #: `PREREGISTRATION.md:102`, verbatim, with the count substituted for the letter. The wording is
 #: pre-registered so that neither a later editor nor a later result can soften or sharpen what the
@@ -720,6 +739,8 @@ def _render(
         )
         + " — excluded from every count above, because scoring a task the contract was iterated "
         "against would be optimising on the outcome.",
+        "",
+        _ORACLE_DISCLOSURE,
         "",
         "## Findings and disclosed bounds",
         "",
