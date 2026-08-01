@@ -5,8 +5,8 @@
 are post-horizon and named as such.
 
 > All durations are **planning estimates**, not commitments or measurements. No performance
-> figure appears anywhere in this document, because none has been measured yet. See
-> § Grounded facts.
+> figure appears anywhere in this document: the bake-off's figures live in `reports/baseline/`,
+> which is their only home. See § Grounded facts.
 
 ---
 
@@ -358,35 +358,35 @@ base-model bake-off — run **against the working verifier**, not on paper.
 **Where this stands, stated so a later reader cannot mistake progress for completion.** P1 slice
 1 landed the verifier and the corpus; slice 2 landed the **task format** — the `environment`
 contract, canonical held paths, the directory loader, and the `tasks/` layout; slice 3 landed
-**ingestion for both sources** and minted the corpus above, which is what ticks the `tasks/`
-criterion; slice 4 landed **`PREREGISTRATION.md`**, which ticks criterion 6.
+**ingestion for both sources** and minted the corpus above; slice 4 landed **`PREREGISTRATION.md`**;
+slice 5 ran the bake-off and wrote `reports/baseline/`. **No criterion remains open.**
 
-**One criterion remains open, and it is not nearly done.** `reports/baseline/` does not exist.
-Consequently **no model has been run against any of this**: the verifier grades patches, 66 tasks
-and one public instance are proven to discriminate, and **not one number about a model exists
-anywhere in this repository.** A reader who takes a corpus existing as evidence that something was
-measured has read this section backwards.
+> **Corrected 2026-08-01, when the bake-off ran.** This paragraph asserted, in the present tense,
+> that *"no model has been run against any of this"* and that *"not one number about a model exists
+> anywhere in this repository."* Both were exact until slice 5 and are false now. The sentences are
+> preserved as quotations rather than deleted, because they describe the tree `PREREGISTRATION.md`
+> was committed to, and `PREREGISTRATION.md` cites these lines and is append-only.
 
-**That ordering was the point of doing the pre-registration first.** The bake-off scores candidate
-bases per source, and those are the first numbers this project will hold; a headline rule fixed
-after they are visible is not a commitment. `PREREGISTRATION.md` is therefore committed with the
-bake-off still unrun, and `tests/test_docs.py` fails the build if anything ever appears under
-`reports/` in a tree that lacks it.
+**What the bake-off found: no base is selected.** Three candidate bases were scored against the
+working verifier and the pivot signal below fired for every one, so there is no evidence to choose
+on and `PREREGISTRATION.md` § 7.3 stays open. The control arm — an inert patch and each task's own
+re-derived fix, through the same harness — was intact on every run, so that outcome is about the
+bases and not about a verifier that graded nothing. Prompts used the oracle retrieval setting, so
+each figure bounds the unassisted one from above; every figure lives in `reports/baseline/` alone.
 
 **What ingestion cost, recorded because the refusals are the finding.** Two of four candidate
-donors yielded nothing, for reasons that generalise: `rereflect` was **refused outright** — it
-has no `uv.lock`, so its pins would have been chosen by the date the mint ran, which is exactly
-the corruption `environment` exists to close; and this repository yielded **0 of 2**, because its
-own test-first workflow lands the test and the fix in one commit, so a held test does not even
-collect at the parent. `contig` reached its cap of 45 with candidates left over; `belay` stopped
-at 21 below a cap of 25. Candidates are lost throughout — chiefly to the restriction to commits
-that *modify an existing* test (PRD D2), which is not a shortcoming but what keeps the miner off
-the fail-closed guard at `strict.py:131-140`. The per-gate breakdown is not recorded in any
-committed artifact, so it is re-derived by re-running the recipe rather than quoted from here.
+donors yielded nothing: `rereflect` was **refused outright** for having no `uv.lock`, so its pins
+would have been chosen by the date the mint ran, and this repository yielded **0 of 2**, its own
+test-first workflow landing the test and the fix in one commit. `contig` capped at 45 and `belay`
+at 21 under a cap of 25; restricting to commits that *modify an existing* test (PRD D2) keeps the
+miner off the fail-closed guard at `strict.py:131-140`, which is its purpose rather than its cost.
 
-**Pivot signal:** if no candidate base solves *any* held-out task, expert iteration has
-nothing to bootstrap from. Pivot to an easier task stratum or a larger base — not to a
-looser verifier.
+> **Corrected 2026-08-01.** The signal below read *"any **held-out** task"*. `PREREGISTRATION.md`
+> § 7.1 leaves that split open until P3, so it is read against the declared source-B set instead.
+
+**Pivot signal — fired.** If no candidate base solves *any* task in the declared source-B set,
+expert iteration has nothing to bootstrap from. Pivot to an easier task stratum or a larger base
+— not to a looser verifier.
 
 ---
 
@@ -592,8 +592,8 @@ testing · Linux portability.
   on npm and PyPI, with bare `whetstone` taken — **unverified as of today**, needs re-checking.
 - The held-out split size and stratification.
 - The retry count *R* in P3, to be set from the observed unverified rate rather than guessed.
-- Apple Silicon capacity: whether the chosen base sustains *k* rollouts per task in a night.
-  Discovered in the P1 bake-off, before the loop is built around it.
+- Apple Silicon capacity: whether the base eventually chosen sustains *k* rollouts per task in a
+  night. The P1 bake-off measured its own wall-clock but selected no base, so this stays open.
 
 ---
 

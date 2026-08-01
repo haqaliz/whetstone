@@ -959,18 +959,38 @@ def test_the_funnel_matches_the_committed_rejection_ledger() -> None:
 
 
 def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> None:
-    """AC13: the report is the only home for a number, and this tree is still a report short.
+    """AC13: `reports/baseline/` is the only home for a figure about a model.
 
-    `tests/test_docs.py` owns the two document guards; this asserts the third fact that belongs to
-    this aspect — that building and rendering a report leaves `reports/` absent, because the real
-    one comes from a real run and nothing here has run a model.
+    **What this guard asserts moved when the bake-off ran, and the guard moved with it.** It was
+    written while this aspect could only render into a temporary directory, and it asserted that
+    `reports/` was absent outright — the honest form of *"nothing here has run a model"*. Slice 5
+    ran one, so that literal is now false and the invariant underneath it is what survives:
+    `reports/` holds the bake-off's three artifacts and nothing besides. A second report
+    appearing beside them would be a second home for a figure, and two homes is exactly how two
+    figures come to disagree with each other.
+
+    `reports/local/` is excluded because `.gitignore` reserves it for the user's own nightly
+    output, which is their data and never ours to assert on.
+
+    The document half is unchanged and is the part that never moves: `docs/ROADMAP.md` still
+    forbids a performance figure inside itself, and `PREREGISTRATION.md` still carries no
+    proportion in any spelling.
     """
     reports = REPO_ROOT / "reports"
-    stray = sorted(path.as_posix() for path in reports.rglob("*")) if reports.exists() else []
-    assert not stray, (
-        f"WHY THIS IS A FAILURE: {stray} exists in a tree where no model has been run. A "
-        "committed report is a claim about a measurement, and no measurement has happened — "
-        "every report this aspect produces is written into a temporary directory"
+    relative = (
+        path.relative_to(REPO_ROOT).as_posix() for path in reports.rglob("*") if path.is_file()
+    )
+    held = sorted(name for name in relative if not name.startswith("reports/local/"))
+    assert held == [
+        "reports/baseline/cost.json",
+        "reports/baseline/report.json",
+        "reports/baseline/report.md",
+    ], (
+        f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts are the "
+        "only sanctioned home for a figure about a model — the prose report, its "
+        "machine-readable form, and the measured cost. A file missing means the report is "
+        "incomplete; a file extra means there is a second place a figure can live, and the next "
+        "reader has no way to tell which of two disagreeing numbers is the real one"
     )
     # Flattened, because the sentence wraps inside a blockquote and a guard that a re-wrap could
     # silence is a guard that stops describing the document without anybody noticing —

@@ -58,7 +58,7 @@ This file orients a coding agent working in this repository. Read it first.
 >
 > **P1 slice 4 — the pre-registration — is done** (`docs/ROADMAP.md` § 6; plan at
 > `docs/planning/p1-preregistration/`). `PREREGISTRATION.md` is committed at the repository root,
-> **before any number about a model exists**, which is its entire value: it fixes the headline —
+> **before any number about a model existed**, which is its entire value: it fixes the headline —
 > the change in STRICT-PASS *count* on the held-out source-B split, published over its
 > denominator and never as a rate — along with every metric definition, the baseline protocol,
 > and the rule that both sources are always published together and a disagreement between them is
@@ -71,12 +71,40 @@ This file orients a coding agent working in this repository. Read it first.
 > nothing may exist under `reports/` in a tree lacking the file. That last guard proves
 > co-existence, not ordering — the temporal claim is `git log`'s, and the document says so itself.
 >
-> **What is not built.** The rest of P1: the base-model bake-off and `reports/baseline/` — the
-> last open criterion. Then all of P2–P4: no rollouts, no training, no promotion gate, no report,
-> no dashboard. **No model has been run against any of this, and no number about a model exists**
-> — the verifier grades patches, and a corpus existing is not a measurement. Cheat 6 and cheat 10
-> remain documented residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did
-> **not** close it. No version has been released and there are no tags.
+> **P1 slice 5 — the base-model bake-off — is done, and P1 is closed** (`docs/ROADMAP.md` § 4,
+> the last exit criterion; plan at `docs/planning/p1-baseline-bakeoff/`). Three candidate open
+> bases produced patches locally through `mlx-lm`, every patch was graded by the STRICT verifier,
+> and the report lives at `reports/baseline/` (`report.md`, `report.json`, `cost.json`) — read it
+> before quoting anything about it. **This tree now holds figures about models, and
+> `reports/baseline/` is their only home** — do not restate one anywhere else, because a figure
+> quoted twice is a figure that can disagree with itself.
+>
+> **The result was a zero: not one candidate solved a single task on the declared source-B set.**
+> So P1's pivot signal (`docs/ROADMAP.md` § 4) **fired**, **no base is selected**, and
+> `PREREGISTRATION.md` § 7.3 stays open — the response it names is an easier task stratum or a
+> larger base, never a looser verifier. The failure modes differ by candidate (unapplicable
+> patches dominate at the small and large ends, empty diffs in the middle), which is a finding
+> about where the wall is rather than a tie. Two things stop that zero being read as a broken
+> harness. The **control arm** — an inert patch and each task's own re-derived fix, through the
+> same harness, on the same task — was **INTACT on every run**, so the harness demonstrably
+> reaches PASS when a correct patch exists. And the reward-hacking count `N` was zero for every
+> candidate, which is a floor rather than a rate: the generation contract states the
+> patch-scope rule to every candidate, so it discourages exactly what `N` counts.
+>
+> **Two bounds on that report, disclosed rather than discovered.** Prompts used the **oracle
+> retrieval** setting — the base is shown the non-test files the reference patch touches — so
+> every count is an **upper bound** on the same base working from the bug report alone, and may
+> not be compared with a figure measured without retrieval. And the **generation contract**
+> (prompt template, retrieval setting, extractor) is **not** among the pre-registration's pinned
+> inputs, yet it demonstrably moves the numbers; a figure measured under a changed contract is
+> not comparable to this one.
+>
+> **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
+> report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
+> `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
+> so "measured once, re-measured never" is unspent. Cheat 6 and cheat 10 remain documented
+> residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did **not** close it. No
+> version has been released and there are no tags.
 >
 > Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. Describe the
 > state of the tree this file ships in, and never work in flight on a branch — a status that
@@ -191,8 +219,10 @@ own thesis (improvement), not a Belay feature.
 
 **Still open — genuinely undecided, decide with evidence.**
 
-- **Which open base** we fine-tune / LoRA. `docs/ROADMAP.md` § 4 (P1) settles it by a bake-off
-  run against the *working* verifier, not on paper.
+- **Which open base** we fine-tune / LoRA — **still open, and now open on evidence.** The P1
+  bake-off ran against the *working* verifier rather than on paper, and no candidate gave any
+  evidence to choose on, so nothing was selected and `PREREGISTRATION.md` § 7.3 stays open.
+  Re-opening it means an easier task stratum or a larger base, never a looser verifier.
 - **The BYOK cloud teacher for distillation** — optional, and post-horizon; nothing inside the
   current roadmap horizon calls a cloud model at all.
 - Everything `docs/ROADMAP.md` § 10 lists as an open question.
@@ -245,6 +275,7 @@ CLAUDE.md                       # This file
 CONTRIBUTING.md                 # Dev setup, test-first contract, ground rules
 PREREGISTRATION.md              # What P4 may claim, fixed before any number existed
 RELEASING.md                    # Tag-push release mechanism (nothing released yet)
+reports/baseline/               # The P1 bake-off — the only home for any figure about a model
 .claude/skills/                 # The repo's own workflow skills (see below)
 docs/
   ROADMAP.md                    # 2–3 month phased plan + milestones — authoritative today

@@ -1,0 +1,38 @@
+{
+  "kind": "scored",
+  "candidates": [
+    {
+      "candidate": "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit",
+      "tasks": 64,
+      "generation_seconds": 747.312,
+      "verification_seconds": 182.66,
+      "control_seconds": 449.639,
+      "wall_seconds": 1486.753,
+      "seconds_per_task": 23.231,
+      "peak_bytes": 2029813760,
+      "harness": "PASS"
+    },
+    {
+      "candidate": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+      "tasks": 64,
+      "generation_seconds": 1504.236,
+      "verification_seconds": 7.642,
+      "control_seconds": 307.295,
+      "wall_seconds": 1929.164,
+      "seconds_per_task": 30.143,
+      "peak_bytes": 6431834112,
+      "harness": "PASS"
+    },
+    {
+      "candidate": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+      "tasks": 64,
+      "generation_seconds": 2749.303,
+      "verification_seconds": 196.868,
+      "control_seconds": 410.683,
+      "wall_seconds": 3492.018,
+      "seconds_per_task": 54.563,
+      "peak_bytes": 11526144000,
+      "harness": "PASS"
+    }
+  ]
+}

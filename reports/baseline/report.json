@@ -1,0 +1,142 @@
+{
+  "closes_open_question_7_3": false,
+  "generation_contract": {
+    "dev_subset": [
+      "belay-0cfbb1590a70",
+      "belay-0f8651175ef8",
+      "belay-0fe4582aeac1"
+    ],
+    "extractor_version": "extract_patch@3e91bab8c123",
+    "max_tokens": 1024,
+    "pinned": false,
+    "prompt_sha256": "b7d6d3d4052db5e95a4e8eaa65d2728176406c580e260c4b637442ff333cd1ae",
+    "sampler": "greedy: argmax over the final logprob axis (mx.argmax(logprobs, axis=-1))"
+  },
+  "measurement": "base selection; not the pinned baseline of PREREGISTRATION.md:126-128",
+  "pivot_signal_fired": true,
+  "provenance": {
+    "environment_pins": "per task, from its own manifest: exact `==` pins and a nominated interpreter, resolved once per distinct pin set (whetstone.bakeoff.scoring.Interpreters) and shared by the control arm and the rollout so both are graded under the same environment",
+    "recorded_on": "2026-08-01",
+    "seeds": "none: one greedy attempt per task per candidate (argmax over the vocabulary, mlx_lm==0.31.3). No sampling is performed, so there is no seed to record and no draw for a re-run to differ on",
+    "task_set": "source B: 63 tasks from [PosixPath('/Users/aliz/dev/at/whetstone/tasks/local/belay'), PosixPath('/Users/aliz/dev/at/whetstone/tasks/local/contig')]; source A: 1 from tasks/public/instances. Declared and hash-recorded, and deliberately NOT called held out (PRD D4): PREREGISTRATION.md \u00a7 7.1 leaves that split open and unspent",
+    "tool_versions": {
+      "mlx-lm": "0.31.3",
+      "platform": "Darwin 25.5.0 arm64",
+      "python": "3.12.13",
+      "whetstonehq": "0.1.0"
+    }
+  },
+  "ranking": [
+    "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit",
+    "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+    "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit"
+  ],
+  "selected": null,
+  "source_a": {
+    "by_gate": [
+      [
+        "format",
+        192
+      ],
+      [
+        "environment",
+        106
+      ],
+      [
+        "collectability",
+        1
+      ],
+      [
+        "liveness",
+        0
+      ]
+    ],
+    "considered": 300,
+    "eligible": [
+      "pallets__flask-4045"
+    ],
+    "per_candidate": [
+      {
+        "candidate": "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit",
+        "covered": 1,
+        "denominator": 1,
+        "failed": 1,
+        "no_diff": 0,
+        "not_applied": 1,
+        "not_solved": 0,
+        "out_of_scope": 0,
+        "solved": 0,
+        "unverified": 0,
+        "weaker_wins": 0
+      },
+      {
+        "candidate": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+        "covered": 1,
+        "denominator": 1,
+        "failed": 1,
+        "no_diff": 1,
+        "not_applied": 0,
+        "not_solved": 0,
+        "out_of_scope": 0,
+        "solved": 0,
+        "unverified": 0,
+        "weaker_wins": 0
+      },
+      {
+        "candidate": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+        "covered": 1,
+        "denominator": 1,
+        "failed": 1,
+        "no_diff": 0,
+        "not_applied": 1,
+        "not_solved": 0,
+        "out_of_scope": 0,
+        "solved": 0,
+        "unverified": 0,
+        "weaker_wins": 0
+      }
+    ],
+    "refused": 299
+  },
+  "source_b": [
+    {
+      "candidate": "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit",
+      "covered": 50,
+      "denominator": 63,
+      "failed": 50,
+      "no_diff": 1,
+      "not_applied": 49,
+      "not_solved": 0,
+      "out_of_scope": 0,
+      "solved": 0,
+      "unverified": 13,
+      "weaker_wins": 0
+    },
+    {
+      "candidate": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+      "covered": 51,
+      "denominator": 63,
+      "failed": 51,
+      "no_diff": 42,
+      "not_applied": 8,
+      "not_solved": 1,
+      "out_of_scope": 0,
+      "solved": 0,
+      "unverified": 12,
+      "weaker_wins": 0
+    },
+    {
+      "candidate": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+      "covered": 51,
+      "denominator": 63,
+      "failed": 51,
+      "no_diff": 0,
+      "not_applied": 42,
+      "not_solved": 9,
+      "out_of_scope": 0,
+      "solved": 0,
+      "unverified": 12,
+      "weaker_wins": 0
+    }
+  ]
+}
