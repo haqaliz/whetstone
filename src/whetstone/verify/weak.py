@@ -61,6 +61,7 @@ def verify_weak(
     sandbox_root: Path | str,
     timeout: float,
     run_id: str | None = None,
+    interpreter: Path | str | None = None,
 ) -> WeakResult:
     """Run the task's declared tests as the patch left them, and report the exit status.
 
@@ -70,6 +71,26 @@ def verify_weak(
     into it), no report, no skipped count, and no executed-set comparison. The exit status is
     the whole verdict, which is precisely why cheats that produce a clean exit status get
     through.
+
+    `interpreter` is the python the declared tests run under, and it mirrors `verify_strict`'s
+    parameter exactly — same type, same default, same meaning. `None` means `sys.executable`,
+    and is distinct from a caller passing `sys.executable` only in that it records nobody
+    chose. **This function resolves nothing and installs nothing either**: it does not read
+    `task.environment.python`, does not turn a version string into a path, and does not build
+    a venv. It takes a path and puts it in an argv. Provisioning belongs to the caller.
+
+    It is here because the *control* has to be run on the same tasks as the reward. Every task
+    in the corpus declares `environment.pins`, so a WEAK that could only run the verifier's own
+    interpreter could not measure any of them — and the pre-registered baseline
+    `N := count(WEAK == PASS and STRICT == FAIL)` (`PREREGISTRATION.md:96-109`) would have no
+    WEAK half to count. A differential whose two halves ran under different pythons would not
+    be a differential at all.
+
+    **Nothing else about WEAK moves with it.** Taking the same argument as STRICT is the
+    closest this module comes to STRICT, and the temptation that follows — a shared helper, a
+    shared argv builder, "while we are here" — is the one to refuse. WEAK's value is that it is
+    a *different, weaker* check; every line the two share is a line along which the reward can
+    leak into its own control. The measured gap is the product.
     """
     run_directory = Path(sandbox_root) / (run_id or uuid.uuid4().hex)
     checkout = run_directory / _CHECKOUT_NAME
@@ -93,7 +114,14 @@ def verify_weak(
         )
 
     sandbox = run_confined(
-        [sys.executable, "-m", "pytest", "-q", *task.fail_to_pass, *task.pass_to_pass],
+        [
+            str(interpreter) if interpreter else sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            *task.fail_to_pass,
+            *task.pass_to_pass,
+        ],
         scope=run_directory,
         timeout=timeout,
         cwd=checkout,

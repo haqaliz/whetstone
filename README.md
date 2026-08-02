@@ -14,10 +14,12 @@
 > to the first task family, specifies its verifier, and phases the work through to the first
 > honest number. The scaffold and the **reward** are built: an execution-grounded verifier
 > (`whetstone verify`), an adversarial corpus of ten cheats with its two residuals reported
-> rather than hidden, and a first corpus of real tasks (`whetstone mine`). **No loop, no gate,
-> and no report exist yet; no model has been run, so no number about a model exists; and
-> nothing has been released.** [`PREREGISTRATION.md`](PREREGISTRATION.md) was committed while
-> that was still true — it fixes what any future number may claim, and its value is its date.
+> rather than hidden, and a first corpus of real tasks (`whetstone mine`). The P1 base-model
+> bake-off has run: [`reports/baseline/`](reports/baseline/) is the **only** home for a figure
+> about a model, and its result is that **no base was selected**, because no candidate gave any
+> evidence to choose on. **No loop, no gate, and no nightly report exist yet, and nothing has
+> been released.** [`PREREGISTRATION.md`](PREREGISTRATION.md) was committed before any of those
+> figures existed — it fixes what any future number may claim, and its value is its date.
 > [`VISION.md`](VISION.md) holds the thesis, [`CLAUDE.md`](CLAUDE.md) the guardrails.
 
 Point Whetstone at your tasks. Each night a local loop runs self-play / RL against an

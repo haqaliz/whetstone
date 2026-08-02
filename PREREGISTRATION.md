@@ -303,4 +303,75 @@ gate ran, that did not happen, and it had to record the discrepancy afterwards r
 it. The lesson taken is that a pre-registration belongs in the document that publishes the claim —
 which is why this file sits at the repository root and not under `docs/planning/`.
 
-**Amendment log.** No amendments. This document is as first committed.
+**Amendment log.**
+
+| Date | Amendment | Type (§ 8) | Closes an open item |
+|---|---|---|---|
+| 2026-08-01 | The generation contract is an unpinned input that moves the numbers (§ 10.1) | 2 — adds a disclosure | No |
+| 2026-08-01 | On one public instance, § 4's contamination signature is undetectable (§ 10.2) | 2 — adds a disclosure | No |
+
+Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
+none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. §§ 7.1, 7.2 and 7.3
+are all still **open** — in particular the P1 bake-off selected no base, so it does **not** close
+§ 7.3, and an amendment that tried to close it after the fact would document only that the item
+was never closed (§ 8.1).
+
+## 10. Amendments
+
+Appended under § 8. Each is dated, committed as its own change, and recorded in the log above.
+Nothing above this heading is edited by anything below it; that is what append-only means here.
+
+### 10.1 The generation contract is an unpinned input, and it moves the numbers — 2026-08-01
+
+**Type 2 (§ 8.2): a disclosure, added.** It closes no open item, sets no threshold, and rewords
+nothing in § 1, § 4, or § 6. It is disclosed **after** the P1 base-selection bake-off ran rather
+than before it, which § 8.2 permits and which is said plainly here rather than smoothed over: the
+effect was observed **in** that run, and a limitation found late is disclosed late rather than not
+at all.
+
+**The disclosure.** § 3 pins five inputs — model revision, task set, environment pins, seeds, and
+tool versions — and treats a change in any of them as invalidating a series. The **generation
+contract** is not among the five, and it should have been read as one. It is the whole of how a
+task becomes a candidate patch: the prompt template, the retrieval setting that decides which
+files of the repository the policy is shown, the sampler and its token budget, and the extractor
+that turns a completion into a diff. The bake-off is the first concrete demonstration that it
+moves the quantities this document pre-registers.
+
+- **It moves `solved`.** A completion that never becomes an applicable diff cannot reach `PASS`,
+  so the extractor and the token budget bound the metric before the verifier is reached at all.
+- **It moves `N`.** The contract used in P1 states the patch-scope rule to every candidate — that
+  the test files are held by the operator, and that a patch modifying one is refused before it is
+  run. That is the right call for comparability, since every base is told the same thing and the
+  contract does not name which files are held; but it also discourages precisely the behaviour
+  `N` counts. **An `N` measured under a disclosing contract is a floor, not a rate**, and an `N`
+  measured under a different contract is not comparable to it. This bound is in addition to the
+  residual bound already disclosed in § 6.3, not a replacement for it.
+- **It moves what a count means.** P1 used the **oracle retrieval** setting, in which the prompt
+  carries the non-test files that task's reference patch touches, as they stand at the base
+  commit. Every figure measured that way is an **upper bound** on what the same base would do
+  from the bug report alone, and it may not be set beside a published figure measured without
+  retrieval.
+
+**What this obliges from here on.** Every report publishing a figure this document governs states
+its generation contract in the provenance block, identifiably enough that two contracts can be
+told apart — at minimum a hash of the prompt template, the retrieval setting, the sampler and its
+token budget, and a version for the extractor. Two figures measured under different contracts are
+reported as what they are: **not comparable**. This adds a disclosure and a reporting obligation.
+It does not narrow § 4, which continues to govern everything it governed before.
+
+### 10.2 With one public instance, § 4's contamination signature is undetectable — 2026-08-01
+
+**Type 2 (§ 8.2): a disclosure, added.** It withdraws nothing and closes nothing.
+
+§ 4 commits to publishing both sources together, to reporting a disagreement between them as a
+finding, and it names public-gain-with-private-flat as the expected signature of contamination.
+§ 6.2 already discloses that source A is one eligible instance of 300. The consequence of putting
+those two facts side by side was never stated, and is stated now: **on a single public instance
+that signature cannot be detected in practice.** One instance can agree with source B or disagree
+with it, and neither outcome carries evidence about contamination either way.
+
+So the absence of an observed signature is **not** evidence that there is none, and no report may
+present it as such. The commitment in § 4 is unchanged — both sources are still always published
+together, and a disagreement is still reported as a finding rather than resolved by picking the
+flattering source. What is bounded is the diagnostic power of that comparison over source A, and
+it stays bounded by a denominator of one until the public corpus grows.

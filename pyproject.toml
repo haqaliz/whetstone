@@ -49,5 +49,22 @@ strict = true
 # has to keep earning its place.
 warn_unused_ignores = true
 
+# `mlx-lm` ships no type stubs, and it is an OPTIONAL extra: CI type-checks under a
+# plain `uv sync` (`ci.yml:29-31`), where `import mlx_lm` cannot be resolved at all.
+# Without this, `mypy src/` fails on the one module allowed to import it —
+# `whetstone/bakeoff/mlx_runtime.py`. A per-line `# type: ignore` is the wrong tool
+# here twice over: it would be UNUSED on a machine that has run `uv sync --extra mlx`,
+# and `warn_unused_ignores` above turns that into an error, so the check would pass in
+# exactly one of the two environments this project supports.
+# `huggingface_hub` is here for the same reason and was missed the first time, in the
+# direction that is easy to miss: it arrives *with* the mlx extra, so a developer who has
+# run `uv sync --extra mlx` sees a clean `mypy src/` while CI — which type-checks under a
+# plain `uv sync` — cannot resolve it at all. The local check being the more permissive
+# one is what let `bakeoff/weights.py` reach a pull request red. Both directions now have
+# a step: `ci.yml` runs mypy under a plain sync AND again with the extra installed.
+[[tool.mypy.overrides]]
+module = ["huggingface_hub.*", "mlx.*", "mlx_lm.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

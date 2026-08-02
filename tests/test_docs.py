@@ -62,6 +62,21 @@ STALE_CLAUDE_CLAIMS = [
 
 PREREGISTRATION = "PREREGISTRATION.md"
 
+# The claim four documents made in the present tense, in every spelling they actually used.
+# It was true until the bake-off ran; `reports/baseline/` now holds the numbers it denies.
+NO_NUMBER_CLAIM = re.compile(
+    r"no (?:number|figure) about a model exists"
+    r"|not one number about a model exists"
+    r"|no model has been run",
+    re.IGNORECASE,
+)
+
+# The documents that describe the tree in the present tense, so a false claim in them is read
+# as current. `PREREGISTRATION.md` is deliberately absent: it is append-only, and its § *Status
+# at the time of writing* says of itself that every claim in it is checkable in the tree it was
+# committed to, which makes it history by construction rather than a live assertion.
+PRESENT_TENSE_DOCS = ("CLAUDE.md", "README.md", "CHANGELOG.md")
+
 # Every section of the pre-registration, asserted one at a time so a document that lost one
 # fails naming it. `_section()` is deliberately not used on this file: it slices to the next
 # `\n## ` and raises on a document's final section.
@@ -228,6 +243,58 @@ def test_claude_md_states_what_replaced_the_stale_claims() -> None:
             f"CLAUDE.md no longer mentions {expected!r}. The stale-claim guard checks for "
             "absence, so a gutted file would pass it — this control is what stops that."
         )
+
+
+def test_no_document_still_claims_that_no_number_about_a_model_exists() -> None:
+    """The positive form of the stale-claim guard: the tree may not deny what it now holds.
+
+    `reports/baseline/` exists, so every present-tense sentence saying no model has been run,
+    or that no number about a model exists, is now false. `STALE_CLAUDE_CLAIMS` above names
+    strings that went stale in earlier cycles; this names the *claim* — in every spelling the
+    documents actually used — and asserts it survives only where it is marked as history.
+
+    **`docs/ROADMAP.md` is checked differently, and deliberately.** `PREREGISTRATION.md` cites
+    `docs/ROADMAP.md:364-368` on the exact sentence *"not one number about a model exists
+    anywhere in this repository"*, and that file is **append-only**, so the sentence cannot be
+    deleted or moved without breaking a citation a stranger is invited to check. It is
+    therefore kept inside those lines as a dated, quoted correction — the precedent § 4 already
+    sets for P4's claim about belay — and this guard asserts the claim appears in the roadmap
+    only inside a blockquote, never in the running prose. A correction that is quietly tidied
+    away later leaves the original claim reading as though it had always been right.
+
+    The blockquote half is also this test's anti-vacuity control: a repository that had simply
+    deleted every trace of the sentence would satisfy the absence checks while breaking the
+    citation guard below, and would prove nothing here.
+    """
+    for name in PRESENT_TENSE_DOCS:
+        found = sorted(set(NO_NUMBER_CLAIM.findall(_flat(_read(name)))))
+        assert not found, (
+            f"{name} still claims, in the present tense, that no number about a model "
+            f"exists: {found}\n\n"
+            "WHY THIS IS A FAILURE: `reports/baseline/` holds the bake-off report, so the "
+            "sentence is false about the tree it ships in. A document that denies the "
+            "measurement it ships beside is the exact failure mode this repository exists to "
+            "refuse, and CLAUDE.md:3 tells every agent to read one of these files first."
+        )
+
+    lines = _read("docs/ROADMAP.md").splitlines()
+    prose = _flat("\n".join(line for line in lines if not line.lstrip().startswith(">")))
+    quoted = _flat("\n".join(line for line in lines if line.lstrip().startswith(">")))
+
+    assert not sorted(set(NO_NUMBER_CLAIM.findall(prose))), (
+        "docs/ROADMAP.md asserts in running prose that no number about a model exists: "
+        f"{sorted(set(NO_NUMBER_CLAIM.findall(prose)))}\n\n"
+        "WHY THIS IS A FAILURE: the claim may stay in this file only as a quoted, dated "
+        "correction, because PREREGISTRATION.md cites the lines it sits on and that document "
+        "is append-only. Outside a blockquote it reads as present tense and is false."
+    )
+    assert NO_NUMBER_CLAIM.search(quoted), (
+        "docs/ROADMAP.md no longer carries the falsified claim as a quotation anywhere.\n\n"
+        "WHY THIS IS A FAILURE: the checks above assert absences, which deleting the sentence "
+        "would satisfy — and deleting it would break PREREGISTRATION.md's citation of "
+        "docs/ROADMAP.md:364-368 in an append-only document, leaving a reader pointed at "
+        "lines that no longer say what they are cited for."
+    )
 
 
 def test_roadmap_does_not_cite_the_wrong_belay_guard() -> None:
@@ -677,27 +744,34 @@ def test_no_report_may_exist_without_its_preregistration() -> None:
     )
 
 
-def test_the_roadmap_p1_shows_one_remaining_criterion() -> None:
-    """P1 had two open criteria; this branch closes one, so the count must move.
+def test_the_roadmap_p1_records_that_no_criterion_remains_open() -> None:
+    """P1's open-criterion count has now moved twice, and this guard moves with it.
 
-    `docs/ROADMAP.md:364` read *"Two criteria remain open, and neither is nearly done"* while
-    both `reports/baseline/` and `PREREGISTRATION.md` were absent. Landing the second without
-    editing that sentence would leave the authoritative technical plan understating what
-    exists — the same class of staleness the guards above this one exist to catch, and the
-    reason `CLAUDE.md` requires a capability to be written up in the commit that lands it.
+    **The count is slice-scoped by design, and both superseded spellings are recorded here.**
+    The test was written when `docs/ROADMAP.md:364` read *"Two criteria remain open, and
+    neither is nearly done"*; slice 4 landed `PREREGISTRATION.md` and the sentence became
+    *"One criterion remains open"*, which is what this guard required until now. Slice 5 closes
+    the last one: the bake-off ran and `reports/baseline/` exists. So the required literal has
+    changed for the second time — that is the point of it. A count phrased so that it can never
+    go stale is a count that says nothing, and `CLAUDE.md` requires a capability to be written
+    up in the commit that lands it.
+
+    Both earlier spellings are forbidden rather than merely un-required, so the sentence cannot
+    regress to a smaller number than the tree actually holds.
     """
     phases = _flat(_section(_read("docs/ROADMAP.md"), "4. Phases"))
-    assert "Two criteria remain open" not in phases, (
-        "docs/ROADMAP.md § 4 still says two P1 criteria are open, but PREREGISTRATION.md is "
-        "committed in this tree.\n\n"
-        "WHY THIS IS A FAILURE: the roadmap is the authoritative technical plan until "
-        "ARCHITECTURE.md exists. A reader planning the next slice would size two pieces of "
-        "work and find one already done."
-    )
-    assert "One criterion remains open" in phases, (
+    for superseded in ("Two criteria remain open", "One criterion remains open"):
+        assert superseded not in phases, (
+            f"docs/ROADMAP.md § 4 still says {superseded!r}, but both `PREREGISTRATION.md` and "
+            "`reports/baseline/` exist in this tree.\n\n"
+            "WHY THIS IS A FAILURE: the roadmap is the authoritative technical plan until "
+            "ARCHITECTURE.md exists. A reader planning the next slice would size work that is "
+            "already done, which is the staleness the guards above this one exist to catch."
+        )
+    assert "No criterion remains open" in phases, (
         "docs/ROADMAP.md § 4 no longer states how many P1 criteria are open. The check above "
-        "asserts an absence, which deleting the paragraph would satisfy; this is the control "
-        "that stops that, and it is what tells the next slice what is left."
+        "asserts absences, which deleting the paragraph would satisfy; this is the control "
+        "that stops that, and it is what tells the next slice that P1 is closed."
     )
 
 

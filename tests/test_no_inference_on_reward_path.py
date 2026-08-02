@@ -18,10 +18,18 @@ module whose name is inference-shaped. A docstring may say "model" as often as i
 would be false the moment P2 lands, and a guard that has to be weakened is a guard that
 gets weakened. The ban applies to the reward path and nowhere else.
 
-**Two roots since P1 slice 2**, ``verify/`` and ``tasks/`` — see ``GUARDED_ROOTS`` for why
-ingestion is inside the line rather than next to it. Widening a scoped guard is the moment
-it can go quietly dead, so ``_modules`` now asserts **each** root contributes modules and
-control A names an import only the second root makes.
+**Three roots**: ``verify/`` and ``tasks/`` since P1 slice 2, and the single module
+``cli.py`` since the bake-off — see ``GUARDED_ROOTS`` for why ingestion is inside the line
+rather than next to it, and why the CLI was outside it for two slices. Widening a scoped
+guard is the moment it can go quietly dead, so ``_modules`` asserts **each** root contributes
+modules and control A names an import only the second root makes.
+
+**Which roots are named is itself guarded**, by
+``tests/test_reward_path_scope_is_partitioned.py``: every package and top-level module under
+``src/whetstone/`` must appear here or on that file's ``EXEMPT`` mapping with a written
+reason. This file answers "does a guarded module import a model?"; that one answers "is
+everything either guarded or knowingly not?" — and a scoped guard needs both, because on its
+own it stays green while the tree grows out from under it.
 
 **Ported from ``belay/tests/test_verify_zero_llm.py`` with three fixes**, each of which is
 a live bypass here rather than a theoretical one, and each proven by a planted-violation
@@ -74,7 +82,31 @@ SRC = Path(__file__).resolve().parent.parent / "src"
 #: boundary and a graded run are the same claim, and only one of them was previously watched.
 #: Verified 2026-07-28 that this root was unguarded: a planted ``from .judge import score``
 #: under ``src/whetstone/tasks/`` passed the whole file green until this tuple was widened.
-GUARDED_ROOTS = (SRC / "whetstone" / "verify", SRC / "whetstone" / "tasks")
+#:
+#: ``cli.py`` is a **file** root, not a package, and it is here because it is the reward's
+#: entry point: ``cli.py:248-250`` calls ``verify_strict`` and prints the verdict a human
+#: acts on. It sat outside this tuple for two slices — found by
+#: ``tests/test_reward_path_scope_is_partitioned.py``, which is the file that asks whether
+#: this one still describes the tree. Guarding its parent instead would be the wrong fix:
+#: ``src/whetstone/`` will hold the bake-off package, which imports ``mlx_lm`` legitimately
+#: and off the reward path, and a root that has to be narrowed later is a root that gets
+#: narrowed under pressure. ``CONTRIBUTING.md:20`` forbids widening this tuple *to make a
+#: failing check pass*; this widening adds code that was always inside the line and that
+#: nothing had been watching, which is the opposite act and is recorded as such.
+#:
+#: ``__init__.py`` is here for a blunter reason than ``cli.py``: it **executes on every
+#: import of every guarded module**, so an inference import in it would reach the reward path
+#: exactly as one under ``verify/`` would. It was briefly written up as a documented residual
+#: on the ground that it is twenty lines a reviewer reads in full — which is true, and is not
+#: a reason. A residual is for a hole that is hard to close (cheats 6 and 10 are the
+#: project's examples); this one costs a single line, and a residual nobody had to accept is
+#: a residual nobody should have written.
+GUARDED_ROOTS = (
+    SRC / "whetstone" / "verify",
+    SRC / "whetstone" / "tasks",
+    SRC / "whetstone" / "cli.py",
+    SRC / "whetstone" / "__init__.py",
+)
 
 #: Third-party inference clients: hosted model SDKs, local-inference runtimes, training
 #: adapters, and LLM-orchestration frameworks. The set is deliberately broad — a reward
@@ -148,15 +180,25 @@ def _modules(roots: tuple[Path, ...] = GUARDED_ROOTS) -> list[Path]:
     ``assert files`` stays green on the strength of the roots that still exist. The dead root
     would then be watching nothing while reading, in the failure message, as though it were
     guarded — a guard that has quietly stopped guarding half of what it names.
+
+    **A root is a directory or a single module**, because ``cli.py`` is reward-path code with
+    no package of its own and guarding its parent would drag in every future sibling — the
+    bake-off runner included, which imports ``mlx_lm`` legitimately and would then fail this
+    file. The two shapes are branched on explicitly rather than left to ``rglob``: ``rglob``
+    on a file path yields nothing at all, so a file root would have contributed zero modules
+    in silence had the assertion below not been per-root. That is not hypothetical — adding
+    ``cli.py`` before this branch existed is exactly how it was observed, and the assertion
+    is what caught it.
     """
     assert roots, "no guarded roots — this guard would pass vacuously"
     files: list[Path] = []
     for root in roots:
-        found = sorted(root.rglob("*.py"))
+        found = [root] if root.is_file() else sorted(root.rglob("*.py"))
         assert found, (
-            f"no modules found under the guarded root {root} — the root is dead (moved, "
+            f"no modules found for the guarded root {root} — the root is dead (moved, "
             "renamed, or misspelled) and is guarding nothing, while the other roots keep "
-            "this file green."
+            "this file green. A root naming a single module fails here the moment that "
+            "module moves; a directory root fails here the moment it holds no Python."
         )
         files.extend(found)
     return sorted(files)
@@ -313,6 +355,16 @@ def test_the_guard_sees_the_imports_the_reward_path_actually_makes() -> None:
     # ingestion root, so it proves the second root is really being read rather than merely
     # listed. `_modules` proves the root has files; this proves those files are parsed.
     assert "whetstone.verify.task.load_task" in seen, seen
+    # The same observation for the third root, which needs it most: a file root reaches the
+    # walk down a branch of `_modules` no directory root uses, and `rglob` yields nothing for
+    # a file — so a mistake there is silent by construction. `MintFailed` is imported by
+    # `whetstone/cli.py` and by nothing else under the guarded roots, so seeing it here can
+    # only mean the CLI itself was parsed.
+    assert "whetstone.tasks.mine.MintFailed" in seen, seen
+    # And for the fourth root, on the same principle. `PackageNotFoundError` is imported by
+    # `whetstone/__init__.py` and by no other module under the guarded roots, so seeing it
+    # here can only mean the package's own `__init__` was parsed rather than merely listed.
+    assert "importlib.metadata.PackageNotFoundError" in seen, seen
 
 
 def test_the_first_party_predicate_is_live_for_whetstone_not_belay() -> None:

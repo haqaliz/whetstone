@@ -11,9 +11,10 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
-P1's moat: the reward, the contract it grades against, and the first corpus of real tasks.
-Nothing has been tagged since `0.1.0`, so everything below is unreleased. No model has been run
-against any of it — the verifier grades patches, and no number about a model exists.
+P1 complete: the reward, the contract it grades against, the first corpus of real tasks, and the
+bake-off that closes the phase. Nothing has been tagged since `0.1.0`, so everything below is
+unreleased. Figures about a model now exist, and `reports/baseline/` is their only home — nothing
+in this file restates one, because a figure quoted twice is a figure that can disagree with itself.
 
 ### Added
 
@@ -113,7 +114,52 @@ against any of it — the verifier grades patches, and no number about a model e
   **A document whose stated value is that a stranger can check it cannot ship pointers that
   dissolve when their target moves.**
 
+- **The P1 base-model bake-off** (`python -m whetstone.bakeoff.run`, deliberately not a
+  `whetstone` subcommand — it is an operator tool, not part of the product surface), which closes
+  the last P1 exit criterion. Three candidate open bases each produce one greedy patch per task
+  through `mlx-lm`, every patch is graded by the **STRICT** verifier, and both sources are scored
+  and published together. The output is `reports/baseline/report.md` with its machine-readable
+  `report.json` and `cost.json`, and it is **the only place in this repository where a figure
+  about a model may live**.
+- **No base is selected, and the zero is published rather than re-run until it flattered someone.**
+  Not one candidate solved a single task on the declared source-B set, so P1's pivot signal fired,
+  `PREREGISTRATION.md` § 7.3 stays open, and the response it names is an easier task stratum or a
+  larger base — never a looser verifier. The failure modes differ by candidate, which locates the
+  wall rather than reporting a tie.
+- **A control arm, so that a zero is a statement about a base and not about a harness.** Every
+  scored task is also run with an inert patch and with its own re-derived reference fix, through
+  the same harness under the same environment pins, and a run whose control arm proved nothing is
+  refused before it can reach the report. It was intact on every source-B run. This is the direct
+  descendant of the false PASS recorded below: the lesson there was that a verdict can come from
+  outside the run, and an uncontrolled zero has exactly the same shape.
+- **Two bounds disclosed in the report rather than left to be found in it.** Prompts use the
+  **oracle retrieval** setting — each base is shown the non-test files the reference patch
+  touches — so every count is an upper bound on what the same base would do from the bug report
+  alone, and may not be compared with a figure measured without retrieval. And the **generation
+  contract** (prompt template, retrieval setting, sampler, token budget, extractor) is **not**
+  among the pre-registration's five pinned inputs while demonstrably moving the numbers, `N`
+  included; the contract states the patch-scope rule to every candidate, which makes `N` a floor
+  under a disclosing contract rather than a natural rate.
+
 ### Fixed (documentation)
+
+- **`docs/ROADMAP.md:387` stated P1's pivot signal over a set that does not exist.** It read *"any
+  held-out task"*, while `PREREGISTRATION.md:242-247` leaves the held-out split open until P3 — so
+  there was no such set for the signal to be read against. The wording now names the declared
+  source-B set, the change is dated in place rather than made silently, and `reports/baseline/`
+  publishes the disagreement between the two documents as a finding.
+- **`docs/ROADMAP.md` § 4, `CLAUDE.md`, `README.md` and this file each asserted, in the present
+  tense, that this repository held no figure about a model.** The bake-off makes that false, and a
+  status block
+  that denies the measurement it ships beside is the failure `docs/ROADMAP.md` § 4 already records
+  this project committing once. All four are corrected in the commit that lands the report. The
+  roadmap's copy could not simply be deleted: `PREREGISTRATION.md` is **append-only** and cites
+  `docs/ROADMAP.md:364-368` on that exact sentence, so the sentence is kept inside those five
+  lines as a **quoted, dated correction** — the precedent § 4 already sets for its claim about
+  belay — the § 4 rewrite is line-count-neutral so no later citation shifts, and all ten pinned
+  citations still resolve. `tests/test_docs.py` now asserts the claim survives in the roadmap only
+  inside a blockquote and nowhere in its running prose, and that P1 records **no** criterion still
+  open, both spellings of the older count being forbidden.
 
 - Five stale `docs/ROADMAP.md:NNN-MMM` citations in `PREREGISTRATION.md`, and three
   `CLAUDE.md:NNN` citations — one in `PREREGISTRATION.md`, two in `docs/ROADMAP.md` § 11 — that

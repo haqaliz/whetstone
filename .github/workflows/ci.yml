@@ -76,6 +76,17 @@ jobs:
         # Asserts `import mlx.core`, not that installation exited 0. An install-exit-0
         # check passes on a runner where the engine is absent, which is exactly the
         # false green this step exists to catch.
+        #
+        # The mypy and pytest runs below are NOT duplicates of the steps above. Those run
+        # under plain `uv sync`, where `mlx_lm` is absent and `[[tool.mypy.overrides]]`
+        # resolves every symbol in `bakeoff/mlx_runtime.py` to `Any` — so the one module
+        # that touches the engine is the one module nothing type-checks. That is not a
+        # hypothesis: it hid a real unpacking error (`load` returns a 2- or 3-tuple by
+        # union) which only appeared the first time the extra was installed locally. The
+        # same is true of the two engine tests, which skip when the extra is missing and
+        # whose skip text says plainly that they did not pass. Here they run.
         run: |
           uv sync --extra mlx
           uv run python -c "import mlx.core; print(mlx.core.__name__)"
+          uv run mypy src/
+          uv run pytest tests/bakeoff/ -rs
