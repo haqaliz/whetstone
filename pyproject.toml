@@ -56,8 +56,14 @@ warn_unused_ignores = true
 # here twice over: it would be UNUSED on a machine that has run `uv sync --extra mlx`,
 # and `warn_unused_ignores` above turns that into an error, so the check would pass in
 # exactly one of the two environments this project supports.
+# `huggingface_hub` is here for the same reason and was missed the first time, in the
+# direction that is easy to miss: it arrives *with* the mlx extra, so a developer who has
+# run `uv sync --extra mlx` sees a clean `mypy src/` while CI — which type-checks under a
+# plain `uv sync` — cannot resolve it at all. The local check being the more permissive
+# one is what let `bakeoff/weights.py` reach a pull request red. Both directions now have
+# a step: `ci.yml` runs mypy under a plain sync AND again with the extra installed.
 [[tool.mypy.overrides]]
-module = ["mlx.*", "mlx_lm.*"]
+module = ["huggingface_hub.*", "mlx.*", "mlx_lm.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
