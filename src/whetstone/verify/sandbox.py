@@ -5,9 +5,9 @@ that would make that status a lie. This module runs a command under macOS Seatbe
 network denied wholesale and writes confined to one subtree, and hands back what happened.
 
 **Everything `sandbox-exec`-specific stops here.** Apple has deprecated the binary; it still
-works and Belay depends on it, but the day it goes away must be a day we rewrite one module,
-not five call sites. Callers get `run_confined`, a `SandboxResult`, and an exception — never a
-profile string to compose or an argv to assemble.
+works and the sibling project depends on it, but the day it goes away must be a day we rewrite one
+module, not five call sites. Callers get `run_confined`, a `SandboxResult`, and an exception — never
+a profile string to compose or an argv to assemble.
 
 **What this contains, and what it does not.** It contains what the child can *change*: writes
 land inside `scope` or they do not land. It does not contain what the child can *see* —
@@ -131,9 +131,9 @@ def run_confined(
 ) -> SandboxResult:
     """Run `command` under Seatbelt, writes confined to `scope`, network denied, env pinned.
 
-    `timeout` has no default on purpose. Belay's `run()` defaults to 30 seconds, which is
-    right for a probe and wrong for a test suite; a caller that inherited it would get
-    UNVERIFIED on every slow task and would have no idea why. Choosing it is the caller's job.
+    `timeout` has no default on purpose. The sibling project's `run()` defaults to 30 seconds, which
+    is right for a probe and wrong for a test suite; a caller that inherited it would get UNVERIFIED
+    on every slow task and would have no idea why. Choosing it is the caller's job.
 
     `python_path` becomes the child's `PYTHONPATH`, and it is a **parameter rather than an
     inheritance** — see `_child_env`, which builds the environment from scratch and would
@@ -211,7 +211,7 @@ def _quote(path: str) -> str:
 
     The scope is data being pasted into the policy language that enforces the policy. An
     unescaped `"` would close the literal early and let the remainder of the path parse as
-    SBPL — a policy injection into the boundary. Belay guards the same thing at
+    SBPL — a policy injection into the boundary. The sibling project guards the same thing at
     `sandbox/seatbelt.py:87-95`; our profile being smaller does not make the hole smaller.
     """
     return path.replace("\\", "\\\\").replace('"', '\\"')

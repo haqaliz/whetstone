@@ -8,12 +8,12 @@ here are expensive:
 
 - A reader who believes "nothing is built yet" re-does work that exists.
 - A reader who believes the runtime is Ollama/vLLM/transformers builds against the wrong stack.
-- A reader who believes Belay's replay substrate is being reused inherits a design the roadmap
-  spent four reasons declining.
+- A reader who believes the sibling project's replay substrate is being reused inherits a design
+  the roadmap spent four reasons declining.
 - **Worst:** a reader who believes the inference guard lives in `test_import_guard.py` ports
-  the wrong file into P1. In Belay that name bans `mcp`, non-stdlib imports, and `json` in
-  `proxy.py` — nothing to do with inference. The guard that keeps models off the reward path
-  is `test_verify_zero_llm.py`. P1 is the moat, and it would be built on the wrong guard.
+  the wrong file into P1. In the sibling project that name bans `mcp`, non-stdlib imports, and
+  `json` in `proxy.py` — nothing to do with inference. The guard that keeps models off the reward
+  path is `test_verify_zero_llm.py`. P1 is the moat, and it would be built on the wrong guard.
 
 P1 slice 1 added a second class of guard, because the cheat table in `docs/ROADMAP.md` § 3 is
 not prose about the code — it is a **claim about what the reward catches**, and the corpus in
@@ -51,7 +51,7 @@ REPO_ROOT = Path(__file__).parent.parent
 STALE_CLAUDE_CLAIMS = [
     "Nothing is built yet",
     "Ollama / vLLM / transformers",
-    "Reuse Belay's verifier/replay where it fits",
+    "Reuse the sibling project's verifier/replay where it fits",
     # Was true until P1 slice 1 landed the reward path. Left here rather than deleted: the
     # sentence is the one a reader would act on by rebuilding `src/whetstone/verify/`.
     "there is no verifier, no reward",
@@ -94,8 +94,8 @@ PREREGISTRATION_SECTIONS = (
     "## 9. Provenance",
 )
 
-# Belay's `PHASE0_RESULTS.md` carried `**TO-BE-FILLED**` for ten days; the rest are the
-# spellings a hurried edit reaches for instead.
+# The sibling project's `PHASE0_RESULTS.md` carried `**TO-BE-FILLED**` for ten days; the rest
+# are the spellings a hurried edit reaches for instead.
 PLACEHOLDERS = ("TO-BE-FILLED", "TBD", "TODO", "FIXME", "XXX", "???", "_____")
 
 # The four clauses of docs/ROADMAP.md § 6 (:478-488).
@@ -110,7 +110,7 @@ SECTION_6_CONTRACT = (
 # own so a document carrying most of them fails naming the one it dropped.
 DISCLOSURES = (
     ("source-B self-selection", "the author's own repos"),
-    ("the refused `rereflect` mitigation", "`rereflect` was refused"),
+    ("the refused `donor C` mitigation", "`donor C` was refused"),
     ("source A's corpus of one", "1 eligible instance of 300"),
     ("the two cheat residuals", "Cheats 6 and 10"),
     ("the sandbox's read bound", "not what it may read"),
@@ -226,8 +226,8 @@ def test_claude_md_carries_none_of_the_stale_claims() -> None:
         "first. A stale claim here is not a documentation nit — it is an instruction to "
         "build the wrong thing. 'Nothing is built yet' invites redoing shipped work; the "
         "Ollama/vLLM/transformers line points at a runtime the PRD replaced with MLX; and "
-        "the 'reuse Belay's replay' line contradicts ROADMAP.md § 7, which declines that "
-        "substrate for four stated reasons."
+        "the 'reuse the sibling's replay' line contradicts ROADMAP.md § 7, which declines "
+        "that substrate for four stated reasons."
     )
 
 
@@ -254,13 +254,13 @@ def test_no_document_still_claims_that_no_number_about_a_model_exists() -> None:
     documents actually used — and asserts it survives only where it is marked as history.
 
     **`docs/ROADMAP.md` is checked differently, and deliberately.** `PREREGISTRATION.md` cites
-    `docs/ROADMAP.md:364-368` on the exact sentence *"not one number about a model exists
-    anywhere in this repository"*, and that file is **append-only**, so the sentence cannot be
-    deleted or moved without breaking a citation a stranger is invited to check. It is
-    therefore kept inside those lines as a dated, quoted correction — the precedent § 4 already
-    sets for P4's claim about belay — and this guard asserts the claim appears in the roadmap
-    only inside a blockquote, never in the running prose. A correction that is quietly tidied
-    away later leaves the original claim reading as though it had always been right.
+    `docs/ROADMAP.md:364-368` on the exact sentence *"not one number about a model exists anywhere
+    in this repository"*, and that file is **append-only**, so the sentence cannot be deleted or
+    moved without breaking a citation a stranger is invited to check. It is therefore kept inside
+    those lines as a dated, quoted correction — the precedent § 4 already sets for P4's claim about
+    the sibling project — and this guard asserts the claim appears in the roadmap only inside a
+    blockquote, never in the running prose. A correction that is quietly tidied away later leaves
+    the original claim reading as though it had always been right.
 
     The blockquote half is also this test's anti-vacuity control: a repository that had simply
     deleted every trace of the sentence would satisfy the absence checks while breaking the
@@ -297,13 +297,13 @@ def test_no_document_still_claims_that_no_number_about_a_model_exists() -> None:
     )
 
 
-def test_roadmap_does_not_cite_the_wrong_belay_guard() -> None:
+def test_roadmap_does_not_cite_the_wrong_sibling_guard() -> None:
     """AC-11. Naming the wrong file here means P1 ports the wrong guard."""
     text = _read("docs/ROADMAP.md")
     assert "test_import_guard.py" not in text, (
         "docs/ROADMAP.md still cites `test_import_guard.py`.\n\n"
-        "WHY THIS IS A FAILURE: in Belay that file bans the `mcp` package, all non-stdlib "
-        "imports, and `json` inside proxy.py. It has nothing to do with inference "
+        "WHY THIS IS A FAILURE: in the sibling project that file bans the `mcp` package, all "
+        "non-stdlib imports, and `json` inside proxy.py. It has nothing to do with inference "
         "libraries. The guard that proves no model sits on the reward path is "
         "`test_verify_zero_llm.py`, and it is scoped to named packages rather than the "
         "whole tree. P1 builds the moat on this guard; citing the wrong filename means "
@@ -315,7 +315,7 @@ def test_roadmap_names_the_correct_inference_guard() -> None:
     """Positive control for AC-11, and the reason the correction was worth making."""
     text = _read("docs/ROADMAP.md")
     assert "test_verify_zero_llm.py" in text, (
-        "docs/ROADMAP.md no longer names Belay's actual inference guard. The check above "
+        "docs/ROADMAP.md no longer names the sibling's actual inference guard. The check above "
         "only asserts an absence; without this, deleting the whole section would pass it."
     )
 
@@ -451,7 +451,7 @@ def test_the_roadmap_states_both_bounds_on_what_the_verifier_guarantees() -> Non
         )
 
 
-def test_the_roadmap_records_the_sandbox_it_took_from_belay() -> None:
+def test_the_roadmap_records_the_sandbox_it_took_from_the_sibling() -> None:
     """§ 7 listed no sandbox while § 2 requires one — the gap that hid a real decision.
 
     The decision worth recording is not "we sandbox" but that Seatbelt was verified separable
@@ -459,7 +459,7 @@ def test_the_roadmap_records_the_sandbox_it_took_from_belay() -> None:
     Without that sentence a future reader re-opens a question that was already answered, or
     assumes declining replay cost us the sandbox too.
     """
-    section = _flat(_section(_read("docs/ROADMAP.md"), "7. What we take from Belay"))
+    section = _flat(_section(_read("docs/ROADMAP.md"), "7. What we take from the sibling project"))
     assert "sandbox/seatbelt.py" in section, (
         "docs/ROADMAP.md § 7's Taken table no longer carries a sandbox row, while § 2 still "
         "requires the verifier to run with the network denied."
@@ -471,32 +471,32 @@ def test_the_roadmap_records_the_sandbox_it_took_from_belay() -> None:
 
 
 def test_the_relative_import_porting_trap_is_recorded_with_the_others() -> None:
-    """Trap 3. Invisible in Belay's guard, and fatal in ours for a structural reason.
+    """Trap 3. Invisible in the sibling project's guard, and fatal in ours for a structural reason.
 
-    Belay's AST walk skips `ImportFrom` nodes with a non-zero level, so relative imports
-    record nothing. Belay survives it because its first-party detection keys on the dotted
-    `belay.judge` form that only an absolute import produces. Our reward path is one package
-    whose modules import each other relatively, so `from .judge import score` — the exact
-    import the guard exists to catch, written the way our own code writes imports — would have
-    sailed through a verbatim port.
+    The sibling project's AST walk skips `ImportFrom` nodes with a non-zero level, so relative
+    imports record nothing. It survives that because its first-party detection keys on the dotted
+    `<sibling>.judge` form that only an absolute import produces. Our reward path is one package
+    whose modules import each other relatively, so `from .judge import score` — the exact import the
+    guard exists to catch, written the way our own code writes imports — would have sailed through a
+    verbatim port.
     """
     text = _flat(_read("docs/ROADMAP.md"))
     assert "node.level == 0" in text, (
         "docs/ROADMAP.md no longer records the relative-import porting trap. It documents two "
-        "traps that were caught by reading Belay's source; this is the third, and it is the "
-        "one that would have left the guard green while watching nothing."
+        "traps that were caught by reading the sibling's source; this is the third, and it is "
+        "the one that would have left the guard green while watching nothing."
     )
 
 
 def test_the_platform_decision_carries_its_clonefile_correction() -> None:
     """`docs/planning/roadmap-and-task-family/prd.md` decision 2 is half right, and says so.
 
-    *"Belay's Seatbelt sandbox and APFS `clonefile` snapshot work natively; no porting phase
-    required"* holds for Seatbelt and not for `clonefile`: the snapshot machinery is part of
-    the replay substrate `docs/ROADMAP.md` § 7 declines. The row is left standing with a
-    correction rather than rewritten, so the record shows what was decided and what it got
-    wrong — and this guard is what stops the correction being tidied away later, leaving the
-    original claim reading as though it had always been right.
+    *"the sibling project's Seatbelt sandbox and APFS `clonefile` snapshot work natively; no
+    porting phase required"* holds for Seatbelt and not for `clonefile`: the snapshot machinery is
+    part of the replay substrate `docs/ROADMAP.md` § 7 declines. The row is left standing with a
+    correction rather than rewritten, so the record shows what was decided and what it got wrong —
+    and this guard is what stops the correction being tidied away later, leaving the original claim
+    reading as though it had always been right.
     """
     text = _read("docs/planning/roadmap-and-task-family/prd.md")
     assert "clonefile" in text, (
@@ -504,7 +504,7 @@ def test_the_platform_decision_carries_its_clonefile_correction() -> None:
         "rather than corrected, the record of the mistake went with it."
     )
     assert text.count("[†]") >= 2, (
-        "decision 2's correction marker is gone. The uncorrected row states that Belay's "
+        "decision 2's correction marker is gone. The uncorrected row states that the sibling's "
         "APFS snapshot machinery works natively and needs no porting, which implies we "
         "inherited a snapshot layer that § 7 declines and this repository does not use."
     )
@@ -554,7 +554,7 @@ def test_the_preregistration_exists_and_carries_its_sections() -> None:
 def test_the_preregistration_contains_no_placeholder() -> None:
     """The failure this document exists to refuse, borrowed from the sibling that made it.
 
-    Belay's `PHASE0_RESULTS.md` — the document gating PROCEED vs PIVOT — carried 20
+    The sibling project's `PHASE0_RESULTS.md` — the document gating PROCEED vs PIVOT — carried 20
     `TO-BE-FILLED` markers from 2026-07-19 to 2026-07-29. It was eventually filled, with a
     PIVOT, and published; but for ten days it read as a commitment while committing to
     nothing.
@@ -633,9 +633,9 @@ def test_the_preregistration_carries_every_disclosure() -> None:
     fails naming the missing one. Asserted as a set, one strong disclosure could mask an
     absent one — and the absent one would be the disclosure a later reader most needed.
 
-    The `rereflect` clause is the subtle one. `docs/planning/p1-task-ingestion/prd.md:343-344`
-    offers *"D3's inclusion of rereflect is the mitigation"* for source B's self-selection —
-    but rereflect was **refused** for having no `uv.lock` (`tasks/README.md:171`). Carrying
+    The `donor C` clause is the subtle one. `docs/planning/p1-task-ingestion/prd.md:343-344`
+    offers *"D3's inclusion of donor C is the mitigation"* for source B's self-selection —
+    but donor C was **refused** for having no `uv.lock` (`tasks/README.md:171`). Carrying
     § 8.3 verbatim would ship a mitigation that does not exist, so the document states the
     disclosure and records that its mitigation did not land.
     """
@@ -775,32 +775,32 @@ def test_the_roadmap_p1_records_that_no_criterion_remains_open() -> None:
     )
 
 
-def test_the_roadmap_does_not_overstate_belays_unfilled_gate() -> None:
+def test_the_roadmap_does_not_overstate_the_siblings_unfilled_gate() -> None:
     """The roadmap made a factual claim about a sibling project, and it went stale in a day.
 
-    `docs/ROADMAP.md:456-460` said Belay's `PHASE0_RESULTS.md` *"still carries 20
-    `TO-BE-FILLED` markers"*. That was exactly true at belay's `801b457` (2026-07-28) and
+    `docs/ROADMAP.md:456-460` said the sibling project's `PHASE0_RESULTS.md` *"still carries 20
+    `TO-BE-FILLED` markers"*. That was exactly true at its `801b457` (2026-07-28) and
     false by `77adc8f` (2026-07-29), which filled the document and recorded a PIVOT — a
     negative result, published. Verified by `grep -c TO-BE-FILLED` at the time of writing: 0.
 
     **A claim about another project's honesty, inside our own section about honesty, must not
-    be the stale one.** The replacement cites belay's own *"Ordering: what actually happened"*
+    be the stale one.** The replacement cites its own *"Ordering: what actually happened"*
     admission — that its criteria were fixed in a planning file and never copied into the
     document publishing the number before the run. That is a historical fact and cannot
     un-happen, so unlike a live marker count it cannot re-stale.
     """
     phases = _flat(_section(_read("docs/ROADMAP.md"), "4. Phases"))
     assert "still carries 20" not in phases, (
-        "docs/ROADMAP.md § 4 still claims belay's PHASE0_RESULTS.md carries 20 TO-BE-FILLED "
-        "markers. It carries none — the document was filled on 2026-07-29 and records a "
-        "PIVOT.\n\n"
+        "docs/ROADMAP.md § 4 still claims the sibling's PHASE0_RESULTS.md carries 20 "
+        "TO-BE-FILLED markers. It carries none — the document was filled on 2026-07-29 and "
+        "records a PIVOT.\n\n"
         "WHY THIS IS A FAILURE: this repository's premise is not fooling yourself, and the "
         "sentence sits in the phase about publishing an honest number. Overclaiming about a "
         "sibling project's failure, in that paragraph, is the worst place in the document to "
         "be wrong."
     )
     assert "was not copied into the document that publishes the number" in phases, (
-        "docs/ROADMAP.md § 4 no longer carries the corrected reading of belay's gate. The "
+        "docs/ROADMAP.md § 4 no longer carries the corrected reading of the sibling's gate. The "
         "check above asserts an absence, which deleting the paragraph would satisfy — and the "
         "lesson is the reason PREREGISTRATION.md sits at the repository root."
     )

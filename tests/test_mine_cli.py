@@ -59,6 +59,8 @@ def mined(donor: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
             "mine",
             "--donor",
             str(donor),
+            "--label",
+            "donor-x",
             "--out",
             str(root / "local" / "donor"),
             "--tasks-root",
@@ -119,6 +121,33 @@ def test_the_ledger_and_the_recipe_are_written_where_the_readme_says(mined: Path
     assert recipe["selection"]["seed"] == "7"
 
 
+def test_the_recipe_names_the_donor_by_label_and_never_by_path(donor: Path, mined: Path) -> None:
+    """The recipe is committed; the donor is one of the user's private repositories.
+
+    An earlier version recorded the donor's resolved path, which put an absolute path from the
+    author's machine — and the private repository's name — into a file this project publishes.
+    Neither is usable by a reader re-deriving the corpus against their own donor, so nothing was
+    bought with the disclosure. The label is asserted in **both** places it appears, because the
+    filename leaked the same name as the field and fixing one alone would look fixed.
+    """
+    recipes = sorted((mined / "recipes").glob("*.json"))
+    assert [path.name for path in recipes] == ["donor-x.json"], (
+        "the recipe is named after something other than the operator's label; if that is the "
+        "donor's directory name, the private name is back in a committed filename"
+    )
+
+    recipe = json.loads(recipes[0].read_text())
+    assert recipe["donor"] == "donor-x", recipe["donor"]
+
+    # The donor's resolved path is what the leak actually was, and it is asserted against the
+    # whole document rather than against the one field: a path that reappeared under some other
+    # key would be exactly as published. A bare-name check is not available here — this suite's
+    # fixture donor is *called* `donor`, which is also the field's name.
+    written = recipes[0].read_text()
+    assert str(donor) not in written, "the donor's absolute path appears in the committed recipe"
+    assert "/Users/" not in written, "an absolute home path appears in the committed recipe"
+
+
 def test_the_ledger_entry_is_the_hash_of_the_manifest_that_was_written(mined: Path) -> None:
     """The evidence has to be about the file that is actually there.
 
@@ -161,6 +190,8 @@ def test_a_src_layout_donor_mints_a_task_that_declares_where_its_code_is(
             "mine",
             "--donor",
             str(donor),
+            "--label",
+            "donor-x",
             "--out",
             str(out),
             "--tasks-root",
@@ -239,6 +270,8 @@ def test_a_limit_of_zero_is_a_usage_error(
             "mine",
             "--donor",
             str(donor),
+            "--label",
+            "donor-x",
             "--out",
             str(tmp_path / "out"),
             "--tasks-root",
@@ -265,6 +298,8 @@ def test_a_donor_that_is_not_a_repository_is_a_usage_error(
             "mine",
             "--donor",
             str(empty),
+            "--label",
+            "donor-x",
             "--out",
             str(tmp_path / "out"),
             "--tasks-root",
@@ -292,6 +327,8 @@ def test_a_donor_with_no_lockfile_mints_nothing_and_says_so(
             "mine",
             "--donor",
             str(donor),
+            "--label",
+            "donor-x",
             "--out",
             str(tmp_path / "out"),
             "--tasks-root",

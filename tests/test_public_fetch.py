@@ -14,15 +14,15 @@ of what the corpus is about.
 `main` and nowhere else, so importing `whetstone.tasks.fetch` cannot put an HTTP client in scope.
 An `ast` walk is the only thing that can assert that — an import which works in this venv leaves
 no other trace — and the walk carries an anti-vacuity control, because a guard that found no
-imports at all would pass for the wrong reason. Ported from Belay's
+imports at all would pass for the wrong reason. Ported from the sibling project's
 `tests/test_eval_pool_fetch.py:323-400`, whose own control this keeps.
 
-**The transform is where the honesty lives.** Belay's committed pool carries six keys and cannot
-ground a reward: no `patch`, no `test_patch`, no `FAIL_TO_PASS`, no `PASS_TO_PASS`, no
-`environment_setup_commit`. Whetstone needs all five, so the projection is asserted field by
-field rather than assumed. And the dataset server **truncates large cells** — a truncated
-`test_patch` would be a corrupt task that looks perfectly well-formed — so a truncated row is
-dropped and its instance id is recorded in the header, never silently carried.
+**The transform is where the honesty lives.** the sibling project's committed pool carries six keys
+and cannot ground a reward: no `patch`, no `test_patch`, no `FAIL_TO_PASS`, no `PASS_TO_PASS`, no
+`environment_setup_commit`. Whetstone needs all five, so the projection is asserted field by field
+rather than assumed. And the dataset server **truncates large cells** — a truncated `test_patch`
+would be a corrupt task that looks perfectly well-formed — so a truncated row is dropped and its
+instance id is recorded in the header, never silently carried.
 
 Offline throughout: every test below builds row envelopes by hand.
 """
@@ -53,7 +53,8 @@ from whetstone.tasks.fetch import (
 #: inspect would report on this venv rather than on the file that actually runs.
 MODULE = Path(__file__).parent.parent / "src" / "whetstone" / "tasks" / "fetch.py"
 
-#: The five columns Belay's committed pool omits and a reward cannot be grounded without.
+# The five columns the sibling project's committed pool omits and a reward cannot be grounded
+# without.
 GROUNDING_COLUMNS = (
     "patch",
     "test_patch",
@@ -96,13 +97,13 @@ def _envelope(**overrides: Any) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("column", GROUNDING_COLUMNS)
-def test_the_pool_carries_every_column_belay_s_pool_omits(column: str) -> None:
+def test_the_pool_carries_every_column_the_siblings_pool_omits(column: str) -> None:
     """The five that make the difference between a pool and a corpus.
 
-    Belay's committed pool has six keys — instance_id, repo, base_commit, problem_statement and
-    two derived fields — and none of these. A pool without `test_patch` has no held tests, and
-    one without `FAIL_TO_PASS` has nothing that must go green: it can describe an instance but
-    it cannot ground a reward. Parametrised so a dropped column names itself.
+    The sibling project's committed pool has six keys — instance_id, repo, base_commit,
+    problem_statement and two derived fields — and none of these. A pool without `test_patch` has no
+    held tests, and one without `FAIL_TO_PASS` has nothing that must go green: it can describe an
+    instance but it cannot ground a reward. Parametrised so a dropped column names itself.
     """
     records, _ = rows_to_pool([_envelope()])
 
@@ -185,8 +186,8 @@ def test_a_missing_column_raises_rather_than_defaulting() -> None:
 def test_a_repo_that_is_already_a_url_raises_rather_than_being_normalised() -> None:
     """`repo_url` is built as `https://github.com/{repo}.git`; a URL here double-prefixes.
 
-    Belay's own note: this bit its stage 1, after a live batch had started spending. The
-    transform refuses rather than repairs, because a URL in the source means our assumption
+    The sibling project's own note: this bit its stage 1, after a live batch had started spending.
+    The transform refuses rather than repairs, because a URL in the source means our assumption
     about the dataset's shape is wrong and that is the thing a human needs to see.
     """
     with pytest.raises(PoolError, match="owner/name"):

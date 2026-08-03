@@ -40,7 +40,7 @@ that cannot run pytest describes an environment no task was ever verified in.
 **The donor's own project is deliberately NOT installed, and that is a correctness requirement
 rather than a saving.** `uv sync --frozen` installs the project too, editable, rooted at
 whatever checkout it was pointed at. For a `src`-layout donor that install answers `import
-contig` — so every later run, in every other checkout, imports the *provisioning* tree. Measured
+<pkg>` — so every later run, in every other checkout, imports the *provisioning* tree. Measured
 on the first real donor: a task PASSED with no patch applied, because the code deciding the
 verdict was in a directory outside the run. `--no-install-project` is the fix at this end; the
 matching half is `environment.import_roots`, which tells the reward where in the run's own
@@ -409,7 +409,7 @@ def _declared_roots(data: dict[str, object]) -> tuple[str, ...] | None:
     wheel = _table(_table(_table(_table(tool, "hatch"), "build"), "targets"), "wheel")
     packages = wheel.get("packages")
     if isinstance(packages, list):
-        # `packages = ["src/contig"]` names the package; its PARENT is the import root.
+        # `packages = ["src/<pkg>"]` names the package; its PARENT is the import root.
         return _roots(
             str(PurePosixPath(entry).parent) for entry in packages if isinstance(entry, str)
         )

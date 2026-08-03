@@ -54,7 +54,7 @@ def test_the_users_own_mined_tasks_cannot_be_committed() -> None:
 
     # The file, not only the directory: this is the thing that must never be committable, and
     # it answers independently of whether `tasks/local/` happens to exist on this machine.
-    manifest = _check_ignore("tasks/local/contig/some-mined-task.json")
+    manifest = _check_ignore("tasks/local/donor-a/some-mined-task.json")
     assert manifest.returncode == 0, (
         f"a mined source-B manifest is committable: {manifest.stdout}{manifest.stderr}"
     )
@@ -73,7 +73,7 @@ def test_the_committed_half_of_the_corpus_is_not_ignored() -> None:
         "tasks/public/",
         "tasks/public/instances/some-public-task.json",
         "tasks/recipes/",
-        "tasks/recipes/contig.json",
+        "tasks/recipes/donor-a.json",
     ):
         result = _check_ignore(path)
         assert result.returncode == 1, (
@@ -125,7 +125,7 @@ def test_the_trailing_slash_form_is_load_bearing(tmp_path: Path) -> None:
     # And the guarantee the guards actually depend on: a FILE underneath is ignored either way,
     # which is why `test_the_users_own_mined_tasks_cannot_be_committed` asks about a manifest
     # path as well as the directory. That one holds whether or not anything has been minted.
-    assert ask("tasks/local/contig/some-mined-task.json") == 0
+    assert ask("tasks/local/donor-a/some-mined-task.json") == 0
 
 
 def test_the_layout_exists_and_the_private_half_is_untracked() -> None:

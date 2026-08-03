@@ -3,7 +3,7 @@
 The failure this prevents was found by running the bake-off, not by reading it.
 `provision_from_lock` builds an environment by handing the checkout to `environment.capture`,
 which reads that checkout's `uv.lock`. Every source-B donor has one, because the miner refused a
-donor that did not — `rereflect` was turned away for exactly that reason (`tasks/README.md`).
+donor that did not — `donor C` was turned away for exactly that reason (`tasks/README.md`).
 **Source A has none and never will**:
 `pallets__flask-4045` sits at a 2021 commit of a project that did not use uv, so the run refused it
 with `NoLockfile`, its control arm skipped, and `rankable` — correctly — would not rank a candidate

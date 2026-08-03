@@ -93,11 +93,11 @@ model reaches the reward path.
 - **M4 — The sandbox.** `/_sandbox/<run_id>/`, network denied, writes confined, deterministic
   environment, explicit timeout. Our own minimal SBPL profile (decided below), not a vendored
   module.
-- **M5 — Verdict semantics**, ported from `belay/verify/verdict.py`: `UNVERIFIED` ranked **above**
+- **M5 — Verdict semantics**, ported from `<sibling>/verify/verdict.py`: `UNVERIFIED` ranked **above**
   `PASS`, an empty verdict set reducing to `UNVERIFIED`, and worst-status-wins.
 - **M6 — The provenance boundary as a structural test.** No callable that produces the
   operator-held test blobs may accept policy-produced data. Ported from the *mechanism* of
-  `belay/tests/test_invariants.py:55` — a return-type census of public producers — not from the
+  `<sibling>/tests/test_invariants.py:55` — a return-type census of public producers — not from the
   module it guards.
 - **M7 — The adversarial corpus.** One synthetic fixture per cheat in `docs/ROADMAP.md:104-109`,
   **plus cheat 7 found in this PRD's self-critique** (§ D.1). Cheats 1–5 and 7 assert **STRICT
@@ -149,7 +149,7 @@ runtime dependencies … nothing on the future reward path may pull in an infere
 
 ### B. The sandbox — decided: our own minimal profile
 
-The dig established that Belay's `sandbox/seatbelt.py` **is** separable from the declined replay
+The dig established that the sibling project's `sandbox/seatbelt.py` **is** separable from the declined replay
 substrate (it imports only stdlib, one exception class, and an optional `TraceWriter`; the
 dependency runs replay → sandbox, never the reverse). Vendoring it was viable and was **not
 chosen**: 417 lines carrying an `allow-ports` mode, a closed `NetworkPolicy` enum, and a
@@ -175,10 +175,10 @@ write denied.
 
 1. **SBPL escaping is mandatory.** A sandbox path containing `"` would close the policy literal
    early and let the remainder parse as SBPL — a policy injection into the boundary that enforces
-   the policy. Belay guards this at `seatbelt.py:87-95` (`_quote`); we implement the equivalent.
+   the policy. The sibling project guards this at `seatbelt.py:87-95` (`_quote`); we implement the equivalent.
    Not optional because our profile is smaller.
 2. **Reads are NOT confined, and nothing may claim otherwise.** The spike confirmed a sandboxed
-   process reads outside its scope freely; Belay documents it as a property of the profile shape
+   process reads outside its scope freely; the sibling project documents it as a property of the profile shape
    (`seatbelt.py:363-366`). See § D.
 3. **Timeout and crash reduce to `UNVERIFIED`, never `FAIL`.** A task the sandbox could not run
    is one we could not check, not one the patch got wrong. Collapsing it to FAIL would understate
@@ -186,7 +186,7 @@ write denied.
    (`docs/ROADMAP.md:227-229`). This is the ported `_RANK` doing its job at the level of a single
    task.
 
-**Determinism (M10)** is ours to design — Belay's `run()` pins no environment. The environment
+**Determinism (M10)** is ours to design — the sibling project's `run()` pins no environment. The environment
 handed to pytest is fixed and explicit: `PYTHONHASHSEED=0`, a pinned `TMPDIR` inside the sandbox,
 `PYTHONDONTWRITEBYTECODE=1`, and pytest invoked with cache and plugin autoloading disabled so a
 stray installed plugin cannot reorder collection. What is *not* claimed: determinism of the
@@ -196,25 +196,25 @@ removed the flakiness.
 
 ### C. The AST guard — three traps, two controls
 
-Verified against `belay/tests/test_verify_zero_llm.py`:
+Verified against `<sibling>/tests/test_verify_zero_llm.py`:
 
 | # | Trap | Evidence | Fix |
 |---|---|---|---|
-| 1 | First-party gate hardcodes `if root == "belay"` | `:114-121`, quoted verbatim in `understanding.md` § 3 | Use `"whetstone"`; assert the predicate fires |
+| 1 | First-party gate hardcodes `if root == "<the sibling package name>"` | `:114-121`, quoted verbatim in `understanding.md` § 3 | Use `"whetstone"`; assert the predicate fires |
 | 2 | `_INFERENCE_CLIENTS` has no `mlx`, `mlx_lm`, `peft`, `accelerate` | 29-entry list read in full; those four absent | Extend explicitly — the inherited list has a hole shaped like our own stack |
 | 3 | **Relative imports are invisible** — `if node.level == 0` | `:105-111` | Resolve relative imports to absolute dotted paths from the file's package position |
 
 **Trap 3 is new** — it appears in no committed document, and it matters more for us than for
-Belay. Our reward path is one package whose modules will naturally import each other relatively;
-`from .judge import score` inside `verify/` records nothing under Belay's walk.
+The sibling project. Our reward path is one package whose modules will naturally import each other relatively;
+`from .judge import score` inside `verify/` records nothing under the sibling project's walk.
 
-**Two anti-vacuity controls**, because Belay ships only the first:
+**Two anti-vacuity controls**, because the sibling project ships only the first:
 
 - **Control A** (ported): the walk observes real imports the guarded package actually makes.
-  Belay's version at `:156-175`.
-- **Control B** (new): `_is_inference_import("whetstone.judge")` returns `True`. Belay's control
+  The sibling project's version at `:156-175`.
+- **Control B** (new): `_is_inference_import("whetstone.judge")` returns `True`. The sibling project's control
   asserts the walk sees *imports*, never that the first-party predicate is *live* — so trap 1 could
-  land silently with Belay's own control still green.
+  land silently with the sibling project's own control still green.
 
 `ast.walk` (`:105`) already catches function-local imports, so indentation is not a bypass.
 
@@ -271,7 +271,7 @@ variants, mutation testing) stays post-horizon and is **not** claimed.
 2. `docs/ROADMAP.md:166-174` gains porting trap 3.
 3. `docs/planning/roadmap-and-task-family/prd.md:58` is corrected: the Seatbelt half of *"work
    natively; no porting phase required"* holds, the `clonefile` snapshot half does not —
-   `belay/snapshot/` is part of the replay substrate § 7 declines.
+   `<sibling>/snapshot/` is part of the replay substrate § 7 declines.
 4. **`docs/ROADMAP.md`'s cheat table (`:104-109`) gains cheat 7**, and cheat 5's defence column is
    corrected — "skipped-test count asserted zero" does not cover deselection (§ D.1). The
    verifier spec at `:56-66` gains the executed-set assertion. This is the substantive correction
@@ -341,7 +341,7 @@ Task
 
 `test_blobs` is the operator's artifact and the whole boundary: it is both the **restore source**
 (step 3 of STRICT) and the **rejection set** (step 2's path check). Bytes, not `str` — a path
-decoded to text reintroduces the unicode-normalisation trap Belay avoids
+decoded to text reintroduces the unicode-normalisation trap the sibling project avoids
 (`invariants.py:18-24`), and the byte-prefix comparison must run on the same bytes throughout.
 
 Frozen and loaded only from an operator-controlled file. M6's test asserts structurally that no
@@ -352,10 +352,10 @@ public callable returning a `Task` accepts a patch, a diff, or a rollout.
 | Risk | Severity | Mitigation |
 |---|---|---|
 | **`sandbox-exec` unavailable or restricted on `macos-latest`** — the spike proves this machine, not CI | **High** | S1 asserts it in CI explicitly. If it fails, the honest response is a loudly-skipped suite with a named marker, never a silent green. Decide on evidence, not in advance |
-| **`sandbox-exec` is deprecated by Apple** | Medium | Belay depends on it too. No supported macOS replacement exists without Docker. Isolate behind `sandbox.py` so the mechanism is swappable; do not design it into five call sites |
+| **`sandbox-exec` is deprecated by Apple** | Medium | the sibling project depends on it too. No supported macOS replacement exists without Docker. Isolate behind `sandbox.py` so the mechanism is swappable; do not design it into five call sites |
 | **Cheat 6 residual**, sharpened by read-non-confinement (§ D) | Medium | Named, documented, tested-as-residual. Closing it is post-horizon and not claimed |
 | **A vacuously-green adversarial suite** — STRICT rejecting for the wrong reason reads as proof | **High** | Every cheat fixture asserts both halves (STRICT rejects AND WEAK accepts). Each control is watched failing before being trusted, per house style |
-| **Env provisioning for real SWE-bench instances is unsolved and unestimated** — Belay's pool carries no `FAIL_TO_PASS`/`PASS_TO_PASS`/test patch, and its `eval/` never executes an instance | **High, deferred** | Out of scope here by decision. Recorded so it is discovered in the ingestion slice, not in P2 |
+| **Env provisioning for real SWE-bench instances is unsolved and unestimated** — the sibling project's pool carries no `FAIL_TO_PASS`/`PASS_TO_PASS`/test patch, and its `eval/` never executes an instance | **High, deferred** | Out of scope here by decision. Recorded so it is discovered in the ingestion slice, not in P2 |
 | **Cheat 7 — deselection via config (§ D.1)** — defeats the reward while passing every check the roadmap lists | **High** | M2b asserts the executed node-id set; fixture 7 proves the differential; plugin autoload disabled and config path explicit |
 | **An eighth cheat nobody enumerated.** Cheat 7 was found by critiquing this PRD, not by the roadmap's enumeration — which is evidence the table is a living list, not a closed one | Medium | Treat the corpus as append-only and the enumeration as provisional. Every future cheat found gets a fixture before a fix. Do not describe the table as exhaustive anywhere |
 | Test-order/plugin nondeterminism defeating M10 | Low | Pinned env, autoload disabled, cache disabled (§ B) |
@@ -366,8 +366,8 @@ public callable returning a `Task` accepts a patch, a diff, or a rollout.
   to the ingestion slice, which owns the on-disk task format.
 - The retry count *R* (`docs/ROADMAP.md:371`) stays P3's, to be set from an observed unverified
   rate rather than guessed here.
-- Whether `Verdict` keeps Belay's `axis` field. **Provisional decision: drop it, keep `kind`** —
-  Belay's axes ("A1"/"A2"/"A3") describe a taxonomy Whetstone does not have, and an always-constant
+- Whether `Verdict` keeps the sibling project's `axis` field. **Provisional decision: drop it, keep `kind`** —
+  The sibling project's axes ("A1"/"A2"/"A3") describe a taxonomy Whetstone does not have, and an always-constant
   field is a lie about structure. Revisit if a second verdict axis ever appears.
 
 ## Effort and fit against the P1 target
@@ -432,5 +432,5 @@ false positives; (3) **Karpathy (Sequoia Ascent 2026)** — the valuable RL envi
 the frontier-lab mix."*
 
 Every other figure in this document is either a line count, a file citation, or a command output
-taken from this repository or Belay's on 2026-07-28. **No performance figure appears here, because
+taken from this repository or the sibling project's on 2026-07-28. **No performance figure appears here, because
 none has been measured.**

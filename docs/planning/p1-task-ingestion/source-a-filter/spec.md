@@ -18,7 +18,7 @@ a published account of everything that was not.
 1. **The human-run fetch** — one script, network, output committed to `tasks/public/pool.json`
    with a provenance header (dataset, config, split, revision, fetched_at, row count, filters).
    **Tests never fetch.** The network client is importable only inside `main`
-   (Belay's discipline, `fetch_swebench_pool.py:325-329`). Must pull the columns Belay's pool
+   (the sibling project's discipline, `fetch_swebench_pool.py:325-329`). Must pull the columns the sibling project's pool
    omits: `patch`, `test_patch`, `FAIL_TO_PASS`, `PASS_TO_PASS`, `environment_setup_commit`.
 2. **The seeded stratified draw** — pure and offline, `random.Random(seed)`, **sorted before
    any shuffle**, raise rather than draw short. Lift `eval/instances/selection.py`, replacing
@@ -48,7 +48,7 @@ project's job).
 
 1. **The draw is byte-identical** across repeated runs at the same seed, and insensitive to
    input ordering — asserted as a byte comparison of the written file, not an id-set match, so
-   header drift cannot slip past (Belay's `tests/test_eval_mint_set.py:323-341`).
+   header drift cannot slip past (the sibling project's `tests/test_eval_mint_set.py:323-341`).
 2. **Tests never fetch** — an AST guard asserts the network client appears only inside `main`,
    plus stdlib-only imports at module scope. Anti-vacuity: the guard must be shown to actually
    observe imports.

@@ -5,8 +5,9 @@ build-backend = "hatchling.build"
 [project]
 # The distribution is `whetstonehq` because `whetstone` is already taken on PyPI
 # (verified 2026-07-26). The import package and the CLI stay `whetstone` — the same
-# split Belay uses for `belay-harness`. Do not "fix" this mismatch: `__version__`
-# resolves the DISTRIBUTION name, so changing one without the other breaks it loudly.
+# split the sibling project uses for its own distribution. Do not "fix" this mismatch:
+# `__version__` resolves the DISTRIBUTION name, so changing one without the other breaks it
+# loudly.
 name = "whetstonehq"
 version = "0.1.0"
 description = "A model that trains itself overnight — and proves it didn't cheat."

@@ -18,7 +18,7 @@
     "environment_pins": "per task, from its own manifest: exact `==` pins and a nominated interpreter, resolved once per distinct pin set (whetstone.bakeoff.scoring.Interpreters) and shared by the control arm and the rollout so both are graded under the same environment",
     "recorded_on": "2026-08-01",
     "seeds": "none: one greedy attempt per task per candidate (argmax over the vocabulary, mlx_lm==0.31.3). No sampling is performed, so there is no seed to record and no draw for a re-run to differ on",
-    "task_set": "source B: 63 tasks from [PosixPath('/Users/aliz/dev/at/whetstone/tasks/local/belay'), PosixPath('/Users/aliz/dev/at/whetstone/tasks/local/contig')]; source A: 1 from tasks/public/instances. Declared and hash-recorded, and deliberately NOT called held out (PRD D4): PREREGISTRATION.md \u00a7 7.1 leaves that split open and unspent",
+    "task_set": "source B: 63 tasks from 2 declared corpus directories (labelled in tasks/recipes/); source A: 1 from tasks/public/instances. Declared and hash-recorded, and deliberately NOT called held out (PRD D4): PREREGISTRATION.md \u00a7 7.1 leaves that split open and unspent",
     "tool_versions": {
       "mlx-lm": "0.31.3",
       "platform": "Darwin 25.5.0 arm64",

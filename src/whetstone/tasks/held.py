@@ -13,7 +13,7 @@ The floor below — every `conftest.py` from the repository root down to each he
 nothing to be talked out of.
 
 **It narrows cheat 10. It does not close it, and this module is not where that gets claimed.**
-Measured: ~22% of contig's mintable commits (49/224) also touch a non-`.py` file — a JSON
+Measured: ~22% of donor A's mintable commits (49/224) also touch a non-`.py` file — a JSON
 fixture, a golden output, a CSV — which no conftest rule and no import walk would ever see, and
 which the gold patch legitimately carries. Cheat 10 therefore stays `BOTH_ACCEPT` in
 `tests/adversarial/corpus.py` and must not be downgraded on the strength of this file.

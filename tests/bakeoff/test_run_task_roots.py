@@ -1,6 +1,6 @@
 """The corpus is one directory per donor, and a run must read all of them as one denominator.
 
-The failure this prevents is a silently partial run. `tasks/local/` holds `belay/` and `contig/`,
+The failure this prevents is a silently partial run. `tasks/local/` holds `donor-b/` and `donor-a/`,
 because the miner writes one directory per donor (`tasks/README.md`). `load_tasks` is deliberately
 fail-closed about that shape — it refuses a directory holding a subdirectory rather than
 descending, on the stated ground that *"a skipped task is a missing denominator"*
@@ -50,12 +50,12 @@ def _donor(root: Path, name: str, task_ids: tuple[str, ...]) -> Path:
 
 def test_more_than_one_donor_root_is_read_as_one_corpus(tmp_path: Path) -> None:
     """Two donors, one denominator — the shape `tasks/local/` actually has."""
-    first = _donor(tmp_path, "belay", ("belay-aaa",))
-    second = _donor(tmp_path, "contig", ("contig-bbb",))
+    first = _donor(tmp_path, "donor-a", ("donor-a-aaa",))
+    second = _donor(tmp_path, "donor-b", ("donor-b-bbb",))
 
     loaded: tuple[Task, ...] = load_task_roots((first, second))
 
-    assert [task.task_id for task in loaded] == ["belay-aaa", "contig-bbb"], (
+    assert [task.task_id for task in loaded] == ["donor-a-aaa", "donor-b-bbb"], (
         "the two donor roots did not union into one task set.\n\n"
         "WHY THIS IS A FAILURE: every count the report publishes is over this set. Reading one "
         "root and not the other does not fail — it produces a smaller denominator that looks "
@@ -66,8 +66,8 @@ def test_more_than_one_donor_root_is_read_as_one_corpus(tmp_path: Path) -> None:
 
 def test_a_single_root_still_works(tmp_path: Path) -> None:
     """The one-root case is the common one and must not have been broken by making it plural."""
-    only = _donor(tmp_path, "belay", ("belay-aaa",))
-    assert [task.task_id for task in load_task_roots((only,))] == ["belay-aaa"]
+    only = _donor(tmp_path, "donor-a", ("donor-a-aaa",))
+    assert [task.task_id for task in load_task_roots((only,))] == ["donor-a-aaa"]
 
 
 def test_the_parent_of_the_donors_is_still_refused(tmp_path: Path) -> None:
@@ -78,8 +78,8 @@ def test_the_parent_of_the_donors_is_still_refused(tmp_path: Path) -> None:
     would have traded a loud error for a silent one, which is the trade `manifest.py:79-83` exists
     to refuse.
     """
-    _donor(tmp_path, "belay", ("belay-aaa",))
-    _donor(tmp_path, "contig", ("contig-bbb",))
+    _donor(tmp_path, "donor-a", ("donor-a-aaa",))
+    _donor(tmp_path, "donor-b", ("donor-b-bbb",))
 
     with pytest.raises(ValueError, match="which is not a task manifest"):
         load_tasks(tmp_path)
@@ -90,8 +90,8 @@ def test_the_flag_is_repeatable_and_required() -> None:
     parser = build_parser()
     parsed = parser.parse_args(
         [
-            "--tasks", "/corpus/belay",
-            "--tasks", "/corpus/contig",
+            "--tasks", "/corpus/donor-b",
+            "--tasks", "/corpus/donor-a",
             "--public", "/pub",
             "--pool", "/pool.json",
             "--funnel", "/funnel.json",
@@ -102,7 +102,7 @@ def test_the_flag_is_repeatable_and_required() -> None:
             "--recorded-on", "2026-08-01",
         ]
     )
-    assert [str(path) for path in parsed.tasks] == ["/corpus/belay", "/corpus/contig"], (
+    assert [str(path) for path in parsed.tasks] == ["/corpus/donor-b", "/corpus/donor-a"], (
         "--tasks did not accumulate.\n\n"
         "WHY THIS IS A FAILURE: with a non-repeatable flag the last root silently wins, so a "
         "two-donor corpus is scored as one donor and the report's denominator is a fraction of "

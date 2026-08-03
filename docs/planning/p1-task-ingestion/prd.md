@@ -77,9 +77,9 @@ Three findings that change the design rather than the estimate:
    (`sandbox.py:12-15`, `:114-121`), and an out-of-scope venv interpreter was verified usable
    under the real profile.
 3. **The live SWE-bench-Lite dataset does carry `FAIL_TO_PASS`, `PASS_TO_PASS`, `test_patch`
-   and `environment_setup_commit`.** Belay's committed pool carries **none** of them — 166
+   and `environment_setup_commit`.** the sibling project's committed pool carries **none** of them — 166
    records, exactly six keys **[verified]**, and the gold `patch` is absent too. Whetstone
-   needs its own fetch; Belay's pool contributes provenance and base commits only.
+   needs its own fetch; the sibling project's pool contributes provenance and base commits only.
 
 ---
 
@@ -93,7 +93,7 @@ verifier runs — for both sources — with eligibility **proven per instance, n
 | G1 | Every ingested task is **live** | empty patch → STRICT FAIL; reference patch → STRICT PASS, with `executed == declared` | 100% of **all** ingested tasks, both sources; a task passing with no patch **fails the build** |
 | G2 | Source A eligibility is **proven, not assumed** | every instance passes all four gates (§ 6.2) or is recorded as ineligible **with the gate that rejected it** | no instance is silently dropped |
 | G3 | Source B mines offline | a test asserts no network call on the source-B path | zero network calls |
-| G4 | The draw is deterministic | same seed → byte-identical selection file | byte-for-byte, per Belay's `tests/test_eval_mint_set.py:323-341` |
+| G4 | The draw is deterministic | same seed → byte-identical selection file | byte-for-byte, per the sibling project's `tests/test_eval_mint_set.py:323-341` |
 | G5 | Ingestion cannot author its own reward | the provenance census still admits exactly one `Task` producer | `tests/test_task_contract.py:232-236` stays green |
 | G6 | The suite stays green | `uv run pytest`, `ruff check .`, `mypy src/` | all exit 0; CI green |
 
@@ -129,10 +129,10 @@ obligation to it, and no more.
 | # | Decision | Rationale |
 |---|---|---|
 | D1 | **Source A: the narrow proven subset, and the 4-gate eligibility filter is the deliverable** | The filter, not the instance count, is the durable asset. Manifests-only would satisfy exit criterion 4's letter while contributing zero to the bake-off — and source A is the only externally-checkable half, so that would leave the headline resting entirely on data no outside reader can audit |
-| D2 | **Restrict source B to commits that MODIFY an existing test** | Avoids relaxing `strict.py:131-140`, a fail-closed guard on the reward path. Costs ~35% of belay and ~50% of rereflect candidates; contig alone still yields ~220 **[verified: 224 by the integrator's classifier, 220 by the dig's]** |
-| D3 | **Mine all four local donors**: contig, belay, rereflect, whetstone | rereflect is the subject-diverse one (a services monorepo) and is the strongest available answer to the self-selection critique in § 8.3 |
-| D5 | **Corpus target: 60–80 source-B tasks, stratified across all four donors** | Large enough to survive P3's train/held-out split and still leave a held-out set worth reporting a number on. ~120–240 suite runs to mint. Stratification is what makes D3's self-selection mitigation real rather than nominal — a corpus that is 90% contig has not diversified anything |
-| D4 | **Cheat 10: the structural floor only** — auto-hold every `conftest.py` on the path from repo root to each held test | Deterministic, no instrumentation, and **measured to cost ~0% of candidates** (contig 0/220 **[verified]**, belay 1/49). The audit-hook widener is deferred: it must subtract the gold patch's touched paths or the restore overwrites the fix, and that subtraction is a sharper design risk than this slice should carry |
+| D2 | **Restrict source B to commits that MODIFY an existing test** | Avoids relaxing `strict.py:131-140`, a fail-closed guard on the reward path. Costs ~35% of the sibling project and ~50% of donor C candidates; donor A alone still yields ~220 **[verified: 224 by the integrator's classifier, 220 by the dig's]** |
+| D3 | **Mine all four local donors**: donor A, the sibling project, donor C, whetstone | donor C is the subject-diverse one (a services monorepo) and is the strongest available answer to the self-selection critique in § 8.3 |
+| D5 | **Corpus target: 60–80 source-B tasks, stratified across all four donors** | Large enough to survive P3's train/held-out split and still leave a held-out set worth reporting a number on. ~120–240 suite runs to mint. Stratification is what makes D3's self-selection mitigation real rather than nominal — a corpus that is 90% donor A has not diversified anything |
+| D4 | **Cheat 10: the structural floor only** — auto-hold every `conftest.py` on the path from repo root to each held test | Deterministic, no instrumentation, and **measured to cost ~0% of candidates** (donor A 0/220 **[verified]**, the sibling project 1/49). The audit-hook widener is deferred: it must subtract the gold patch's touched paths or the restore overwrites the fix, and that subtraction is a sharper design risk than this slice should carry |
 
 ---
 
@@ -256,14 +256,14 @@ built** — for either source.
 - **S2** — the ingestion package added to `GUARDED_ROOTS`
   (`tests/test_no_inference_on_reward_path.py:62`). Ingestion authors `test_blobs`, the artifact
   the whole boundary rests on; it is reward-adjacent and should be guarded.
-- **S3** — lift Belay's offline-purity AST guard (`tests/test_eval_pool_fetch.py:323-400`),
+- **S3** — lift the sibling project's offline-purity AST guard (`tests/test_eval_pool_fetch.py:323-400`),
   which asserts the network client appears only inside `main`.
 
 ### 6.4 Nice-to-have
 
-- **N1** — a bare-clone + detached-worktree cache (Belay's `eval/minting_driver/workspace.py`),
+- **N1** — a bare-clone + detached-worktree cache (the sibling project's `eval/minting_driver/workspace.py`),
   so N instances of one repo cost one clone. Matters for P2 throughput, not for P1 correctness.
-- **N2** — `rereflect` per-service ingestion targets. **Deliberately last**: it has no root
+- **N2** — `donor C` per-service ingestion targets. **Deliberately last**: it has no root
   `pyproject.toml`, so each service needs its own environment, and it is the only donor whose
   cost is unbounded by this slice's estimate.
 
@@ -316,7 +316,7 @@ After M5 the honest claim is:
 > manifest, and the manifest is still not provably complete.
 
 **What may not be claimed:** that undeclared-dependency mutation is defeated. It is not.
-**~22% of contig's mintable commits also touch a non-`.py` file [verified: 49/224]** — data
+**~22% of donor A's mintable commits also touch a non-`.py` file [verified: 49/224]** — data
 files no `conftest.py` rule and no import walk would ever see. Cheat 10 **stays `BOTH_ACCEPT`
 in the corpus** (`tests/adversarial/corpus.py`), because its fixture's manifest omission is
 hand-authored and no ingestion rule makes it stop being true. ROADMAP § 3's row 10 gains
@@ -328,20 +328,20 @@ hand-authored and no ingestion rule makes it stop being true. ROADMAP § 3's row
 | Risk | Severity | Mitigation |
 |---|---|---|
 | **Sphinx (14 of the 24 source-A survivors) has never had its suite run at a base commit** | **High** | Gate 3 + gate 4 discover it per instance. If sphinx fails wholesale, source A collapses to ~10 and **that number is reported, not hidden** |
-| **Two full suite runs per candidate commit** — ~440–660 executions for contig alone | **High** | One-time, offline, parallelisable. It is the dominant cost of the slice and must be budgeted, not discovered |
+| **Two full suite runs per candidate commit** — ~440–660 executions for donor A alone | **High** | One-time, offline, parallelisable. It is the dominant cost of the slice and must be budgeted, not discovered |
 | **The breaking contract change transiently reds ~19 + all fixture tests** | Medium | Sequence as ONE atomic task |
 | **Over-declaring `test_blobs`** — if a held path is one the gold fix must change, the restore silently overwrites the fix and the task is permanently unpassable, reported as an ordinary FAIL | **High** | M5 holds only tests + `conftest.py`, never source. A test must assert a held path is never one the reference patch touches |
 | **Flaky `pass_to_pass`** admits a task whose verdict is noise | Medium | A repeat run at mint time; discard non-deterministic ids |
-| **`rereflect` per-service environments are unbounded by this estimate** | Medium | N2 is last; if it overruns, ship the three `pyproject.toml` donors and say so |
+| **`donor C` per-service environments are unbounded by this estimate** | Medium | N2 is last; if it overruns, ship the three `pyproject.toml` donors and say so |
 | **CI cannot host real-repo liveness** | Medium | Excluded from CI — not for time, but because reprovisioning ~10 environments per run makes a red build ambiguous between "the task regressed" and "the network flaked", and an ambiguous red is a verdict decided by the harness. Commit the liveness result as a dated artifact; re-verify locally |
 
 ### 8.3 Source B's self-selection — for `PREREGISTRATION.md`, stated up front
 
 The private headline is measured on **the author's own repos**, largely written by Claude Code
-under strict TDD, and belay/contig are *about verification and sandboxing* — a closer loop than
+under strict TDD, and donor A and donor B are *about verification and sandboxing* — a closer loop than
 *"point it at your tasks"* implies. Selecting commits by red→green also over-represents the
 test-written-first shape, which is not what a real bug backlog looks like. D3's inclusion of
-rereflect is the mitigation. **None of this disqualifies source B** — it is uncontaminated and
+Donor C is the mitigation. **None of this disqualifies source B** — it is uncontaminated and
 on-thesis, which is what it is pre-registered for. It must appear in `PREREGISTRATION.md`, not
 be discovered by a reader later.
 
@@ -361,7 +361,7 @@ be discovered by a reader later.
 **Estimate: 9–12 working days. A planning estimate, not a commitment, and nothing here has been
 measured.** `docs/ROADMAP.md:203` sizes P1 at 4 weeks to **2026-08-30**; slice 1 estimated 8–10
 days and consumed roughly half the phase, so this slice consumes most of what remains. **If it
-overruns, the honest response is to cut N2 (rereflect) and then source A's breadth — never the
+overruns, the honest response is to cut N2 (donor C) and then source A's breadth — never the
 liveness check or the gates**, because those are what make the corpus worth having.
 
 Rough shape: the format + loader breaking change ~1 day (small, but atomic and it reds the

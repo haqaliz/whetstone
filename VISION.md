@@ -54,11 +54,11 @@ substitute for a reward that can't be gamed.
 - **Honest by contract:** promote only on a proven verified gain; `UNVERIFIED` is never a
   win; publish the real delta *and* the reward-hacking attempts caught.
 
-## Relationship to Belay
+## Relationship to the sibling project
 
-Belay proves a single run is correct. Whetstone uses that kind of proof as an unhackable
-**reward** to make the model better over time. Verification and improvement, two sides of the
-same thesis — and two projects that reinforce each other.
+The sibling project proves a single run is correct. Whetstone uses that kind of proof as an
+unhackable **reward** to make the model better over time. Verification and improvement, two sides
+of the same thesis — and two projects that reinforce each other.
 
 ## The wedge → the story
 

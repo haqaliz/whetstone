@@ -86,7 +86,7 @@ Generation 5000.9 seconds; verification 387.2 seconds; control arm 1167.6 second
 The five pinned inputs of `PREREGISTRATION.md:131-132`:
 
 - **Revision, per candidate:** `mlx-community/Qwen2.5-Coder-3B-Instruct-4bit` at `3dd939c621c08e5753d5b89f35a2642cd83b98ca`, `mlx-community/Qwen2.5-Coder-7B-Instruct-4bit` at `019cc73c45c770444708a6dd8690c66243cc5c80`, `mlx-community/Qwen2.5-Coder-14B-Instruct-4bit` at `29efdbab55a161237ab1e432a3abaf6c7ae2b477`.
-- **Task set:** source B: 63 tasks from [PosixPath('/Users/aliz/dev/at/whetstone/tasks/local/belay'), PosixPath('/Users/aliz/dev/at/whetstone/tasks/local/contig')]; source A: 1 from tasks/public/instances. Declared and hash-recorded, and deliberately NOT called held out (PRD D4): PREREGISTRATION.md § 7.1 leaves that split open and unspent.
+- **Task set:** source B: 63 tasks from 2 declared corpus directories (labelled in tasks/recipes/); source A: 1 from tasks/public/instances. Declared and hash-recorded, and deliberately NOT called held out (PRD D4): PREREGISTRATION.md § 7.1 leaves that split open and unspent.
 - **Environment pins:** per task, from its own manifest: exact `==` pins and a nominated interpreter, resolved once per distinct pin set (whetstone.bakeoff.scoring.Interpreters) and shared by the control arm and the rollout so both are graded under the same environment.
 - **Seeds:** none: one greedy attempt per task per candidate (argmax over the vocabulary, mlx_lm==0.31.3). No sampling is performed, so there is no seed to record and no draw for a re-run to differ on.
 - **Tool versions:** mlx-lm 0.31.3, platform Darwin 25.5.0 arm64, python 3.12.13, whetstonehq 0.1.0.

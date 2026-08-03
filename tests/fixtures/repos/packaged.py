@@ -52,7 +52,7 @@ from fixtures.repos import (
 from fixtures.repos.donor import DonorCommit
 
 #: The packaging that makes ``src`` the import root, spelled the way a real donor spells it.
-#: ``packages = ["src/calc"]`` is hatchling's explicit form and is what ``contig`` — the first
+#: ``packages = ["src/calc"]`` is hatchling's explicit form and is what ``donor A`` — the first
 #: real donor, and the repository this defect was found against — declares.
 SRC_LAYOUT_PYPROJECT = """\
 [build-system]

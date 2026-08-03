@@ -55,7 +55,7 @@ The roadmap it produces must, in turn, define the project's first real metric:
 | # | Decision | Choice |
 |---|---|---|
 | 1 | **Task family** | Python repo bug-fixing, verified by operator-held pytest (`FAIL_TO_PASS` + `PASS_TO_PASS`). **Two task sources, one family:** public SWE-bench-Lite instances (comparable, publishable) and the user's own repos (private, uncontaminated, on-thesis). Identical task contract and identical verifier for both — only provenance differs, so this satisfies `CLAUDE.md` #5's "ONE task family". |
-| 2 | **Platform** | macOS, Apple Silicon. Belay's Seatbelt sandbox and APFS `clonefile` snapshot work natively; **no porting phase required**. **[†] Half of this is wrong — see the correction below the table.** |
+| 2 | **Platform** | macOS, Apple Silicon. The sibling project's Seatbelt sandbox and APFS `clonefile` snapshot work natively; **no porting phase required**. **[†] Half of this is wrong — see the correction below the table.** |
 | 3 | **`N` counter** | **Differential against a deliberately weak verifier.** Every rollout is scored twice — strict (tests restored from golden, patch confined to non-test files) and weak (accept as submitted). `N` = rollouts the weak check PASSed and the strict check FAILed. Reported as *"N attempts a weaker check would have scored as wins."* |
 | 4 | **Horizon** | Through the first honest number. Distillation, the signed morning report, the dashboard, GRPO, and any second family are explicitly **post-horizon**. |
 | 5 | **Improvement method** | Rejection sampling / expert iteration: sample *k* per task, keep only strict-PASS rollouts, LoRA-SFT on those. Every training example is verified-by-construction. |
@@ -63,7 +63,7 @@ The roadmap it produces must, in turn, define the project's first real metric:
 | 7 | **Base + runtime** | MLX end-to-end (`mlx-lm`) for both rollouts and LoRA. The specific open base is chosen by a P1 bake-off **against the working verifier**, not on paper — consistent with `CLAUDE.md` #4 (keep the base swappable). |
 
 > **[†] Correction, 2026-07-28 (P1 slice 1 — the row is left standing rather than rewritten, so
-> the record shows what was decided and what it got wrong).** Decision 2's *"Belay's Seatbelt
+> the record shows what was decided and what it got wrong).** Decision 2's *"the sibling project's Seatbelt
 > sandbox and APFS `clonefile` snapshot work natively; no porting phase required"* is **half
 > right**.
 >
@@ -71,7 +71,7 @@ The roadmap it produces must, in turn, define the project's first real metric:
 >   replay substrate (`docs/ROADMAP.md` § 7's `sandbox/seatbelt.py` row), and P1 took the
 >   approach rather than the module: `src/whetstone/verify/sandbox.py` is our own six-line
 >   deny-all SBPL profile, with network denial and write confinement observed on this machine.
-> - **The `clonefile` half does not hold.** It refers to `belay/snapshot/`, which **is part of
+> - **The `clonefile` half does not hold.** It refers to `<sibling>/snapshot/`, which **is part of
 >   the replay substrate `docs/ROADMAP.md` § 7 declines** — the snapshot/restore machinery is
 >   what replay is built on (`snapshot/clone.py:280-298`). This slice takes the sandbox and does
 >   **not** take the snapshot machinery; STRICT materialises each run with a fresh git checkout
@@ -103,7 +103,7 @@ The roadmap it produces must, in turn, define the project's first real metric:
   how the set is protected from leakage, and where `N` comes from.
 - **M7 — Guardrails as rejection tests.** Each of the six guardrails restated as a check
   the plan visibly passes.
-- **M8 — Belay reuse stated precisely**: which parts are taken and which are deliberately
+- **M8 — the sibling project reuse stated precisely**: which parts are taken and which are deliberately
   declined, with reasons (§ Technical Considerations).
 - **M9 — Zero fabricated statistics.** Only the three grounded facts; everything else
   labeled unverified.
@@ -158,7 +158,7 @@ the verifier cannot observe.
 The reward is a **process exit status**. No model appears anywhere on the reward path.
 This is enforced structurally, not by convention — see the import guard below.
 
-### Reused from Belay (verified: v0.7.0, 832 tests passing, 13,068 LOC — real, not planned)
+### Reused from the sibling project (verified: v0.7.0, 832 tests passing, 13,068 LOC — real, not planned)
 
 | Taken | Why |
 |---|---|
@@ -168,20 +168,20 @@ This is enforced structurally, not by convention — see the import guard below.
 | `tests/test_import_guard.py` | AST walk over every module in the reward path, failing the build if an inference library is imported. The credible structural answer to *"isn't this an LLM judge with extra steps?"* |
 | `eval/instances/` + `eval/scripts/` | SWE-bench-Lite eligibility filter (pure-Python repos: django, sympy, flask, requests, sphinx, pylint; matplotlib/scikit-learn/astropy/xarray/seaborn excluded for C/Cython builds) → 166 strict-eligible instances, drawn by a pure offline seeded stratified draw with committed artifacts. |
 
-### Declined from Belay — and why (this contradicts a line in `CLAUDE.md`)
+### Declined from the sibling project — and why (this contradicts a line in `CLAUDE.md`)
 
-`CLAUDE.md:79` says *"Reuse Belay's verifier/replay where it fits."* The dig found the
+`CLAUDE.md:79` says *"Reuse the sibling project's verifier/replay where it fits."* The dig found the
 **verdict semantics fit; the replay substrate does not**, and the roadmap must say so:
 
-1. Belay answers a *harder* question — *"did the agent's trace faithfully describe what it
+1. The sibling project answers a *harder* question — *"did the agent's trace faithfully describe what it
    did?"* — which requires snapshot + replay. Whetstone's v1 reward only needs *"does the
    end state pass an operator-held check?"*: a sandbox and an exit status.
 2. **Throughput.** ~5 ms/turn snapshot scaling with tree size, plus a full APFS clone +
    restore + server spawn per replay. Built for auditing runs, not for generating
    high-volume RL rollouts.
-3. **Parallel calls → `UNVERIFIED`.** Belay deliberately refuses to serialize turns, so any
+3. **Parallel calls → `UNVERIFIED`.** the sibling project deliberately refuses to serialize turns, so any
    batched rollout yields `UNVERIFIED` instead of signal.
-4. **No API surface.** `src/belay/__init__.py` is one line (`__version__ = "0.0.0"`, stale
+4. **No API surface.** `src/<pkg>/__init__.py` is one line (`__version__ = "0.0.0"`, stale
    against `pyproject.toml`'s 0.7.0); nothing is exported programmatically, and grep for
    "reward"/"training" returns nothing.
 
@@ -203,7 +203,7 @@ UNVERIFIED` with exactly three gate exits; PyPI publish target (**package name u
 `unverified == 0` is the honest term, but on a real held-out set transient failures (flaky
 test, sandbox timeout, disk pressure) will make it nonzero on most nights. A gate demanding
 exactly zero converts *never regress* into **never ship**, and the obvious workaround —
-silently dropping unverified tasks — is exactly the metrics lie Belay's `corpus/metrics.py`
+silently dropping unverified tasks — is exactly the metrics lie the sibling project's `corpus/metrics.py`
 refuses. The roadmap must therefore specify:
 
 1. **Deterministic retry.** Each unverified task is retried a fixed *R* times with identical
@@ -272,7 +272,7 @@ testing) are named as deferred, not claimed.
 | **Cheat 6 residual** (above) | Medium | Named, not hidden. `PASS_TO_PASS` + held-out eval; closing it is post-horizon. |
 | **The loop plateaus, or gains are zero** | Medium | Named in the seed research as the central bet. `CLAUDE.md` #5: ship the harness and the honest number regardless. A zero delta, published, is a valid outcome. |
 | **Rejection sampling yields too few wins to train on** | Medium | Fails gracefully (empty training set, not a corrupted gradient). Mitigate with larger *k* and task-difficulty stratification. |
-| **Belay's own precedent**: `PHASE0_RESULTS.md` has 20 `TO-BE-FILLED`; its headline number is unpublished and Stage 3 partial | Informational | The cautionary lesson: *the engine working* and *the empirical claim being established* are two different milestones. P4 exists precisely so they are not conflated. |
+| **The sibling project's own precedent**: `PHASE0_RESULTS.md` has 20 `TO-BE-FILLED`; its headline number is unpublished and Stage 3 partial | Informational | The cautionary lesson: *the engine working* and *the empirical claim being established* are two different milestones. P4 exists precisely so they are not conflated. |
 | **Apple Silicon capacity** may bound base size / rollout throughput | Medium | Discovered in the P1 bake-off, against the real verifier, before the loop is built around it. |
 
 **Open questions carried forward:** the PyPI package name (`whetstonehq` / `whetstone-ai`
@@ -323,7 +323,7 @@ the task; (2) **"One Token to Fool LLM-as-a-Judge"** shows up to **35% false pos
 (3) **Karpathy (Sequoia Ascent 2026)** — the valuable RL environments *"aren't in the
 frontier-lab mix."*
 
-Belay cites two further arXiv items (2603.03116, 27–78% corrupt successes; 2507.08794,
+The sibling project cites two further arXiv items (2603.03116, 27–78% corrupt successes; 2507.08794,
 judge false positives). These are **not** in Whetstone's grounded list and must be verified
 before use, not inherited. `VISION.md` restates facts (1) and (2) **without** attribution
 and gives the venue as "Sequoia 2026" vs `CLAUDE.md`'s "Sequoia Ascent 2026" — use

@@ -231,7 +231,7 @@ def test_the_recipe_records_how_the_corpus_was_derived_and_not_what_it_contains(
     write_recipe(
         path,
         Recipe(
-            donor="/donor",
+            donor="donor-x",
             donor_head="b" * 40,
             selection={"limit": "2", "seed": "7"},
             pass_to_pass_scope="held-files",
@@ -242,7 +242,7 @@ def test_the_recipe_records_how_the_corpus_was_derived_and_not_what_it_contains(
     )
 
     written = json.loads(path.read_text())
-    assert written["donor"] == "/donor"
+    assert written["donor"] == "donor-x"
     assert written["donor_head"] == "b" * 40
     assert written["pass_to_pass_scope"] == "held-files"
     assert written["selection"] == {"limit": "2", "seed": "7"}

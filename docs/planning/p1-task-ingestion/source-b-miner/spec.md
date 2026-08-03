@@ -31,8 +31,8 @@ evidence committed and the code not.
    versions, date. Hashes and verdicts only — never contents.
 7. **Committed recipes** — `tasks/recipes/<donor>.json`: donor path, filters, tool versions,
    mining date. The recipe is committed; the mined manifests go to gitignored `/tasks/local/`.
-8. **Donors and target (PRD D3/D5)** — contig, belay, rereflect, whetstone; **60–80 tasks
-   stratified across all four**. `rereflect` is per-service and is done LAST (PRD N2).
+8. **Donors and target (PRD D3/D5)** — donor A, the sibling project, donor C, whetstone; **60–80 tasks
+   stratified across all four**. `donor C` is per-service and is done LAST (PRD N2).
 
 ## Out of scope
 
@@ -42,7 +42,7 @@ needs a reward-path change, deliberately deferred).
 ## Acceptance criteria (test-first)
 
 1. **No network on this path** — a test asserts the source-B miner makes zero network calls
-   (AST guard on the module plus a runtime seam), lifting Belay's
+   (AST guard on the module plus a runtime seam), lifting the sibling project's
    `tests/test_eval_pool_fetch.py:323-400` technique.
 2. Mining a **synthetic donor repo** (built with the existing `tests/fixtures/repos/`
    machinery, extended to a two-commit history) yields a manifest that `load_task` accepts and
@@ -76,5 +76,5 @@ Blocked by `task-format` (needs `environment` and the exposed node-id reader). I
 - **Real-donor mining is excluded from CI** (PRD § 8.2): reprovisioning donors per run makes a
   red build ambiguous between "the task regressed" and "the environment flaked". CI covers the
   synthetic donor; real mining is local, with the ledger as its committed evidence.
-- **`rereflect` has no root `pyproject.toml`** — per-service targets, unbounded by the estimate.
+- **`donor C` has no root `pyproject.toml`** — per-service targets, unbounded by the estimate.
   Ship the three lockfile donors first.

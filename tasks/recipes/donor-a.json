@@ -1,5 +1,5 @@
 {
-  "donor": "/Users/aliz/dev/at/contig",
+  "donor": "donor-a",
   "donor_head": "6423297cb7f1e720f781c440ae464d696769cb59",
   "mined_at": "2026-07-28T18:51:04Z",
   "pass_to_pass_scope": "held-files",

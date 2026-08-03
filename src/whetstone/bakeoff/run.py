@@ -449,10 +449,17 @@ def conduct(
         entrants=entrants,
         provenance=Provenance(
             task_set=(
-                f"source B: {len(private_tasks)} tasks from {tasks}; source A: "
-                f"{len(public_tasks)} from {public}. Declared and hash-recorded, and deliberately "
-                "NOT called held out (PRD D4): PREREGISTRATION.md § 7.1 leaves that split open "
-                "and unspent"
+                # The corpus directories are counted, never named. They live under
+                # `tasks/local/`, they are the user's own private repositories, and this
+                # document is published — an absolute path from the author's machine
+                # discloses both the name and the home directory while telling an outside
+                # reader nothing they can use. Identity, in its pseudonymous form, lives in
+                # `tasks/recipes/`, which is the committed half built for exactly that.
+                f"source B: {len(private_tasks)} tasks from {len(tasks)} declared corpus "
+                f"{'directory' if len(tasks) == 1 else 'directories'} (labelled in "
+                f"tasks/recipes/); source A: {len(public_tasks)} from {public}. Declared and "
+                "hash-recorded, and deliberately NOT called held out (PRD D4): "
+                "PREREGISTRATION.md § 7.1 leaves that split open and unspent"
             ),
             environment_pins=_ENVIRONMENT_PINS,
             seeds=_SEEDS,
@@ -501,7 +508,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="DIR",
         help="source B: a private corpus directory, repeatable. The miner writes one directory "
-        "per donor, so the real corpus is `tasks/local/belay` and `tasks/local/contig` rather "
+        "per donor, so the real corpus is `tasks/local/donor-b` and `tasks/local/donor-a` rather "
         "than their parent — `load_tasks` refuses a directory holding subdirectories, on the "
         "ground that a skipped task is a missing denominator. Name each donor; the roots are "
         "unioned. Read by path and never copied: it is the user's own code and lives outside "

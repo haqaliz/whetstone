@@ -140,7 +140,7 @@ source"* — selection. The report must say so in its own text, in a form a test
   false-PASS fix that makes scoring an unfamiliar patch trustworthy at all.
 - **PR #5** (`621831e`) — slice 1: the STRICT verifier this calls, and the ten-cheat corpus
   (cheats 6 and 10 remain documented residuals).
-- **Belay** (`~/dev/at/belay`) — `docs/ROADMAP.md` § 7 lists what is taken; nothing in Belay
+- **The sibling project** — `docs/ROADMAP.md` § 7 lists what is taken; nothing in the sibling project
   generates rollouts, and the replay substrate is declined explicitly *because* "parallel calls
   deliberately yield `UNVERIFIED` so batched rollouts produce no signal" (`CLAUDE.md`). No help
   is coming from there for this slice's generation half.

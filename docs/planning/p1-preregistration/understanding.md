@@ -68,10 +68,10 @@ is not fooling yourself.
 
 `docs/ROADMAP.md:456-460` — inside P4, the phase this document governs — reads:
 
-> The failure mode this phase exists to prevent is Belay's own: its `PHASE0_RESULTS.md`, the
+> The failure mode this phase exists to prevent is the sibling project's own: its `PHASE0_RESULTS.md`, the
 > document gating PROCEED vs PIVOT, still carries 20 `TO-BE-FILLED` markers.
 
-**Verified directly on 2026-07-29** in `~/dev/at/belay`:
+**Verified directly on 2026-07-29** in the sibling project's repository:
 
 - `grep -c "TO-BE-FILLED" docs/technical/PHASE0_RESULTS.md` → **0**.
 - Filled by `77adc8f` (2026-07-29, *"Phase-0 hand-audit: the default tests/ invariant has 0.00
@@ -79,7 +79,7 @@ is not fooling yourself.
   when written and went stale within about ten hours.
 - Substantively the claim **inverted**: the document now records a **PIVOT** with its numbers —
   0.00 precision at 1.00 coverage, 0 true positives, a denominator of 16 against a required ≥50.
-  Belay did not fail to fill its gating document. It filled it with a negative result and
+  The sibling project did not fail to fill its gating document. It filled it with a negative result and
   published it, which is exactly what `CLAUDE.md` #5 asks for.
 
 Why this matters three ways:
@@ -87,13 +87,13 @@ Why this matters three ways:
 1. **It is precisely the drift `tests/test_docs.py` exists to catch**, in a document that file
    guards, and no guard covered that sentence. Leaving it would have this repo overclaiming about
    a sibling's honesty — inside the section about not overclaiming.
-2. **The cautionary tale survives, and is sharper.** Belay's own `### Ordering: what actually
+2. **The cautionary tale survives, and is sharper.** the sibling project's own `### Ordering: what actually
    happened` admits the criteria were fixed in `docs/planning/phase0-live-mint/prd.md`
    (2026-07-21) but were **not copied into the document that publishes the number before the run**
    — *"That did not happen, and this document will not pretend otherwise."* The real lesson is
    **pre-register into the publishing document, not into a planning file**, which is exactly why
    `PREREGISTRATION.md` belongs at the repo root rather than under `docs/planning/`.
-3. **It supplies the shape.** Belay's template wrote every section in advance and left blanks only
+3. **It supplies the shape.** the sibling project's template wrote every section in advance and left blanks only
    under `## The Numbers` and `### Decision`, with commented-out example result lines showing the
    *shape* of an answer without asserting one.
 
@@ -101,27 +101,27 @@ Why this matters three ways:
 re-stale. In scope: it is a false claim about the very subject of the file being written, and
 `CLAUDE.md` requires the write-up and the change to land together.
 
-## 5. What to adopt from Belay — and what must not be copied
+## 5. What to adopt from the sibling project — and what must not be copied
 
 **Adopt:**
 
-- **Pre-registration is a timing control, not an independence control.** Belay states it outright:
+- **Pre-registration is a timing control, not an independence control.** the sibling project states it outright:
   *"This is a solo project: the same person writes the criteria, runs the mint, hand-audits the
   flags, and publishes the result. Nothing here makes the audit independent."* Whetstone is in the
   identical position and must say so.
 - **Publish the denominator with every rate**; state coverage and the unflattering figure; write a
-  negative result as plainly as a positive one (Belay's six *Honesty Properties*).
+  negative result as plainly as a positive one (the sibling project's six *Honesty Properties*).
 - **Provenance by commit hash, verifiable with `git log`**, not by assertion.
 - **Non-comparability clauses** — a number measured on one side of a changed input may not be
   compared across it. That is the operational form of § 5's *"measured once, re-measured never"*
   (`docs/ROADMAP.md:470-471`), a phrase neither sibling uses, so this document must define it.
 
-**Do not copy: the blanks.** Belay's template carried 20 placeholders for ten days. A
+**Do not copy: the blanks.** the sibling project's template carried 20 placeholders for ten days. A
 `PREREGISTRATION.md` containing `TBD` is worse than none, because it reads as a commitment while
 committing to nothing. Everything here must be decided at commit time; anything undecidable is
 named as open with its closing mechanism — never left as a blank to be filled.
 
-`contig` has **no** analogous document (verified: no preregistration, no results contract). It
+`donor A` has **no** analogous document (verified: no preregistration, no results contract). It
 mechanises the same instinct instead — a frozen held-out baseline with a deliberate, reviewed
 `--update-baseline` refreeze path. Useful precedent for the re-measurement rule; no document shape.
 
@@ -137,20 +137,20 @@ mechanises the same instinct instead — a frozen held-out baseline with a delib
 | What the verifier does and does not guarantee (writes confined, **reads not**; guarantee extends only as far as the manifest) | `docs/ROADMAP.md:187-190` |
 | Cheats 6 and 10 are documented residuals and survive into any reported `N` | `docs/ROADMAP.md:134`, `:138`, `:151-194` |
 | Source B self-selection | `docs/planning/p1-task-ingestion/prd.md:338-346` |
-| Source B shape: 66 tasks (45 `contig`, 21 `belay`); evidence committed, data never | `tasks/README.md:8-11`, `:36-49`, `:75-96` |
+| Source B shape: 66 tasks (45 `donor A`, 21 the sibling project); evidence committed, data never | `tasks/README.md:8-11`, `:36-49`, `:75-96` |
 | Source A: 1 eligible of 300; 192 format / 106 environment / 1 collectability; **not a benchmark set** | `tasks/README.md:13-30` |
 | P4 reports, for both sources: baseline, final, delta, `N_baseline`, `N_final`, coverage, provenance | `docs/ROADMAP.md:448-454` |
 
 **One correction to carry forward.** `docs/planning/p1-task-ingestion/prd.md:343-344` offers a
-mitigation for source B's self-selection — *"D3's inclusion of rereflect is the mitigation."*
-**That mitigation did not land:** `rereflect` was refused for having no `uv.lock`
+mitigation for source B's self-selection — *"D3's inclusion of donor C is the mitigation."*
+**That mitigation did not land:** `donor C` was refused for having no `uv.lock`
 (`tasks/README.md:171`, `docs/ROADMAP.md:371-373`). The disclosure must therefore be carried
 **without** its mitigation, and say so. Copying § 8.3 verbatim would ship a claim that is no
 longer true.
 
 ## 7. Contradictions and ambiguities found
 
-1. **The stale Belay claim** (§ 4). Resolved: correct it here, and guard it.
+1. **The stale the sibling project claim** (§ 4). Resolved: correct it here, and guard it.
 2. **The unlanded mitigation** (§ 6). Resolved: state the disclosure, record that the mitigation
    was refused.
 3. **"Both sources always published together" vs. a corpus of one.** § 6 requires both published;

@@ -37,7 +37,7 @@ Two were genuinely open and were put to the user; the rest follow from the dig.
 **never as a bare percentage**. § 6 fixed the source but never the figure; P4 cannot grade "the
 headline" against a file that does not name one. A count is chosen over a rate because the
 denominator is small and a rate manufactures precision the corpus cannot support — the same
-reasoning Belay used when it declined to threshold its violation rate at n=50.
+reasoning the sibling project used when it declined to threshold its violation rate at n=50.
 
 **D2 — No numeric success threshold is pre-registered, and none may be added later.**
 *(user decision)* Publication is already ungated by `:456-457`. Any bar set today would be
@@ -49,7 +49,7 @@ introduced once a result is visible is the post-hoc selection § 6 exists to pre
 **D3 — Open items are named with a closing mechanism and a deadline, never left blank.** The
 held-out split, *R*, and the base model are undecided (`:569-574`). Each is listed with why it is
 open, who closes it, and the rule that it is closed in a **dated amendment committed before the
-measurement it governs**. Belay's template carried 20 `TO-BE-FILLED` markers for ten days; this
+measurement it governs**. The sibling project's template carried 20 `TO-BE-FILLED` markers for ten days; this
 document forbids placeholders outright and a test enforces it.
 
 **D4 — Source A is reported per-instance, never as a rate.** § 6 requires both sources published,
@@ -57,18 +57,18 @@ but source A is **1 eligible instance of 300** (`tasks/README.md:13-30`). A delt
 measurement. Pre-registering the reporting form now stops P4 from discovering the problem with a
 result in hand.
 
-**D5 — The stale Belay claim at `docs/ROADMAP.md:456-460` is corrected in this slice, with a
+**D5 — The stale the sibling project claim at `docs/ROADMAP.md:456-460` is corrected in this slice, with a
 guard.** Verified 2026-07-29: `PHASE0_RESULTS.md` now carries **0** `TO-BE-FILLED` markers (filled
 by `77adc8f`, recording a **PIVOT** — 0.00 precision, 1.00 coverage, denominator 16 against a
 required ≥50). The roadmap's claim was true at `801b457` and false ~10 hours later. It is a false
 claim about honesty, inside the section about honesty, in the document this slice discharges.
-The still-valid lesson replaces it: Belay's own *"Ordering: what actually happened"* records that
+The still-valid lesson replaces it: the sibling project's own *"Ordering: what actually happened"* records that
 its criteria were fixed in a **planning file** and were *not* copied into the publishing document
 before the run — which is why `PREREGISTRATION.md` lives at the repo root.
 
 **D6 — The disclosure of source B's self-selection ships *without* its stated mitigation.**
-`docs/planning/p1-task-ingestion/prd.md:343-344` claims *"D3's inclusion of rereflect is the
-mitigation."* `rereflect` was refused for having no `uv.lock` (`tasks/README.md:171`). Carrying
+`docs/planning/p1-task-ingestion/prd.md:343-344` claims *"D3's inclusion of donor C is the
+mitigation."* `donor C` was refused for having no `uv.lock` (`tasks/README.md:171`). Carrying
 § 8.3 verbatim would ship a false mitigation; the document states the disclosure and records that
 the mitigation did not land.
 
@@ -113,8 +113,8 @@ the three gate exits; a zero or negative delta is published as plainly as a posi
 
 ### R8 — It discloses, up front, what a reader would otherwise discover later
 1. **Source B self-selection** — the author's own repos, largely written by Claude Code under
-   strict TDD, `belay`/`contig` being *about* verification and sandboxing; red→green selection
-   over-represents the test-written-first shape; **the stated `rereflect` mitigation did not
+   strict TDD, `donor A` and `donor B` being *about* verification and sandboxing; red→green selection
+   over-represents the test-written-first shape; **the stated `donor C` mitigation did not
    land** (D6).
 2. **Source A is 1 eligible instance of 300**, refusals 192 format / 106 environment / 1
    collectability; **not a benchmark set**, reported per-instance (D4).
@@ -172,12 +172,12 @@ PREREGISTRATION.md
 | T2 | `test_preregistration_contains_no_placeholder` | none of the R2 markers appear | paired with T1, which fails on a gutted file |
 | T3 | `test_preregistration_states_no_figure_about_a_model` | no `%` anywhere; the "no number exists" sentence present | the positive half is the control for the negative half |
 | T4 | `test_preregistration_carries_the_section_6_contract` | headline=B, both-together, disagreement-is-a-finding, contamination signature | substring loop over an explicit tuple |
-| T5 | `test_preregistration_carries_every_disclosure` | all five R8 disclosures, incl. the refused `rereflect` mitigation and the residual bound | each disclosure asserted separately, so one cannot mask another |
+| T5 | `test_preregistration_carries_every_disclosure` | all five R8 disclosures, incl. the refused `donor C` mitigation and the residual bound | each disclosure asserted separately, so one cannot mask another |
 | T6 | `test_preregistration_names_what_is_open_without_guessing_it` | split, *R*, base named as open; amendment rule present | asserts the words "open" *and* the closing mechanism, not just the topic |
 | T7 | `test_no_report_may_exist_without_its_preregistration` | run over the real repo root | **helper tested against two synthetic trees** in `tmp_path`: `reports/` without the file → offender; with the file → none. Watched failing. |
 | T8 | `test_claude_md_no_longer_lists_the_preregistration_as_open` | `"both still open"` added to `STALE_CLAUDE_CLAIMS` | the existing positive control at `test_docs.py:131` |
 | T9 | `test_the_roadmap_p1_shows_one_remaining_criterion` | § 4 no longer says "Two criteria remain open" and names the bake-off as the last | positive assertion of the replacement text |
-| T10 | `test_the_roadmap_does_not_overstate_belays_unfilled_gate` | the "20 TO-BE-FILLED" claim is gone and the corrected reading is present | both halves asserted — absence alone would pass on a deleted section |
+| T10 | `test_the_roadmap_does_not_overstate_the_siblings_unfilled_gate` | the "20 TO-BE-FILLED" claim is gone and the corrected reading is present | both halves asserted — absence alone would pass on a deleted section |
 
 T7 is the one with real teeth: without the synthetic-tree controls it passes vacuously today,
 since `reports/` does not exist. `CONTRIBUTING.md:56-60` requires exactly that.
@@ -188,7 +188,7 @@ since `reports/` does not exist. `CONTRIBUTING.md:56-60` requires exactly that.
 |---|---|---|
 | **The document commits to something P4 cannot deliver** — e.g. a held-out source-B split that the corpus is too small to support | Medium | D1 pins the *form* of the headline, not its size; the split itself is explicitly open (R9) and closed by a dated amendment before it is measured |
 | **`%`-ban (R3) is over-tight** and a future legitimate edit needs a percentage | Low | The ban is on this file only; the roadmap remains the place for grounded external statistics. A future amendment may relax it deliberately — that is a visible, reviewed act, which is the point |
-| **The ROADMAP correction (D5) re-stales** — Belay keeps moving | Medium | T10 guards the corrected reading; the new wording cites Belay's *ordering* admission, which is a historical fact and cannot un-happen, rather than a live marker count |
+| **The ROADMAP correction (D5) re-stales** — the sibling project keeps moving | Medium | T10 guards the corrected reading; the new wording cites the sibling project's *ordering* admission, which is a historical fact and cannot un-happen, rather than a live marker count |
 | **Scope creep into the bake-off** | Low | Explicitly out (§ 8). This slice runs no model |
 | **The document reads as ceremony** — long, and it gates nothing by itself | Medium | Accepted. Its function is the timestamp plus the five disclosures; P4's exit criterion is what gives it force |
 
@@ -216,7 +216,7 @@ fixing it is separate).
    temporal. **Resolution:** accept the weaker mechanical guard (it is what a working tree can
    check) and make the *strong* claim provable by `git log` instead — § 9 of the document tells a
    reader the exact command to verify that this file's commit predates every report. State this
-   limitation in the test's docstring rather than letting it read as stronger than it is. Belay
+   limitation in the test's docstring rather than letting it read as stronger than it is. The sibling project
    made precisely this mistake in the opposite direction and had to write a self-indicting section
    about it.
 
@@ -241,7 +241,7 @@ fixing it is separate).
    paragraph, so a skim still lands on each claim.
 
 7. **This slice touches `docs/ROADMAP.md` twice for different reasons** (the P1 status, and the
-   P4 Belay correction). They are separable, but both are required by `CLAUDE.md`'s
+   P4 the sibling project correction). They are separable, but both are required by `CLAUDE.md`'s
    land-the-claim-with-the-change rule, and splitting them across commits would leave one of the
    two documents wrong at an intermediate commit.
 

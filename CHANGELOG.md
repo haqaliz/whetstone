@@ -51,7 +51,7 @@ in this file restates one, because a figure quoted twice is a figure that can di
   never are. `tasks/README.md` states the rule and `tests/test_tasks_layout.py` asserts git's own
   answer in both directions.
 - A miner for source B — the user's own repositories — turning a commit that takes an existing
-  test from red to green into a task. **66 tasks minted, 45 from `contig` and 21 from `belay`,
+  test from red to green into a task. **66 tasks minted, 45 from `donor A` and 21 from the sibling project,
   each proven live before it was kept**: FAIL with no patch, PASS under its own reference patch,
   the executed node-id set equal to the declared one, zero skips. A task that cannot be shown to
   discriminate is not written out. The manifests are the user's code and stay in gitignored
@@ -61,7 +61,7 @@ in this file restates one, because a figure quoted twice is a figure that can di
   was proven rather than assumed, and re-derive it against their own copy of the donor.
 - The `conftest.py` floor at mint time: every `conftest.py` from the repository root down to each
   held test's directory is declared held, read at the parent commit, and a held set that omits one
-  is refused by name. This **narrows** cheat 10 and does not close it — ~22% of `contig`'s
+  is refused by name. This **narrows** cheat 10 and does not close it — ~22% of `donor A`'s
   mintable commits (49 of 224) also touch a non-`.py` file no conftest rule would ever see — so
   the cheat stays a documented residual in the corpus and in `docs/ROADMAP.md` § 3.
 - A four-gate eligibility filter for source A (SWE-bench-Lite) — format, environment,
@@ -89,14 +89,14 @@ in this file restates one, because a figure quoted twice is a figure that can di
   as open instead of guessed, each with the dated amendment that closes it and the measurement it
   must precede: the held-out split, the retry count `R`, and which open base is fine-tuned.
 - Five limitations disclosed in advance rather than discovered in the result: source B's
-  self-selection — **and that its stated mitigation did not land**, since `rereflect` was refused
+  self-selection — **and that its stated mitigation did not land**, since `donor C` was refused
   for having no `uv.lock`; source A being 1 eligible instance of 300 and reported per-instance;
   cheats 6 and 10 surviving into any reported `N`, with the verifier's bound that it confines what
   a run may write and not what it may read; source B's data never leaving the box, which limits
   what an outsider can audit; and that pre-registration is a timing control and **not** an
   independence control, this being a solo project.
 - Guards in `tests/test_docs.py` holding the document shut: every section present, **no
-  placeholder in any spelling** — Belay's `PHASE0_RESULTS.md` carried `TO-BE-FILLED` for ten days
+  placeholder in any spelling** — the sibling project's `PHASE0_RESULTS.md` carried `TO-BE-FILLED` for ten days
   — **no figure about a model**, banned as glyph and as word so the rule cannot be spelled around,
   and nothing under `reports/` in a tree lacking the file. That last guard is exercised against
   two synthetic trees, because `reports/` does not exist yet and a guard nobody has watched fail
@@ -156,7 +156,7 @@ in this file restates one, because a figure quoted twice is a figure that can di
   roadmap's copy could not simply be deleted: `PREREGISTRATION.md` is **append-only** and cites
   `docs/ROADMAP.md:364-368` on that exact sentence, so the sentence is kept inside those five
   lines as a **quoted, dated correction** — the precedent § 4 already sets for its claim about
-  belay — the § 4 rewrite is line-count-neutral so no later citation shifts, and all ten pinned
+  The sibling project — the § 4 rewrite is line-count-neutral so no later citation shifts, and all ten pinned
   citations still resolve. `tests/test_docs.py` now asserts the claim survives in the roadmap only
   inside a blockquote and nowhere in its running prose, and that P1 records **no** criterion still
   open, both spellings of the older count being forbidden.
@@ -170,14 +170,35 @@ in this file restates one, because a figure quoted twice is a figure that can di
   longer exists anywhere in that file — it was removed as a stale claim and `tests/test_docs.py`
   now forbids its return. Both need a decision about historical framing rather than a new line
   number, which is a different change from this one.
-- **`docs/ROADMAP.md` § 4, P4 overstated a sibling project's failure.** It asserted that Belay's
+- **`docs/ROADMAP.md` § 4, P4 overstated a sibling project's failure.** It asserted that the sibling project's
   `PHASE0_RESULTS.md` carried 20 `TO-BE-FILLED` markers; that was exact on 2026-07-28 and false
   about ten hours later, when the document was filled and recorded a **PIVOT** — a negative
   result, published. Verified by `grep -c`: 0. A claim about another project's honesty, inside our
   own section about publishing honestly, is the worst sentence in the document to leave stale. The
-  transferable lesson replaces it and is sharper: Belay's criteria were fixed in a **planning
+  transferable lesson replaces it and is sharper: the sibling project's criteria were fixed in a **planning
   file** and never copied into the document that publishes the number before the gate ran — which
   is why `PREREGISTRATION.md` sits at the repository root and not under `docs/planning/`.
+
+### Changed
+
+- **Donor repositories are named by stable pseudonym, never by name or path.** Source B is mined
+  from the author's own private repositories, and their names — and in two committed files an
+  absolute path from the author's machine — had reached documents this project publishes. They are
+  now `donor A`, `donor B` and `donor C` throughout, with the key in `tasks/README.md`; the
+  sibling verification project this repository ports its verdict semantics, sandbox approach and
+  inference guard from is referred to by description. No claim, count, denominator or disclosure
+  changed — only identifiers — and the redaction is logged as an amendment in `PREREGISTRATION.md`
+  § 10.3 rather than made silently, because that document is append-only and the edit touched
+  § 6.1's text.
+- `whetstone mine` now requires `--label`, and the committed recipe is named and filled by it.
+  The recipe previously recorded the donor's resolved path, which published a private repository
+  name and a home directory to no reader's benefit — an outside reader re-deriving a corpus
+  supplies their own donor. The flag has no default on purpose: the only default available is the
+  donor's own directory name, and a leak into a committed file is not undone by deleting the line
+  later. `tests/test_mine_cli.py` asserts the recipe carries neither the donor's path nor a home
+  path. **A residual is disclosed rather than closed:** mined task ids are `<donor>-<sha>`, so the
+  donors' own names still appear in `tasks/local-ledger.json` and `reports/baseline/`; closing
+  that means re-minting the corpus and invalidating all 66 recorded manifest hashes.
 
 ### Fixed
 

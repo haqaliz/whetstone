@@ -26,7 +26,7 @@ What is asserted here:
   comment saying so;
 - **the donor's own project is never installed**, asserted from real `uv pip freeze` output and
   from the interpreter failing to import it. That is the second half of the inert-checkout fix:
-  a venv carrying an editable install of the project answers `import contig` from the
+  a venv carrying an editable install of the project answers `import <pkg>` from the
   *provisioning* checkout, so every later verification grades a tree the patch never touched —
   observed as a task passing with no patch applied. The venv carries dependencies only;
 - **where the donor keeps its code is read, never guessed**, and a donor whose layout cannot be
@@ -339,7 +339,7 @@ def test_the_import_roots_of_a_src_layout_donor_are_read_from_its_build_configur
 
     Read from the donor's own declaration rather than from the presence of a `src/` directory,
     because the declaration is what the donor's authors actually committed to. This is hatchling's
-    spelling, and it is the one `contig` — the first real donor — uses.
+    spelling, and it is the one `donor A` — the first real donor — uses.
     """
     _, captured = packaged
     assert captured.import_roots == ("src",)

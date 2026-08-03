@@ -152,11 +152,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="the local git repository to mine; it is read, never written to",
     )
     mine.add_argument(
+        "--label",
+        required=True,
+        metavar="<name>",
+        help=(
+            "a non-identifying name for this donor, recorded in the committed recipe; "
+            "the donor's own name is private and must not be used"
+        ),
+    )
+    mine.add_argument(
         "--out",
         required=True,
         type=Path,
         metavar="<path>",
-        help="where the task manifests are written, e.g. tasks/local/<donor>/",
+        help="where the task manifests are written, e.g. tasks/local/<label>/",
     )
     mine.add_argument(
         "--limit",
@@ -264,7 +273,7 @@ def run_verify(task_path: Path, patch_path: Path) -> int:
 
 
 def run_mine(
-    donor: Path, out: Path, *, limit: int, seed: int | None, tasks_root: Path
+    donor: Path, out: Path, *, label: str, limit: int, seed: int | None, tasks_root: Path
 ) -> int:
     """Mine `donor` into `out`, print what was minted and what was refused, and return the code.
 
@@ -291,6 +300,7 @@ def run_mine(
             report = mine(
                 donor,
                 out,
+                label=label,
                 limit=limit,
                 seed=seed,
                 scratch=Path(scratch).resolve(),
@@ -378,6 +388,7 @@ def main(argv: list[str] | None = None) -> int:
         return run_mine(
             namespace.donor,
             namespace.out,
+            label=namespace.label,
             limit=namespace.limit,
             seed=namespace.seed,
             tasks_root=namespace.tasks_root,

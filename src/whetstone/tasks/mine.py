@@ -65,6 +65,11 @@ from whetstone.verify.task import load_task
 #: How a mined task is named: the donor's directory name and the short sha of the commit it came
 #: from. Both halves are needed — a sha alone says nothing about where to look for it, and a
 #: donor name alone is not unique. Neither half is any of the user's code.
+#:
+#: **This half is local-only, and the recipe's `label` is the committed half.** A task id is
+#: written into manifests under `tasks/local/`, which is gitignored; the donor's directory name
+#: is the user's own private repository name and must not reach a committed file. The recipe
+#: carries an operator-chosen `label` instead — see `_write_recipe`.
 _ID_SHA_LENGTH = 12
 
 #: Where the committed evidence lives, relative to the tasks root. Named here because the miner
@@ -150,6 +155,7 @@ def mine(
     donor: Path,
     out: Path,
     *,
+    label: str,
     limit: int,
     scratch: Path,
     tasks_root: Path,
@@ -161,6 +167,12 @@ def mine(
 
     `timeout` has no default, matching every other step that executes something: a limit
     inherited from somewhere else turns a slow donor into a discard nobody can explain.
+
+    `label` has no default for a different reason: it is the donor's name in every **committed**
+    file, and the only default available is the donor's own directory name — which is the user's
+    private repository name. A default here would leak it by being convenient, and a leak into a
+    committed file is not undone by deleting the line later. The operator chooses a
+    non-identifying label and the recipe records that.
 
     Raises `MintFailed` if the donor cannot be read at all. A candidate that cannot be minted is
     recorded in the report and the mint moves on.
@@ -209,7 +221,7 @@ def mine(
     ledger = _write_ledger(Path(tasks_root), minted, clock=clock)
     recipe = _write_recipe(
         Path(tasks_root),
-        location,
+        label,
         head=head,
         limit=limit,
         seed=seed,
@@ -395,7 +407,7 @@ def _write_ledger(tasks_root: Path, minted: Sequence[Minted], *, clock: Clock) -
 
 def _write_recipe(
     tasks_root: Path,
-    donor: Path,
+    label: str,
     *,
     head: str,
     limit: int,
@@ -403,8 +415,15 @@ def _write_recipe(
     python: str,
     clock: Clock,
 ) -> Path:
-    """Write the donor's recipe — how this corpus was derived, never what it contains."""
-    path = Path(tasks_root) / RECIPES_DIRECTORY / f"{donor.name}.json"
+    """Write the donor's recipe — how this corpus was derived, never what it contains.
+
+    **The recipe is committed, so it is named and filled by `label` rather than by the donor.**
+    An earlier version wrote the donor's resolved path here, which put an absolute path from the
+    author's machine — and the private repository's name — into a file the repository publishes.
+    Neither is usable by an outside reader re-deriving the corpus, who supplies their own donor:
+    what they need is the procedure, which is everything else in this document.
+    """
+    path = Path(tasks_root) / RECIPES_DIRECTORY / f"{label}.json"
     selection: Mapping[str, str] = {
         "filters": SELECTION_FILTERS,
         "limit": str(limit),
@@ -413,7 +432,7 @@ def _write_recipe(
     write_recipe(
         path,
         Recipe(
-            donor=str(donor),
+            donor=label,
             donor_head=head,
             selection=selection,
             pass_to_pass_scope=PASS_TO_PASS_SCOPE,

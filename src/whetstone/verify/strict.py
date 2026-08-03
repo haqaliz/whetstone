@@ -205,7 +205,7 @@ def _import_path(task: Task, checkout: Path) -> tuple[str, ...]:
 
     This is the whole of step 4b, and it is one join — but it is the join that makes the reward
     a statement about the tree the patch was applied to. A `src`-layout project is imported by
-    package name, so `import contig` is answered by whatever `sys.path` offers first; a venv
+    package name, so `import <pkg>` is answered by whatever `sys.path` offers first; a venv
     carrying an editable install rooted at some other checkout answers it before the run's own
     tree is ever consulted, and the observed consequence was a task that **PASSED with no patch
     applied**.

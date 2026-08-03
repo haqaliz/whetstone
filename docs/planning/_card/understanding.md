@@ -35,20 +35,20 @@ This was the open question that could have reshaped the slice (`_card/issue.md` 
 
 ### 2a. Dependency direction
 
-`~/dev/at/belay/src/belay/sandbox/seatbelt.py` (417 lines) imports, in full
+`<sibling>/src/<pkg>/sandbox/seatbelt.py` (417 lines) imports, in full
 (`seatbelt.py:44-56`):
 
 ```
 os, re, subprocess, sys, tempfile, dataclasses, pathlib, typing   # stdlib
-from belay.snapshot.bth1 import UnsupportedPlatform               # an exception class
-from belay.trace import TraceWriter                               # OPTIONAL, default None
+from the sibling project.snapshot.bth1 import UnsupportedPlatform               # an exception class
+from the sibling project.trace import TraceWriter                               # OPTIONAL, default None
 ```
 
-`scope.py:87-95` is **pure stdlib**. `launch.py:43-56` adds only `belay.sandbox.seatbelt`,
-`belay.sandbox.scope`, and the same `UnsupportedPlatform`.
+`scope.py:87-95` is **pure stdlib**. `launch.py:43-56` adds only `the sibling project.sandbox.seatbelt`,
+`the sibling project.sandbox.scope`, and the same `UnsupportedPlatform`.
 
-Nothing under `sandbox/` imports `belay.replay`. The direction runs the other way:
-`proxy.py:595-596` imports `belay.sandbox.gate` and `belay.sandbox.launch`, and
+Nothing under `sandbox/` imports `the sibling project.replay`. The direction runs the other way:
+`proxy.py:595-596` imports `the sibling project.sandbox.gate` and `the sibling project.sandbox.launch`, and
 `cli.py:84,141,190,260` imports `seatbelt`. **The replay substrate depends on the sandbox; the
 sandbox does not depend on the replay substrate.**
 
@@ -74,10 +74,10 @@ short for a pytest run, and a value this slice must set deliberately.
 - **`docs/ROADMAP.md` § 7's "Taken" table (`:303-311`) has a real gap.** It lists no sandbox
   module while `:54` requires a no-network sandbox. The table should gain a `sandbox/seatbelt.py`
   row. This is a documentation fix, not a design change.
-- **`docs/planning/roadmap-and-task-family/prd.md:58` is half right.** *"Belay's Seatbelt sandbox
+- **`docs/planning/roadmap-and-task-family/prd.md:58` is half right.** *"the sibling project's Seatbelt sandbox
   and APFS `clonefile` snapshot work natively; no porting phase required"* — the Seatbelt half is
   confirmed (a two-line edit, not a porting phase). The `clonefile` snapshot half refers to
-  `belay/snapshot/`, which **is** part of the declined replay substrate (`docs/ROADMAP.md:320-322`).
+  `<sibling>/snapshot/`, which **is** part of the declined replay substrate (`docs/ROADMAP.md:320-322`).
   This slice takes the sandbox and does not take the snapshot machinery.
 
 ### 2c. Live spike — run on this machine, 2026-07-28
@@ -93,7 +93,7 @@ READ out-of-scope: allowed
 ```
 
 Network denial and write confinement both hold. **Reads are not confined** — the probe read a
-file outside the sandbox without obstruction. This is not a defect in the spike; Belay documents
+file outside the sandbox without obstruction. This is not a defect in the spike; the sibling project documents
 it as a property of the profile: *"Reads are NOT scoped (`file-read*` is allowed wholesale) …
 it contains what the child can change, not what it can see"* (`seatbelt.py:363-366`).
 
@@ -105,7 +105,7 @@ never saw the tests"*. That is exactly cheat 6 (`docs/ROADMAP.md:109-118`), and 
 sharpens why it is a residual: the information needed to special-case is available by
 construction, not merely hard to withhold. The PRD must not claim read-blindness anywhere.
 
-**Two risks to carry forward:** `sandbox-exec` is deprecated by Apple (it still works, and Belay
+**Two risks to carry forward:** `sandbox-exec` is deprecated by Apple (it still works, and the sibling project
 depends on it), and the CI runner must be confirmed to permit it — the spike proves this machine,
 not `macos-latest`.
 
@@ -113,7 +113,7 @@ not `macos-latest`.
 
 ## 3. The AST guard — both documented traps confirmed, plus a third the roadmap misses
 
-Source: `~/dev/at/belay/tests/test_verify_zero_llm.py`.
+Source: `<sibling>/tests/test_verify_zero_llm.py`.
 
 **Trap 1 — confirmed verbatim** (`:114-121`):
 
@@ -122,7 +122,7 @@ def _is_inference_import(dotted: str) -> bool:
     root = dotted.split(".")[0]
     if root in _INFERENCE_CLIENTS:
         return True
-    if root == "belay":
+    if root == "<the sibling package name>":
         parts = set(dotted.split("."))
         return bool(parts & _INFERENCE_FIRST_PARTY)
     return False
@@ -146,20 +146,20 @@ elif isinstance(node, ast.ImportFrom):
 ```
 
 `node.level == 0` means **relative imports are invisible to the walk**. `from .judge import score`
-inside the reward-path package records nothing. Belay gets away with it because its first-party
-detection keys on the dotted `belay.judge` form, but a package whose internal modules import each
+inside the reward-path package records nothing. The sibling project gets away with it because its first-party
+detection keys on the dotted `<sibling>.judge` form, but a package whose internal modules import each
 other relatively — which Whetstone's verifier package naturally will — has a silent bypass.
 The port must resolve relative imports to their absolute dotted path from the file's package
 position. This is a third trap for `docs/ROADMAP.md:166-174` to record.
 
 **Anti-vacuity: the roadmap's claim is verified.** `_modules()` (`:89-92`) asserts the file list
 is non-empty. `test_the_guard_actually_sees_the_imports_the_layer_makes` (`:156-175`) asserts the
-walk observes real imports (`belay.replay`, `belay.corpus`, `belay.interop`) — it asserts the walk
+walk observes real imports (`the sibling project.replay`, `the sibling project.corpus`, `the sibling project.interop`) — it asserts the walk
 **sees imports**, and never that `_is_inference_import` **fires**. So Whetstone needs the second
 control: a synthetic `whetstone.judge` import that the predicate must return `True` for.
 
 Good news for scoping: the walk uses `GUARDED_ROOTS` + `rglob("*.py")` (`:90`), so the
-reward-path-scoped guard the roadmap wants is the mechanism Belay already uses — no invention
+reward-path-scoped guard the roadmap wants is the mechanism the sibling project already uses — no invention
 needed. And `ast.walk` (`:105`) does catch function-local imports, so indenting an import is not
 a bypass.
 
@@ -171,7 +171,7 @@ a bypass.
 `Status` has five members; `_RANK = {NOT_COVERED: -1, PASS: 0, WARN: 1, UNVERIFIED: 2, FAIL: 3}`;
 `reduce()` filters `NOT_COVERED` *before* ranking and returns `UNVERIFIED` for an empty set —
 "including one that is empty only AFTER the filter". The `Verdict` dataclass carries
-`axis`/`kind`/`status`/`observed`/`expected`/`message`; `axis` is Belay-specific ("A1"/"A2"/"A3")
+`axis`/`kind`/`status`/`observed`/`expected`/`message`; `axis` is sibling-specific ("A1"/"A2"/"A3")
 and is the one field needing a decision for Whetstone.
 
 **`verify/invariants.py` — the portable asset is the TEST, not the module.** The module implements
@@ -192,7 +192,7 @@ the provenance boundary as a structural test rather than a convention.
 
 ## 5. The SWE-bench inheritance is thinner than the documents imply
 
-`~/dev/at/belay/eval/instances/pool.json` holds **166 records** — the number in
+`<sibling>/eval/instances/pool.json` holds **166 records** — the number in
 `docs/planning/roadmap-and-task-family/prd.md:149` is real and reproducible, and
 `eval/instances/selection.py:4` states it independently. Each record's fields, in full:
 
@@ -254,7 +254,7 @@ last convention is exactly what the adversarial corpus needs, and it is already 
 2. **The `axis` field** on the ported `Verdict` — keep, rename, or drop for a domain with one axis?
 3. **Sandbox timeout and seed.** `docs/ROADMAP.md:54` says "fixed seed" but does not say what is
    seeded. Candidates: `PYTHONHASHSEED`, disabling any test-order randomisation, and pinning
-   pytest's own collection order. Belay's `seatbelt.run` pins nothing (no env control in
+   pytest's own collection order. The sibling project's `seatbelt.run` pins nothing (no env control in
    `:398-404`) — this is Whetstone's to design, and the determinism acceptance criterion depends
    on it.
 4. **What is a verdict, concretely, for one task?** STRICT and WEAK each produce an exit status;

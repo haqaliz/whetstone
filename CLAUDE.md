@@ -34,11 +34,14 @@ This file orients a coding agent working in this repository. Read it first.
 >
 > **P1 slice 3 — ingestion, and the first real corpus — is done** (`docs/ROADMAP.md` § 4, P1
 > exit criterion 4). **Source B (private, the pre-registered headline): 66 tasks**, 45 mined from
-> `contig` and 21 from `belay`, each *proven live* rather than asserted — FAIL with no patch, PASS
-> under its own reference patch, executed node-id set equal to declared, zero skips. The manifests
+> `donor A` and 21 from `donor B`, each *proven live* rather than asserted — FAIL with no patch,
+> PASS under its own reference patch, executed node-id set equal to declared, zero skips. Donors
+> are named by stable pseudonyms throughout this repository: they are the author's own private
+> repositories, and their names are not this project's to publish. Donor B is also the sibling
+> project the verifier's design draws on (§ *Relationship to the sibling project*). The manifests
 > are the user's code and live in gitignored `tasks/local/`; the committed evidence is
 > `tasks/recipes/*.json` and `tasks/local-ledger.json` (hashes and verdicts, never file contents).
-> Two donors yielded nothing and the refusals are the finding: `rereflect` was refused for having
+> Two donors yielded nothing and the refusals are the finding: `donor C` was refused for having
 > no `uv.lock`, and this repository yielded 0 of 2 because its own test-first workflow lands the
 > test and the fix in one commit. **Source A (public SWE-bench-Lite): 1 eligible instance of 300**
 > — `pallets__flask-4045` — with all 299 refusals ledgered in `tasks/public/ineligible.json`
@@ -66,7 +69,7 @@ This file orients a coding agent working in this repository. Read it first.
 > grounded before a baseline exists, and forbids one being added once a number does. Three items
 > are named as open with the amendment that closes each: the held-out split, the retry count `R`,
 > and the base. Five limitations are disclosed up front, including that source B's self-selection
-> mitigation (a third donor) **did not land** — `rereflect` was refused for having no `uv.lock`.
+> mitigation (a third donor) **did not land** — `donor C` was refused for having no `uv.lock`.
 > `tests/test_docs.py` holds it shut: no placeholder, no figure about a model in any spelling, and
 > nothing may exist under `reports/` in a tree lacking the file. That last guard proves
 > co-existence, not ordering — the temporal claim is `git log`'s, and the document says so itself.
@@ -177,11 +180,12 @@ designed out.
 
 ---
 
-## Relationship to Belay (sibling project)
+## Relationship to the sibling project
 
-Belay (`~/dev/at/belay`) is the execution-grounded **verification engine**. Whetstone is the
-**improvement loop that trains against a verifier like Belay's**. They reinforce each other:
-Belay proves a run is correct; Whetstone uses that kind of proof as an unhackable reward.
+The sibling project is the execution-grounded **verification engine**. Whetstone is the
+**improvement loop that trains against a verifier like its**. They reinforce each other: the
+sibling project proves a run is correct; Whetstone uses that kind of proof as an unhackable
+reward.
 `docs/ROADMAP.md` § 7 records exactly what we take and what we decline. **Taken:** the verdict
 semantics (`UNVERIFIED` ranked above `PASS`), the provenance boundary, the corpus metrics, the
 AST guard that keeps inference libraries off the reward path, the **Seatbelt sandbox approach**
@@ -192,7 +196,7 @@ our reward needs (trace fidelity vs. does the end state pass an operator-held ch
 throughput is built for auditing rather than generating rollouts, parallel calls deliberately
 yield `UNVERIFIED` so batched rollouts produce no signal, and it exposes no API surface. Revisit
 only if a later task family needs trace fidelity. Whetstone is an independent project with its
-own thesis (improvement), not a Belay feature.
+own thesis (improvement), not a feature of the sibling project.
 
 ---
 
@@ -292,8 +296,8 @@ architecture doc's absence means the design is undecided.
 
 ## Workflow skills (`.claude/skills/`)
 
-The repo carries its own skills, mirroring the sibling projects (`~/dev/at/belay`,
-`~/dev/at/contig`). Use them rather than improvising a workflow.
+The repo carries its own skills, mirroring the author's sibling projects. Use them rather than
+improvising a workflow.
 
 | Skill | Alias | What it does |
 |---|---|---|

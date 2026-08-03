@@ -7,7 +7,7 @@ rather than a property.
 
 **Asserted as a byte comparison of the written file, never as an id-set match.** An id-set match
 is the assertion that looks equivalent and is not: it stays green while the header drifts, and
-the header is where the seed, the size and the denominator are recorded. Belay's
+the header is where the seed, the size and the denominator are recorded. The sibling project's
 `tests/test_eval_mint_set.py:323-341` makes the same call for the same reason.
 
 **Byte-identity is unconditional here, because the selection carries no clock.** The draw is a

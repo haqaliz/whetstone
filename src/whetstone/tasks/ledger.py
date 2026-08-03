@@ -108,6 +108,12 @@ class Recipe:
 
     `donor_head` records the commit the history was read at, so a re-derivation runs against the
     same history rather than against whatever the donor has grown since.
+
+    `donor` is an **operator-chosen label, never a path and never the donor's own name.** This
+    document is committed; the donor is one of the user's private repositories. An absolute path
+    from the author's machine is of no use to a reader re-deriving the corpus against their own
+    donor, and the repository's name is theirs rather than this project's to publish. The label
+    only has to be stable, so that two mints of the same donor are recognisably the same donor.
     """
 
     donor: str

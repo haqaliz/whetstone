@@ -17,13 +17,13 @@ them. This module is where they come from.
   a dataset outage cannot break CI, and a refetch is a reviewable diff rather than a silent
   change to what the corpus is about.
 
-**Why Whetstone needs its own fetch rather than Belay's pool.** Belay's committed pool carries
-exactly six keys, and none of `patch`, `test_patch`, `FAIL_TO_PASS`, `PASS_TO_PASS` or
+**Why Whetstone needs its own fetch rather than the sibling project's pool.** That committed
+pool carries exactly six keys, and none of `patch`, `test_patch`, `FAIL_TO_PASS`, `PASS_TO_PASS` or
 `environment_setup_commit`. Those five are the difference between describing an instance and
 being able to ground a reward on it: without `test_patch` a task has no held tests, without
 `FAIL_TO_PASS` it has nothing that must go green, and without `patch` there is no reference patch
-to prove it live with. Belay's pool contributes provenance and base commits; the grounding has to
-come from here.
+to prove it live with. The sibling project's pool contributes provenance and base commits; the
+grounding has to come from here.
 
 **The dataset server truncates large cells, and that is the failure this module exists to catch
 early.** `/rows` returns `truncated_cells` beside each record, and a truncated `test_patch` is

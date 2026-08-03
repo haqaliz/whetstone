@@ -5,10 +5,26 @@ from this repository**, and this file exists so that absence reads as a design d
 than as a gap or a cherry-pick. If you came here wondering where the other tasks are, this is
 the answer.
 
-**Both sources are populated.** Source B carries **66 tasks** — 45 mined from `contig`, 21 from
-`belay` — every one of them *proven live* before it was kept. None of those 66 files is in this
+**Both sources are populated.** Source B carries **66 tasks** — 45 mined from `donor A`, 21 from
+`donor B` — every one of them *proven live* before it was kept. None of those 66 files is in this
 repository and none ever will be; what is committed is the evidence about them, which is the
 subject of most of this document.
+
+**Donors are named by pseudonym, and the pseudonyms are stable.** `donor A`, `donor B` and
+`donor C` are the author's own private repositories. Their real names are theirs rather than this
+project's to publish, and an outside reader re-deriving a corpus supplies their own donor anyway,
+so the name buys nothing and discloses something. The labels are stable across every committed
+file — the recipes, this document, and the roadmap — so two statements about `donor A` are
+statements about the same repository. **`donor B` is also the sibling verification project this
+repository's verifier design draws on** (`docs/ROADMAP.md` § 7); that overlap is disclosed rather
+than hidden, because it makes source B a closer loop than *"point it at your tasks"* implies and
+a reader weighing the corpus needs it. `whetstone` below is this repository, named because it is
+public already.
+
+One residual is stated rather than left to be discovered: **task ids still carry the donor's own
+directory name** (`<donor>-<sha>`), so `tasks/local-ledger.json` and `reports/baseline/` name the
+donors in a form the pseudonyms do not cover. Closing that means re-minting the corpus, which
+would invalidate all 66 recorded manifest hashes; it is deliberately not done here.
 
 Source A carries one. **Of SWE-bench-Lite's 300 instances, exactly one is eligible** —
 `pallets__flask-4045` — and `ineligible.json` records all 299 refusals with the gate that made
@@ -166,9 +182,9 @@ plausible. Each mint appends to `local-ledger.json` and writes the donor's `reci
 
 | Donor | Minted | Note |
 |---|---:|---|
-| `contig` | 45 | reached its `--limit` with candidates left over |
-| `belay` | 21 | exhausted its candidates below a `--limit` of 25 |
-| `rereflect` | — | **refused: no `uv.lock`.** Its pins would have been chosen by the date the mint ran, which is the exact corruption `environment` exists to close |
+| `donor A` | 45 | reached its `--limit` with candidates left over |
+| `donor B` | 21 | exhausted its candidates below a `--limit` of 25 |
+| `donor C` | — | **refused: no `uv.lock`.** Its pins would have been chosen by the date the mint ran, which is the exact corruption `environment` exists to close |
 | `whetstone` | 0 of 2 | this repository's own test-first workflow lands the test and the fix in **one** commit, so the held test does not collect at the parent |
 
 The two refusals are recorded here rather than dropped, because they are the more transferable

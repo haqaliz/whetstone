@@ -17,7 +17,7 @@ non-test `.py`. A commit that merely *adds* a test file is excluded — that tes
 `P`, and `strict.py:151-160` answers UNVERIFIED for a task whose held paths are absent from the
 checkout. Widening that guard to admit added tests is a change on the reward path, which is
 deliberately out of scope for this slice (PRD D2). The measured cost is real and is recorded
-rather than hidden: ~35% of belay's candidates and ~50% of rereflect's.
+rather than hidden: ~35% of the sibling project's candidates and ~50% of donor C's.
 
 Merges are excluded because a merge has two parents and `base_commit` is one commit; the root
 commit is excluded because it has none.
@@ -71,7 +71,7 @@ class Candidate:
     that can never pass, because the restore overwrites the fix. `held.py` refuses exactly that.
 
     `other_paths` — the non-`.py` half — is carried rather than dropped because it is the
-    measured shape of the cheat-10 residual: ~22% of contig's mintable commits (49/224) also
+    measured shape of the cheat-10 residual: ~22% of donor A's mintable commits (49/224) also
     touch a data file that no `conftest` rule and no import walk would ever see.
     """
 

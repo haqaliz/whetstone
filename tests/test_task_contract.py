@@ -495,8 +495,8 @@ def test_no_task_is_ever_sourced_from_policy_output(tmp_path: Path) -> None:
         """A provenance surface is a callable that RETURNS a Task."""
         return "Task" in str(inspect.signature(obj).return_annotation)
 
-    # Anti-vacuity for the selector itself: Belay's version of this census asserts only that
-    # it saw callables, so a predicate that never matched would leave the whole test green
+    # Anti-vacuity for the selector itself: the sibling project's version of this census asserts
+    # only that it saw callables, so a predicate that never matched would leave the whole test green
     # while checking nothing. This proves the selector really does select.
     def _synthetic_loader(patch: str) -> Task:  # pragma: no cover - never called
         raise NotImplementedError

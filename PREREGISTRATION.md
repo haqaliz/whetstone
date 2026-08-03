@@ -26,7 +26,7 @@ evidence, and § 9 says how to check it.
 **It is not an independence control.** Whetstone is a solo project. The same person writes these
 criteria, builds the verifier, runs the loop, and publishes the result. Nothing here makes the
 evaluation independent, and nothing in this document should be read as claiming that it does. This
-is stated because the sibling project `belay` states it about its own gate, and the honest form of
+is stated because the sibling project states it about its own gate, and the honest form of
 that limitation is to name it rather than let a reader assume otherwise.
 
 **It is not a plan.** `docs/ROADMAP.md` is the plan. This file constrains only what may be claimed
@@ -44,7 +44,7 @@ Every claim in this section is checkable in the tree this file was committed to.
 - **The reward exists and is execution-grounded**: `src/whetstone/verify/` holds the STRICT
   verifier (the reward) and the WEAK verifier (measurement only), with an AST guard that fails the
   build if any inference library is reachable from the reward path.
-- **The corpus exists.** Source B: 66 tasks, 45 mined from `contig` and 21 from `belay`, each
+- **The corpus exists.** Source B: 66 tasks, 45 mined from `donor A` and 21 from `donor B`, each
   proven live before it was kept. Source A: 1 eligible instance of 300 from SWE-bench-Lite, with
   all 299 refusals ledgered (`tasks/README.md`).
 - **This document contains no figure about a model**, by rule and by test. See § 4.
@@ -77,7 +77,7 @@ document describes a model**, because no measurement has been taken.
 **Why a count and not a rate.** The corpus is small. A rate computed over a small denominator
 moves by large-looking amounts when a single task flips, which reads as a measurement and is
 mostly noise. Reporting the count with its denominator gives a reader the same information without
-the false precision. This follows `belay`'s decision to report its violation figure rather than
+the false precision. This follows the sibling project's decision to report its violation figure rather than
 threshold it, on the stated ground that inventing a cutoff would manufacture precision the
 denominator does not support.
 
@@ -194,10 +194,10 @@ as something that was hidden.
 
 **6.1 Source B is self-selected, and its mitigation did not land.** The private headline is
 measured on **the author's own repos**, largely written by Claude Code under strict TDD — and
-`belay` and `contig` are themselves *about* verification and sandboxing, a closer loop than *"point
-it at your tasks"* implies. Selecting commits by red-to-green also over-represents the
+`donor A` and `donor B` are themselves *about* verification and sandboxing, a closer loop than
+*"point it at your tasks"* implies. Selecting commits by red-to-green also over-represents the
 test-written-first shape, which is not what a real bug backlog looks like. The mitigation recorded
-in planning was to include a third, unrelated donor: **`rereflect` was refused** for having no
+in planning was to include a third, unrelated donor: **`donor C` was refused** for having no
 `uv.lock`, since its pins would have been chosen by the date the mint ran — the exact corruption
 the `environment` contract exists to close (`tasks/README.md:171`). So the mitigation is **not in
 force**, and the self-selection stands undiluted. None of this disqualifies source B: it is
@@ -298,8 +298,8 @@ if anything exists under `reports/` while this file does not. That proves the tw
 in the wrong order in a working tree — it does **not** prove temporal ordering, because a single
 commit adding both would satisfy it. The temporal claim is the one above, and only `git log`
 establishes it. This bound is written here because the sibling project made the inverse mistake:
-`belay` required its criteria be copied into the document that publishes the number before its
-gate ran, that did not happen, and it had to record the discrepancy afterwards rather than prevent
+it required its criteria be copied into the document that publishes the number before its gate
+ran, that did not happen, and it had to record the discrepancy afterwards rather than prevent
 it. The lesson taken is that a pre-registration belongs in the document that publishes the claim —
 which is why this file sits at the repository root and not under `docs/planning/`.
 
@@ -309,6 +309,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 |---|---|---|---|
 | 2026-08-01 | The generation contract is an unpinned input that moves the numbers (§ 10.1) | 2 — adds a disclosure | No |
 | 2026-08-01 | On one public instance, § 4's contamination signature is undetectable (§ 10.2) | 2 — adds a disclosure | No |
+| 2026-08-04 | Donor names replaced by stable pseudonyms throughout; the redaction disclosed (§ 10.3) | 2 — adds a disclosure | No |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. §§ 7.1, 7.2 and 7.3
@@ -375,3 +376,38 @@ present it as such. The commitment in § 4 is unchanged — both sources are sti
 together, and a disagreement is still reported as a finding rather than resolved by picking the
 flattering source. What is bounded is the diagnostic power of that comparison over source A, and
 it stays bounded by a denominator of one until the public corpus grows.
+
+### 10.3 Donor names are replaced by stable pseudonyms, and the redaction is disclosed — 2026-08-04
+
+**Type 2 (§ 8.2): a disclosure, added.** It closes no open item and sets no threshold.
+
+**What changed.** Source B's donors were named in this document — and across the repository — by
+their own repository names. They are the author's **private** repositories, this file is
+published, and their names are theirs rather than this project's to publish. Every mention is now
+a stable pseudonym: `donor A`, `donor B`, `donor C`. The sibling verification project whose
+verdict semantics, sandbox approach and inference guard this project ports is likewise referred
+to by description rather than by name. `tasks/README.md` carries the key.
+
+**What did not change, which is the part that matters here.** No claim, count, denominator,
+definition, commitment or limitation is altered by this amendment. Source B is still 66 tasks, 45
+from one donor and 21 from another; the third donor was still **refused** for having no `uv.lock`,
+so § 6.1's mitigation still did not land; the donors are still the author's own repositories and
+still *about* verification and sandboxing, which is the property § 6.1 exists to disclose and
+which survives the renaming intact. A reader can check this: the substance of every § 6 disclosure
+is unchanged, and only identifiers moved.
+
+**Why this is recorded rather than done quietly.** § 8.3 forbids narrowing, retracting or
+rewording § 1, § 4, or any disclosure in § 6, and § 8.4 forbids silent edits. This amendment
+touches the *text* of § 6.1, so it is logged rather than slipped in. The prohibition in § 8.3 is
+against weakening what the document commits to; replacing a private name with a stable label
+weakens nothing, and leaving the names in place would have meant publishing third-party
+information to satisfy a rule about not softening claims. Both readings are stated so a reader can
+judge the call rather than take it on trust.
+
+**A residual, stated rather than left to be found.** Mined task ids are formed as
+`<donor>-<sha>`, and that derivation predates this amendment. So the donors' own names still
+appear inside task ids in `tasks/local-ledger.json` and in `reports/baseline/`, and the pseudonyms
+above do not cover them. Closing it means re-minting the corpus, which would invalidate all 66
+recorded manifest hashes and re-run the liveness proof; it is deliberately not done here, and the
+redaction is therefore **partial by choice**. The miner no longer writes a donor path or name into
+any newly committed file (`whetstone mine --label`).

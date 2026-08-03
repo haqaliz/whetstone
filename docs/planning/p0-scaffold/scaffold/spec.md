@@ -60,7 +60,7 @@ Lifted verbatim from `prd.md` § Acceptance Criteria — not re-invented:
 
 P0 ships no reward, so there is no cheating *policy* to defend against. The transferred
 obligation is **anti-vacuity**, and AC-7 is the criterion that carries it: it must be watched
-failing before it is trusted. Per Belay's convention — *"a guard nobody has seen fail may be
+failing before it is trusted. Per the sibling project's convention — *"a guard nobody has seen fail may be
 passing vacuously"* — the implementing agent must, for AC-7, temporarily point the
 introspection at an empty parser, observe the test FAIL, and revert. That observation is
 recorded in the commit body.

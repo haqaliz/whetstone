@@ -31,30 +31,30 @@ reason. This file answers "does a guarded module import a model?"; that one answ
 everything either guarded or knowingly not?" — and a scoped guard needs both, because on its
 own it stays green while the tree grows out from under it.
 
-**Ported from ``belay/tests/test_verify_zero_llm.py`` with three fixes**, each of which is
+**Ported from ``<sibling>/tests/test_verify_zero_llm.py`` with three fixes**, each of which is
 a live bypass here rather than a theoretical one, and each proven by a planted-violation
 test below:
 
-1. Belay gates its first-party half on ``if root == "belay"``, hardcoded. Ported verbatim,
-   ``whetstone.judge`` sails straight through.
-2. Belay's client list has no ``mlx``, ``mlx_lm``, ``peft`` or ``accelerate`` — a hole
+1. The sibling project gates its first-party half on ``if root == "<its own package name>"``,
+   hardcoded. Ported verbatim, ``whetstone.judge`` sails straight through.
+2. The sibling project's client list has no ``mlx``, ``mlx_lm``, ``peft`` or ``accelerate`` — a hole
    shaped exactly like Whetstone's own stack.
-3. Belay's walk skips ``ast.ImportFrom`` nodes with ``node.level != 0``, so **relative
-   imports are invisible**. Belay escapes this because its detection keys on the dotted
-   ``belay.judge`` form; our reward path is one package whose modules import each other,
-   so ``from .judge import score`` would record nothing at all. Relative imports are
-   resolved to their absolute dotted path from the file's position under ``src/``.
+3. The sibling project's walk skips ``ast.ImportFrom`` nodes with ``node.level != 0``, so **relative
+   imports are invisible**. The sibling project escapes this because its detection keys on the
+   dotted ``<sibling>.judge`` form; our reward path is one package whose modules import each other,
+   so ``from .judge import score`` would record nothing at all. Relative imports are resolved to
+   their absolute dotted path from the file's position under ``src/``.
 
-**Two anti-vacuity controls, where Belay ships one.** Belay asserts the walk observes real
-imports (control A), but never that the first-party predicate actually *fires* — so fix 1
-could be dropped and Belay's own control would stay green. Control B asserts the predicate
-is live for *this* project's namespace.
+**Two anti-vacuity controls, where the sibling project ships one.** It asserts the walk observes
+real imports (control A), but never that the first-party predicate actually *fires* — so fix 1
+could be dropped and its own control would stay green. Control B asserts the predicate is live
+for *this* project's namespace.
 
 **The teeth are demonstrated here, not just claimed.** The planted-violation tests below
 build synthetic modules in a temp directory and require the guard to flag them; real source
-is never edited. Every one of them was watched failing against the verbatim Belay port
+is never edited. Every one of them was watched failing against the verbatim port
 before the three fixes landed: ``import openai`` and the function-local ``import torch``
-passed straight away (Belay got those right), while the ``mlx_lm`` and relative-import
+passed straight away (the sibling got those right), while the ``mlx_lm`` and relative-import
 plants and control B all failed, naming exactly the three traps above.
 """
 
@@ -114,7 +114,7 @@ GUARDED_ROOTS = (
 #: zero while the cost of a missed one is the entire thesis.
 _INFERENCE_CLIENTS = frozenset(
     {
-        # Inherited from Belay's list.
+        # Inherited from the sibling project's list.
         "openai",
         "anthropic",
         "cohere",
@@ -144,7 +144,7 @@ _INFERENCE_CLIENTS = frozenset(
         "dspy",
         "instructor",
         "outlines",
-        # Added for Whetstone (trap 2). Belay's list predates this project's runtime
+        # Added for Whetstone (trap 2). The sibling project's list predates this project's runtime
         # choice, so it bans everyone else's inference stack and none of ours: MLX is the
         # locked local runtime and `mlx-lm` is an installable extra, while peft/accelerate/
         # trl are the LoRA path P2 will use. The inherited list had a hole shaped like us.
@@ -167,7 +167,7 @@ _INFERENCE_FIRST_PARTY = frozenset(
     {"llm", "judge", "model", "models", "inference", "completion", "prompt", "prompts"}
 )
 
-#: The distribution's import package. Trap 1: Belay hardcodes its own name here, and a
+#: The distribution's import package. Trap 1: the sibling project hardcodes its own name here, and a
 #: verbatim port would leave the first-party half of the guard permanently dead for us.
 _FIRST_PARTY_ROOT = "whetstone"
 
@@ -258,9 +258,9 @@ def _imported_names(path: Path, src_root: Path) -> list[tuple[str, int]]:
 def _absolute_module(node: ast.ImportFrom, package: str) -> str:
     """The absolute dotted module an ``ImportFrom`` names, relative or not (trap 3).
 
-    Belay writes ``if node.level == 0`` here and drops everything else on the floor, which
-    makes every relative import invisible to the walk. Resolving instead of skipping is
-    what closes that bypass.
+    The sibling project writes ``if node.level == 0`` here and drops everything else on the
+    floor, which makes every relative import invisible to the walk. Resolving instead of
+    skipping is what closes that bypass.
     """
     if node.level == 0:
         return node.module or ""
@@ -367,14 +367,14 @@ def test_the_guard_sees_the_imports_the_reward_path_actually_makes() -> None:
     assert "importlib.metadata.PackageNotFoundError" in seen, seen
 
 
-def test_the_first_party_predicate_is_live_for_whetstone_not_belay() -> None:
+def test_the_first_party_predicate_is_live_for_whetstone_not_the_sibling() -> None:
     """Anti-vacuity control B: the ban on first-party inference modules actually fires.
 
-    This is the control Belay does not ship, and the reason trap 1 is dangerous. Belay's
-    control asserts the walk sees *imports*; it never asserts that
-    ``_is_inference_import`` returns True for anything. Port the hardcoded ``"belay"``
+    This is the control the sibling project does not ship, and the reason trap 1 is dangerous.
+    Its control asserts the walk sees *imports*; it never asserts that
+    ``_is_inference_import`` returns True for anything. Port the hardcoded package name
     verbatim and the first-party half of this guard is dead for every Whetstone module,
-    with Belay's own control still green and this file still passing.
+    with the sibling's own control still green and this file still passing.
     """
     assert _is_inference_import("whetstone.judge") is True
     assert _is_inference_import("whetstone.verify.llm") is True
@@ -384,7 +384,7 @@ def test_the_first_party_predicate_is_live_for_whetstone_not_belay() -> None:
 
 
 def test_a_planted_hosted_model_sdk_is_flagged(plant: Callable[[str], list[str]]) -> None:
-    """The base case Belay already got right, re-proven here rather than assumed."""
+    """The base case the sibling project already got right, re-proven here rather than assumed."""
     offenders = plant("import openai\n")
     assert offenders == ["whetstone/verify/planted.py:1 imports 'openai'"], offenders
 
@@ -393,8 +393,8 @@ def test_a_planted_mlx_import_is_flagged(plant: Callable[[str], list[str]]) -> N
     """Trap 2: the inherited client list had a hole shaped like Whetstone's own runtime.
 
     MLX is the locked local runtime and ``mlx-lm`` an installable extra, so of every name
-    in the list these are the ones most likely to be reached for by accident. Belay's list
-    contains none of them; ported verbatim, this test fails.
+    in the list these are the ones most likely to be reached for by accident. The sibling
+    project's list contains none of them; ported verbatim, this test fails.
     """
     assert plant("import mlx_lm\n")
     assert plant("import mlx.core as mx\n")
@@ -406,13 +406,14 @@ def test_a_planted_mlx_import_is_flagged(plant: Callable[[str], list[str]]) -> N
 def test_a_planted_relative_import_of_a_judge_module_is_flagged(
     plant: Callable[[str], list[str]],
 ) -> None:
-    """Trap 3 — the bypass Belay would miss, and the one that matters most here.
+    """Trap 3 — the bypass the sibling project would miss, and the one that matters most here.
 
-    Belay's walk skips every ``ImportFrom`` with ``node.level != 0``, so a relative import
-    records nothing at all. Belay survives that because its first-party detection keys on
-    the dotted ``belay.judge`` form written out in full. Whetstone's reward path is a
-    single package whose modules import one another, so ``from .judge import score`` is
-    the *natural* way to write the violation and it would be invisible.
+    The sibling project's walk skips every ``ImportFrom`` with ``node.level != 0``, so a
+    relative import records nothing at all. It survives that because its first-party
+    detection keys on the dotted ``<sibling>.judge`` form written out in full. Whetstone's
+    reward path is a single package whose modules import one another, so
+    ``from .judge import score`` is the *natural* way to write the violation and it would be
+    invisible.
     """
     offenders = plant("from .judge import score\n")
 
@@ -438,7 +439,7 @@ def test_a_planted_relative_import_of_a_judge_module_is_flagged(
 
 
 def test_a_planted_function_local_import_is_flagged(plant: Callable[[str], list[str]]) -> None:
-    """Indenting is not a bypass: ``ast.walk`` descends, which Belay got right.
+    """Indenting is not a bypass: ``ast.walk`` descends, which the sibling project got right.
 
     A guard that read only module-level nodes would be defeated by moving the import
     inside the function that uses it — which is where a smuggled one would naturally go.

@@ -33,8 +33,8 @@ freeze it). It is a bound on what the number means, not a defect to be fixed lat
 
 **The character budget was raised after a run had been observed, and that has to be said plainly.**
 `ORACLE_BUDGET_CHARS` shipped at 40,000 — chosen on paper as "about a third of a 32k window" — and
-the first scored bake-off then skipped **20 of 63** private tasks as over-budget: `src/contig/
-cli.py`, `src/belay/cli.py`, `CHANGELOG.md` and their neighbours are simply larger than that. The
+the first scored bake-off then skipped **20 of 63** private tasks as over-budget: `src/<pkg>/
+cli.py`, `src/<pkg>/cli.py`, `CHANGELOG.md` and their neighbours are simply larger than that. The
 limit was excluding a third of the corpus from being asked a question at all. It is now 80,000,
 with the arithmetic written out at the constant.
 

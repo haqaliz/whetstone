@@ -19,12 +19,12 @@ is refused for a different reason: it reports what pytest *would* run, and a tas
 has to be what pytest *did* run.
 
 **D-A: each run covers only the held test files, never the donor's whole suite.** Two full-suite
-runs per candidate across 60 to 80 tasks is the difference between minutes and many hours (belay
-alone reports 832 tests; contig has 224 mintable candidates). The cost is stated rather than
-hidden: `pass_to_pass` means "the other tests in these same files", so a regression elsewhere in
-the donor's suite is not something the resulting task would catch. Every minted task records
-`pass_to_pass_scope: "held-files"` in its provenance so no future reader mistakes the corpus for
-something broader. It does not weaken the reward — STRICT still asserts the executed set exactly
+runs per candidate across 60 to 80 tasks is the difference between minutes and many hours (the
+sibling project alone reports 832 tests; donor A has 224 mintable candidates). The cost is stated
+rather than hidden: `pass_to_pass` means "the other tests in these same files", so a regression
+elsewhere in the donor's suite is not something the resulting task would catch. Every minted task
+records `pass_to_pass_scope: "held-files"` in its provenance so no future reader mistakes the corpus
+for something broader. It does not weaken the reward — STRICT still asserts the executed set exactly
 — it bounds what the task is *about*.
 
 **A flaky id is discarded, not recorded.** An id whose outcome is not reproducible makes a task

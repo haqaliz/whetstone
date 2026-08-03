@@ -54,13 +54,13 @@ served by this unit and will not observe it. Stating that plainly is the honest 
 
 | # | Decision | Choice |
 |---|---|---|
-| 1 | **Distribution name** | **`whetstonehq`**. `whetstone` is taken on PyPI (verified: HTTP 200 on `pypi.org/pypi/whetstone/json`, 2026-07-26). Import package and CLI stay **`whetstone`** — exactly Belay's `belay-harness` pattern, documented in a `pyproject.toml` comment so the next reader doesn't rediscover it. `whetstone-ai` and `whetstone-hq` were also free and were not chosen. |
+| 1 | **Distribution name** | **`whetstonehq`**. `whetstone` is taken on PyPI (verified: HTTP 200 on `pypi.org/pypi/whetstone/json`, 2026-07-26). Import package and CLI stay **`whetstone`** — exactly the sibling project's own distribution-name pattern, documented in a `pyproject.toml` comment so the next reader doesn't rediscover it. `whetstone-ai` and `whetstone-hq` were also free and were not chosen. |
 | 2 | **CI runner + MLX** | **GitHub Actions, `macos-latest` only, no matrix.** `mlx-lm` is declared in an **optional dependency group**, with one CI step that installs that group purely to prove it resolves on the hosted runner. The test suite does **not** depend on it. |
 | 3 | **Lint / type strictness** | **Strict from day one.** `mypy strict = true` over `src/`; ruff with an explicit rule set (`E`, `F`, `I`, `UP`, `B`, `SIM`) and `line-length = 100`. Chosen because there is zero existing code to retrofit — this is the cheapest moment it will ever be. |
-| 4 | **Python** | `requires-python = ">=3.10"`, `.python-version` pinned to `3.12`. **Grounded, not copied:** `mlx` core declares `requires-python = ">=3.10"` (PyPI, verified 2026-07-27). Belay's independent choice matches. |
+| 4 | **Python** | `requires-python = ">=3.10"`, `.python-version` pinned to `3.12`. **Grounded, not copied:** `mlx` core declares `requires-python = ">=3.10"` (PyPI, verified 2026-07-27). The sibling project's independent choice matches. |
 | 5 | **CLI surface** | `--help` exposes **only what exists**. No stubs reserved for `verify`, `run`, `gate`, `check-leakage`, or `report`. A `--help` advertising commands that do nothing is a claim the code can't back — the same failure this project exists to refuse. Resolves `understanding.md` § 5F by declining the premise. |
 | 8 | **What the CLI actually does in P0** | Exactly two behaviours, no subcommands: **`whetstone --version`** prints the installed distribution version resolved at runtime via `importlib.metadata`, and **bare `whetstone`** prints usage and exits **non-zero**. Added at the review gate to close critique gap 1 — without it, P0 has no behaviour worth a non-trivial test, and `ROADMAP.md:134` would be satisfied only in letter. The version path is the substantive one: it crosses the distribution↔import boundary (`whetstonehq` → `whetstone`) and fails loudly if the two disagree. |
-| 6 | **License** | **Apache-2.0**, confirmed. `CLAUDE.md:93` proposed it under a heading saying "nothing here is locked"; this decision locks it. PEP 639 form (`license = "Apache-2.0"` + `license-files`), no per-file headers. Belay matches. |
+| 6 | **License** | **Apache-2.0**, confirmed. `CLAUDE.md:93` proposed it under a heading saying "nothing here is locked"; this decision locks it. PEP 639 form (`license = "Apache-2.0"` + `license-files`), no per-file headers. The sibling project matches. |
 | 7 | **In-scope beyond the exit criteria** | `CHANGELOG.md`, `RELEASING.md`, `CONTRIBUTING.md`, plus two documentation corrections (§ Requirements, must-have 8–9). |
 
 ## Requirements
@@ -72,7 +72,7 @@ served by this unit and will not observe it. Stating that plainly is the honest 
    "whetstone.cli:main"`, `[tool.hatch.build.targets.wheel] packages = ["src/whetstone"]`,
    PEP 735 `[dependency-groups]` for dev deps, and an optional group carrying `mlx-lm`.
 2. **`src/whetstone/`** with `__init__.py` and `cli.py`. `__version__` derived from
-   `importlib.metadata` — **not** a hardcoded literal, explicitly avoiding Belay's
+   `importlib.metadata` — **not** a hardcoded literal, explicitly avoiding the sibling project's
    `0.0.0`-vs-`0.7.0` drift.
 3. **`whetstone --help` exits 0**, built on stdlib `argparse`, `main(argv=None) -> int` so
    tests can call it directly and assert on the exit code.
@@ -83,14 +83,14 @@ served by this unit and will not observe it. Stating that plainly is the honest 
 7. **`.github/workflows/ci.yml`** — `macos-latest`, on push/PR to `master`, running
    `uv sync` → `ruff check .` → `mypy src/` → `pytest`, plus the mlx-resolution step.
    Concurrency group with `cancel-in-progress`.
-8. **Correct `ROADMAP.md:290`** — it cites Belay's `tests/test_import_guard.py` as *"the AST
+8. **Correct `ROADMAP.md:290`** — it cites the sibling project's `tests/test_import_guard.py` as *"the AST
    guard proving no model sits on the reward path."* That file bans `mcp`, non-stdlib
    imports, and `json` in `proxy.py`. The actual inference guard is
    `tests/test_verify_zero_llm.py`. Uncorrected, **P1 ports the wrong file** — and P1 is the
    moat.
 9. **Update `CLAUDE.md`** — three stale claims: the "nothing is built yet / next step is the
    roadmap" status block (`:5-7`); the runtime named as "Ollama / vLLM / transformers"
-   (`:88`) when MLX is locked; and the "reuse Belay's verifier/replay" line (`:79`) the
+   (`:88`) when MLX is locked; and the "reuse the sibling project's verifier/replay" line (`:79`) the
    roadmap explicitly declines (`ROADMAP.md:292-305`). `CLAUDE.md:7` already obliges this.
 
 ### Should-have
@@ -104,8 +104,8 @@ served by this unit and will not observe it. Stating that plainly is the honest 
 
 ### Nice-to-have
 
-14. Module docstrings in Belay's essay style — each stating what failure the module prevents.
-15. A `release.yml` mirroring Belay's tag-vs-version check and PyPI trusted publishing.
+14. Module docstrings in the sibling project's essay style — each stating what failure the module prevents.
+15. A `release.yml` mirroring the sibling project's tag-vs-version check and PyPI trusted publishing.
     **Deferred by default** — nothing ships from P0, and an untested release workflow is a
     liability, not an asset.
 
@@ -129,7 +129,7 @@ each has a cheap structural answer:
 | CI green without running tests | "CI workflow green" | AC-7: CI must fail if the suite is empty — assert a non-zero collected count, not just exit 0 |
 | `uv sync` green on a runner where mlx is absent | "CI green" | AC-8: this is real. `mlx-lm` declares `mlx; platform_system == "Darwin"`, so on Linux it installs **without** the engine and reports success. The mlx step must assert `import mlx` works, not that install exited 0 |
 
-Belay's convention is the precedent: *"a guard nobody has seen fail may be passing
+The sibling project's convention is the precedent: *"a guard nobody has seen fail may be passing
 vacuously."* Every guard above should be watched failing before it is trusted.
 
 ## Acceptance Criteria (test-first — written before the code)
@@ -180,7 +180,7 @@ discovering it in P2 would invalidate a toolchain three phases of work were buil
 
 ### B. Dependency posture
 
-Belay's `dependencies = []` is load-bearing for Belay and **cannot survive Whetstone**, which
+The sibling project's `dependencies = []` is load-bearing for the sibling project and **cannot survive Whetstone**, which
 needs `mlx-lm` for rollouts and LoRA. The transferable idea is the *scoped* version: keep the
 reward path dependency-free and enforce it narrowly in P1. P0's obligation is purely
 negative — **put no inference library on the future reward path**, so P1's guard isn't

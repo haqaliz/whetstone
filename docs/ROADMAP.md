@@ -98,7 +98,7 @@ environment. They are defence in depth — the assertion is the defence.
 ### The provenance boundary
 
 The tests are the **operator's** artifact; the patch is the **policy's** evidence, and they
-never mix. This is Belay's `verify/invariants.py` discipline applied to code: policy is
+never mix. This is the sibling project's `verify/invariants.py` discipline applied to code: policy is
 loaded only from the operator-held blob, restored *after* the patch lands, so nothing the
 policy wrote can influence what grades it. Without this boundary the policy authors its own
 reward.
@@ -176,7 +176,7 @@ directory (`src/whetstone/tasks/held.py`), read at the **parent** commit — the
 out — and a held set that omits one is refused by name. That closes the specific shape the
 fixture uses, and it is structural: a path, not an import walk, so there is nothing to be talked
 out of. What it does **not** do is make the manifest provably complete. Measured while building
-it: **~22% of contig's mintable commits (49 of 224) also touch a non-`.py` file** — a JSON
+it: **~22% of donor A's mintable commits (49 of 224) also touch a non-`.py` file** — a JSON
 fixture, a golden output, a CSV — which no conftest rule and no import walk would ever see, and
 which a correct fix legitimately changes. So the cheat survives in exactly its general form, the
 corpus keeps it as accepted by both verifiers, and the status cell above must not be downgraded
@@ -233,12 +233,12 @@ produced a false **PASS**: a task that passed **with no patch applied at all**. 
 submitted nothing would have been paid, and every number computed from that corpus would have
 been a number about a directory nobody was grading.
 
-**The evidence, which is an observation and not a worry.** `contig` is a `src`-layout project:
-its tests say `import contig`, so the name is answered by whatever the interpreter's `sys.path`
+**The evidence, which is an observation and not a worry.** `donor A` is a `src`-layout project:
+its tests say `import <pkg>`, so the name is answered by whatever the interpreter's `sys.path`
 offers. The miner provisioned its venv with `uv sync --frozen --project <checkout>`, which
 installs the project **editable** — rooted at the *provisioning* checkout, a different directory
 from the one the reward applies patches to. `uv pip freeze` reported `-e file:///…/donor`, and
-`import contig.self_heal` resolved to that tree's `src/`, not to the run's. The checkout under
+`import <pkg>.self_heal` resolved to that tree's `src/`, not to the run's. The checkout under
 verification was therefore inert: nothing in it was ever imported, and the verdict came from a
 directory outside the run. Two already-minted tasks were deleted rather than kept — they are
 survivors of the defect, not a sample of a corpus.
@@ -298,7 +298,7 @@ a test runner exists.
 **This is the moat, and it is the longest phase deliberately.** Everything downstream is
 meaningless if the reward can be gamed.
 
-Includes: the task contract; the strict and weak verifiers; the sandbox; Belay's verdict
+Includes: the task contract; the strict and weak verifiers; the sandbox; the sibling project's verdict
 semantics ported (§ 7); the adversarial corpus; task ingestion for both sources; and the
 base-model bake-off — run **against the working verifier**, not on paper.
 
@@ -317,30 +317,30 @@ base-model bake-off — run **against the working verifier**, not on paper.
   `src/whetstone/tasks/`: ingestion authors `test_blobs`, which is the boundary the reward path
   enforces, so a model choosing what goes in it would be deciding one step removed what counts
   as cheating. Widening a scoped guard is where it can go quietly dead, so each root is asserted
-  to contribute modules and the control names an import only the second root makes. **Three porting traps, verified against Belay's source and each
+  to contribute modules and the control names an import only the second root makes. **Three porting traps, verified against the sibling project's source and each
   fatal to the guard if missed** (the third added 2026-07-28, from the P1 dig):
-  - Belay's `_is_inference_import` gates its first-party half on `if root == "belay"`
-    (`tests/test_verify_zero_llm.py:114-121`). Ported verbatim, that string stays `"belay"`,
+  - The sibling project's `_is_inference_import` gates its first-party half on `if root == "<the sibling package name>"`
+    (`tests/test_verify_zero_llm.py:114-121`). Ported verbatim, that string stays `"<the sibling package name>"`,
     so `whetstone.judge` and `whetstone.model` pass straight through and the ban silently
-    narrows to third-party roots only. **Belay's own anti-vacuity control does not catch
+    narrows to third-party roots only. **The sibling project's own anti-vacuity control does not catch
     this** — it asserts the walk sees *imports*, not that the first-party predicate is live.
     So the port needs a second control asserting the predicate actually fires on a synthetic
     `whetstone.judge` import.
-  - Belay's `_INFERENCE_CLIENTS` list contains no `mlx`, `mlx_lm`, `peft`, or `accelerate` —
+  - The sibling project's `_INFERENCE_CLIENTS` list contains no `mlx`, `mlx_lm`, `peft`, or `accelerate` —
     it had no reason to. Those are exactly the libraries Whetstone installs, so the inherited
     list has a hole shaped like our own stack. Extend it explicitly; do not port it as-is.
-  - **Relative imports are invisible to the walk.** Belay's `ImportFrom` branch is guarded by
+  - **Relative imports are invisible to the walk.** the sibling project's `ImportFrom` branch is guarded by
     `if node.level == 0` (`tests/test_verify_zero_llm.py:105-111`), so any `from .x import y`
-    records nothing at all. Belay gets away with it because its first-party detection keys on
-    the dotted `belay.judge` form, which only an absolute import produces. **Our reward path is
+    records nothing at all. The sibling project gets away with it because its first-party detection keys on
+    the dotted `<sibling>.judge` form, which only an absolute import produces. **Our reward path is
     a single package whose modules import each other relatively**, so ported as-is the guard
     would watch `whetstone/verify/` and never see `from .judge import score` — the exact import
     it exists to catch, written the exact way our own code writes imports. The port must resolve
     a relative import to its absolute dotted path from the file's position in the package.
 - `uv run whetstone verify --task <fixture> --patch <fixture>` emits a verdict
 - `tasks/` holds instances from both sources with committed provenance — **MET, and the shape of
-  it matters more than the tick.** Source B: **66 tasks**, 45 from `contig` and 21 from
-  `belay`, each *proven live* rather than asserted — FAIL with no patch, PASS under its own
+  it matters more than the tick.** Source B: **66 tasks**, 45 from `donor A` and 21 from
+  The sibling project, each *proven live* rather than asserted — FAIL with no patch, PASS under its own
   reference patch, executed node-id set equal to declared, zero skips. The manifests are the
   user's code and are never committed; the committed provenance is `tasks/recipes/*.json` (the
   procedure) and `tasks/local-ledger.json` (per-task hash and verdicts, no file contents).
@@ -375,9 +375,9 @@ bases and not about a verifier that graded nothing. Prompts used the oracle retr
 each figure bounds the unassisted one from above; every figure lives in `reports/baseline/` alone.
 
 **What ingestion cost, recorded because the refusals are the finding.** Two of four candidate
-donors yielded nothing: `rereflect` was **refused outright** for having no `uv.lock`, so its pins
+donors yielded nothing: `donor C` was **refused outright** for having no `uv.lock`, so its pins
 would have been chosen by the date the mint ran, and this repository yielded **0 of 2**, its own
-test-first workflow landing the test and the fix in one commit. `contig` capped at 45 and `belay`
+test-first workflow landing the test and the fix in one commit. `donor A` capped at 45 and the sibling project
 at 21 under a cap of 25; restricting to commits that *modify an existing* test (PRD D2) keeps the
 miner off the fail-closed guard at `strict.py:131-140`, which is its purpose rather than its cost.
 
@@ -424,7 +424,7 @@ exactly zero would **never fire**. The resolution — and the temptation it refu
 
 1. **Deterministic retry.** Each unverified task retries a fixed *R* times with identical
    seed and inputs. A task that verifies on retry is verified.
-2. **Coverage is reported, never silently excluded.** Following Belay's `corpus/metrics.py`,
+2. **Coverage is reported, never silently excluded.** Following the sibling project's `corpus/metrics.py`,
    unverified tasks lower *coverage*; they never vanish from the denominator. Dropping them
    is the 100%-precision-by-construction lie.
 3. **The eval's own verdict.** If any task is still unverified after *R* retries, the whole
@@ -464,15 +464,15 @@ Run the loop against both sources, publish the harness and the result.
 working* and *the empirical claim being established* are two different milestones.
 
 > **Corrected 2026-07-29, while writing `PREREGISTRATION.md`.** This paragraph used to assert, in
-> the present tense, that Belay's `PHASE0_RESULTS.md` carried 20 `TO-BE-FILLED` markers — a
+> the present tense, that the sibling project's `PHASE0_RESULTS.md` carried 20 `TO-BE-FILLED` markers — a
 > document gating PROCEED vs PIVOT with its numbers unfilled. That was exact at
-> belay's `801b457` (2026-07-28) and false about ten hours later: `77adc8f` (2026-07-29) filled
+> The sibling project's `801b457` (2026-07-28) and false about ten hours later: `77adc8f` (2026-07-29) filled
 > the document and recorded a **PIVOT** — a negative result, published rather than buried, which
 > is the behaviour `CLAUDE.md` #5 asks for. Verified here by `grep -c TO-BE-FILLED`: **0**. A
 > claim about another project's honesty, inside our own section on publishing honestly, is the
 > worst sentence in this document to leave stale, so it is corrected rather than quietly dropped.
 >
-> **The transferable lesson survives, and it is sharper than the one we had.** Belay's own
+> **The transferable lesson survives, and it is sharper than the one we had.** the sibling project's own
 > § *Ordering: what actually happened* records that its gate criteria were fixed in a **planning
 > file** on 2026-07-21 and **was not copied into the document that publishes the number** before
 > the gate ran — *"That did not happen, and this document will not pretend otherwise."* So the
@@ -511,14 +511,14 @@ project whose entire premise is not fooling yourself. `PREREGISTRATION.md` is co
 
 ---
 
-## 7. What we take from Belay, and what we decline
+## 7. What we take from the sibling project, and what we decline
 
-Belay (`~/dev/at/belay`) is real and shipped — v0.7.0, 8 tags, and 832 tests passing
-(`uv run pytest -q` → `832 passed, 1 skipped, 1 deselected`). 13,068 lines in `src/belay`;
-46,202 across the repo; roughly 6,050 non-docstring statement lines in `src` — Belay's source
+The sibling project is real and shipped — v0.7.0, 8 tags, and 832 tests passing
+(`uv run pytest -q` → `832 passed, 1 skipped, 1 deselected`). 13,068 lines in the sibling project's `src/`;
+46,202 across the repo; roughly 6,050 non-docstring statement lines in `src` — the sibling project's source
 is over half docstring, so the bare figure means little without its scope.
 
-> Every claim in this section was re-verified against Belay's source on 2026-07-27, after an
+> Every claim in this section was re-verified against the sibling project's source on 2026-07-27, after an
 > earlier draft cited the wrong file for the inference guard. Each row below carries the
 > `file:line` that backs it. Do not extend this section from memory.
 
@@ -527,33 +527,33 @@ is over half docstring, so the bare figure means little without its scope.
 | Module | Why |
 |---|---|
 | `verify/verdict.py` | The honesty contract as the *shape of the reduction*: `UNVERIFIED` ranks **above** `PASS`, so worst-status-wins can never render an unverified result clean; an empty verdict set reduces to `UNVERIFIED`, not `PASS`. Verified — `verdict.py:67-73` `_RANK = {NOT_COVERED: -1, PASS: 0, WARN: 1, UNVERIFIED: 2, FAIL: 3}` with `:114` `max(scored, key=…)`; `:111-113` returns `UNVERIFIED` on an empty set. Note the **stronger** form we also inherit: a set that is empty only *after* filtering `NOT_COVERED` still reduces to `UNVERIFIED` (`:107-109`) |
-| `verify/invariants.py` | The provenance boundary — operator policy never sourced from the agent's own evidence. Verified — `invariants.py:9-16`, and the boundary is carried by the *signature*: `load_invariants(path: Path)` (`:69`) takes a filesystem path and never trace records. Belay pins this with `tests/test_invariants.py:55 test_no_invariant_is_ever_sourced_from_a_trace`; port that test, not just the module |
+| `verify/invariants.py` | The provenance boundary — operator policy never sourced from the agent's own evidence. Verified — `invariants.py:9-16`, and the boundary is carried by the *signature*: `load_invariants(path: Path)` (`:69`) takes a filesystem path and never trace records. The sibling project pins this with `tests/test_invariants.py:55 test_no_invariant_is_ever_sourced_from_a_trace`; port that test, not just the module |
 | `corpus/metrics.py` | Precision / recall / **coverage**, with `UNVERIFIED` excluded from the confusion matrix but **kept in coverage's denominator** — verified at `metrics.py:142-144` (`if verdict == "UNVERIFIED": unverified += 1; continue`) and `:157-166` (`adjudicable = decided + unverified`; `coverage = decided / adjudicable`). **Caveat for P3:** the module documents *two* honesty rules, and we inherit only this one. The other is the **label trap** (`metrics.py:15-29`) — cases lacking independent human ground truth are dropped from P/R *and* from coverage entirely, because counting every FAIL as a true positive makes precision 1.0 by construction. Our reward is an exit status with no human adjudication, so that rule has no analogue here. It is **declined as inapplicable, not overlooked** — recorded so a P3 implementer reading `metrics.py` knows which of the two paths to port |
-| `tests/test_verify_zero_llm.py` | The AST guard proving no model sits on the reward path. It bans inference clients (`openai`, `anthropic`, `torch`, `transformers`, `ollama`, `vllm`, `langchain`, …) *and* inference-shaped first-party module names (`llm`, `judge`, `model`, `inference`, `prompt`), and it is **scoped to named packages rather than the whole tree** — Belay's own non-shipped `eval/` tree legitimately imports `anthropic`/`openai`. The scoping matters more for us than for Belay: Whetstone will have `mlx-lm` genuinely installed, so an accidental inference import on the reward path is easy to make and invisible without a guard aimed at exactly that path. It also ships an anti-vacuity control asserting the AST walk really observes the imports the guarded layer makes |
-| `sandbox/seatbelt.py` | **The Seatbelt approach, not the module** — added 2026-07-28, after the P1 dig found this table listing no sandbox while § 2 requires one. Verified **separable from the declined replay substrate**: `seatbelt.py:44-56` imports only stdlib, one exception class (`snapshot.bth1.UnsupportedPlatform`) and an optional `TraceWriter` whose own docstring says *"Containment does not depend on it: the boundary is the kernel's"* (`:357-358`); nothing under `sandbox/` imports `belay.replay`, while `proxy.py:595-596` and `cli.py:84,141,190,260` import the sandbox. **Replay depends on the sandbox; the sandbox never depends on replay** — so declining replay costs us nothing here. What we take is the *shape*: `(allow default)`, then `(deny network*)` and `(deny file-write*)`, then one escaped `subpath` allow, executed as `sandbox-exec -f <profile> <command>`. What we do **not** take is the file: 417 lines carrying an `allow-ports` mode, a closed `NetworkPolicy` enum and a denial-from-stderr parser this reward never uses, all of which would have to satisfy `mypy --strict`. Ours is a six-line deny-all profile. **The `_quote` SBPL escaping (`seatbelt.py:87-95`) is taken as a requirement, not an option** — an unescaped `"` in a scope path is a policy injection into the boundary that enforces the policy, and our profile being smaller does not make that hole smaller |
+| `tests/test_verify_zero_llm.py` | The AST guard proving no model sits on the reward path. It bans inference clients (`openai`, `anthropic`, `torch`, `transformers`, `ollama`, `vllm`, `langchain`, …) *and* inference-shaped first-party module names (`llm`, `judge`, `model`, `inference`, `prompt`), and it is **scoped to named packages rather than the whole tree** — the sibling project's own non-shipped `eval/` tree legitimately imports `anthropic`/`openai`. The scoping matters more for us than for the sibling project: Whetstone will have `mlx-lm` genuinely installed, so an accidental inference import on the reward path is easy to make and invisible without a guard aimed at exactly that path. It also ships an anti-vacuity control asserting the AST walk really observes the imports the guarded layer makes |
+| `sandbox/seatbelt.py` | **The Seatbelt approach, not the module** — added 2026-07-28, after the P1 dig found this table listing no sandbox while § 2 requires one. Verified **separable from the declined replay substrate**: `seatbelt.py:44-56` imports only stdlib, one exception class (`snapshot.bth1.UnsupportedPlatform`) and an optional `TraceWriter` whose own docstring says *"Containment does not depend on it: the boundary is the kernel's"* (`:357-358`); nothing under `sandbox/` imports `the sibling project.replay`, while `proxy.py:595-596` and `cli.py:84,141,190,260` import the sandbox. **Replay depends on the sandbox; the sandbox never depends on replay** — so declining replay costs us nothing here. What we take is the *shape*: `(allow default)`, then `(deny network*)` and `(deny file-write*)`, then one escaped `subpath` allow, executed as `sandbox-exec -f <profile> <command>`. What we do **not** take is the file: 417 lines carrying an `allow-ports` mode, a closed `NetworkPolicy` enum and a denial-from-stderr parser this reward never uses, all of which would have to satisfy `mypy --strict`. Ours is a six-line deny-all profile. **The `_quote` SBPL escaping (`seatbelt.py:87-95`) is taken as a requirement, not an option** — an unescaped `"` in a scope path is a policy injection into the boundary that enforces the policy, and our profile being smaller does not make that hole smaller |
 | `eval/instances/` + `eval/scripts/` | SWE-bench-Lite eligibility filter and the pure, offline, seeded stratified draw |
 
-**Declined — the replay substrate.** `CLAUDE.md:79` says *"reuse Belay's verifier/replay
+**Declined — the replay substrate.** `CLAUDE.md:79` says *"reuse the sibling project's verifier/replay
 where it fits."* The verdict semantics fit; the replay engine does not, for four reasons:
 
-1. Belay answers a **harder question** — *did the agent's trace faithfully describe what it
+1. The sibling project answers a **harder question** — *did the agent's trace faithfully describe what it
    did?* — which needs snapshot + replay. Our v1 reward needs only *does the end state pass
    an operator-held check?*: a sandbox and an exit status.
 2. **Throughput** — **two** `clonefile(2)` tree restores plus a server spawn and teardown per
    replay (`snapshot/clone.py:280-298`, `replay/engine.py:531`, `replay/client.py:374,389`).
    Note the restore *is* the clone, not a separate step. **This is a structural inference,
-   not a measurement:** Belay contains no benchmark or timing figure anywhere, so this must
+   not a measurement:** the sibling project contains no benchmark or timing figure anywhere, so this must
    never later be quoted as a measured cost.
-3. **Parallel calls yield `UNVERIFIED`** — Belay deliberately refuses to serialize turns, so
+3. **Parallel calls yield `UNVERIFIED`** — the sibling project deliberately refuses to serialize turns, so
    batched rollouts produce no signal. Verified at `sandbox/gate.py:68-73, 258-266`: a
    `tools/call` arriving while another is in flight is refused as
    `UNRESTORABLE_CONCURRENT_TURN` and still forwards, reducing to `Status.UNVERIFIED`
-   (`verify/turn.py:129,183,199`). The refusal is deliberate — serializing would make Belay
+   (`verify/turn.py:129,183,199`). The refusal is deliberate — serializing would make the sibling project
    concurrency-altering.
-4. **No reward-facing API** — `src/belay/__init__.py` re-exports nothing (one line), and
-   "reward" and "training" appear nowhere under `src/`. Belay *is* importable submodule by
+4. **No reward-facing API** — `src/<pkg>/__init__.py` re-exports nothing (one line), and
+   "reward" and "training" appear nowhere under `src/`. The sibling project *is* importable submodule by
    submodule, which is exactly how the verdict semantics above get lifted; it also ships a
-   `belay` console script over a 79 KB `cli.py`. The absence is of a reward surface, not of
+   The sibling project console script over a 79 KB `cli.py`. The absence is of a reward surface, not of
    an API.
 
 Revisit only if a later family needs trace fidelity.
@@ -572,7 +572,7 @@ Revisit only if a later family needs trace fidelity.
 | No frontier base-model training | Nothing here pretrains anything; we LoRA an open base on verified wins |
 
 **One network exception, declared:** fetching public SWE-bench instances touches the
-network. Following Belay's precedent, the fetch is human-run, its output committed, and the
+network. Following the sibling project's precedent, the fetch is human-run, its output committed, and the
 draw itself pure and offline. Source B never touches the network at all.
 
 ---
@@ -609,7 +609,7 @@ The only external claims this project cites (`CLAUDE.md:215-224`):
 3. **Karpathy (Sequoia Ascent 2026)** — the valuable RL environments *"aren't in the
    frontier-lab mix."*
 
-Anything else is **unverified and must be labeled so**. Belay cites two further arXiv items
+Anything else is **unverified and must be labeled so**. The sibling project cites two further arXiv items
 (2603.03116; 2507.08794) which are **not** inherited here and would need verifying before
 use. `VISION.md` restates facts 1 and 2 without attribution and gives the venue as "Sequoia
 2026" — `CLAUDE.md`'s attributed form is the one to quote.

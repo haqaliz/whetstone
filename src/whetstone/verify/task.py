@@ -35,7 +35,7 @@ the version — and the verdict — back to whatever the index serves that morni
 
 **Nor may a verdict be decided by a checkout outside the run.** `environment.import_roots` is
 the second half of the same requirement, and it is an incident too. A `src`-layout project is
-imported by package name (`import contig`, never `import src.contig`), so the name resolves
+imported by package name (`import <pkg>`, never `import src.donor A`), so the name resolves
 through whatever the interpreter's `sys.path` offers — and a venv provisioned with an editable
 install rooted at some *other* checkout answers it first. Measured on the first real donor: a
 task **PASSED with no patch applied**, because the tree that satisfied its tests was the

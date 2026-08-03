@@ -8,13 +8,13 @@ table row, because the table's fourth column reports a **differential** (STRICT 
 WEAK accepts) and this has none. Both verifiers were wrong in the same direction, and the fix
 is in the task contract and the harness, not in a defence STRICT was missing.
 
-**What went wrong, precisely.** A `src`-layout donor is imported by package name — contig's
-tests say `import contig`, not `import src.contig` — so the name resolves through whatever the
+**What went wrong, precisely.** A `src`-layout donor is imported by package name — donor A's
+tests say `import <pkg>`, not `import src.donor A` — so the name resolves through whatever the
 interpreter's `sys.path` offers. `uv sync --frozen --project <checkout>` installed the project
 **editable**, rooted at the checkout the miner provisioned in, which was a *different directory*
 from the checkout the reward applies patches to. The run's own tree was therefore never
 imported. Observed with `uv pip freeze` reporting `-e file:///…/donor`, and with
-`import contig.self_heal` resolving to the provisioning checkout's `src/`.
+`import <pkg>.self_heal` resolving to the provisioning checkout's `src/`.
 
 **Why the corpus missed it.** Every fixture repository was flat — `calc.py` beside `tests/` —
 and none was installed into a venv. Under `python -m pytest` with the checkout as the working

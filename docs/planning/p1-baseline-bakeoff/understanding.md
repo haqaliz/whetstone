@@ -116,7 +116,7 @@ is the existing provisioner that takes a pin list and returns `Provisioned.inter
 by **import probe**, refusing install-exit-0 as evidence (`gates.py:617-668`).
 
 **The corpus.** 66 source-B manifests exist **only in the primary checkout** at
-`/Users/aliz/dev/at/whetstone/tasks/local/` (45 `contig`, 21 `belay`) — gitignored at
+`/Users/aliz/dev/at/whetstone/tasks/local/` (45 `donor A`, 21 the sibling project) — gitignored at
 `.gitignore:22`, so **absent from this worktree**. All 66 declare `python == "3.12.13"` and
 `import_roots == ["src"]`, carry 16–40 pins, and total **3003 declared node ids** (209
 `fail_to_pass`, 2794 `pass_to_pass`; median 23.5 per task, max 232). Source A is one committed,
