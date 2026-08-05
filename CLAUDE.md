@@ -102,6 +102,25 @@ This file orients a coding agent working in this repository. Read it first.
 > inputs, yet it demonstrably moves the numbers; a figure measured under a changed contract is
 > not comparable to this one.
 >
+> **The measurement is now instrumented, which is where P2 starts** (plan at
+> `docs/planning/p2-yield-probe/`). Reading the bake-off's own failure buckets showed that the
+> great majority of verdict-reaching rollouts never got a patch onto disk at all: `NOT_APPLIED`
+> means *"git refused it"* and nothing narrower, so a malformed diff, a mis-anchored one and a
+> budget-truncated one all wear the same tag. **The pivot signal's premise — that the bases cannot
+> fix these bugs — was therefore never actually tested**, because the measurement did not reach the
+> question. That makes this a measurement-validity fix rather than a third response to the signal,
+> and it is why `docs/ROADMAP.md` § 4 needs no amendment.
+>
+> `src/whetstone/bakeoff/transcript.py` keeps what a base actually wrote — as a `Generator`
+> wrapper, so the one-method model seam is not widened and `score()` is untouched — and
+> `attribution.py` replays those completions offline to say *which* zero each was, using
+> `patch.py`'s own `NoDiff` reasons as the partition rather than a taxonomy invented beside it.
+> The two causes the report cannot separate — git would not read the patch, versus git read it and
+> would not apply it — are now distinguished, read-only, with nothing under `verify/` modified.
+> Transcripts hold the user's own code back verbatim, so they are refused under `--out` and their
+> documented homes are asserted gitignored. **Nothing is published by this**: it produces local
+> evidence, and the run that uses it has not been made.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
