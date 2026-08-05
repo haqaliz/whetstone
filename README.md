@@ -202,8 +202,8 @@ test produced a **PASS with no patch applied at all**.
 
 | | |
 |---|---|
-| ✅ **Built** | The task contract, the STRICT and WEAK verifiers, the Seatbelt sandbox, the adversarial cheat corpus, the reward-path import guard, task ingestion for a private and a public source, the base-model bake-off, and the pre-registration |
-| 🔬 **In progress** | Instrumenting the measurement — keeping what a base actually wrote, and attributing *why* a rollout never produced an applicable patch |
+| ✅ **Built** | The task contract, the STRICT and WEAK verifiers, the Seatbelt sandbox, the adversarial cheat corpus, the reward-path import guard, task ingestion for a private and a public source, the base-model bake-off, the pre-registration, and the measurement instrumentation — a transcript of what a base actually wrote, and an offline attributor that says *why* a rollout never produced an applicable patch |
+| 🔬 **Open question** | **Why the bases produce patches the verifier cannot even read.** The bake-off has been re-run and reproduces exactly, so the harness is not in doubt; two proposed fixes (a different edit format, a larger token budget) were each tested and **falsified**. No fix is currently chosen, deliberately — see `docs/planning/p2-yield-probe/prd.md` |
 | ❌ **Not built** | The nightly loop, rejection sampling, LoRA training, the never-regress promotion gate, the signed morning report, and the dashboard |
 | 🚫 **Not released** | No tags, no PyPI package, no version. The distribution name will be `whetstonehq`; the import package and the CLI stay `whetstone` |
 
