@@ -137,6 +137,8 @@ git -C /Users/aliz/dev/at/whetstone branch -d feat/task-verifier/aliz
 | Branching from `origin/main` | Whetstone's base branch is `master` | `main` does not exist — always use `master` |
 | Worktree contents appear as untracked in primary | `.claude/worktrees/` not ignored | Already in `.gitignore`; verify with `git check-ignore -v '.claude/worktrees/'` (trailing slash) |
 | `uv run python -m whetstone.bakeoff.run` provisions nothing, every task UNVERIFIED | `--workspace` was a **relative** path | Pass absolute paths: the checkout is created under `--workspace` and a relative one does not resolve from the run's cwd |
+| A run reports far more UNVERIFIED than a previous one, uniformly across every candidate | `--workspace` was **reused** from an earlier run or probe; provisioning fails with `CheckoutError: destination path already exists` | Give each run an empty workspace. Uniform-across-candidates is the tell: a model difference is never identical on three bases |
+| `rm -rf` of a workspace appears to hang | It is gigabytes of venvs and checkouts | Expected — wait for it, and do not launch the next run until it finishes or the new run inherits the half-deleted tree |
 | `uv run` reinstalls everything on first call in a worktree | `.venv` not shared between worktrees | Expected — `uv sync` once per worktree |
 | `pytest` import errors in worktree | Forgot `uv sync` (no venv yet) | `uv sync` in the worktree root first |
 | Two worktrees training at once, numbers don't reproduce | GPU/runtime is machine-level, not per-worktree | Serialize the runs; never compare timings across contended runs |
