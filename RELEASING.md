@@ -1,10 +1,17 @@
 # Releasing Whetstone
 
-> **Nothing has been released yet.** There are no git tags, no PyPI project, and **no
-> `.github/workflows/release.yml` on this branch** — the release workflow described below is the
-> intended mechanism, not a running one. Until that file exists and has been watched succeeding,
-> pushing a tag does nothing but create a tag. This document exists so the first release is cut
-> deliberately rather than improvised; do not read any step below as already working.
+> **Nothing has been released yet.** There are no git tags and no PyPI project.
+>
+> **Updated 2026-08-05: `.github/workflows/release.yml` now exists**, so a tag would run
+> something. It has **never been exercised** — no tag has ever triggered it — so it is written
+> and reviewed rather than proven, and the first run is also its first test. Treat a step below
+> as working only once you have watched it work.
+>
+> **The blocking prerequisite is not code.** PyPI trusted publishing for `whetstonehq` is not
+> configured (§ *One-time setup per channel*), so a tag today would publish a GitHub Release and
+> fail the PyPI job. That is harmless by design — the channels are independent jobs — but it
+> would leave the project's *first* release half-shipped, which is a poor first thing to be
+> permanent. Configure the publisher, then tag.
 
 Releases are cut by **pushing a version tag** — tag-push is the entire release mechanism. There
 is no manual upload step and no `gh release create` by hand: when the workflow lands, the
@@ -54,12 +61,14 @@ Tags are `vX.Y.Z` (e.g. `v0.1.0`).
 
 ## Before the first release can happen
 
-These are prerequisites, none of them done yet:
+Prerequisites, with what is left:
 
-1. **Write `.github/workflows/release.yml`** — triggered on `v*` tags, validating the tag against
-   the `pyproject.toml` version, with least-privilege `permissions` and `id-token: write` on the
-   PyPI job only. The `whetstone-end-fast` skill already references this path, so its absence is
-   a gap rather than a decision.
+1. ~~**Write `.github/workflows/release.yml`**~~ — **done 2026-08-05.** Triggered on `v*` tags. A
+   `verify` job gates both publishing jobs, so a red tag publishes nothing anywhere; the tag and
+   `pyproject.toml` version must agree *before* anything is built, because that mismatch is the
+   one that cannot be recovered from once a PyPI version is consumed; `id-token: write` is on the
+   PyPI job alone; and every repository-derived value reaches the shell through `env:` rather than
+   `${{ }}` interpolation. **Still unexercised** — see the note at the top.
 2. **Register `whetstonehq` on PyPI** and configure trusted publishing (below).
 3. **Cut `v0.1.0` only after CI has been green on `master`** — a release from a red or unproven
    tree contradicts the project's own promotion rule.
