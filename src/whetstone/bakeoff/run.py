@@ -47,9 +47,10 @@ import re
 import resource
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 
 from whetstone import __version__
 from whetstone.bakeoff import patch as extraction
@@ -70,6 +71,7 @@ from whetstone.bakeoff.scoring import Interpreters, Rollout
 from whetstone.bakeoff.selection import Contender
 from whetstone.bakeoff.sources import oracle_sources
 from whetstone.bakeoff.sweep import Sweep, rankable, sweep
+from whetstone.bakeoff.transcript import RecordingGenerator, Transcript
 from whetstone.bakeoff.weights import Weights, load_weights
 from whetstone.tasks.manifest import load_tasks
 from whetstone.verify.task import Task
@@ -134,6 +136,20 @@ class ContractChanged(RuntimeError):
     """
 
 
+class TranscriptNotPrivate(ValueError):
+    """The transcript was pointed inside the published output directory. Refused, not warned about.
+
+    `--out` is what `reports/baseline/` is: a committed directory an outside reader is expected to
+    read. A transcript holds completions, and a source-B completion quotes the user's own private
+    donor code back verbatim — which is the whole reason the manifests live in gitignored
+    `tasks/local/` and only hashes and verdicts are committed. A transcript written under `--out` is
+    therefore private code staged for publication by a path default.
+
+    A warning would not do. It is printed at the top of a night's run, read by nobody, and by the
+    time anyone looks the file exists.
+    """
+
+
 class UnknownDevSubset(ValueError):
     """A declared dev-subset id matches no task in either corpus, so it excludes nothing.
 
@@ -173,8 +189,25 @@ class Contract:
     #: The run-level digest, published beside every count.
     sha256: str
 
-    #: Every prompt digest the frozen template yields. The seal `Sealed` enforces.
-    prompts: frozenset[str]
+    #: Every prompt digest the frozen template yields, against the task it poses. The keys are the
+    #: seal `Sealed` enforces; the values exist so a recorder can file a completion under the task
+    #: it answers without inferring one from the prompt. The mapping is exact rather than a guess:
+    #: it is built by the same pass that freezes the digests, from the same tasks and the same
+    #: renderer, so a prompt that reaches a base either appears here or is refused.
+    #:
+    #: Two tasks rendering an identical prompt collapse to one entry, and that is sound rather than
+    #: tolerated: they are the same question, decoding is greedy, so both rollouts receive the same
+    #: completion and one record explains both. What the key then names is one of the two.
+    posed: Mapping[str, str]
+
+    @property
+    def prompts(self) -> frozenset[str]:
+        """The digests alone — the seal, without the attribution that rides alongside it.
+
+        A property rather than a second field, because a stored set and a stored mapping are two
+        things that can disagree about what was frozen while each looks correct on its own.
+        """
+        return frozenset(self.posed)
 
 
 @dataclass(frozen=True)
@@ -196,7 +229,7 @@ class Sealed:
     def generate(self, prompt: str) -> str:
         """Refuse a prompt the frozen template did not produce; otherwise pass it straight on."""
         seen = prompt_hash(prompt)
-        if seen not in self.contract.prompts:
+        if seen not in self.contract.posed:
             raise ContractChanged(
                 f"a prompt with digest {seen} was about to be sent to a base, and the generation "
                 f"contract frozen before this run ({self.contract.sha256}) produces no such "
@@ -206,6 +239,53 @@ class Sealed:
                 "answer a different question from the other half, and no reader could tell which"
             )
         return self.inner.generate(prompt)
+
+
+@dataclass(frozen=True)
+class Recording:
+    """One candidate's transcript, over a seam that is handed one generator for a whole source.
+
+    `RecordingGenerator` is keyed per (candidate, task) — a record filed under a guessed key is
+    worse than no record, since it attributes one task's failure to another. But `sweep` takes a
+    single generator for every task in a source, so the per-task recorder has to be built at the
+    only moment the task is knowable from here: the call itself. This resolves it from the frozen
+    contract, which already knows which task each sealed prompt poses, and builds the recorder for
+    that pair. The lookup is exact rather than inferred — the contract was frozen over these tasks
+    with this renderer, and `Sealed` guarantees nothing else reaches the base.
+
+    **A prompt the contract does not carry is passed straight down, unrecorded.** That is not a
+    tolerated gap, it is the point of the composition: this wrapper sits *outside* `Sealed`, so it
+    is the first thing a drifted prompt reaches, and delegating without recording is what lets
+    `Sealed` raise `ContractChanged` while the transcript stays a file of completions. Recording it
+    under a placeholder — the tempting reading of "capture everything we sent" — would put a
+    completion-less row in the transcript for a rollout that never happened and that M7b voided.
+    """
+
+    #: The sealed base. Called once per `generate`, whether or not the prompt is being recorded.
+    inner: Generator
+
+    #: The file every record goes to. Shared across sources and tasks; the key keeps them apart.
+    transcript: Transcript
+
+    #: The base being recorded — the half of the key that does not change between calls.
+    candidate: str
+
+    #: The frozen question, read only to learn which task a prompt poses. Never re-checked here:
+    #: enforcing the seal is `Sealed`'s job, and a second enforcement is one more thing to get
+    #: wrong.
+    contract: Contract
+
+    def generate(self, prompt: str) -> str:
+        """Record under the task this prompt was frozen for; pass a prompt it did not freeze."""
+        task_id = self.contract.posed.get(prompt_hash(prompt))
+        if task_id is None:
+            return self.inner.generate(prompt)
+        return RecordingGenerator(
+            inner=self.inner,
+            transcript=self.transcript,
+            candidate=self.candidate,
+            task_id=task_id,
+        ).generate(prompt)
 
 
 @dataclass(frozen=True)
@@ -304,6 +384,10 @@ def freeze(tasks: Sequence[Task], *, pool: Path | None = None) -> Contract:
     skipped-with-reason and never asks a base anything about it. Sealing a prompt that is never
     sent would be sealing a question that does not exist.
 
+    The run-level digest is taken over the **distinct** questions, which is the set the seal is,
+    and each is recorded against the task that posed it so a completion can be filed under the task
+    it answers rather than under one inferred from its text.
+
     **`pool` must be the one `score` is given, and this is the seam where that bites.** A public
     task's file set is declared by its committed gold patch, so a seal taken without the pool omits
     a prompt the rollout then renders — and the sealed generator, correctly, refuses to send a
@@ -311,16 +395,18 @@ def freeze(tasks: Sequence[Task], *, pool: Path | None = None) -> Contract:
     weights are loaded and the private sweep is under way. Passing it in both places is not
     plumbing: it is what makes the question that gets asked the question that was fixed.
     """
-    digests = tuple(
-        sorted(
-            prompt_hash(render_prompt(task, sources.files))
-            for task, sources in ((task, oracle_sources(task, pool=pool)) for task in tasks)
-            if sources.files is not None
-        )
-    )
+    posed: dict[str, str] = {}
+    for task in tasks:
+        sources = oracle_sources(task, pool=pool)
+        if sources.files is None:
+            continue
+        # `setdefault`, so the first task to pose a question keeps it. See `Contract.posed` for why
+        # a collision is sound: two tasks rendering one prompt are one question, and greedy
+        # decoding gives both the same answer.
+        posed.setdefault(prompt_hash(render_prompt(task, sources.files)), task.task_id)
     return Contract(
-        sha256=hashlib.sha256("\n".join(digests).encode("utf-8")).hexdigest(),
-        prompts=frozenset(digests),
+        sha256=hashlib.sha256("\n".join(sorted(posed)).encode("utf-8")).hexdigest(),
+        posed=MappingProxyType(posed),
     )
 
 
@@ -358,6 +444,7 @@ def conduct(
     dev_subset: Sequence[str] = (),
     probe: int | None = None,
     journal: Path | None = None,
+    transcript: Path | None = None,
     engine: Engine = mlx_engine,
 ) -> Conducted:
     """Run the bake-off: verify the weights, freeze the question, sweep, and publish or refuse.
@@ -378,7 +465,12 @@ def conduct(
     been paid for. `--public` is already required and neither source may be published alone
     (`PREREGISTRATION.md:142-143`), so there is no sound invocation of this function that does not
     need it.
+
+    `transcript` keeps every prompt and completion, so the cause of a zero can be re-derived offline
+    rather than by paying for another night of generation. Undefaulted, and checked against `out`
+    before anything else happens — see `TranscriptNotPrivate`.
     """
+    _refuse_published_transcript(transcript, out)
     os.environ[HF_HUB_OFFLINE] = "1"
 
     private_tasks, public_tasks, declared = _partition(
@@ -403,17 +495,27 @@ def conduct(
             pool=pool,
         )
 
+    kept = Transcript(path=transcript) if transcript is not None else None
+
     entrants: list[Entrant] = []
     costs: list[Cost] = []
     scored: list[str] = []
     for one in fetched:
         started = time.perf_counter()
-        sealed = Sealed(inner=engine(one), contract=contract)
+        # `Recording` outside `Sealed`, never the reverse: the recorder must see every prompt the
+        # run tries to ask, including one the frozen contract refuses — that is how it can be shown
+        # to record none of them. A recorder placed inside the seal would be observing a filtered
+        # stream and the property would hold by construction rather than by design.
+        asked: Generator = Sealed(inner=engine(one), contract=contract)
+        if kept is not None:
+            asked = Recording(
+                inner=asked, transcript=kept, candidate=one.repo_id, contract=contract
+            )
         runs = {
             source: sweep(
                 candidate=one.repo_id,
                 tasks=source_tasks,
-                generator=sealed,
+                generator=asked,
                 sandbox_root=_workspace(workspace, one, source),
                 timeout=timeout,
                 interpreters=interpreters,
@@ -590,7 +692,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="checkpoint file, so an interrupted overnight run resumes instead of restarting. "
         "Optional and undefaulted: a default would resume from a run somebody had forgotten.",
     )
-    
+    parser.add_argument(
+        "--transcript",
+        type=Path,
+        help="where every prompt and completion is kept, so the cause of a zero can be re-derived "
+        "offline instead of by paying for another night of generation. Optional and undefaulted, "
+        "for the reason --journal is and then some: a default would resume from a run somebody had "
+        "forgotten, and this one would write the user's own private donor code, verbatim, to a "
+        "path nobody chose. It may not be inside --out, which is published, and it is ignored "
+        "under --probe, which measures time and gathers no evidence.",
+    )
+
     return parser
 
 
@@ -605,20 +717,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     arguments = parser.parse_args(argv)
 
-    conducted = conduct(
-        tasks=arguments.tasks,
-        public=arguments.public,
-        pool=arguments.pool,
-        funnel=arguments.funnel,
-        weights=arguments.weights,
-        out=arguments.out,
-        workspace=arguments.workspace,
-        timeout=arguments.timeout,
-        recorded_on=arguments.recorded_on,
-        dev_subset=arguments.dev_subset,
-        probe=arguments.probe,
-        journal=arguments.journal,
-    )
+    # Converted to argparse's own usage error rather than allowed to propagate, because the two
+    # read as different problems to the operator: a traceback says the harness is broken and invites
+    # the same command again, while a usage error names the flag that was wrong. The check itself
+    # lives in `conduct`, so a caller reaching it another way is refused just the same.
+    try:
+        conducted = conduct(
+            tasks=arguments.tasks,
+            public=arguments.public,
+            pool=arguments.pool,
+            funnel=arguments.funnel,
+            weights=arguments.weights,
+            out=arguments.out,
+            workspace=arguments.workspace,
+            timeout=arguments.timeout,
+            recorded_on=arguments.recorded_on,
+            dev_subset=arguments.dev_subset,
+            probe=arguments.probe,
+            journal=arguments.journal,
+            transcript=arguments.transcript,
+        )
+    except TranscriptNotPrivate as refusal:
+        parser.error(str(refusal))
     for cost in conducted.costs:
         print(
             f"{cost.candidate}: {cost.tasks} tasks, {cost.wall_seconds:.1f}s "
@@ -648,6 +768,12 @@ def _probe(
     the scored run replay records produced by a sample, and a probe with a journal of its own is a
     file whose only purpose is to be confused with that one.
 
+    **No transcript either, and for the same reason.** `--transcript` names one file; a probe
+    writing into it would leave rows from a self-chosen sample in the evidence an offline replay
+    reads as a scored run's, and rows for tasks the scored run never touches would survive it. The
+    flag is documented as scored-run-only rather than refused alongside `--probe`, because a probe
+    is a timing sample and the operator running one is deciding scope, not gathering evidence.
+
     `rankable` is not called, and that is the reason `Cost` carries the harness status: a probe
     publishes no counts, so there is nothing for `rankable` to gate — but a broken harness is the
     single most important thing a probe can discover, and it must not be silent.
@@ -671,6 +797,30 @@ def _probe(
     return Conducted(
         contract=contract, costs=tuple(costs), scored=(), report=None, written=None
     )
+
+
+def _refuse_published_transcript(transcript: Path | None, out: Path) -> None:
+    """Refuse a transcript inside the published output directory, before anything is loaded or run.
+
+    Resolved rather than compared as written, because `out/../out/x.jsonl` and a symlinked scratch
+    directory both name a path inside `out` while comparing unequal to it — and the check has to
+    hold against the path that gets written, not the one that got typed. `strict=False` throughout:
+    neither directory exists yet on the first run, and a check that required them to would refuse
+    every honest invocation.
+    """
+    if transcript is None:
+        return
+    if transcript.resolve().is_relative_to(out.resolve()):
+        raise TranscriptNotPrivate(
+            f"the transcript at {str(transcript)!r} is inside the output directory {str(out)!r}, "
+            "which is published — `reports/baseline/` is what a committed one looks like. A "
+            "transcript holds completions, and a source-B completion quotes the user's own private "
+            "donor code back verbatim, which is why the manifests live in gitignored "
+            "`tasks/local/` and only hashes and verdicts are committed. Point --transcript at a "
+            "gitignored root "
+            "outside --out. This is refused rather than warned about because a warning at the top "
+            "of a night's run is read after the file already exists"
+        )
 
 
 def _partition(
@@ -815,7 +965,9 @@ __all__ = [
     "ContractChanged",
     "Cost",
     "Engine",
+    "Recording",
     "Sealed",
+    "TranscriptNotPrivate",
     "UndeclaredSize",
     "UnknownDevSubset",
     "conduct",

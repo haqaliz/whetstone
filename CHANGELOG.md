@@ -179,6 +179,29 @@ in this file restates one, because a figure quoted twice is a figure that can di
   file** and never copied into the document that publishes the number before the gate ran — which
   is why `PREREGISTRATION.md` sits at the repository root and not under `docs/planning/`.
 
+### Added
+
+- **The bake-off keeps what a base actually wrote** (`src/whetstone/bakeoff/transcript.py`), so a
+  later question about a run costs a file read instead of another night of generation. It is a
+  `Generator` wrapper rather than a new parameter: the model seam is one method on purpose, and
+  widening it would let implementations disagree about which one a caller uses. Composed outside
+  the contract seal, so a prompt the frozen contract does not carry raises without leaving a
+  completion-less row behind. `--transcript` is undefaulted and is **refused under `--out`** — a
+  completion quotes the user's own private repository back verbatim, and `--out` is committed.
+- **An offline attributor** (`src/whetstone/bakeoff/attribution.py`) that replays stored
+  completions and says which zero each rollout was. `NOT_APPLIED` in a report means only *"git
+  refused it"*, which is where a malformed diff, a mis-anchored one, a wrong path prefix and a
+  budget-truncated patch all end up wearing one tag; the two that matter most — git would not read
+  it, versus git read it and would not apply it — are now told apart, read-only, with nothing
+  under `verify/` modified. The partition is read out of the extractor's own reasons, and a
+  bijection test fails the suite if a new reason appears without a bucket, so nothing drifts into
+  an "other" bin.
+- **A reproduction check with its limit stated in the code.** The committed report carries
+  per-candidate counts and no per-task field, and the run's journal was never committed, so a
+  replay can be compared only on counts — necessary, not sufficient, since one task moving between
+  two buckets while another moves back cancels exactly. A run invoked with both `--journal` and
+  `--transcript` is per-task checkable afterwards, which is the reason to pass both.
+
 ### Changed
 
 - **Donor repositories are named by stable pseudonym, never by name or path.** Source B is mined
