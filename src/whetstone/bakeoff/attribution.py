@@ -50,6 +50,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from whetstone.bakeoff.patch import Extracted, extract_patch
 from whetstone.bakeoff.transcript import Transcribed
@@ -237,6 +238,128 @@ def breakdown(attributions: Iterable[Attribution]) -> dict[str, dict[Cause, int]
     return counts
 
 
+#: Which published count each cause folds into. The report's vocabulary, not this module's:
+#: `reports/baseline/report.json` counts `no_diff` and `not_applied`, and this is where the
+#: buckets above rejoin them.
+#:
+#: `APPLIED` is deliberately absent. The report splits an applied patch three ways — `solved`,
+#: `not_solved`, `out_of_scope` — and which of the three it was is the verifier's answer, not
+#: something a replay can recover from stored text. `compare_to_counts` therefore compares an
+#: applied count against that sum rather than pretending to know the split.
+#:
+#: `UNATTRIBUTED` is absent for the opposite reason: it has no counterpart in the report at all,
+#: because it means "this replay could not ask the question". Folding it into a published count
+#: would report a gap in the instrument as a fact about a base.
+_FOLD: Mapping[Cause, str] = {
+    Cause.NO_OUTPUT: "no_diff",
+    Cause.FENCED_WITHOUT_DIFF: "no_diff",
+    Cause.HEADER_WITHOUT_HUNK: "no_diff",
+    Cause.NO_DIFF_HEADER: "no_diff",
+    Cause.WOULD_NOT_PARSE: "not_applied",
+    Cause.PARSED_BUT_DID_NOT_APPLY: "not_applied",
+}
+
+#: The report fields an applied patch is split across. Summed, they are what `APPLIED` compares to.
+_APPLIED_FIELDS = ("solved", "not_solved", "out_of_scope")
+
+
+@dataclass(frozen=True)
+class CountDivergence:
+    """One published count a replay did not reproduce, with both sides named.
+
+    Both sides, because "they disagree" is not actionable: PRD D2a makes a divergence a finding
+    that halts the slice, and the operator deciding that needs the direction and the size.
+
+    `None` on either side means **absent**, which is never rendered as zero — see
+    `compare_to_counts`.
+    """
+
+    candidate: str
+    field: str
+    recorded: int | None
+    replayed: int | None
+
+
+def to_report_counts(counts: Mapping[str, Mapping[Cause, int]]) -> dict[str, dict[str, int]]:
+    """Fold `breakdown`'s causes into the vocabulary `reports/baseline/report.json` publishes.
+
+    The buckets exist to be finer than the report; this is the one place they are deliberately
+    coarsened back, so a replay can be set beside the record at all. `UNATTRIBUTED` is carried
+    through under its own name rather than dropped: a replay that could not ask the question about
+    half its rollouts must not present the remaining half as a reproduction.
+    """
+    folded: dict[str, dict[str, int]] = {}
+    for candidate, causes in counts.items():
+        per_candidate = folded.setdefault(candidate, {})
+        for cause, count in causes.items():
+            field = _FOLD.get(cause, cause.value.lower())
+            per_candidate[field] = per_candidate.get(field, 0) + count
+    return folded
+
+
+def compare_to_counts(
+    replayed: Mapping[str, Mapping[str, int]],
+    report: Mapping[str, Any],
+) -> tuple[CountDivergence, ...]:
+    """Compare a replay's folded counts against a committed report's `source_b` block.
+
+    **This is a necessary check, not a sufficient one, and the difference is not a detail.** The
+    committed report carries per-candidate counts and no per-task field, and the P1 run's journal
+    — which is per-`(candidate, task)` — was never committed, because `--journal` is undefaulted
+    and its output belongs under a gitignored root. So two runs can agree on every count here
+    while disagreeing about *which* tasks produced them: one task moving from `no_diff` to
+    `not_applied` and another moving the other way cancels exactly, and nothing in this comparison
+    would see it.
+
+    PRD D2a asks for per-task reproduction. Against the record that exists, this is as close as it
+    can be taken, and a caller may not describe a clean result as more than it is. A run invoked
+    with `--journal` *and* `--transcript` is per-task checkable afterwards; that is the reason to
+    always pass both.
+
+    **Absent is never zero.** A candidate or a field present on one side only is a divergence with
+    `None` on the other, because `breakdown` omits what did not occur, and a run that stopped after
+    its first base would otherwise reproduce the record perfectly by saying nothing about the rest.
+
+    Returns the divergences and decides nothing. Halting on them is the operator's call: a
+    function that tolerated a threshold would be choosing how much irreproducibility is acceptable,
+    which is not a choice this module is entitled to make.
+    """
+    recorded = _recorded_counts(report)
+    divergences: list[CountDivergence] = []
+
+    for candidate in sorted(set(recorded) | set(replayed)):
+        left, right = recorded.get(candidate, {}), replayed.get(candidate, {})
+        for field in sorted(set(left) | set(right)):
+            if left.get(field) != right.get(field):
+                divergences.append(
+                    CountDivergence(
+                        candidate=candidate,
+                        field=field,
+                        recorded=left.get(field),
+                        replayed=right.get(field),
+                    )
+                )
+    return tuple(divergences)
+
+
+def _recorded_counts(report: Mapping[str, Any]) -> dict[str, dict[str, int]]:
+    """The report's `source_b` rows, keyed by candidate, with the applied split summed.
+
+    The sum is what makes the comparison possible at all: a replay knows a patch applied and
+    cannot know which of `solved` / `not_solved` / `out_of_scope` it became, so the record's three
+    fields are added into the one figure a replay can produce.
+    """
+    counts: dict[str, dict[str, int]] = {}
+    for row in report.get("source_b", ()):
+        fields = {key: value for key, value in row.items() if key != "candidate"}
+        applied = [fields.pop(name) for name in _APPLIED_FIELDS if name in fields]
+        kept = {key: value for key, value in fields.items() if key in set(_FOLD.values())}
+        if applied:
+            kept["applied"] = sum(applied)
+        counts[row["candidate"]] = kept
+    return counts
+
+
 def _against_checkout(diff: str, checkout: Path) -> tuple[Cause, str]:
     """Ask git the one question text cannot answer: would it parse this, and would it apply it?
 
@@ -288,13 +411,18 @@ def _attributed(record: Transcribed, cause: Cause, detail: str) -> Attribution:
     )
 
 
+
+
 __all__ = [
     "NO_DIFF_MARKERS",
     "Attribution",
     "Cause",
+    "CountDivergence",
     "attribute",
     "attribute_all",
     "breakdown",
     "cause_of_reason",
+    "compare_to_counts",
     "extract_patch",
+    "to_report_counts",
 ]

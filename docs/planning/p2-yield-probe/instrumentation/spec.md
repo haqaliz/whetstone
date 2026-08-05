@@ -65,10 +65,24 @@ Its documented home is a gitignored root (`.gitignore:20-24`). A test asserts, v
 under `--out`. For source B a completion quotes the user's private donor code, so this is a
 locality guarantee, not tidiness.
 
-**AC7 — the reproduction check compares against the committed record.**
-Replaying arm A's outcomes against `reports/baseline/report.json` reports, per
-`(candidate, task_id)`, agreement or divergence. **Any divergence is a finding that halts the
-slice** (PRD D2a) — the P1 contract is greedy with no seeds, so it must reproduce.
+**AC7 — the reproduction check compares against the committed record, as far as it goes.**
+**Amended 2026-08-05, on building it.** This criterion asked for a per-`(candidate, task_id)`
+comparison. That cannot be made against the record that exists: `reports/baseline/report.json`
+carries per-candidate *counts* and no per-task field, and the P1 run's journal — which is
+per-task — was never committed, because `--journal` is undefaulted and its output belongs under a
+gitignored root. Verified on this machine: no journal or run artifact from the P1 bake-off
+survives.
+
+So the comparison is over counts, and it is **necessary but not sufficient**: two runs can agree
+on every count while disagreeing about which tasks produced them, since one task moving from
+`no_diff` to `not_applied` and another moving the other way cancels exactly. `compare_to_counts`
+says so in its own docstring, `tests/bakeoff/test_reproduction.py` asserts the premise against the
+real file, and a caller may not describe a clean result as per-task reproduction. **Any divergence
+is still a finding that halts the slice** (PRD D2a).
+
+Forward-looking, and it costs nothing to state: a run invoked with `--journal` *and*
+`--transcript` **is** per-task checkable afterwards. That is the reason to always pass both, and
+it is what makes arm A's own successor stronger than arm A can be about P1.
 
 **AC8 — nothing on the reward path changes.**
 No file under `src/whetstone/verify/` is modified; `GUARDED_ROOTS` is not widened;
