@@ -51,6 +51,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 from whetstone import __version__
 from whetstone.bakeoff import patch as extraction
@@ -150,6 +151,16 @@ class TranscriptNotPrivate(ValueError):
     """
 
 
+class UnknownCandidate(ValueError):
+    """`--only` named something no fetched candidate matches, or something several match.
+
+    Refused rather than resolved. A name matching nothing would score an empty matrix and render
+    as a completed sweep with no entrant — the same silent-success shape `UnknownDevSubset` is
+    refused for. A name matching several would pick one by position, which is a coin toss the
+    report has no way to disclose.
+    """
+
+
 class UnknownDevSubset(ValueError):
     """A declared dev-subset id matches no task in either corpus, so it excludes nothing.
 
@@ -172,7 +183,7 @@ class UndeclaredSize(ValueError):
 #: of this module runs with no `mlx`, no weights and no network — the same inversion
 #: `generator.Generator` makes one layer down, made once more here because the *construction* is
 #: what AC1 is about: a path loads offline and a repo id downloads.
-Engine = Callable[[Weights], Generator]
+Engine = Callable[[Weights, int], Generator]
 
 
 @dataclass(frozen=True)
@@ -352,7 +363,7 @@ class Conducted:
     written: tuple[Path, Path] | None
 
 
-def mlx_engine(weights: Weights) -> Generator:
+def mlx_engine(weights: Weights, max_tokens: int) -> Generator:
     """Load a verified candidate from its own directory, offline, pinned to its recorded sha.
 
     Three properties, and the order matters. `HF_HUB_OFFLINE` is set *first*, so that a defect in
@@ -362,7 +373,36 @@ def mlx_engine(weights: Weights) -> Generator:
     immutable commit sha `load_weights` verified the bytes against, not the tag anybody typed.
     """
     os.environ[HF_HUB_OFFLINE] = "1"
-    return MlxGenerator(weights.local_dir, revision=weights.revision)
+    return MlxGenerator(weights.local_dir, revision=weights.revision, max_tokens=max_tokens)
+
+
+def select_candidates(fetched: Sequence[Any], only: Sequence[str]) -> tuple[Any, ...]:
+    """The candidates to score: all of them, or exactly the ones `--only` names.
+
+    Returned in **fetched** order rather than argument order, so two runs naming the same set
+    produce the same sequence and their journals line up.
+
+    Narrowing is opt-in because a report over one candidate must never be able to read as a
+    bake-off; the names are recorded in the command line and the report carries one entrant per
+    candidate actually scored.
+    """
+    if not only:
+        return tuple(fetched)
+
+    chosen: list[Any] = []
+    for name in only:
+        matched = [one for one in fetched if name in one.repo_id]
+        if len(matched) != 1:
+            available = ", ".join(one.repo_id for one in fetched)
+            verb = "matches nothing" if not matched else f"matches {len(matched)} candidates"
+            raise UnknownCandidate(
+                f"--only {name!r} {verb}. Available: {available}. Refused rather than resolved: "
+                "a name matching nothing scores an empty matrix and reads as a finished sweep, "
+                "and a name matching several picks one by position"
+            )
+        if matched[0] not in chosen:
+            chosen.append(matched[0])
+    return tuple(one for one in fetched if one in chosen)
 
 
 def freeze(tasks: Sequence[Task], *, pool: Path | None = None) -> Contract:
@@ -442,6 +482,8 @@ def conduct(
     timeout: float,
     recorded_on: str,
     dev_subset: Sequence[str] = (),
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+    only: Sequence[str] = (),
     probe: int | None = None,
     journal: Path | None = None,
     transcript: Path | None = None,
@@ -477,7 +519,7 @@ def conduct(
         load_task_roots(tasks), load_tasks(public), dev_subset
     )
     contract = freeze((*private_tasks, *public_tasks), pool=pool)
-    fetched = load_weights(weights)
+    fetched = select_candidates(load_weights(weights), only)
 
     interpreters = Interpreters(workspace=workspace / "environments")
     checkpoint = Journal(path=journal) if journal is not None else None
@@ -492,6 +534,7 @@ def conduct(
             timeout=timeout,
             interpreters=interpreters,
             engine=engine,
+            max_tokens=max_tokens,
             pool=pool,
         )
 
@@ -506,7 +549,7 @@ def conduct(
         # run tries to ask, including one the frozen contract refuses — that is how it can be shown
         # to record none of them. A recorder placed inside the seal would be observing a filtered
         # stream and the property would hold by construction rather than by design.
-        asked: Generator = Sealed(inner=engine(one), contract=contract)
+        asked: Generator = Sealed(inner=engine(one, max_tokens), contract=contract)
         if kept is not None:
             asked = Recording(
                 inner=asked, transcript=kept, candidate=one.repo_id, contract=contract
@@ -571,7 +614,7 @@ def conduct(
         contract=GenerationContract(
             prompt_sha256=contract.sha256,
             sampler=SAMPLER,
-            max_tokens=DEFAULT_MAX_TOKENS,
+            max_tokens=max_tokens,
             extractor_version=_extractor_version(),
             dev_subset=declared,
         ),
@@ -586,6 +629,21 @@ def conduct(
         report=report,
         written=written,
     )
+
+
+def _positive(value: str) -> int:
+    """A generation budget that could actually produce a patch.
+
+    Zero or negative is refused rather than clamped: every candidate would fail for a reason
+    about the harness, and the sweep of zeros would read as a finding about the bases.
+    """
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError(
+            f"--max-tokens must be at least 1, got {number}. A run that cannot emit a token "
+            "publishes a matrix of zeros that says nothing about any candidate"
+        )
+    return number
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -680,6 +738,29 @@ def build_parser() -> argparse.ArgumentParser:
         "refused, because it would exclude nothing while the report said it had.",
     )
     parser.add_argument(
+        "--max-tokens",
+        type=_positive,
+        default=DEFAULT_MAX_TOKENS,
+        metavar="N",
+        help=(
+            "the generation budget per rollout. Defaults to the pinned one, so an unflagged "
+            "re-run is the same experiment. It is a GenerationContract field, so a run at a "
+            "different budget discloses that in its own provenance block rather than looking "
+            "like the run before it"
+        ),
+    )
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help=(
+            "score only the candidates whose repo id contains NAME. Repeatable. A name matching "
+            "nothing or matching several is refused, never resolved: the first scores an empty "
+            "matrix that reads as a finished sweep, the second picks one by position"
+        ),
+    )
+    parser.add_argument(
         "--probe",
         type=int,
         metavar="N",
@@ -733,11 +814,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             timeout=arguments.timeout,
             recorded_on=arguments.recorded_on,
             dev_subset=arguments.dev_subset,
+            max_tokens=arguments.max_tokens,
+            only=arguments.only,
             probe=arguments.probe,
             journal=arguments.journal,
             transcript=arguments.transcript,
         )
-    except TranscriptNotPrivate as refusal:
+    except (TranscriptNotPrivate, UnknownCandidate) as refusal:
         parser.error(str(refusal))
     for cost in conducted.costs:
         print(
@@ -760,6 +843,7 @@ def _probe(
     timeout: float,
     interpreters: Interpreters,
     engine: Engine,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     pool: Path,
 ) -> Conducted:
     """D7's timing sample: run `tasks`, write what they cost, and derive not one count.
@@ -784,7 +868,7 @@ def _probe(
         run = sweep(
             candidate=one.repo_id,
             tasks=tasks,
-            generator=Sealed(inner=engine(one), contract=contract),
+            generator=Sealed(inner=engine(one, max_tokens), contract=contract),
             sandbox_root=_workspace(workspace, one, "probe"),
             timeout=timeout,
             interpreters=interpreters,

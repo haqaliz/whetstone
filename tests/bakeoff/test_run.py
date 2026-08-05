@@ -46,6 +46,7 @@ from fixtures.repos.mined import build_mined_task
 
 from whetstone.bakeoff import rendering, scoring
 from whetstone.bakeoff.generator import Generator
+from whetstone.bakeoff.mlx_runtime import DEFAULT_MAX_TOKENS
 from whetstone.bakeoff.rendering import prompt_hash, render_prompt
 from whetstone.bakeoff.run import (
     COST_FILE,
@@ -95,8 +96,14 @@ class _Refuses:
         return REFUSAL
 
 
-def _engine(_: Weights) -> Generator:
-    """An engine factory that loads nothing and never touches `mlx`."""
+def _engine(_: Weights, max_tokens: int = DEFAULT_MAX_TOKENS) -> Generator:
+    """An engine factory that loads nothing and never touches `mlx`.
+
+    It takes the budget because a real engine must: `--max-tokens` is a `GenerationContract`
+    field, so the value the run declares has to reach the thing that generates or the report
+    would disclose a budget nothing was held to.
+    """
+    assert max_tokens >= 1, max_tokens
     return _Refuses()
 
 
@@ -393,7 +400,7 @@ def test_the_adapter_is_handed_a_filesystem_path_and_never_a_repo_id(
     monkeypatch.setattr("whetstone.bakeoff.run.MlxGenerator", _Records)
     weights = load_weights(_weights(tmp_path / "weights", "mlx-community/Qwen2.5-Coder-3B-4bit"))
 
-    mlx_engine(weights[0])
+    mlx_engine(weights[0], DEFAULT_MAX_TOKENS)
 
     assert recorded["path"] == weights[0].local_dir, (
         "WHY THIS IS A FAILURE: the adapter was constructed with "
