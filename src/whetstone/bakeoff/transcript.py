@@ -13,6 +13,13 @@ cause breakdown is derived downstream from one place, so there is exactly one de
 bucket, and it is derived from `patch.py`'s own reasons rather than from a taxonomy invented beside
 the storage.
 
+**And it stores without widening the model seam.** `RecordingGenerator` is a `Generator` wrapping a
+`Generator`, so the recording is installed by composition at the driver and nothing between the
+driver and the model — `sweep`, `score` — learns that a transcript exists. The alternative, a second
+method on `generator.Generator`, would cost the project the one property that makes every test in
+this package model-free: a one-method seam is one thing the MLX adapter has to reproduce faithfully,
+and each addition is another chance for the substitution to become a fiction.
+
 Three properties, and none of them are style:
 
 * **The completion is stored byte-for-byte.** Stripping whitespace, dropping a trailing newline, or
@@ -42,6 +49,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from whetstone.bakeoff.generator import Generator
+from whetstone.bakeoff.rendering import prompt_hash
 
 #: What a record is filed and looked up under. Both halves are needed for the same reason the
 #: journal needs both (`journal.py:41-44`): one candidate's completion on a task says nothing about
@@ -154,6 +164,67 @@ class Transcript:
         return records
 
 
+@dataclass(frozen=True)
+class RecordingGenerator:
+    """A base with a transcript behind it: it answers exactly as it would have, and is written down.
+
+    A `Generator` by structure, wrapping another, so `sweep` and `score` learn nothing about the
+    transcript's existence. That is the whole reason this is a wrapper rather than a second method
+    on the seam: `generator.Generator` has one method deliberately, and every addition to it is
+    another thing the MLX adapter must reproduce faithfully before the substitution every test in
+    this package relies on stops being a fiction.
+
+    **Constructed per (candidate, task).** The key is what the record is filed under, and deriving
+    it from anything the prompt carries would be inferring, at write time, a fact the caller already
+    knows. A recorder that guessed would file one base's failure under another's run.
+
+    **The observation must not change what is observed**, in either direction. The completion is
+    returned as it arrived and stored as it arrived: the returned text is what `extract_patch` runs
+    on live, so editing it would make the instrument affect the run's own verdicts, and the stored
+    text is what an offline replay runs on, so editing that would make the replay disagree with the
+    live run and report a cause that never occurred. Whitespace is the whole example — the extractor
+    reads a fenced block, and a stripped trailing newline is the difference between two extractions.
+
+    **The record follows the generation and never anticipates one.** The inner generator is called
+    first and the row is written only once it has returned. A prompt refused by the frozen contract
+    (`run.Sealed` raises before delegating) and a model process that dies mid-run are the same
+    shape, and in both a row written up front leaves a completion-less record in a file whose entire
+    purpose is completions — which an offline replay counting rows would report as a rollout that
+    happened. Exceptions propagate untouched for the reason `sweep` gives for not catching them: an
+    interrupted run must stop rather than produce a full-looking record set with holes in it.
+    """
+
+    #: What actually generates. Called exactly once per `generate`, with the prompt unaltered.
+    inner: Generator
+
+    #: Where the record goes. Not created until there is something to write.
+    transcript: Transcript
+
+    #: The base being recorded — half the key, and the caller's to know.
+    candidate: str
+
+    #: The task being recorded — the other half.
+    task_id: str
+
+    def generate(self, prompt: str) -> str:
+        """Delegate, record what came back, and return it unchanged. In that order, deliberately."""
+        completion = self.inner.generate(prompt)
+        self.transcript.append(
+            Transcribed(
+                candidate=self.candidate,
+                task_id=self.task_id,
+                # Taken with the run's own function rather than recomputed here: the digest's one
+                # purpose is to tie this completion to the generation contract frozen in the
+                # provenance block, and a second construction of it is a second thing that can
+                # disagree with the first while both look correct on disk.
+                prompt_sha256=prompt_hash(prompt),
+                prompt=prompt,
+                completion=completion,
+            )
+        )
+        return completion
+
+
 def _encode(record: Transcribed) -> dict[str, Any]:
     """`record` as plain JSON types. Written out field by field, deliberately.
 
@@ -187,4 +258,10 @@ def _decode(raw: Any) -> Transcribed:
     )
 
 
-__all__ = ["Key", "Transcribed", "Transcript", "TranscriptUnreadable"]
+__all__ = [
+    "Key",
+    "RecordingGenerator",
+    "Transcribed",
+    "Transcript",
+    "TranscriptUnreadable",
+]
