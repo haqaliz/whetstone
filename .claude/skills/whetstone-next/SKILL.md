@@ -25,17 +25,14 @@ This skill RECOMMENDS and hands off. It does NOT create a worktree or start
 
 ## The candidate set is the FILES, never invented
 
-Read these (the source of truth, in this order). Whetstone is **greenfield**, and most of
-the planning surface is **not written yet** — say so plainly rather than filling the gap
-from memory:
+Read these (the source of truth, in this order). Much of the planning surface **is** written
+now; where a file is still absent, say so plainly rather than filling the gap from memory:
 
-- `docs/ROADMAP.md`: the 2–3 month phased plan + milestones. **This is meant to be the
-  primary candidate set, and it does not exist yet** — `CLAUDE.md` names it as the
-  immediate next artifact. Until it's written, the honest read is that there is no ranked
-  backlog, and *producing the roadmap* is itself a live candidate (usually the strongest
-  one — see rule 1 below).
+- `docs/ROADMAP.md`: **written, merged, and the primary candidate set.** The phased plan,
+  its exit criteria, the cheat surface, and § 10's open questions are all live. Read its
+  pivot signals: one has already fired.
 - `docs/technical/ARCHITECTURE.md`: the nightly loop / verifier / distillation design.
-  Also **not written yet**; authoritative over `CLAUDE.md` once it exists.
+  Still **not written**; authoritative over `docs/ROADMAP.md` once it exists.
 - `docs/product/PRODUCT_SPEC.md`: the product surface, the report, the trend. Not written yet.
 - `CLAUDE.md` and `VISION.md`: **written, and the source of truth today.** The wedge, the
   moat, the five core-loop elements (① verifiable task family + verifier, ② nightly
@@ -45,8 +42,8 @@ from memory:
   understanding/PRD notes: a capability deferred for a real blocker must not be
   re-recommended as if it were a quick win.
 - `git log` / `git tag` / the test suite: what actually shipped. Trust this over prose;
-  code runs ahead of the narrative docs. **Today there is one seed commit and no code** —
-  say so plainly rather than implying shipped state.
+  code runs ahead of the narrative docs. P0 and all of P1 have shipped, and P2 has begun —
+  read `CLAUDE.md`'s status block and `CHANGELOG.md` before calling anything unbuilt.
 - `~/dev/at/ideas/research/b1-verified-self-improvement.md`: the seed research and
   rationale, cited in `CLAUDE.md`. Background, not a backlog.
 - A `CHANGELOG.md` if one ever exists (it does not today).
@@ -56,11 +53,12 @@ Never substitute memory for a file you couldn't read.
 
 ## How to rank (grounded in CLAUDE.md)
 
-1. **Before the roadmap exists, the roadmap is the pick.** `CLAUDE.md` states the next
-   artifact is `docs/ROADMAP.md` (a 2–3 month phased plan + milestones). Recommending a
-   deep implementation slice while there is no phase plan, no chosen task family, and no
-   defined verifier is picking a branch before the trunk. Only rank around this once the
-   roadmap (or an explicit user decision) supersedes it.
+1. **The roadmap's own phase order is the pick, unless evidence overrides it.**
+   `docs/ROADMAP.md` § 4 sequences ① verifier → ② loop → ③ gate → ④ report, and each phase
+   carries exit criteria and a **pivot signal**. Read whether a signal has fired before
+   ranking: a fired signal means the next phase's premise is in question, and re-testing that
+   premise outranks building on it. Never answer a fired signal by loosening the verifier —
+   the roadmap forbids it by name.
 2. **Harness only.** The loop, the verifier, the promotion gate, the report, the eval
    machinery. **Never** a frontier base model. **Never** an LLM-judge reward. Never
    anything requiring data egress or credentials the founder lacks. Drop any candidate
@@ -119,9 +117,11 @@ Never substitute memory for a file you couldn't read.
 
 - Ground every shipped / pending / deferred claim in a named file. Do not assert from
   memory; the code and git history win over the docs.
-- **Nothing has shipped yet.** One seed commit, no `src/`, no tests, no roadmap. Say the
-  state is "not started" rather than implying progress. The same contract the product
-  enforces applies to this skill: unverified is not passed off as done.
+- **Check what shipped before ranking.** P0 and P1 are closed and P2 has started, so a
+  candidate that sounds unbuilt may already exist. `git log`, the test suite, and
+  `CHANGELOG.md` win over any prose — including over this file. The same contract the
+  product enforces applies here: unverified is not passed off as done, and neither is
+  already-done passed off as available.
 - **Do not invent numbers.** No projected gains, no percentages, no "this should get us
   ~X%". `CLAUDE.md` lists the only grounded external facts (RLVR/reward-hacking, the
   35%-false-positive judge result, Karpathy's environments gap); anything beyond those is
@@ -135,9 +135,8 @@ Never substitute memory for a file you couldn't read.
 
 | Mistake | Fix |
 |---|---|
-| Inventing a capability or a phase plan not in the docs | Today the candidate set is `CLAUDE.md`'s core loop + `VISION.md`'s wedge; cite where each came from |
-| Recommending a deep slice while `docs/ROADMAP.md` is unwritten | The roadmap is the named next artifact — it's usually the pick |
-| Recommending the loop, the gate, or the dashboard before the verifier | Everything blocks on an airtight verifier for one task family |
+| Inventing a capability or a phase plan not in the docs | The candidate set is `docs/ROADMAP.md`'s phases and exit criteria, plus in-flight `docs/planning/*/`; cite where each came from |
+| Reading a fired pivot signal as an instruction to build the next phase anyway | A fired signal puts the next phase's premise in question; re-test the premise first | Recommending the loop, the gate, or the dashboard before the verifier | Everything blocks on an airtight verifier for one task family |
 | Adding a second task family before the first is airtight | Breadth after depth — `CLAUDE.md` #5 |
 | Recommending an LLM-judge reward because it's faster to build | Drop it against the guardrails — that's the failure mode the project exists to design out |
 | Recommending base-model training | Out of scope — we sharpen an open base on the user's tasks |

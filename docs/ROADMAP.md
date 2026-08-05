@@ -588,8 +588,8 @@ testing · Linux portability.
 
 ## 10. Open questions
 
-- The PyPI package name. The seed research recorded `whetstonehq` and `whetstone-ai` as free
-  on npm and PyPI, with bare `whetstone` taken — **unverified as of today**, needs re-checking.
+- ~~The PyPI package name.~~ **Closed 2026-08-05 by checking, not recalling:** `whetstone` is
+  taken; `whetstonehq` (the declared distribution) and `whetstone-ai` are free, as of today.
 - The held-out split size and stratification.
 - The retry count *R* in P3, to be set from the observed unverified rate rather than guessed.
 - Apple Silicon capacity: whether the base eventually chosen sustains *k* rollouts per task in a

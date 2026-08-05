@@ -1,0 +1,155 @@
+# Tag-push is the entire release mechanism (`RELEASING.md`). Nothing here is triggered by hand:
+# no `workflow_dispatch`, no manual upload step, and no `gh release create` anywhere. A release
+# that could be produced two ways is a release whose provenance depends on which way somebody
+# used that day.
+#
+# The order is deliberate and is the project's own promotion rule applied to itself: **nothing
+# publishes until the tree the tag points at has been proven green.** `verify` gates both
+# publishing jobs, so a red tag produces a failed run and no artifact anywhere. A published
+# PyPI version can never be reused, even after a yank — it is the one irreversible act in this
+# repository, and it is placed behind the same evidence the verifier demands of a checkpoint.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Least privilege at the top; each job widens only what it needs. `id-token: write` is granted
+# to the PyPI job alone — a workflow-level token write would hand every job the ability to mint
+# a publishing credential, including ones that only read.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify the tagged tree
+    # macOS for the same reason CI is macOS: the sandbox is Seatbelt and the runtime is MLX, so
+    # a Linux runner would go green while proving nothing about the platform this ships for.
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync
+
+      - name: the tag and pyproject.toml agree
+        id: version
+        # The one check that cannot be recovered from after publishing. A tag saying v0.2.0 over
+        # a tree whose `version` still reads 0.1.0 would publish 0.1.0 under a 0.2.0 release, and
+        # PyPI would refuse the real 0.1.0 later because that version was already used. Compared
+        # here rather than trusted, and compared BEFORE anything is built.
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          declared="$(uv run python -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          if [ "$tag" != "$declared" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} declares ${tag}, pyproject.toml declares ${declared}."
+            echo "::error::A release is irreversible on PyPI, so these must agree before anything is built."
+            exit 1
+          fi
+          echo "version=${declared}" >> "$GITHUB_OUTPUT"
+
+      - name: the changelog has a section for this version
+        # RELEASING.md builds the GitHub Release from this section. An absent one would publish a
+        # release whose notes are empty, which reads as "nothing changed" rather than as a mistake.
+        #
+        # The version reaches the shell through `env:` rather than through `${{ }}` interpolation.
+        # It is read out of a file in the tagged tree, so interpolating it would splice repository
+        # content straight into a command line — the GitHub Actions injection shape, and cheap to
+        # design out even though pushing a tag already needs write access.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          grep -qF "## [${VERSION}]" CHANGELOG.md || {
+            echo "::error::CHANGELOG.md has no '## [${VERSION}]' section."
+            exit 1
+          }
+
+      # The same four commands CONTRIBUTING.md requires of a pull request. A release is held to
+      # the standard a PR is held to, not a lower one.
+      - run: uv run ruff check .
+      - run: uv run mypy src/
+      - run: uv run pytest
+      - run: uv run whetstone --help
+
+  build:
+    name: build wheel and sdist
+    needs: verify
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv build
+      - name: the built distribution is the declared name at the declared version
+        # `uv build` names files from pyproject.toml, so this cannot normally disagree — which is
+        # exactly why it is asserted: the check costs nothing and the failure it catches would
+        # otherwise be found by PyPI, after the upload that cannot be undone.
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          ls -1 dist/
+          test -f "dist/whetstonehq-${VERSION}.tar.gz"
+          ls "dist/whetstonehq-${VERSION}"-*.whl >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # The two channels are independent jobs on purpose (RELEASING.md): one failing must not block
+  # the other, so a misconfigured PyPI trusted publisher does not also cost the GitHub Release.
+  pypi:
+    name: publish to PyPI
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # trusted publishing; no API token is stored in this repository
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: create the GitHub Release
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the release itself; owned by the repo's GITHUB_TOKEN, not a personal one
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: notes from the changelog section for this version
+        # Extracted rather than hand-written, so the release notes and the changelog cannot
+        # disagree about what shipped.
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          awk -v v="## [${VERSION}]" '
+            index($0, v) == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          files: dist/*
+          fail_on_unmatched_files: true

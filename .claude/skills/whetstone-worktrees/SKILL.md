@@ -69,7 +69,7 @@ This creates `.claude/worktrees/feat-task-verifier/` on a new branch `worktree-f
 
 A `.worktreeinclude` at the repo root lists gitignored files that should follow into new worktrees, consumed automatically by `claude --worktree`.
 
-**Whetstone currently has no secrets/env files to copy** — the repo is docs-only today. Whetstone is **BYOK** for the optional cloud teacher model used in distillation, so once a `.env` or a local model/runtime config exists, create `.worktreeinclude` and list it there, then copy manually when you use bare `git worktree add` (the include is not re-processed after creation):
+**Whetstone currently has no secrets/env files to copy.** Whetstone is **BYOK** for the optional cloud teacher model used in distillation, so once a `.env` or a local model/runtime config exists, create `.worktreeinclude` and list it there, then copy manually when you use bare `git worktree add` (the include is not re-processed after creation):
 
 ```bash
 # only if such files exist
@@ -91,9 +91,9 @@ uv run pytest                 # run the test suite
 uv run whetstone --help       # the CLI entrypoint
 ```
 
-⚠️ **Greenfield caveat:** there is **no `pyproject.toml`, no `uv.lock`, and no `src/` yet**. `uv sync` will fail until the Python core is scaffolded, and `uv run pytest` has nothing to run. If your work is the scaffolding, create those files first (test-first: the failing test comes before the package). Skip this section entirely for docs-only work.
+⚠️ **Weights and corpora are machine-level, not per-worktree.** `weights/` is ~13 GB and `tasks/local/` is the user's own mined corpus; both are gitignored and neither is copied into a worktree. Point at the primary checkout's copies by **absolute** path rather than duplicating them — and note that `weights/provenance.json` records `local_dir` relative to the weights root, so weights fetched *inside* a worktree are stranded when that worktree is removed. Fetch them in the primary checkout.
 
-⚠️ **GPU / local runtime:** a local model runtime (Ollama / vLLM / transformers) is a **machine-level** resource, not a per-worktree one. Two worktrees running training or eval at once will contend for the same GPU and the same runtime port. Serialize the runs, or override the port and be explicit about which worktree owns the device — a run that silently shared a GPU is a run whose timings you can't compare.
+⚠️ **GPU / local runtime:** the local runtime is **MLX** (`mlx-lm`, an optional extra — `uv sync --extra mlx`), and the GPU is a **machine-level** resource, not a per-worktree one. Two worktrees running training or eval at once will contend for the same GPU and the same runtime port. Serialize the runs, or override the port and be explicit about which worktree owns the device — a run that silently shared a GPU is a run whose timings you can't compare.
 
 ## Per-worktree setup (dashboard)
 
@@ -136,7 +136,7 @@ git -C /Users/aliz/dev/at/whetstone branch -d feat/task-verifier/aliz
 | `git worktree add` fails: `invalid reference: origin/master` | Stale local refs | `git fetch origin master` first — `origin/master` exists |
 | Branching from `origin/main` | Whetstone's base branch is `master` | `main` does not exist — always use `master` |
 | Worktree contents appear as untracked in primary | `.claude/worktrees/` not ignored | Already in `.gitignore`; verify with `git check-ignore -v '.claude/worktrees/'` (trailing slash) |
-| `uv sync` fails: no `pyproject.toml` | Python core not scaffolded yet (greenfield) | Expected — scaffold it (test-first) or skip for docs-only work |
+| `uv run python -m whetstone.bakeoff.run` provisions nothing, every task UNVERIFIED | `--workspace` was a **relative** path | Pass absolute paths: the checkout is created under `--workspace` and a relative one does not resolve from the run's cwd |
 | `uv run` reinstalls everything on first call in a worktree | `.venv` not shared between worktrees | Expected — `uv sync` once per worktree |
 | `pytest` import errors in worktree | Forgot `uv sync` (no venv yet) | `uv sync` in the worktree root first |
 | Two worktrees training at once, numbers don't reproduce | GPU/runtime is machine-level, not per-worktree | Serialize the runs; never compare timings across contended runs |
