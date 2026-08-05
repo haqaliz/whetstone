@@ -44,17 +44,21 @@ happened. Stdlib, git, and the extractor the run itself used.
 
 from __future__ import annotations
 
+import argparse
+import json
 import shutil
+import sys
 import tempfile
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from whetstone.bakeoff.patch import Extracted, extract_patch
-from whetstone.bakeoff.transcript import Transcribed
-from whetstone.verify.repo import PatchError, apply_patch, declared_paths
+from whetstone.bakeoff.transcript import Transcribed, Transcript
+from whetstone.tasks.manifest import load_tasks
+from whetstone.verify.repo import PatchError, apply_patch, declared_paths, materialise
 
 #: The fragment of `verify/repo.py:100`'s message that means git would not read the patch — the
 #: `--numstat` parse failed. Matched as a substring rather than reconstructed, because the two
@@ -413,6 +417,126 @@ def _attributed(record: Transcribed, cause: Cause, detail: str) -> Attribution:
 
 
 
+def main(argv: Sequence[str] | None = None) -> int:
+    """Attribute a run's transcript offline and write the breakdown. No model, no network.
+
+    Separate from `run.py` on purpose: that module needs `mlx_lm` to ask a base anything, and the
+    whole value of a transcript is that every *later* question about the run costs a file read
+    instead of another night of generation. A driver that imported the engine would put the cost
+    back.
+
+    `--tasks` is optional and its absence is not silent. Without it there is no checkout, so a
+    located diff cannot be put to git and lands in `UNATTRIBUTED` **by name** — which is the
+    honest answer to "we could not ask", and is distinguishable in the output from every cause
+    that was actually measured.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m whetstone.bakeoff.attribution",
+        description=(
+            "Replay a bake-off transcript and report why each rollout never became an applied "
+            "patch. Offline: no model is loaded and no network is touched."
+        ),
+    )
+    parser.add_argument("--transcript", required=True, type=Path, help="the run's transcript")
+    parser.add_argument("--out", required=True, type=Path, help="where the breakdown is written")
+    parser.add_argument(
+        "--tasks",
+        action="append",
+        default=[],
+        type=Path,
+        metavar="DIR",
+        help=(
+            "a corpus root, repeatable. Needed only to answer whether git would parse or apply a "
+            "located diff; without it those rollouts are UNATTRIBUTED by name, never guessed at"
+        ),
+    )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help=(
+            "a committed report to compare against. Optional and undefaulted: the comparison is "
+            "over counts and is necessary rather than sufficient, so it is opt-in and its "
+            "absence is recorded in the output rather than left to be inferred"
+        ),
+    )
+    namespace = parser.parse_args(argv)
+
+    transcript = Path(namespace.transcript)
+    if not transcript.is_file():
+        print(
+            f"whetstone attribution: {str(transcript)!r} is not a file. Attributing a transcript "
+            "that is not there would report an empty breakdown, which reads as 'every rollout "
+            "attributed and no causes found' — a run nobody measured, wearing the shape of a "
+            "clean one",
+            file=sys.stderr,
+        )
+        return 2
+
+    records = tuple(Transcript(transcript).replay().values())
+
+    checkouts: dict[str, Path] = {}
+    with tempfile.TemporaryDirectory(prefix="whetstone-attribution-") as scratch:
+        for root in namespace.tasks:
+            for task in load_tasks(root):
+                destination = Path(scratch) / task.task_id
+                try:
+                    materialise(task, destination)
+                # A donor that cannot be read leaves the task without a checkout, which
+                # `attribute` records as UNATTRIBUTED by name rather than guessing a cause.
+                except (OSError, RuntimeError, ValueError):
+                    continue
+                checkouts[task.task_id] = destination
+
+        attributions = attribute_all(records, checkouts)
+        counts = breakdown(attributions)
+
+        divergences: tuple[CountDivergence, ...] = ()
+        if namespace.report is not None:
+            report = json.loads(Path(namespace.report).read_text(encoding="utf-8"))
+            divergences = compare_to_counts(to_report_counts(counts), report)
+
+        document = {
+            "schema": "whetstone-attribution/1",
+            "transcript": str(transcript),
+            "rollouts": len(records),
+            "compared_to": None if namespace.report is None else str(namespace.report),
+            "breakdown": {
+                candidate: {cause.value: count for cause, count in sorted(per.items())}
+                for candidate, per in sorted(counts.items())
+            },
+            "divergences": [asdict(one) for one in divergences],
+            "attributions": [
+                {
+                    "candidate": one.candidate,
+                    "task_id": one.task_id,
+                    "cause": one.cause.value,
+                    "detail": one.detail,
+                }
+                for one in attributions
+            ],
+        }
+        out = Path(namespace.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    for candidate, per in sorted(counts.items()):
+        rendered = ", ".join(f"{cause.value}={count}" for cause, count in sorted(per.items()))
+        print(f"{candidate}: {rendered}")
+    if divergences:
+        print(f"\nDIVERGENCES from {namespace.report}: {len(divergences)}", file=sys.stderr)
+        for one in divergences:
+            print(
+                f"  {one.candidate} {one.field}: recorded={one.recorded} replayed={one.replayed}",
+                file=sys.stderr,
+            )
+    print(f"\nwrote {out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
 __all__ = [
     "NO_DIFF_MARKERS",
     "Attribution",
@@ -424,5 +548,6 @@ __all__ = [
     "cause_of_reason",
     "compare_to_counts",
     "extract_patch",
+    "main",
     "to_report_counts",
 ]
