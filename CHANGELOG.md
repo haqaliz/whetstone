@@ -11,10 +11,18 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
-P1 complete: the reward, the contract it grades against, the first corpus of real tasks, and the
-bake-off that closes the phase. Nothing has been tagged since `0.1.0`, so everything below is
-unreleased. Figures about a model now exist, and `reports/baseline/` is their only home — nothing
-in this file restates one, because a figure quoted twice is a figure that can disagree with itself.
+Nothing yet.
+
+## [0.2.0] - 2026-08-06
+
+**The first published release.** P1 complete — the reward, the contract it grades against, the
+first corpus of real tasks, and the bake-off that closes the phase — plus the measurement
+instrumentation that followed it. Figures about a model now exist, and `reports/baseline/` is
+their only home: nothing in this file restates one, because a figure quoted twice is a figure that
+can disagree with itself.
+
+`0.1.0` below was the scaffold. It was never tagged and never published, so this is the first
+version anyone can install.
 
 ### Added
 
@@ -274,5 +282,6 @@ everything after it can be built test-first.
   `mlx` extra and asserts `import mlx` actually succeeds — not merely that installation
   exited 0.
 
-[Unreleased]: https://github.com/haqaliz/whetstone/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/haqaliz/whetstone/releases/tag/v0.1.0
+[Unreleased]: https://github.com/haqaliz/whetstone/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/haqaliz/whetstone/releases/tag/v0.2.0
+<!-- 0.1.0 has no link: it was never tagged and never published. -->
