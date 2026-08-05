@@ -121,6 +121,23 @@ This file orients a coding agent working in this repository. Read it first.
 > documented homes are asserted gitignored. **Nothing is published by this**: it produces local
 > evidence, and the run that uses it has not been made.
 >
+> **The instrument was then used, and it falsified two proposed fixes** (`docs/planning/p2-yield-probe/prd.md`,
+> corrected 2026-08-05). Arm A re-ran the pinned contract and **reproduced `reports/baseline/`
+> exactly** — every published count, four days later — which is the first direct evidence that the
+> bake-off is deterministic rather than merely argued to be. Attributing its transcript then showed
+> the failures are overwhelmingly *"git would not read this diff"* rather than *"git read it and
+> would not apply it"*, which withdrew the search/replace proposal; and a second run at double the
+> token budget, on the base the evidence best supported, moved no cause bucket beyond noise and
+> solved nothing.
+>
+> **The reasoning under both was the defect, and it is the transferable part.** Truncation had been
+> *inferred from the shape of a diff* and never measured — the spec named that inference as open,
+> and it was then reasoned from as settled. So the roadmap's own named responses (an easier task
+> stratum, or a larger base) now have more support than any generation-contract change, and no
+> further fix should be proposed before someone reads what the unparseable diffs contain. Every
+> figure behind this lives in gitignored run artifacts; `reports/baseline/` remains the only home
+> for a published one.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,

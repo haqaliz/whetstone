@@ -202,6 +202,21 @@ in this file restates one, because a figure quoted twice is a figure that can di
   two buckets while another moves back cancels exactly. A run invoked with both `--journal` and
   `--transcript` is per-task checkable afterwards, which is the reason to pass both.
 
+- `python -m whetstone.bakeoff.run --max-tokens` and `--only`. The budget was a constant compiled
+  into the runtime until a transcript measurement showed it had decided an earlier answer; it is
+  already a `GenerationContract` field, so a run at a different budget discloses that in its own
+  provenance block rather than resembling the run before it. Both flags refuse rather than
+  resolve: a budget below one token, a `--only` name matching nothing, and one matching several
+  are all errors, because each would produce a clean-looking sweep that says nothing.
+- `python -m whetstone.bakeoff.attribution`, the operator end of the attributor — a transcript in,
+  a per-candidate cause breakdown out, offline and with no model loaded.
+- A release workflow (`.github/workflows/release.yml`). `RELEASING.md` had described tag-push as
+  the mechanism while stating that pushing a tag "does nothing but create a tag"; it now exists,
+  and applies this project's own promotion rule to itself — a `verify` job gates both publishing
+  jobs, so a red tag publishes nothing anywhere.
+- `SECURITY.md` and `CODE_OF_CONDUCT.md`, and a README that states what the reward does **not**
+  guarantee at the same length as what it does.
+
 ### Changed
 
 - **Donor repositories are named by stable pseudonym, never by name or path.** Source B is mined

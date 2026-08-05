@@ -62,7 +62,33 @@ same outcome per `(candidate, task)`. If it does, determinism is demonstrated ra
 **If it does not, that is a finding that outranks everything else in this slice** and the slice
 stops until it is explained.
 
-**D3 — The new format is search/replace blocks.** *(user decision)* The model emits exact-match
+> **Corrected 2026-08-05, when arm A and the budget test ran. D3 and its successor are both
+> refuted, and the PRD is left standing with no chosen fix — which is the honest state.**
+>
+> Arm A reproduced `reports/baseline/` exactly and then attributed every rollout. The failures
+> are overwhelmingly *"git would not read this diff"* rather than *"git read it and would not
+> apply it"*, and only the second is what search/replace addresses. **D3 would have fixed a small
+> minority of the failures**, so it is withdrawn as the slice's answer.
+>
+> The replacement hypothesis — that the token budget was the binding constraint — was then tested
+> directly on the one base the evidence best supported, and **it is refuted too**. Given twice the
+> room the typical completion did not use it, the median length was unchanged, and the proportion
+> still hitting the *new* cap barely moved. No cause bucket shifted beyond noise and nothing was
+> solved.
+>
+> **What was wrong was the reasoning under both, and it is worth more than either.** Truncation
+> was *inferred from the shape of a diff* and never measured; the instrumentation aspect's spec
+> named that inference as an open item, and it was then reasoned from as though it were
+> established. The measurement says those failures are malformed diffs, not cut-off ones.
+>
+> Two consequences. The roadmap's own named responses — an easier task stratum or a larger base
+> (`docs/ROADMAP.md:387-389`) — now have more support than any generation-contract change, because
+> two contract changes have been falsified and none has been confirmed. And no fourth fix should
+> be proposed before someone reads what the unparseable diffs actually contain; the completions
+> are on disk, so that costs a read rather than a run. Figures for all of it live in the run
+> artifacts under the gitignored roots, never restated here.
+
+**D3 — The new format is search/replace blocks.** *(user decision — WITHDRAWN, see above)* The model emits exact-match
 old text → new text per file; the harness locates the anchor in the oracle source and computes the
 unified diff. This removes hunk headers and line-number arithmetic — a documented cause
 (`bakeoff/patch.py:43-53`) — while keeping output small enough that truncation stays rare. Whole-file
