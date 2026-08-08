@@ -11,7 +11,36 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **The autopsy** (`python -m whetstone.bakeoff.autopsy`): an offline, deterministic,
+  stdlib-only classifier that reads a bake-off transcript and says which zero each rollout
+  was — the content-level read the yield-probe correction demanded before a fourth fix.
+  One primary cause per completion (`im-start-loop`, `hunk-dies-early` with its three
+  deaths, `hunk-count-mismatch`, `header-without-hunk`, `well-formed`, the inherited
+  `no-diff`, and `unrecognised-shape` named and never folded), markers as observations, and
+  a fine→coarse mapping asserted per record against the run's own `attribution.json` — a
+  contradiction is reported as a divergence, never reconciled. The document is written only
+  under a gitignored root (refused otherwise, before anything is read), byte-deterministic,
+  schema `whetstone-autopsy/1`.
+- **The measurement corrected the hand-read, which is the part worth reading.** Run over
+  the two stored runs (arm-a, budget-2048), the mapping assertion surfaced walk rules that
+  disagreed with git's parser on the same bytes: a check that read text past the extracted
+  diff (which git never parses) and misflagged applied patches; a blind spot where git's
+  counter-overrun keeps parsing into "corrupt patch" while the walk saw a completed hunk;
+  and a mapping gap for loop-dominated completions carrying a refused stub. Each correction
+  has a fixture and was watched failing first. The corrected instrument agrees with the
+  run's own attribution on every stored record and classifies both runs completely.
+- **The finding** (`docs/planning/p2-diff-autopsy/finding.md`): the wall is formatting, not
+  reasoning, not extraction — the candidates can write diffs git accepts and almost never
+  do, so the roadmap's easier-stratum/larger-base fork is unsupported by this data, and a
+  format-hardening response is what the evidence names. No figure about a model appears
+  anywhere outside the gitignored breakdowns.
+- **A `verify/`-untouched guard**: the first test asserting the reward path does not move
+  (`git diff --stat origin/master -- src/whetstone/verify/` empty), proven able to fail
+  against a synthetic tree with a staged `verify/` change, plus the autopsy's own
+  no-inference AST walk over module and tests.
+
 
 ## [0.2.0] - 2026-08-06
 
