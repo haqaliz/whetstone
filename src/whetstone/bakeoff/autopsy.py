@@ -46,6 +46,17 @@ text defeats the claim its inherited reason makes: binary-looking bytes are not 
 completion dominated by non-printable characters is named `UNRECOGNISED_SHAPE` instead of
 inheriting the prose sentence.
 
+**The fine→coarse mapping** (`FINE_TO_COARSE`, `autopsy`, `mapping_violations`) is the third
+layer: it asserts the fine verdict against the coarse cause the run's own `attribution.json`
+recorded, per record — no second `git` pass, no checkout (`prd.md` D3). `UNATTRIBUTED` is
+always allowed: it means "not graded", orthogonal to the shape of the completion. A
+contradiction is reported as a `MappingViolation`, never reconciled (`prd.md` R-b): the table
+is the instrument that surfaces disagreement between the two layers, and an autopsy that
+smoothed a record until it agreed would report the shape it hoped for instead of the one on
+disk. A transcript record with no attribution row is `recorded_cause=None`,
+`coarse_agrees=False` — named, never skipped, because a partial join renders a run with a
+hole in its attribution as a clean one.
+
 Stdlib only, plus `patch.py`'s own span logic imported — never copied (`prd.md` R1). No model,
 no network.
 """
@@ -54,10 +65,12 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from itertools import pairwise
 
+from whetstone.bakeoff.attribution import Cause
 from whetstone.bakeoff.patch import (
     _HUNK_HEADER,
     NoDiff,
@@ -66,6 +79,7 @@ from whetstone.bakeoff.patch import (
     _fenced_spans,
     extract_patch,
 )
+from whetstone.bakeoff.transcript import Transcribed
 
 
 #: A shape observed in a completion's raw text. Markers are observations, never verdicts: the
@@ -489,14 +503,185 @@ def _unrecognisable_detail(text: str) -> str:
     )
 
 
+# --------------------------------------------------------------------------------------------
+# Phase 3 — the fine→coarse mapping and the per-record join against the run's own attribution.
+# --------------------------------------------------------------------------------------------
+
+
+#: Which recorded coarse causes each fine cause may explain (`prd.md` R3). Pure data in the
+#: `_FOLD`/`compare_to_counts` shape (`attribution.py:257-264, 304-346`): the fine pass names
+#: the shape of the completion, the run's own `attribution.json` records the coarse cause, and
+#: this table is the assertion between them.
+#:
+#: `UNATTRIBUTED` is deliberately not listed — it is **always** allowed: it means "not graded"
+#: (no checkout for the public instance), which is orthogonal to the shape of the completion,
+#: and each stored run carries one such record whose diff is shape-classifiable
+#: (`dig-transcripts.md` § 2 shape 2 note). `UNRECOGNISED_SHAPE` maps to the **empty set**:
+#: nothing may be asserted about a shape no rule claims, so the empty set is its assertion —
+#: any recorded coarse cause contradicts it.
+#:
+#: A contradiction is reported as a `MappingViolation`, never reconciled (`prd.md` R-b): this
+#: table is the instrument that surfaces disagreement between the two layers, not a smoother.
+FINE_TO_COARSE: Mapping[FineCause, frozenset[Cause]] = {
+    FineCause.IM_START_LOOP: frozenset({Cause.NO_DIFF_HEADER, Cause.FENCED_WITHOUT_DIFF}),
+    FineCause.HUNK_DIES_EARLY: frozenset({Cause.WOULD_NOT_PARSE}),
+    FineCause.HUNK_COUNT_MISMATCH: frozenset({Cause.WOULD_NOT_PARSE}),
+    FineCause.HEADER_WITHOUT_HUNK: frozenset({Cause.HEADER_WITHOUT_HUNK}),
+    FineCause.WELL_FORMED: frozenset({Cause.APPLIED, Cause.PARSED_BUT_DID_NOT_APPLY}),
+    FineCause.NO_DIFF: frozenset({Cause.NO_DIFF_HEADER, Cause.FENCED_WITHOUT_DIFF}),
+    FineCause.UNRECOGNISED_SHAPE: frozenset(),
+}
+
+
+@dataclass(frozen=True)
+class AutopsyRecord:
+    """One rollout, whole: the fine verdict, the coarse cause its run recorded, and the agreement.
+
+    The record is the join (`prd.md` R3): the fine pass names what the completion is, the
+    recorded cause names what the run's own attribution measured, and `coarse_agrees` says
+    whether the two agree. `recorded_cause` is `None` exactly when the attribution has no row
+    for this `(candidate, task_id)` — a divergence named, never skipped.
+    """
+
+    candidate: str
+    task_id: str
+    cause: FineCause
+    detail: str
+    markers: frozenset[Marker]
+    recorded_cause: Cause | None
+    coarse_agrees: bool
+
+
+def _joined(record: Transcribed, recorded: Cause | None) -> AutopsyRecord:
+    """One record: its fine verdict bound to its recorded coarse cause, with the agreement flag.
+
+    `None` (a missing attribution row) is the only case where the agreement is `False` without
+    a contradiction: there is nothing to agree with, and that is named rather than skipped
+    (`prd.md` D3). `UNATTRIBUTED` always agrees — it means "not graded", orthogonal to the
+    completion's shape (`prd.md` R3). Every other recorded cause agrees exactly when the fine
+    cause's allowed set contains it.
+    """
+    result = classify_completion(record.completion)
+    if recorded is None:
+        agrees = False
+    elif recorded is Cause.UNATTRIBUTED:
+        agrees = True
+    else:
+        agrees = recorded in FINE_TO_COARSE[result.cause]
+    return AutopsyRecord(
+        candidate=record.candidate,
+        task_id=record.task_id,
+        cause=result.cause,
+        detail=result.detail,
+        markers=result.markers,
+        recorded_cause=recorded,
+        coarse_agrees=agrees,
+    )
+
+
+def autopsy(
+    transcribed: tuple[Transcribed, ...],
+    attributions: Mapping[tuple[str, str], Cause],
+) -> tuple[AutopsyRecord, ...]:
+    """Join every stored completion to the coarse cause its own run recorded, in transcript order.
+
+    Each record is classified by the fine pass and looked up in the run's own attribution rows
+    by `(candidate, task_id)` — the transcript's own key shape (`transcript.py:61`). A record
+    with no attribution row is `recorded_cause=None`, `coarse_agrees=False` **by name**, never
+    skipped: a partial join would render a run with a hole in its attribution as a clean one
+    (`prd.md` D3). The order is the transcript's — the document is written in run order.
+    """
+    return tuple(_joined(record, attributions.get(record.key)) for record in transcribed)
+
+
+@dataclass(frozen=True)
+class MappingViolation:
+    """One record whose recorded coarse cause contradicts its fine cause. Both sides named.
+
+    `recorded_cause` is never `None` and never `UNATTRIBUTED` here: a missing row has nothing
+    to contradict — it is named by `coarse_agrees=False` instead — and `UNATTRIBUTED` is
+    always allowed (`prd.md` R3). The contradiction is reported, never reconciled: both sides
+    travel so the operator reading the divergence sees the direction and the size.
+    """
+
+    candidate: str
+    task_id: str
+    fine_cause: FineCause
+    recorded_cause: Cause
+
+
+def mapping_violations(records: Iterable[AutopsyRecord]) -> tuple[MappingViolation, ...]:
+    """Every record where the recorded coarse cause contradicts the fine cause, in order.
+
+    The filter is the complement of the agreement rule, narrowed to what can contradict: a
+    record that agrees is not a violation; a missing row (`recorded_cause is None`) is a gap,
+    not a contradiction, and is named by `coarse_agrees=False` where it stands; and
+    `UNATTRIBUTED` is always allowed (`prd.md` R3) — it means "not graded", orthogonal to
+    shape. What remains is a real disagreement between the fine pass and the run's own
+    attribution, reported rather than smoothed (`prd.md` R-b).
+    """
+    violations: list[MappingViolation] = []
+    for record in records:
+        recorded = record.recorded_cause
+        if record.coarse_agrees or recorded is None or recorded is Cause.UNATTRIBUTED:
+            continue
+        violations.append(
+            MappingViolation(
+                candidate=record.candidate,
+                task_id=record.task_id,
+                fine_cause=record.cause,
+                recorded_cause=recorded,
+            )
+        )
+    return tuple(violations)
+
+
+def breakdown(records: Iterable[AutopsyRecord]) -> dict[str, dict[FineCause, int]]:
+    """Counts per candidate, per fine cause. Absent causes are absent, never zero-filled.
+
+    The `attribution.py:227-242` discipline, carried into the fine pass: a zero here would be
+    indistinguishable from a cause that stopped matching anything, and the difference between
+    "this never happened" and "this stopped being observed" is the difference between a
+    finding and a broken instrument. Per candidate because that is the finding: the failure
+    modes differ between bases, and a pooled total is exactly what would hide it.
+    """
+    counts: dict[str, dict[FineCause, int]] = {}
+    for record in records:
+        per_candidate = counts.setdefault(record.candidate, {})
+        per_candidate[record.cause] = per_candidate.get(record.cause, 0) + 1
+    return counts
+
+
+def marker_counts(records: Iterable[AutopsyRecord]) -> dict[str, dict[Marker, int]]:
+    """The same shape for markers: per candidate, per marker; absent markers absent.
+
+    Markers are observations, not causes (`prd.md` D4), so they are counted separately from
+    the partition — with the same absent-never-zero rule, for the same reason: a marker that
+    has stopped matching anything must read as a broken detector, not as a quiet zero.
+    """
+    counts: dict[str, dict[Marker, int]] = {}
+    for record in records:
+        per_candidate = counts.setdefault(record.candidate, {})
+        for marker in record.markers:
+            per_candidate[marker] = per_candidate.get(marker, 0) + 1
+    return counts
+
+
 __all__ = [
+    "FINE_TO_COARSE",
     "LOOP_DOMINANCE_RATIO",
+    "AutopsyRecord",
     "AutopsyResult",
     "DeathKind",
     "FineCause",
+    "MappingViolation",
     "Marker",
+    "autopsy",
+    "breakdown",
     "classify_completion",
     "im_start_ratio",
     "loop_verdict",
+    "mapping_violations",
+    "marker_counts",
     "markers_of",
 ]
