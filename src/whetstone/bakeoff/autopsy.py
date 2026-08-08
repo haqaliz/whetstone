@@ -27,19 +27,23 @@ failed the bake-off failed at a specific line. The walk re-runs the extractor's 
 the same span it found — same hunk headers, same counts — but records what `_diff_span` throws
 away: counts remaining at the stop line (a death: `bare-line` when the stop line is unprefixed,
 `fence-cut` when it is a closing fence, `end-of-output` when the completion ends with counts
-remaining — the truncation shape, *inferred*, `prd.md` D5), or counts exhausted with a hunk-
-content line following (the body extends beyond its declared counts). The margin between
-`hunk-dies-early` and `hunk-count-mismatch` is the dig's documented fuzzy boundary
-(`dig-transcripts.md` § 5 Q1); the rule here is the mechanical one — first-hunk death is
-`hunk-dies-early`, any later-hunk death or extends-beyond is `hunk-count-mismatch` — and
-divergence from the dig's provisional split is a finding, never a tune.
+remaining — the truncation shape, *inferred*, `prd.md` D5), or a counter driven below zero
+while the body was consumed (the overrun: a body with more lines of a kind than its header
+declared, the shape git refuses as a corrupt patch — its parser loops while either counter is
+non-zero, and a negative counter is truthy in C). The margin between `hunk-dies-early` and
+`hunk-count-mismatch` is the dig's documented fuzzy boundary (`dig-transcripts.md` § 5 Q1);
+the rule here is the mechanical one — first-hunk death is `hunk-dies-early`, any later-hunk
+death or overrun is `hunk-count-mismatch` — and divergence from the dig's provisional split is
+a finding, never a tune. A hunk that completes exactly at the diff's end is well-formed
+whatever the completion continues with: the extracted diff is all git receives, so a line
+beyond the extractor's span is text git never parses and the walk must not judge it.
 
 **The precedence table** (`prd.md` D4) resolves exactly one primary cause per record, in a fixed
 order: a no-hunk `NoDiff` is `HEADER_WITHOUT_HUNK`; a loop-dominated completion whose diff, if
 any, is not well-formed is `IM_START_LOOP` (a loop before a *well-formed* diff demotes to the
 `LOOP_PRESENT` marker); any other `NoDiff` is `NO_DIFF` with the extractor's own reason sentence
 (the inherited vocabulary, `prd.md` § 8 gap 2); a first-hunk death is `HUNK_DIES_EARLY`; a
-later-hunk death or extends-beyond is `HUNK_COUNT_MISMATCH`; all hunks complete is
+later-hunk death or overrun is `HUNK_COUNT_MISMATCH`; all hunks complete is
 `WELL_FORMED`; and a completion no rule can claim is `UNRECOGNISED_SHAPE` by name — never
 folded into a neighbour (`prd.md` R2). The terminal's one reachable face today is a NoDiff whose
 text defeats the claim its inherited reason makes: binary-looking bytes are not "prose", so a
@@ -292,13 +296,13 @@ class AutopsyResult:
     markers: frozenset[Marker]
 
 
-#: What the hunk walk found. `later_death` and `extends` carry the hunk number that violated
+#: What the hunk walk found. `later_death` and `overrun` carry the hunk number that violated
 #: its counts, so the mismatch detail can name the violation rather than just its shape.
 @dataclass(frozen=True)
 class _WalkResult:
     first_death: DeathKind | None
     later_death: tuple[int, DeathKind] | None
-    extends: int | None
+    overrun: int | None
     hunks: int
 
     @property
@@ -308,7 +312,7 @@ class _WalkResult:
             self.hunks > 0
             and self.first_death is None
             and self.later_death is None
-            and self.extends is None
+            and self.overrun is None
         )
 
 
@@ -370,10 +374,10 @@ def classify_completion(text: str) -> AutopsyResult:
             f"hunk {hunk} dies early: {kind.value}",
             markers,
         )
-    if walk.extends is not None:
+    if walk.overrun is not None:
         return AutopsyResult(
             FineCause.HUNK_COUNT_MISMATCH,
-            f"hunk {walk.extends} body extends beyond its declared counts",
+            f"hunk {walk.overrun} body exceeds its declared counts",
             markers,
         )
     return AutopsyResult(FineCause.WELL_FORMED, f"all {walk.hunks} hunks complete", markers)
@@ -412,15 +416,18 @@ def _walk(
     hunk bodies — so a line that is not a hunk header is metadata to be passed over, the same
     traversal `_diff_span` performs. Each hunk's body is consumed against its declared counts;
     counts remaining at the stop line is a death, classified from the line after the diff in
-    the original text (`_death_kind`); counts exhausted with a hunk-content line following is
-    the extends-beyond violation. `_hunk_body` is deliberately not called: it returns where the
-    body stopped, not why, and the why is this phase's entire product.
+    the original text (`_death_kind`); a counter driven below zero while the body was consumed
+    is the overrun — a body with more lines of a kind than its header declared, the shape git
+    refuses as a corrupt patch. The overrun is recorded but the walk continues, so a later
+    hunk's death still outranks it; only a death ends the walk. `_hunk_body` is deliberately
+    not called: it returns where the body stopped, not why, and the why is this phase's
+    entire product.
     """
     index = 0
     hunks = 0
     first_death: DeathKind | None = None
     later_death: tuple[int, DeathKind] | None = None
-    extends: int | None = None
+    overrun: int | None = None
 
     while index < len(diff_lines):
         header = _HUNK_HEADER.match(_bare(diff_lines[index]))
@@ -431,6 +438,7 @@ def _walk(
         old = int(header.group(2)) if header.group(2) is not None else 1
         new = int(header.group(4)) if header.group(4) is not None else 1
         index += 1
+        went_negative = False
         while index < len(diff_lines) and (old > 0 or new > 0):
             line = _bare(diff_lines[index])
             if line.startswith("\\"):
@@ -438,11 +446,14 @@ def _walk(
                 continue
             if line.startswith("+"):
                 new -= 1
+                went_negative = went_negative or new < 0
             elif line.startswith("-"):
                 old -= 1
+                went_negative = went_negative or old < 0
             elif line.startswith(" ") or line == "":
                 old -= 1
                 new -= 1
+                went_negative = went_negative or old < 0 or new < 0
             else:
                 break
             index += 1
@@ -455,17 +466,15 @@ def _walk(
             else:
                 later_death = (hunks, kind)
             break
-        if index >= len(diff_lines):
-            # The diff ends exactly at a completed hunk: the line after it decides whether the
-            # body ran past its counts. Inside the diff, a completed hunk is followed only by
-            # metadata or another hunk header — the extractor's own span excludes hunk-content
-            # lines, so a `--- a/…` file header must not read as a `-` deletion.
-            stop = start + index
-            if stop < len(lines) and _bare(lines[stop]).startswith(("+", "-", " ")):
-                extends = hunks
-                break
+        if went_negative and overrun is None:
+            # git's parser loops while either counter is non-zero — in C a negative counter
+            # is truthy — so a body with more lines of a kind than declared keeps it reading
+            # past the hunk, and the patch dies as corrupt. The walk's loop exits at
+            # zero-or-negative, so the overrun must be recorded by name, or the walk and git
+            # would disagree about the same hunk (`prd.md` R-a).
+            overrun = hunks
 
-    return _WalkResult(first_death, later_death, extends, hunks)
+    return _WalkResult(first_death, later_death, overrun, hunks)
 
 
 def _death_kind(lines: list[str], fenced_ends: frozenset[int], stop: int) -> DeathKind:
@@ -535,10 +544,17 @@ def _unrecognisable_detail(text: str) -> str:
 #: nothing may be asserted about a shape no rule claims, so the empty set is its assertion —
 #: any recorded coarse cause contradicts it.
 #:
+#: `IM_START_LOOP` allows `WOULD_NOT_PARSE` because a loop-dominated completion can still
+#: carry a diff git refused: the loop ate the token budget, and the completions that escape
+#: it near the cap write a stub the run's attribution recorded as `WOULD_NOT_PARSE`
+#: (`dig-transcripts.md` § 4). The two layers describe the same record from two sides.
+#:
 #: A contradiction is reported as a `MappingViolation`, never reconciled (`prd.md` R-b): this
 #: table is the instrument that surfaces disagreement between the two layers, not a smoother.
 FINE_TO_COARSE: Mapping[FineCause, frozenset[Cause]] = {
-    FineCause.IM_START_LOOP: frozenset({Cause.NO_DIFF_HEADER, Cause.FENCED_WITHOUT_DIFF}),
+    FineCause.IM_START_LOOP: frozenset(
+        {Cause.NO_DIFF_HEADER, Cause.FENCED_WITHOUT_DIFF, Cause.WOULD_NOT_PARSE}
+    ),
     FineCause.HUNK_DIES_EARLY: frozenset({Cause.WOULD_NOT_PARSE}),
     FineCause.HUNK_COUNT_MISMATCH: frozenset({Cause.WOULD_NOT_PARSE}),
     FineCause.HEADER_WITHOUT_HUNK: frozenset({Cause.HEADER_WITHOUT_HUNK}),

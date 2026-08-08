@@ -68,8 +68,11 @@ GOOD_DIFF = """diff --git a/adder.py b/adder.py
 LOOP_COMPLETION = "\n".join(["<|im_start|>", "system"] * 6) + "\n"
 
 #: The three transcript rows the fixtures are built from. Two agree with their recorded coarse
-#: cause; the loop record contradicts its own run's attribution, so the document carries exactly
-#: one mapping violation and the stderr stream says so.
+#: cause; the loop record contradicts its own run's attribution — `APPLIED` cannot explain a
+#: completion with no diff in it at all — so the document carries exactly one mapping
+#: violation and the stderr stream says so. (`WOULD_NOT_PARSE` used to be the planted
+#: contradiction, until the operator step showed a loop-dominated completion recorded as
+#: `WOULD_NOT_PARSE` is the 7B budget shape and must agree — `im-start-loop` allows it.)
 TRANSCRIPT_LINES = (
     {
         "candidate": "base-a",
@@ -106,8 +109,8 @@ ATTRIBUTION_ROWS = (
     {
         "candidate": "base-a",
         "task_id": "t2",
-        "cause": "WOULD_NOT_PARSE",
-        "detail": "a diff was located and git would not parse it",
+        "cause": "APPLIED",
+        "detail": "the patch applied cleanly",
     },
     {"candidate": "base-a", "task_id": "t3", "cause": "APPLIED", "detail": ""},
 )
@@ -383,7 +386,7 @@ def test_the_document_round_trips_and_two_invocations_are_byte_identical(
             "candidate": "base-a",
             "task_id": "t2",
             "fine_cause": "im-start-loop",
-            "recorded_cause": "WOULD_NOT_PARSE",
+            "recorded_cause": "APPLIED",
         }
     ], document
     assert document["orphan_attribution_rows"] == [], document
@@ -396,7 +399,7 @@ def test_the_document_round_trips_and_two_invocations_are_byte_identical(
     assert [record["markers"] for record in records] == [[], ["loop-present"], []]
     assert [record["recorded_cause"] for record in records] == [
         "NO_DIFF_HEADER",
-        "WOULD_NOT_PARSE",
+        "APPLIED",
         "APPLIED",
     ]
     assert [record["coarse_agrees"] for record in records] == [True, False, True]
@@ -404,9 +407,7 @@ def test_the_document_round_trips_and_two_invocations_are_byte_identical(
     captured = capsys.readouterr()
     assert "base-a: im-start-loop=1, no-diff=1, well-formed=1" in captured.out, captured.out
     assert "wrote " in captured.out and str(out) in captured.out, captured.out
-    assert (
-        "base-a t2: fine=im-start-loop recorded=WOULD_NOT_PARSE" in captured.err
-    ), captured.err
+    assert "base-a t2: fine=im-start-loop recorded=APPLIED" in captured.err, captured.err
 
 
 def test_an_orphan_attribution_row_is_listed_in_the_document_never_dropped(

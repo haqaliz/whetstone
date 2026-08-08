@@ -51,7 +51,7 @@ from whetstone.bakeoff.transcript import Transcribed
 
 # --------------------------------------------------------------------------------------------
 # Completion fixtures — the same observed shapes the partition file pins, in miniature: a
-# well-formed plain-unified diff, a first-hunk death, an extends-beyond body, a header without
+# well-formed plain-unified diff, a first-hunk death, an overrunning body, a header without
 # a hunk, plain prose, the loop collapse, and the planted unrecognisable bytes.
 # --------------------------------------------------------------------------------------------
 
@@ -74,14 +74,19 @@ STUB_TEXT = """--- a/adder.py
 def add(a, b):
 """
 
-#: Shape 2: counts exhausted with a hunk-content line following — `HUNK_COUNT_MISMATCH`.
-EXTENDS_TEXT = """--- a/adder.py
+#: Shape 2, the overrun: the hunk declares 6/24 and the body supplies 25 added lines — one
+#: more than declared — so `new` goes negative while the walk consumes it and git refuses
+#: the patch as corrupt — `HUNK_COUNT_MISMATCH` (`dig-transcripts.md` § 2 shape 2).
+_ADDED_OVERFLOW = "".join("+    return a + b\n" for _ in range(25))
+EXTENDS_TEXT = f"""--- a/adder.py
 +++ b/adder.py
-@@ -1,2 +1,2 @@
+@@ -100,6 +100,24 @@
  def add(a, b):
--    return a - b
-+    return a + b
-+    return a + b
+     return a - b
+     return a + b
+{_ADDED_OVERFLOW} def add(a, b):
+    # placeholder comment
+    try:
 """
 
 #: A diff header with no hunk after it — the extractor's own third reason, `HEADER_WITHOUT_HUNK`.

@@ -11,15 +11,17 @@ only provisionally (`dig-transcripts.md` § 5 Q1) — this file makes the split 
 **The precedence table is the contract.** One primary cause per record, resolved in a fixed
 order (`prd.md` D4): a no-hunk `NoDiff` outranks the loop; a loop outranks an inherited `NoDiff`
 but demotes to the `LOOP_PRESENT` marker when a well-formed diff follows it; a first-hunk death
-outranks a later-hunk mismatch; a body that extends beyond its declared counts *is* the mismatch.
+outranks a later-hunk mismatch; a body that exceeds its declared counts *is* the mismatch.
 The pairwise assertions below pin the orderings that would silently change which zero a record
 wears if they were reordered.
 
 **The fuzzy margin is mechanical, not judged.** Counts remaining at the stop line is always a
 death — `bare-line` when the stop line is unprefixed, `fence-cut` when it is a closing fence,
 `end-of-output` when the completion ends with counts remaining (the truncation shape, labelled
-*inferred* — `prd.md` D5: the runtime returns a bare `str` with no finish reason). Counts
-exhausted with a hunk-content line (`+`/`-`/` `) following is always extends-beyond. The dig
+*inferred* — `prd.md` D5: the runtime returns a bare `str` with no finish reason). A counter
+driven below zero while the body was consumed is the overrun — a body with more lines of a
+kind than its header declared, the shape git refuses as a corrupt patch (its parser loops
+while either counter is non-zero, and a negative counter is truthy in C). The dig
 flagged this boundary as genuinely fuzzy at the margin; the rule here is the mechanical one the
 plan fixes, and any divergence from the dig's provisional split is a finding, never a tune.
 
@@ -122,16 +124,22 @@ LATER_HUNK_DEATH = """--- a/adder.py
 +    return a ** b
 """
 
-#: Shape 2, extends-beyond: the hunk declares 2/2 and the body supplies three lines — the fourth
-#: is a `+` line after the counts are spent. The extractor's walk stops at it, so the diff ends
-#: one line before the body does; the walk must see the hunk-content line that follows.
-EXTENDS_BEYOND = """--- a/adder.py
+#: Shape 2, the overrun (14B's signature, `contig-2ef3383b0ce7`): the hunk declares 6/24 and
+#: the body supplies 25 added lines — one more than declared — so `new` goes negative while
+#: the walk consumes it. git's C loop treats the negative counter as truthy and keeps reading
+#: past the hunk: "corrupt patch at line 35". A body that merely continues in the *completion*
+#: after a complete hunk is not this shape — the extracted diff is all git receives — only a
+#: body that overruns *inside* the span is.
+_ADDED_OVERFLOW = "".join("+    return a + b\n" for _ in range(25))
+EXTENDS_BEYOND = f"""--- a/adder.py
 +++ b/adder.py
-@@ -1,2 +1,2 @@
+@@ -100,6 +100,24 @@
  def add(a, b):
--    return a - b
-+    return a + b
-+    return a + b
+     return a - b
+     return a + b
+{_ADDED_OVERFLOW} def add(a, b):
+    # placeholder comment
+    try:
 """
 
 #: Shape 15, header without hunk: a `diff --git` header and an index line, then nothing. This is
@@ -292,22 +300,22 @@ def test_a_later_hunk_dying_is_hunk_count_mismatch() -> None:
     assert "hunk 2" in result.detail and "end-of-output" in result.detail, result.detail
 
 
-def test_a_body_extending_beyond_declared_counts_is_hunk_count_mismatch() -> None:
+def test_a_body_exceeding_declared_counts_is_hunk_count_mismatch() -> None:
     """A body that runs past its declared counts is the mismatch, and the detail names it.
 
     The declared count is the contract the hunk walked with; a body line beyond it means the
     counts were invented, not counted (`dig-transcripts.md` § 2 shape 2) — the mechanical
-    `extends-beyond` violation.
+    overrun, the shape git refuses as a corrupt patch.
     """
     result = classify_completion(EXTENDS_BEYOND)
 
     assert result.cause is FineCause.HUNK_COUNT_MISMATCH, (
-        f"an extends-beyond body was classified {result.cause!r} (detail {result.detail!r}).\n\n"
-        "WHY THIS MATTERS: counts exhausted with a hunk-content line following is the rule's "
-        "extends-beyond arm (`prd.md` D4). Folding it into a death would blame a budget cut "
-        "for a body that was simply never counted."
+        f"an overrunning body was classified {result.cause!r} (detail {result.detail!r}).\n\n"
+        "WHY THIS MATTERS: a counter driven below zero by a body with more lines of a kind "
+        "than its header declared is the rule's overrun arm (`prd.md` D4). Folding it into "
+        "well-formed would report the 14B signature — git's \"corrupt patch\" — as healthy."
     )
-    assert "extends" in result.detail, result.detail
+    assert "exceeds" in result.detail, result.detail
 
 
 def test_a_header_without_a_hunk_is_header_without_hunk() -> None:
