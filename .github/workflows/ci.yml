@@ -22,6 +22,15 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # `fetch-depth: 0` is load-bearing for the branch guards
+          # (`tests/bakeoff/test_autopsy_guards.py`): `git diff --stat origin/master -- src/
+          # whetstone/verify/` is the assertion that the reward path did not move, and the
+          # default PR checkout carries only the merge commit — no `origin/master` ref — so
+          # the guard would die with `fatal: bad revision 'origin/master'` instead of
+          # running. A guard that cannot run in CI is a green CI that proves nothing, which
+          # is the same class of lie as rendering UNVERIFIED as PASS.
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true

@@ -138,6 +138,28 @@ This file orients a coding agent working in this repository. Read it first.
 > figure behind this lives in gitignored run artifacts; `reports/baseline/` remains the only home
 > for a published one.
 >
+> **P2 slice 2 — the diff autopsy — is done, and the read is now a measurement** (`docs/planning/p2-diff-autopsy/`;
+> plan at `docs/planning/p2-diff-autopsy/autopsy/`). `src/whetstone/bakeoff/autopsy.py` is an
+> offline, deterministic, stdlib-only classifier that assigns every stored completion exactly one
+> grounded content-shape cause, asserts a fine→coarse mapping against the run's own
+> `attribution.json` (a contradiction is reported, never reconciled), and writes its document
+> only under a gitignored root. **Running it corrected the hand-read in three places, which is
+> the transferable part.** The mapping assertion surfaced walk rules that disagreed with git's
+> parser on the same bytes — a check that read text git never parses, a counter-overrun git
+> reads as "corrupt patch" while the walk saw a completed hunk, and a mapping gap for
+> loop-dominated completions carrying a refused stub — and each correction landed with a
+> fixture, watched failing first. The corrected measurement agrees with the run's own
+> attribution on every stored record, classifies both runs completely with nothing
+> unrecognised, and agrees with the hand-read exactly on the control category while diverging
+> from it only at the one margin the dig itself called fuzzy (reported as a finding, never
+> reconciled). **The finding** (`docs/planning/p2-diff-autopsy/finding.md`) names a formatting
+> wall, not a reasoning or extraction wall: the candidates can write diffs git accepts and
+> almost never do, so the roadmap's easier-stratum/larger-base fork is unsupported by this
+> evidence, and the pivot signal's premise remains untested until a format-hardening response
+> runs — which the finding names but does not build. No figure about a model appears anywhere
+> outside the gitignored breakdowns; the one record that aimed a diff at a held test never
+> reached the verifier and is disclosed as attempt-shaped evidence, not a counted hack.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
