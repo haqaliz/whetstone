@@ -21,6 +21,31 @@ loop-token lines to total non-blank lines separated every observed case cleanly 
 rule; the `LOOP_PRESENT` marker is the detector's output, promoted to a primary cause in
 Phase 2 only when no well-formed diff follows the loop.
 
+**The hunk walk** (`classify_completion`) is the second layer: it walks the hunks of the diff
+`patch.py` actually extracted and records *why the walk stopped*, because a completion that
+failed the bake-off failed at a specific line. The walk re-runs the extractor's span logic over
+the same span it found — same hunk headers, same counts — but records what `_diff_span` throws
+away: counts remaining at the stop line (a death: `bare-line` when the stop line is unprefixed,
+`fence-cut` when it is a closing fence, `end-of-output` when the completion ends with counts
+remaining — the truncation shape, *inferred*, `prd.md` D5), or counts exhausted with a hunk-
+content line following (the body extends beyond its declared counts). The margin between
+`hunk-dies-early` and `hunk-count-mismatch` is the dig's documented fuzzy boundary
+(`dig-transcripts.md` § 5 Q1); the rule here is the mechanical one — first-hunk death is
+`hunk-dies-early`, any later-hunk death or extends-beyond is `hunk-count-mismatch` — and
+divergence from the dig's provisional split is a finding, never a tune.
+
+**The precedence table** (`prd.md` D4) resolves exactly one primary cause per record, in a fixed
+order: a no-hunk `NoDiff` is `HEADER_WITHOUT_HUNK`; a loop-dominated completion whose diff, if
+any, is not well-formed is `IM_START_LOOP` (a loop before a *well-formed* diff demotes to the
+`LOOP_PRESENT` marker); any other `NoDiff` is `NO_DIFF` with the extractor's own reason sentence
+(the inherited vocabulary, `prd.md` § 8 gap 2); a first-hunk death is `HUNK_DIES_EARLY`; a
+later-hunk death or extends-beyond is `HUNK_COUNT_MISMATCH`; all hunks complete is
+`WELL_FORMED`; and a completion no rule can claim is `UNRECOGNISED_SHAPE` by name — never
+folded into a neighbour (`prd.md` R2). The terminal's one reachable face today is a NoDiff whose
+text defeats the claim its inherited reason makes: binary-looking bytes are not "prose", so a
+completion dominated by non-printable characters is named `UNRECOGNISED_SHAPE` instead of
+inheriting the prose sentence.
+
 Stdlib only, plus `patch.py`'s own span logic imported — never copied (`prd.md` R1). No model,
 no network.
 """
@@ -29,10 +54,18 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from dataclasses import dataclass
 from enum import Enum
 from itertools import pairwise
 
-from whetstone.bakeoff.patch import _bare, _fenced_spans
+from whetstone.bakeoff.patch import (
+    _HUNK_HEADER,
+    NoDiff,
+    _bare,
+    _diff_span,
+    _fenced_spans,
+    extract_patch,
+)
 
 
 #: A shape observed in a completion's raw text. Markers are observations, never verdicts: the
@@ -60,6 +93,17 @@ class FineCause(str, Enum):
     WELL_FORMED = "well-formed"
     NO_DIFF = "no-diff"
     UNRECOGNISED_SHAPE = "unrecognised-shape"
+
+
+#: Why a hunk's body stopped with counts remaining — the three observed deaths inside a hunk
+#: body (`dig-transcripts.md` § 2 shape 3). Each has a different fix, so the detail must carry
+#: the kind, not just the cause. `END_OF_OUTPUT` is the inferred truncation shape (`prd.md`
+#: D5): the runtime returns a bare `str` with no finish reason, so it is named from shape,
+#: never claimed as a measured token cap.
+class DeathKind(str, Enum):
+    BARE_LINE = "bare-line"
+    FENCE_CUT = "fence-cut"
+    END_OF_OUTPUT = "end-of-output"
 
 
 #: The observed separation: a completion is loop-dominated above this ratio of loop-token lines
@@ -205,10 +249,253 @@ def _noop_hunks(text: str) -> bool:
     return False
 
 
+# --------------------------------------------------------------------------------------------
+# Phase 2 — the hunk walk and the precedence table.
+# --------------------------------------------------------------------------------------------
+
+#: One completion's fine verdict: the primary cause, the detail that says why, and the markers
+#: the raw text carried. Frozen and order-free so a record read twice is a record read once
+#: (`prd.md` R4): `markers` is a `frozenset` precisely so equality is not iteration order.
+@dataclass(frozen=True)
+class AutopsyResult:
+    cause: FineCause
+    detail: str
+    markers: frozenset[Marker]
+
+
+#: What the hunk walk found. `later_death` and `extends` carry the hunk number that violated
+#: its counts, so the mismatch detail can name the violation rather than just its shape.
+@dataclass(frozen=True)
+class _WalkResult:
+    first_death: DeathKind | None
+    later_death: tuple[int, DeathKind] | None
+    extends: int | None
+    hunks: int
+
+    @property
+    def is_well_formed(self) -> bool:
+        """Every hunk completed within its declared counts, and at least one hunk was walked."""
+        return (
+            self.hunks > 0
+            and self.first_death is None
+            and self.later_death is None
+            and self.extends is None
+        )
+
+
+def classify_completion(text: str) -> AutopsyResult:
+    """The precedence table (`prd.md` D4): exactly one primary cause per completion.
+
+    The extractor's verdict comes first — a `NoDiff` is a completion with no diff in it, and a
+    well-formed diff is the control — and the hunk walk then decides between the diff-side
+    causes. The orderings that matter are pinned pairwise in
+    `tests/bakeoff/test_autopsy_partition.py`: the no-hunk reason outranks the loop, the loop
+    outranks an inherited `NoDiff` but demotes to a marker beside a well-formed diff, the
+    first-hunk death outranks a later-hunk mismatch, and the named terminal catches what no
+    rule can claim.
+    """
+    markers = markers_of(text)
+    extraction = extract_patch(text)
+
+    if isinstance(extraction, NoDiff):
+        if "no hunk" in extraction.reason:
+            # The extractor's own third reason: a header was found but no hunk followed.
+            return AutopsyResult(FineCause.HEADER_WITHOUT_HUNK, extraction.reason, markers)
+        cause, ratio = loop_verdict(text)
+        if cause is FineCause.IM_START_LOOP:
+            # No diff at all behind a dominant loop: the loop is the completion.
+            return AutopsyResult(FineCause.IM_START_LOOP, _loop_detail(ratio), markers)
+        if _unrecognisable_shape(text):
+            # The inherited reason would claim "prose" for bytes; the terminal refuses by name.
+            return AutopsyResult(
+                FineCause.UNRECOGNISED_SHAPE, _unrecognisable_detail(text), markers
+            )
+        return AutopsyResult(FineCause.NO_DIFF, extraction.reason, markers)
+
+    lines = text.splitlines(keepends=True)
+    diff_lines = extraction.diff.splitlines(keepends=True)
+    start = _diff_start(lines, diff_lines)
+    if start is None:
+        # Defensive terminal: `Extracted.diff` is always a slice of the text the walk can
+        # re-derive; a record that reaches this has defeated the span logic itself.
+        return AutopsyResult(
+            FineCause.UNRECOGNISED_SHAPE,
+            "the extractor found a diff whose span the walk could not locate in the completion",
+            markers,
+        )
+    fenced_ends = frozenset(end for _, end in _fenced_spans(lines))
+    walk = _walk(lines, start, diff_lines, fenced_ends)
+
+    cause, ratio = loop_verdict(text)
+    if cause is FineCause.IM_START_LOOP and not walk.is_well_formed:
+        # The loop is the failure: it dominates the completion and what follows it is not a
+        # diff git would grade. Only a well-formed diff outranks the loop.
+        return AutopsyResult(FineCause.IM_START_LOOP, _loop_detail(ratio), markers)
+    if walk.first_death is not None:
+        # The walk ended in the first hunk with counts remaining: the stub shape.
+        return AutopsyResult(FineCause.HUNK_DIES_EARLY, walk.first_death.value, markers)
+    if walk.later_death is not None:
+        hunk, kind = walk.later_death
+        return AutopsyResult(
+            FineCause.HUNK_COUNT_MISMATCH,
+            f"hunk {hunk} dies early: {kind.value}",
+            markers,
+        )
+    if walk.extends is not None:
+        return AutopsyResult(
+            FineCause.HUNK_COUNT_MISMATCH,
+            f"hunk {walk.extends} body extends beyond its declared counts",
+            markers,
+        )
+    return AutopsyResult(FineCause.WELL_FORMED, f"all {walk.hunks} hunks complete", markers)
+
+
+def _diff_start(lines: list[str], diff_lines: list[str]) -> int | None:
+    """Where the extracted diff sits in the original lines, or `None` if it cannot be found.
+
+    `Extracted.diff` is a byte slice of `lines` (`patch.py:170`), except that a missing final
+    newline is supplied (`patch.py:313-320`) — so lines are compared bared, terminators not
+    part of the identity. The first position whose bared lines match the diff *and* from which
+    the extractor's own walk stops exactly where the diff ends is the candidate the extractor
+    returned; the walk validation is what rejects an earlier look-alike run.
+    """
+    first = _bare(diff_lines[0])
+    count = len(diff_lines)
+    for index, line in enumerate(lines):
+        if _bare(line) != first or index + count > len(lines):
+            continue
+        if [_bare(candidate) for candidate in lines[index : index + count]] != [
+            _bare(candidate) for candidate in diff_lines
+        ]:
+            continue
+        stop, hunks = _diff_span(lines, index, -1)
+        if stop == index + count and hunks > 0:
+            return index
+    return None
+
+
+def _walk(
+    lines: list[str], start: int, diff_lines: list[str], fenced_ends: frozenset[int]
+) -> _WalkResult:
+    """Walk every hunk in the extracted diff, recording why the walk stopped.
+
+    The diff's own lines are exactly what the extractor's span accepted — headers, metadata and
+    hunk bodies — so a line that is not a hunk header is metadata to be passed over, the same
+    traversal `_diff_span` performs. Each hunk's body is consumed against its declared counts;
+    counts remaining at the stop line is a death, classified from the line after the diff in
+    the original text (`_death_kind`); counts exhausted with a hunk-content line following is
+    the extends-beyond violation. `_hunk_body` is deliberately not called: it returns where the
+    body stopped, not why, and the why is this phase's entire product.
+    """
+    index = 0
+    hunks = 0
+    first_death: DeathKind | None = None
+    later_death: tuple[int, DeathKind] | None = None
+    extends: int | None = None
+
+    while index < len(diff_lines):
+        header = _HUNK_HEADER.match(_bare(diff_lines[index]))
+        if header is None:
+            index += 1
+            continue
+        hunks += 1
+        old = int(header.group(2)) if header.group(2) is not None else 1
+        new = int(header.group(4)) if header.group(4) is not None else 1
+        index += 1
+        while index < len(diff_lines) and (old > 0 or new > 0):
+            line = _bare(diff_lines[index])
+            if line.startswith("\\"):
+                index += 1
+                continue
+            if line.startswith("+"):
+                new -= 1
+            elif line.startswith("-"):
+                old -= 1
+            elif line.startswith(" ") or line == "":
+                old -= 1
+                new -= 1
+            else:
+                break
+            index += 1
+        while index < len(diff_lines) and _bare(diff_lines[index]).startswith("\\"):
+            index += 1
+        if old > 0 or new > 0:
+            kind = _death_kind(lines, fenced_ends, start + index)
+            if hunks == 1:
+                first_death = kind
+            else:
+                later_death = (hunks, kind)
+            break
+        if index >= len(diff_lines):
+            # The diff ends exactly at a completed hunk: the line after it decides whether the
+            # body ran past its counts. Inside the diff, a completed hunk is followed only by
+            # metadata or another hunk header — the extractor's own span excludes hunk-content
+            # lines, so a `--- a/…` file header must not read as a `-` deletion.
+            stop = start + index
+            if stop < len(lines) and _bare(lines[stop]).startswith(("+", "-", " ")):
+                extends = hunks
+                break
+
+    return _WalkResult(first_death, later_death, extends, hunks)
+
+
+def _death_kind(lines: list[str], fenced_ends: frozenset[int], stop: int) -> DeathKind:
+    """The death's shape, read from the line the walk stopped at.
+
+    `END_OF_OUTPUT` when the completion ends with counts remaining — the inferred truncation
+    shape (`prd.md` D5); `FENCE_CUT` when the stop line is a closing fence (the fence ends of
+    `_fenced_spans`, never a guessed prefix); `BARE_LINE` when it is unprefixed — a pasted
+    source line, or anything else the walk cannot consume.
+    """
+    if stop >= len(lines):
+        return DeathKind.END_OF_OUTPUT
+    if stop in fenced_ends:
+        return DeathKind.FENCE_CUT
+    return DeathKind.BARE_LINE
+
+
+def _loop_detail(ratio: float) -> str:
+    """The loop cause's detail: the measured ratio that decided it (`prd.md` D4)."""
+    return f"loop-dominated: {ratio:.3f} of non-blank lines are chat-template tokens"
+
+
+def _unrecognisable_share(text: str) -> float:
+    """The share of non-blank characters that are not printable.
+
+    Control bytes are not prose: a completion dominated by them is a shape no inherited reason
+    may claim. Blank characters are excluded so a short garbage burst padded with newlines is
+    not read as diluted.
+    """
+    chars = [char for char in text if not char.isspace()]
+    if not chars:
+        return 0.0
+    return sum(not char.isprintable() for char in chars) / len(chars)
+
+
+def _unrecognisable_shape(text: str) -> bool:
+    """Is the completion dominated by non-printable characters?
+
+    The named terminal's reachable face (`prd.md` R2): the extractor would report "the output
+    is prose" for bytes, and a bucket that means "wrote prose" cannot honestly hold them.
+    """
+    return _unrecognisable_share(text) > 0.5
+
+
+def _unrecognisable_detail(text: str) -> str:
+    """The terminal's detail: the shape that defeated the detectors, named, never guessed."""
+    return (
+        f"the completion is dominated by non-printable characters "
+        f"({_unrecognisable_share(text):.3f} of non-blank characters)"
+    )
+
+
 __all__ = [
     "LOOP_DOMINANCE_RATIO",
+    "AutopsyResult",
+    "DeathKind",
     "FineCause",
     "Marker",
+    "classify_completion",
     "im_start_ratio",
     "loop_verdict",
     "markers_of",
