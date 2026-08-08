@@ -57,20 +57,35 @@ disk. A transcript record with no attribution row is `recorded_cause=None`,
 `coarse_agrees=False` — named, never skipped, because a partial join renders a run with a
 hole in its attribution as a clean one.
 
+**The CLI** (`main`, `refuse_published_out`) is the door: `python -m whetstone.bakeoff.autopsy`
+reads a run's transcript and its own attribution document, classifies every record, and writes
+the `whetstone-autopsy/1` document — byte-deterministically (`json.dumps(..., sort_keys=True)`),
+one record per transcript row in run order, with every attribution row that matched no record
+listed as an orphan rather than dropped. The document's home is a documented gitignored root
+(`runs/`, `reports/local/`, `checkpoints/`, `tasks/local/`, `_sandbox/` — `.gitignore:20-24`),
+enforced **before anything is read**: an autopsy output quotes stored completions, which carry
+the user's own private code, so a path git would commit is refused by name — the
+`_refuse_published_transcript` discipline (`run.py:886-907`) applied to this module's own
+document.
+
 Stdlib only, plus `patch.py`'s own span logic imported — never copied (`prd.md` R1). No model,
 no network.
 """
 
 from __future__ import annotations
 
+import argparse
+import json
 import re
+import sys
 from collections import Counter
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import asdict, dataclass
 from enum import Enum
 from itertools import pairwise
+from pathlib import Path
 
-from whetstone.bakeoff.attribution import Cause
+from whetstone.bakeoff.attribution import Attribution, Cause
 from whetstone.bakeoff.patch import (
     _HUNK_HEADER,
     NoDiff,
@@ -79,7 +94,7 @@ from whetstone.bakeoff.patch import (
     _fenced_spans,
     extract_patch,
 )
-from whetstone.bakeoff.transcript import Transcribed
+from whetstone.bakeoff.transcript import Transcribed, Transcript
 
 
 #: A shape observed in a completion's raw text. Markers are observations, never verdicts: the
@@ -667,8 +682,257 @@ def marker_counts(records: Iterable[AutopsyRecord]) -> dict[str, dict[Marker, in
     return counts
 
 
+# --------------------------------------------------------------------------------------------
+# Phase 4 — the CLI and the locality refusal.
+# --------------------------------------------------------------------------------------------
+
+#: The document this module writes.
+AUTOPSY_SCHEMA = "whetstone-autopsy/1"
+
+#: The document it reads: `attribution.py`'s own output (`attribution.py:499`). A document
+#: carrying any other schema is not the run's own attribution and is refused by name — the
+#: coarse causes must be the ones the run recorded, not a near-miss from another run.
+ATTRIBUTION_SCHEMA = "whetstone-attribution/1"
+
+#: The roots `.gitignore:20-24` reserves for the loop's own artifacts, which is where an autopsy
+#: document belongs. Trailing-slash form, the directory-only patterns as git reads them; the
+#: bare form answers "not ignored" and is pinned as a trap by `tests/test_tasks_layout.py`.
+IGNORED_OUT_ROOTS = ("runs/", "reports/local/", "checkpoints/", "tasks/local/", "_sandbox/")
+
+
+class _UsageError(ValueError):
+    """An invocation mistake the CLI reports as exit 2: a document that does not parse."""
+
+
+class OutNotPrivate(ValueError):
+    """An `--out` path git would commit. Raised before anything is read or written."""
+
+
+def refuse_published_out(out: Path) -> None:
+    """Refuse an `--out` that does not sit under a documented gitignored root.
+
+    Resolved rather than compared as written, and compared with `is_relative_to`, because
+    `out/../out/x.json` and a symlinked scratch directory both name a path inside `out` while
+    comparing unequal to it — the check has to hold against the path that gets written, not the
+    one that got typed. `resolve()` never requires the path to exist, so an honest first run
+    into a not-yet-created directory is not refused (`run.py:886-907`).
+    """
+    if any(out.resolve().is_relative_to(Path(root).resolve()) for root in IGNORED_OUT_ROOTS):
+        return
+    raise OutNotPrivate(
+        f"the document at {str(out)!r} does not sit under one of the documented gitignored "
+        f"roots ({', '.join(IGNORED_OUT_ROOTS)}). An autopsy reads stored completions, and a "
+        "completion quotes the user's own private donor code back verbatim, so the document is "
+        "only ever written under a root git already ignores. Point --out under one of those; "
+        "this is refused rather than warned about because a warning is read after the file "
+        "already exists"
+    )
+
+
+def _read_attribution_rows(path: Path) -> tuple[Attribution, ...]:
+    """The run's own attribution document, parsed strictly — a row that does not parse is an error.
+
+    The document must declare `whetstone-attribution/1` and carry an `attributions` list, and
+    every row must be keyable: candidate, task id, and a cause string the replay actually has a
+    member for. A row that cannot be keyed is refused by name rather than matched by a guess —
+    the alternative is an unknown cause drifting into whichever bucket happens to match, which
+    is the invented-taxonomy failure this whole slice exists to refuse (`prd.md` § 8). The
+    `detail` field travels with the row and is carried through unused; the document does not
+    consume it.
+    """
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise _UsageError(
+            f"the attribution document at {str(path)!r} could not be read as JSON "
+            f"({type(exc).__name__}: {exc})"
+        ) from exc
+    except OSError as exc:
+        raise _UsageError(
+            f"the attribution document at {str(path)!r} could not be read: {exc}"
+        ) from exc
+    if not isinstance(raw, dict) or raw.get("schema") != ATTRIBUTION_SCHEMA:
+        raise _UsageError(
+            f"the attribution document at {str(path)!r} does not declare schema "
+            f"{ATTRIBUTION_SCHEMA!r}, so its rows cannot be trusted as the coarse causes this "
+            "run recorded"
+        )
+    rows = raw.get("attributions")
+    if not isinstance(rows, list):
+        raise _UsageError(
+            f"the attribution document at {str(path)!r} carries no 'attributions' list, so "
+            "there is nothing to join the transcript against"
+        )
+
+    parsed: list[Attribution] = []
+    for number, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            raise _UsageError(
+                f"attribution row {number} of {str(path)!r} is not an object, so the join "
+                "cannot key it"
+            )
+        try:
+            candidate = row["candidate"]
+            task_id = row["task_id"]
+        except KeyError as exc:
+            raise _UsageError(
+                f"attribution row {number} of {str(path)!r} is missing {exc.args[0]!r}, which "
+                "is half the join key — a row that cannot be keyed is refused, not matched by "
+                "a guess"
+            ) from exc
+        if not isinstance(candidate, str) or not isinstance(task_id, str):
+            raise _UsageError(
+                f"attribution row {number} of {str(path)!r} names its candidate or task with "
+                "a non-string, so the join cannot key it"
+            )
+        try:
+            cause = Cause(row["cause"])
+        except (KeyError, ValueError, TypeError) as exc:
+            raise _UsageError(
+                f"attribution row {number} of {str(path)!r} names cause "
+                f"{row.get('cause')!r}, which is not one of the replay's causes "
+                f"({', '.join(cause.value for cause in Cause)})"
+            ) from exc
+        parsed.append(Attribution(candidate, task_id, cause, str(row.get("detail", ""))))
+    return tuple(parsed)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Classify a run's transcript offline and write the document. No model, no network.
+
+    Separate from `run.py` on purpose, and beside `attribution.py` for the same reason that
+    module sits beside it: an autopsy costs a file read, and a driver that needed the engine
+    back would make every question about a finished night cost another night of generation.
+
+    `--out` is checked **before** anything is loaded — the refusal is the
+    `_refuse_published_transcript` discipline (`run.py:886-907`) applied to this module's own
+    document: an autopsy output quotes stored completions, which carry the user's own private
+    code, so a path git would commit is a usage error, named, with nothing read and nothing
+    written. A missing transcript or attribution, a document that does not parse, and a cause
+    string the replay has no member for are each exit 2 with the reason named — a join against
+    nothing would render every record's recorded cause `None`, which is a run with a hole in
+    its attribution wearing the shape of a clean one.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m whetstone.bakeoff.autopsy",
+        description=(
+            "Classify every stored completion of a bake-off run and assert each fine verdict "
+            "against the coarse cause the run's own attribution.json recorded. Offline: no "
+            "model is loaded and no network is touched, and the document is written only "
+            "under a documented gitignored root."
+        ),
+    )
+    parser.add_argument("--transcript", required=True, type=Path, help="the run's transcript")
+    parser.add_argument(
+        "--attribution", required=True, type=Path, help="the run's own attribution.json"
+    )
+    parser.add_argument(
+        "--out", required=True, type=Path, help="where the document is written"
+    )
+    namespace = parser.parse_args(argv)
+
+    out = namespace.out
+    try:
+        refuse_published_out(out)
+    except OutNotPrivate as exc:
+        print(f"whetstone autopsy: {exc}", file=sys.stderr)
+        return 2
+
+    transcript = namespace.transcript
+    if not transcript.is_file():
+        print(
+            f"whetstone autopsy: {str(transcript)!r} is not a file. Classifying a transcript "
+            "that is not there would report an empty run — no records, no causes — which reads "
+            "as 'every rollout classified and none found', a run nobody measured wearing the "
+            "shape of a clean one",
+            file=sys.stderr,
+        )
+        return 2
+
+    attribution = namespace.attribution
+    if not attribution.is_file():
+        print(
+            f"whetstone autopsy: {str(attribution)!r} is not a file. The coarse causes come "
+            "from the run's own attribution.json, and a join against nothing would render "
+            "every record's recorded cause as None — a run whose attribution was lost, wearing "
+            "the shape of one that never had any",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        rows = _read_attribution_rows(attribution)
+    except _UsageError as exc:
+        print(f"whetstone autopsy: {exc}", file=sys.stderr)
+        return 2
+
+    records = tuple(Transcript(transcript).replay().values())
+    attributions = {(row.candidate, row.task_id): row.cause for row in rows}
+    audited = autopsy(records, attributions)
+    counts = breakdown(audited)
+    markers = marker_counts(audited)
+    violations = mapping_violations(audited)
+    recorded_keys = {record.key for record in records}
+    orphans = [row for row in rows if (row.candidate, row.task_id) not in recorded_keys]
+
+    document = {
+        "schema": AUTOPSY_SCHEMA,
+        "transcript": str(transcript),
+        "attribution": str(attribution),
+        "rollouts": len(records),
+        "breakdown": {
+            candidate: {cause.value: count for cause, count in sorted(per.items())}
+            for candidate, per in sorted(counts.items())
+        },
+        "marker_counts": {
+            candidate: {marker.value: count for marker, count in sorted(per.items())}
+            for candidate, per in sorted(markers.items())
+        },
+        "mapping_violations": [asdict(one) for one in violations],
+        "orphan_attribution_rows": [
+            {"candidate": one.candidate, "task_id": one.task_id, "cause": one.cause.value}
+            for one in sorted(orphans, key=lambda row: (row.candidate, row.task_id))
+        ],
+        "records": [
+            {
+                "candidate": one.candidate,
+                "task_id": one.task_id,
+                "cause": one.cause.value,
+                "detail": one.detail,
+                "markers": sorted(marker.value for marker in one.markers),
+                "recorded_cause": (
+                    None if one.recorded_cause is None else one.recorded_cause.value
+                ),
+                "coarse_agrees": one.coarse_agrees,
+            }
+            for one in audited
+        ],
+    }
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    for candidate, per in sorted(counts.items()):
+        rendered = ", ".join(f"{cause.value}={count}" for cause, count in sorted(per.items()))
+        print(f"{candidate}: {rendered}")
+    for violation in violations:
+        print(
+            f"{violation.candidate} {violation.task_id}: "
+            f"fine={violation.fine_cause.value} recorded={violation.recorded_cause.value}",
+            file=sys.stderr,
+        )
+    print(f"\nwrote {out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
 __all__ = [
+    "ATTRIBUTION_SCHEMA",
+    "AUTOPSY_SCHEMA",
     "FINE_TO_COARSE",
+    "IGNORED_OUT_ROOTS",
     "LOOP_DOMINANCE_RATIO",
     "AutopsyRecord",
     "AutopsyResult",
@@ -676,12 +940,15 @@ __all__ = [
     "FineCause",
     "MappingViolation",
     "Marker",
+    "OutNotPrivate",
     "autopsy",
     "breakdown",
     "classify_completion",
     "im_start_ratio",
     "loop_verdict",
+    "main",
     "mapping_violations",
     "marker_counts",
     "markers_of",
+    "refuse_published_out",
 ]
