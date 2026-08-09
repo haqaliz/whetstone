@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -56,6 +57,7 @@ from bakeoff.test_diffcheck import (
 from whetstone.bakeoff import diffcheck
 from whetstone.bakeoff.diffcheck import Trigger, diagnosis_of
 from whetstone.bakeoff.generator import Generator, StubGenerator, UnstubbedPrompt
+from whetstone.bakeoff.rendering import prompt_hash
 from whetstone.bakeoff.retry import (
     RETRY_BUDGET,
     RETRY_INSTRUCTION,
@@ -63,6 +65,7 @@ from whetstone.bakeoff.retry import (
     retry_prompt,
     retry_template_sha256,
 )
+from whetstone.bakeoff.transcript import Transcript
 
 #: The repository root, reached from `tests/bakeoff/` — the git working tree the no-inference
 #: walk measures.
@@ -476,6 +479,111 @@ def test_the_end_of_output_death_and_the_loop_collapse_never_retry() -> None:
         assert decided == completion, (
             "WHY THIS IS A FAILURE: the decided completion is not the one generation the "
             "wrapper observed"
+        )
+
+
+# --------------------------------------------------------------------------------------------
+# The wrapper's recording contract: one record per attempt, filed under the prompt's task.
+# --------------------------------------------------------------------------------------------
+
+
+def _records(transcript: Transcript) -> list[dict[str, object]]:
+    """The transcript's lines as decoded JSON objects, in written order."""
+    return [
+        json.loads(line) for line in transcript.path.read_text(encoding="utf-8").splitlines()
+    ]
+
+
+def test_the_wrapper_writes_one_record_per_attempt_with_attempt_and_decision(
+    tmp_path: Path,
+) -> None:
+    """Every attempt is a record: attempts 1..3, decisions retry/retry/graded, own digest.
+
+    The wrapper holds the recording pieces and writes each attempt's record *after* its
+    generation returns — the record follows the generation (`transcript.py:223-235`). The
+    last record declares `"graded"` even though the final verdict is a trigger: at budget
+    exhaustion the decision is the loop's, and the transcript must show the last attempt as
+    the decided one (the plan's budget-exhaustion edge case).
+    """
+    retried = retry_prompt(FIRST, Trigger.HUNK_COUNT_MISMATCH)
+    posed = {prompt_hash(FIRST): "alpha", prompt_hash(retried): "alpha"}
+    transcript = Transcript(path=tmp_path / "transcript.jsonl")
+    wrapper = Retry(
+        inner=StubGenerator({FIRST: COUNT_MISMATCH, retried: COUNT_MISMATCH}),
+        transcript=transcript,
+        candidate="base-a",
+        contract=posed,
+    )
+
+    decided = wrapper.generate(FIRST)
+
+    records = _records(transcript)
+    assert [record["attempt"] for record in records] == [1, 2, 3], (
+        f"WHY THIS IS A FAILURE: the attempts are numbered "
+        f"{[r['attempt'] for r in records]!r}. Each attempt must be numbered within its run"
+    )
+    assert [record["decision"] for record in records] == ["retry", "retry", "graded"], (
+        f"WHY THIS IS A FAILURE: the decisions are {[r['decision'] for r in records]!r}. "
+        "A record says 'retry' when a later attempt follows, 'graded' when it is the "
+        "decided record for its key"
+    )
+    assert [record["prompt_sha256"] for record in records] == [
+        prompt_hash(FIRST),
+        prompt_hash(retried),
+        prompt_hash(retried),
+    ], (
+        "WHY THIS IS A FAILURE: a record does not carry its own attempt's prompt digest, so "
+        "the attempts could not be tied to the frozen contract individually"
+    )
+    assert {record["task_id"] for record in records} == {"alpha"}, (
+        "WHY THIS IS A FAILURE: an attempt was filed under a task the prompt was not posed "
+        "for. The retry prompt maps to the same task the first prompt maps to"
+    )
+    assert records[-1]["completion"] == decided, (
+        "WHY THIS IS A FAILURE: the decided record does not carry the completion the run "
+        "returned"
+    )
+
+
+def test_a_single_attempt_records_one_graded_record(tmp_path: Path) -> None:
+    """No retry, one record: attempt 1, graded — the shape today's runs already produce.
+
+    The wrapper's recording must not change what a non-retried run looks like on disk:
+    `RecordingGenerator` writes attempt 1, graded for the retries-disabled composition, and
+    the wrapper writes the same shape when its loop makes no retries — so the two recording
+    paths agree about the single-attempt case.
+    """
+    transcript = Transcript(path=tmp_path / "transcript.jsonl")
+    wrapper = Retry(
+        inner=StubGenerator({FIRST: WELL_FORMED}),
+        transcript=transcript,
+        candidate="base-a",
+        contract={prompt_hash(FIRST): "alpha"},
+    )
+
+    decided = wrapper.generate(FIRST)
+
+    records = _records(transcript)
+    assert [(record["attempt"], record["decision"]) for record in records] == [(1, "graded")], (
+        f"WHY THIS IS A FAILURE: the transcript holds {records!r} rather than one attempt-1 "
+        "graded record. A non-retried run must record exactly the single generation it made"
+    )
+    assert records[0]["completion"] == decided
+
+
+def test_the_recording_pieces_must_come_together_or_not_at_all(tmp_path: Path) -> None:
+    """`transcript`, `candidate` and `contract` are one switch: half a recorder is a broken one.
+
+    A wrapper with a transcript but no candidate could not file a record under a key, and a
+    wrapper with a candidate but no transcript would silently record nothing — both shapes
+    of a mis-wired driver. Refused at construction, so the driver's composition is checked
+    the moment it is built.
+    """
+    with pytest.raises(ValueError):
+        Retry(
+            inner=StubGenerator({FIRST: WELL_FORMED}),
+            transcript=Transcript(path=tmp_path / "transcript.jsonl"),
+            candidate="base-a",
         )
 
 

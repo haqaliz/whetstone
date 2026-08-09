@@ -43,16 +43,19 @@ refuses all of them. This module may not be imported by anything under `verify/`
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from whetstone.bakeoff.diffcheck import (
+    Decision,
     Trigger,
     classify_completion,
     diagnosis_of,
     trigger_of,
 )
 from whetstone.bakeoff.generator import Generator
+from whetstone.bakeoff.rendering import prompt_hash
+from whetstone.bakeoff.transcript import Transcribed, Transcript
 
 #: How many retries a (candidate, task) may get (spec B4). One contract field's value; the
 #: wrapper's default and the driver's composition both read it from here so they cannot
@@ -121,9 +124,21 @@ class Retry:
     budget (B4: `RETRY_BUDGET` retries, `1 + budget` total generations) remains — re-asks
     with `retry_prompt(first, trigger)`, each retry named for its own verdict's trigger and
     built from the first-attempt prompt (B1). The last completion is returned; earlier ones
-    are superseded, and the record-follows-generation rule means a prompt refused by the
-    seal raises `ContractChanged` out of `inner.generate` with no record and no further
-    attempts.
+    are superseded. A prompt refused by the seal raises `ContractChanged` out of
+    `inner.generate` with no record for that attempt and no further attempts: the record
+    follows the generation (`transcript.py:223-235`), and a refused prompt is not a
+    generation.
+
+    **Every attempt is recorded (spec B2), with the attempt/decision fields aspect 1
+    added.** When the recording pieces are present — `transcript`, `candidate`, and the
+    frozen `posed` map — the wrapper writes one record per attempt after its generation
+    returns: `decision == "retry"` when a later attempt follows, `"graded"` when it is the
+    decided record for its key, `attempt` one-based within the run. The `task_id` comes from
+    the same `posed` lookup `run.Recording` uses, and the freeze poses every retry prompt
+    under the first-attempt prompt's task, so all attempts of a task file under that task.
+    Without the pieces the wrapper is the same decide-loop, recording nothing — the
+    transcript is an operator choice, and the driver composes the wrapper only when
+    `--transcript` names a file.
 
     The wrapper decides only; it does not catch. An exception from `inner` propagates
     untouched — the `sweep` discipline (`sweep.py:109-112`), because an interrupted run must
@@ -131,7 +146,8 @@ class Retry:
 
     Deterministic by construction: the decision is a pure function of the completion, the
     inner is greedy, and nothing here reads the clock or the filesystem — two runs over the
-    same stub table ask the same questions in the same order (asserted in `test_retry.py`).
+    same stub table ask the same questions and write byte-identical transcripts (asserted
+    in `test_retry.py` and `test_retry_seal.py`).
     """
 
     #: What actually generates. Called once per attempt, never between attempts.
@@ -147,23 +163,77 @@ class Retry:
     #: reimplemented.
     decide: Callable[[str], Trigger | None] = _decide
 
+    #: Where the per-attempt records go. `None` (with `candidate` and `contract`) means the
+    #: wrapper is a decide-loop that records nothing — the composition guard is the
+    #: driver's (`kept is not None`), and the pieces here are all-or-none.
+    transcript: Transcript | None = None
+
+    #: The base being recorded — half of every record's key.
+    candidate: str | None = None
+
+    #: The frozen `posed` map, read only to derive each attempt's `task_id` from its
+    #: prompt's digest — the same mechanism `run.Recording` uses, and sound because the
+    #: freeze poses retry prompts under the first-attempt prompt's task.
+    contract: Mapping[str, str] | None = None
+
+    def __post_init__(self) -> None:
+        pieces = (self.transcript, self.candidate, self.contract)
+        if not all(piece is None for piece in pieces) and not all(
+            piece is not None for piece in pieces
+        ):
+            raise ValueError(
+                "the recording pieces (transcript, candidate, contract) must come together "
+                "or not at all: half a recorder would file records under no key or silently "
+                "record nothing"
+            )
+
     def generate(self, prompt: str) -> str:
         """The decided completion: attempt, decide, retry while triggered and within budget.
 
         The first prompt is kept as the base of every retry prompt (B1) — each retry is a
         second draw of the same question, told which shape to fix, and the whole retry
-        vocabulary is pre-rendered from this one prompt at freeze time (PRD D8).
+        vocabulary is pre-rendered from this one prompt at freeze time (PRD D8). Each
+        attempt's record is written only after its generation has returned and the loop has
+        decided what became of it — so a seal-refused prompt leaves no record, and the
+        decided record is always the last attempt's.
         """
         first = prompt
         completion = self.inner.generate(prompt)
         trigger = self.decide(completion)
         attempts = 1
         while trigger is not None and attempts < 1 + self.budget:
+            self._record(prompt, completion, attempt=attempts, decision="retry")
             prompt = retry_prompt(first, trigger)
             completion = self.inner.generate(prompt)
             attempts += 1
             trigger = self.decide(completion)
+        self._record(prompt, completion, attempt=attempts, decision="graded")
         return completion
+
+    def _record(self, prompt: str, completion: str, *, attempt: int, decision: Decision) -> None:
+        """One attempt's record, after its generation — or nothing, without the pieces.
+
+        The record follows the generation: it is appended only once the completion is in
+        hand, so a prompt refused by the seal (which raises out of `inner.generate`) never
+        leaves a record for an attempt that did not happen. A prompt the frozen contract
+        does not carry is passed down unrecorded, mirroring `run.Recording`'s delegation.
+        """
+        if self.transcript is None or self.candidate is None or self.contract is None:
+            return
+        task_id = self.contract.get(prompt_hash(prompt))
+        if task_id is None:
+            return
+        self.transcript.append(
+            Transcribed(
+                candidate=self.candidate,
+                task_id=task_id,
+                prompt_sha256=prompt_hash(prompt),
+                prompt=prompt,
+                completion=completion,
+                attempt=attempt,
+                decision=decision,
+            )
+        )
 
 
 __all__ = [
