@@ -72,6 +72,28 @@ released version until it exists in the code.
   (`git diff --stat origin/master -- src/whetstone/verify/` empty), proven able to fail
   against a synthetic tree with a staged `verify/` change, plus the autopsy's own
   no-inference AST walk over module and tests.
+- **The retry prompt and the budgeted retry wrapper** (`src/whetstone/bakeoff/retry.py`):
+  the convert half of the format-hardening response, on top of the aspect-1 validator. The
+  retry prompt is a pure function of `(first-attempt prompt, trigger)` — the first prompt,
+  a fixed retry instruction, and exactly one sentence from the finite diagnosis vocabulary,
+  never the prior completion — so every retry prompt a retried run may issue is pre-rendered
+  at freeze time (`freeze(..., retry=True)` folds `retry_prompt(render_prompt(...), trigger)`
+  per task per trigger into the same `posed` map via `setdefault`) and the contract SHA
+  covers the whole retry vocabulary. `Retry` is a `Generator` wrapper — the one-method seam
+  is not widened — that issues at most two retries per (candidate, task) (`RETRY_BUDGET`,
+  three generations total), only on the trigger shapes the validator names, and returns the
+  last completion; the decision is `trigger_of(classify_completion(text))` by identity, pure
+  and replayable. Every attempt is recorded: the wrapper writes one record per attempt with
+  its own `prompt_sha256`, its one-based `attempt`, and its `decision` (`"retry"` when a
+  later attempt follows, `"graded"` for the decided record), filed under the task the prompt
+  was posed for. A mid-run edit of the retry vocabulary raises `ContractChanged` through the
+  seal and aborts the run, like any other template edit — asserted end-to-end through
+  `freeze` + the wrapper, with the retry prompts proven sealed by an instrumented engine.
+  Retries are off by default (`conduct(..., retries=False)`), composed only when
+  `--transcript` names a file, and a retries-disabled run's contract is byte-identical to
+  the baseline's. The retry path has its own no-inference AST walk (no `mlx`, no `run.py`,
+  no `scoring`), and `retry_template_sha256()` is the digest aspect `contract-report`
+  publishes.
 
 
 ## [0.2.0] - 2026-08-06

@@ -181,6 +181,28 @@ This file orients a coding agent working in this repository. Read it first.
 > `src/whetstone/verify/`, `patch.py`, **and `attribution.py`** — byte-identical to `origin/master`,
 > the missing pin added, each proven able to fail against a planted change.
 >
+> **Format-hardening aspect 2 — the `retry-loop` — is done** (`docs/planning/p2-format-hardening/retry-loop/`;
+> spec at `spec.md`, plan at `plan_20260809.md`). The validator classifies; the retry converts.
+> `src/whetstone/bakeoff/retry.py` holds the retry prompt builder and the `Retry` wrapper on the
+> one-method `Generator` seam. The prompt is a **pure function of `(first-attempt prompt, trigger)`** —
+> the first prompt, a fixed `RETRY_INSTRUCTION`, and one sentence from the finite diagnosis
+> vocabulary, **never the prior completion** (spec B1: completion-derived content would make the
+> prompt set unbounded and the seal unfreezable) — so `freeze(..., retry=True)` pre-renders
+> `retry_prompt(render_prompt(...), trigger)` per task per trigger into the same `posed` map via
+> `setdefault`, and the contract SHA covers the whole retry vocabulary. The wrapper issues at most
+> `RETRY_BUDGET` (2) retries per (candidate, task), only on the validator's trigger shapes, returns
+> the last completion, and writes **one record per attempt** — its own `prompt_sha256`, its
+> one-based `attempt`, and its `decision` ("retry" | "graded") — filed under the task the prompt
+> was posed for; the wrapper itself holds the recording pieces (the transcript, the candidate, the
+> `posed` map), because no one-method, sealed-prompt channel can carry the wrapper's decision down
+> to a recorder — the recording moved *into* the wrapper, and `Recording`/`RecordingGenerator`
+> stay untouched for the retries-disabled path. Retries are **off by default**
+> (`conduct(..., retries=False)`), composed only when `--transcript` names a file; a mid-run
+> retry-template edit raises `ContractChanged` through the seal and aborts the run, asserted
+> end-to-end, and the seal-held test proves every prompt an instrumented engine is asked was
+> frozen. The retry path has its own no-inference AST walk (no `mlx`, no `run.py`, no `scoring`),
+> and `retry_template_sha256()` is the digest aspect `contract-report` publishes.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
