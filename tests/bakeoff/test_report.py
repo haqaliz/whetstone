@@ -1351,15 +1351,24 @@ def test_the_comparison_document_is_a_pure_function_of_its_inputs() -> None:
 
 
 def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> None:
-    """AC13: `reports/baseline/` is the only home for a figure about a model.
+    """AC13: `reports/baseline/` and `reports/format-hardening/`, each the only home of its own.
 
     **What this guard asserts moved when the bake-off ran, and the guard moved with it.** It was
     written while this aspect could only render into a temporary directory, and it asserted that
     `reports/` was absent outright — the honest form of *"nothing here has run a model"*. Slice 5
     ran one, so that literal is now false and the invariant underneath it is what survives:
-    `reports/` holds the bake-off's three artifacts and nothing besides. A second report
-    appearing beside them would be a second home for a figure, and two homes is exactly how two
-    figures come to disagree with each other.
+    `reports/` holds each report's three artifacts and nothing besides. A report appearing in a
+    directory that is not its home is a second home for a figure, and two homes is exactly how
+    two figures come to disagree with each other.
+
+    **The guard moved again when the format-hardening arm's home landed, and only on the D6
+    argument.** `reports/format-hardening/` joined the list on the ground that the two
+    directories measure **different generation contracts** and are declared non-comparable
+    (`PREREGISTRATION.md` § 10.4), so neither is a competing home for the same figure: the
+    baseline's figures live in `reports/baseline/` and the hardened contract's in
+    `reports/format-hardening/`. A figure from one appearing in the other is still the
+    two-homes failure the paragraph above refuses, and a silent list extension remains refused —
+    the permission is the argument, in this docstring.
 
     `reports/local/` is excluded because `.gitignore` reserves it for the user's own nightly
     output, which is their data and never ours to assert on.
@@ -1377,12 +1386,16 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
         "reports/baseline/cost.json",
         "reports/baseline/report.json",
         "reports/baseline/report.md",
+        "reports/format-hardening/cost.json",
+        "reports/format-hardening/report.json",
+        "reports/format-hardening/report.md",
     ], (
-        f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts are the "
-        "only sanctioned home for a figure about a model — the prose report, its "
-        "machine-readable form, and the measured cost. A file missing means the report is "
-        "incomplete; a file extra means there is a second place a figure can live, and the next "
-        "reader has no way to tell which of two disagreeing numbers is the real one"
+        f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts and the "
+        "format-hardening arm's three are the sanctioned homes for a figure — each directory "
+        "its own, on the D6 argument that the two measure different generation contracts and "
+        "are declared non-comparable. A file missing means the report is incomplete; a file "
+        "extra means there is a second place a figure can live, and the next reader has no way "
+        "to tell which of two disagreeing numbers is the real one"
     )
     # Flattened, because the sentence wraps inside a blockquote and a guard that a re-wrap could
     # silence is a guard that stops describing the document without anybody noticing —
