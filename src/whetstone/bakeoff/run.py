@@ -55,7 +55,7 @@ from typing import Any
 
 from whetstone import __version__
 from whetstone.bakeoff import patch as extraction
-from whetstone.bakeoff.diffcheck import Trigger
+from whetstone.bakeoff.diffcheck import Trigger, diagnosis_vocabulary_sha256
 from whetstone.bakeoff.generator import Generator
 from whetstone.bakeoff.journal import Journal
 from whetstone.bakeoff.mlx_runtime import DEFAULT_MAX_TOKENS, PINNED_MLX_LM, SAMPLER, MlxGenerator
@@ -69,7 +69,7 @@ from whetstone.bakeoff.report import (
     funnel_from_ledger,
     write,
 )
-from whetstone.bakeoff.retry import RETRY_BUDGET, Retry, retry_prompt
+from whetstone.bakeoff.retry import RETRY_BUDGET, Retry, retry_prompt, retry_template_sha256
 from whetstone.bakeoff.scoring import Interpreters, Rollout
 from whetstone.bakeoff.selection import Contender
 from whetstone.bakeoff.sources import oracle_sources
@@ -655,6 +655,10 @@ def conduct(
             max_tokens=max_tokens,
             extractor_version=_extractor_version(),
             dev_subset=declared,
+            retry_budget=RETRY_BUDGET if retries else 0,
+            retry_template_sha256=retry_template_sha256() if retries else "",
+            diagnosis_vocabulary_version=diagnosis_vocabulary_sha256() if retries else "",
+            retrieval="oracle",
         ),
         funnel=funnel_from_ledger(funnel),
     )

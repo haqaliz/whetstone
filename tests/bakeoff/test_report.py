@@ -26,6 +26,7 @@ produced by a real run, and this suite must leave `reports/` absent.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -36,6 +37,7 @@ from pathlib import Path
 import pytest
 
 from whetstone.bakeoff.control import Control, Origin, Probe
+from whetstone.bakeoff.diffcheck import Trigger, diagnosis_of, diagnosis_vocabulary_sha256
 from whetstone.bakeoff.journal import Step
 from whetstone.bakeoff.report import (
     Entrant,
@@ -176,6 +178,10 @@ CONTRACT = GenerationContract(
     max_tokens=600,
     extractor_version="1",
     dev_subset=("dev-a", "dev-b"),
+    retry_budget=2,
+    retry_template_sha256="b" * 64,
+    diagnosis_vocabulary_version="c" * 64,
+    retrieval="oracle",
 )
 
 
@@ -782,6 +788,147 @@ def test_a_provenance_block_missing_a_field_is_refused() -> None:
     assert "environment_pins" in str(refusal.value), (
         f"WHY THIS IS A FAILURE: the refusal does not name the empty field. Got "
         f"{str(refusal.value)!r}"
+    )
+
+
+def test_a_five_field_contract_constructed_the_old_way_fails() -> None:
+    """The retry fields and retrieval are required, so the old shape cannot mean "no retries".
+
+    A contract built without them would publish a hardened run's figure under a contract that
+    says nothing about its retries or its retrieval — the indistinguishability § 10.1 obliges
+    the report to end. Old *documents* are handled by `GenerationContract.parse`, which fills
+    the defaults at the one place old bytes meet the new dataclass; a caller constructing by
+    hand has no such excuse.
+    """
+    with pytest.raises(TypeError):
+        GenerationContract(
+            prompt_sha256="a" * 64,
+            sampler="greedy",
+            max_tokens=600,
+            extractor_version="1",
+            dev_subset=("dev-a", "dev-b"),
+        )
+
+
+def test_a_contract_round_trips_through_the_sidecar() -> None:
+    """The nine fields survive the sidecar and parse back to the same contract.
+
+    A reader that recomputes a contract from the published JSON must get the contract the
+    report was rendered under. The sidecar is the machine-readable half of the provenance,
+    and a field lost in it is a field no program can tell apart.
+    """
+    report = build_report(
+        entrants=_standard(), provenance=PROVENANCE, contract=CONTRACT, funnel=FUNNEL
+    )
+    block = json.loads(report.payload)["generation_contract"]
+    assert GenerationContract.parse(block) == CONTRACT
+
+
+def test_the_committed_baseline_sidecar_still_parses_under_the_new_dataclass() -> None:
+    """`reports/baseline/report.json` predates the new fields and must keep parsing.
+
+    The committed artifacts are static and never regenerated, so a reader of the baseline
+    sidecar runs against the old five-field shape forever. `retrieval` defaults to `"oracle"`
+    — the setting the baseline disclosed in prose — and the retry fields default to the state
+    that document actually describes: no retries existed, so there is no budget, no retry
+    template and no diagnosis vocabulary.
+    """
+    baseline = REPO_ROOT / "reports" / "baseline" / "report.json"
+    block = json.loads(baseline.read_text(encoding="utf-8"))["generation_contract"]
+    parsed = GenerationContract.parse(block)
+
+    assert parsed.retrieval == "oracle", (
+        "WHY THIS IS A FAILURE: the baseline ran under the oracle retrieval setting, disclosed "
+        "in its prose; parsing it under any other setting would mislabel every baseline figure"
+    )
+    retry_fields = (
+        parsed.retry_budget,
+        parsed.retry_template_sha256,
+        parsed.diagnosis_vocabulary_version,
+    )
+    assert retry_fields == (0, "", ""), (
+        "WHY THIS IS A FAILURE: the baseline predates retries, so a parsed contract claiming a "
+        "retry machinery would describe a contract the baseline never used"
+    )
+    "retry machinery would describe a contract the baseline never used"
+    for field in ("prompt_sha256", "sampler", "max_tokens", "extractor_version"):
+        assert getattr(parsed, field) == block[field], (
+            f"WHY THIS IS A FAILURE: parsing the old sidecar changed {field!r}, so a reader "
+            "recomputing the baseline contract from its published JSON gets a different "
+            "contract than the one the figures were measured under"
+        )
+    assert parsed.dev_subset == tuple(block["dev_subset"]), (
+        "WHY THIS IS A FAILURE: the baseline's declared development subset did not survive "
+        "parsing. The exclusion is part of what the counts mean"
+    )
+
+
+def test_the_sidecar_writes_the_new_contract_fields_explicitly() -> None:
+    """The four new fields are written, never defaulted — a reader must not guess them.
+
+    `retrieval` in particular is stated per contract: the field exists so two contracts can be
+    told apart programmatically (`p2-yield-probe/prd.md` D9), and a default that hides it would
+    publish indistinguishability in machine-readable form.
+    """
+    block = json.loads(_payload())["generation_contract"]
+    for field, expected in (
+        ("retry_budget", CONTRACT.retry_budget),
+        ("retry_template_sha256", CONTRACT.retry_template_sha256),
+        ("diagnosis_vocabulary_version", CONTRACT.diagnosis_vocabulary_version),
+        ("retrieval", CONTRACT.retrieval),
+    ):
+        assert block[field] == expected, (
+            f"WHY THIS IS A FAILURE: the sidecar does not write {field!r} explicitly. A reader "
+            "of the JSON would have to guess the value, and a guess is how two contracts come "
+            "to look alike"
+        )
+
+
+def test_a_retry_budget_without_its_template_is_refused() -> None:
+    """A budget that names no template would publish a retry nobody could audit.
+
+    The three retry fields describe one machinery — budget, template digest, vocabulary
+    digest. A contract declaring a budget and a blank template is a contract that retried
+    under a template its own report cannot name, refused the same way any blank contract
+    field is.
+    """
+    with pytest.raises(IncompleteProvenance) as refusal:
+        build_report(
+            entrants=_standard(),
+            provenance=PROVENANCE,
+            contract=GenerationContract(
+                prompt_sha256="a" * 64,
+                sampler="greedy",
+                max_tokens=600,
+                extractor_version="1",
+                dev_subset=(),
+                retry_budget=2,
+                retry_template_sha256="",
+                diagnosis_vocabulary_version="c" * 64,
+                retrieval="oracle",
+            ),
+            funnel=FUNNEL,
+        )
+    assert "retry" in str(refusal.value), (
+        f"WHY THIS IS A FAILURE: the refusal does not name the retry fields. Got "
+        f"{str(refusal.value)!r}"
+    )
+
+
+def test_the_diagnosis_vocabulary_version_is_a_digest_of_the_sorted_sentences() -> None:
+    """The contract field a reader can recompute with stdlib alone.
+
+    The version is a digest over the sorted diagnosis sentences, spelled here so a reader can
+    reproduce it without importing anything beyond the standard library — the same
+    construction `test_retry.py` pins for the retry template hash. A sentence edit moves the
+    digest and voids any run frozen before it, like any other template change.
+    """
+    material = "\n".join(sorted(diagnosis_of(trigger) for trigger in Trigger))
+    expected = hashlib.sha256(material.encode("utf-8")).hexdigest()
+    assert diagnosis_vocabulary_sha256() == expected, (
+        "WHY THIS IS A FAILURE: the vocabulary version is not the digest over the sorted "
+        "sentences, so a reader cannot recompute the contract field from the published "
+        "vocabulary"
     )
 
 

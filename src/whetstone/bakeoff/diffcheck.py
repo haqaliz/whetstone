@@ -32,6 +32,7 @@ them).
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from enum import Enum
 from typing import Literal
@@ -127,11 +128,26 @@ def diagnosis_of(trigger: Trigger) -> str:
     return DIAGNOSES[trigger]
 
 
+def diagnosis_vocabulary_sha256() -> str:
+    """A digest of the diagnosis vocabulary — the sorted sentences alone.
+
+    The contract field `contract-report` publishes (`diagnosis_vocabulary_version`): the
+    value a reader recomputes from the published sentences to check that a run's retries
+    were posed under the declared vocabulary. The sentences are sorted so the digest does
+    not depend on the trigger enum's declaration order, and the construction is spelled in
+    the test (`test_report.py`) so a reader can reproduce it with stdlib alone. A sentence
+    edit moves the digest — a template change voids the run, like any other.
+    """
+    material = "\n".join(sorted(diagnosis_of(trigger) for trigger in Trigger))
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
 __all__ = [
     "DIAGNOSES",
     "Decision",
     "Trigger",
     "classify_completion",
     "diagnosis_of",
+    "diagnosis_vocabulary_sha256",
     "trigger_of",
 ]

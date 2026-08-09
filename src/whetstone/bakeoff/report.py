@@ -198,6 +198,50 @@ class GenerationContract:
     #: The tasks the contract was developed against, which may never be scored by it (M7b).
     dev_subset: tuple[str, ...]
 
+    #: How many retries a (candidate, task) may get under this contract. `0` is the
+    #: no-retries state: a contract without retry prompts frozen into it declares no budget.
+    retry_budget: int
+
+    #: A digest of the retry template (the fixed instruction plus the sorted diagnosis
+    #: sentences), recomputable by a reader with stdlib alone. Blank exactly when
+    #: `retry_budget` is `0`.
+    retry_template_sha256: str
+
+    #: A digest of the diagnosis vocabulary alone, recomputable from the published sentences.
+    #: Blank exactly when `retry_budget` is `0`.
+    diagnosis_vocabulary_version: str
+
+    #: The retrieval setting the prompts were rendered under. `"oracle"` today (the disclosed
+    #: setting of `_ORACLE_DISCLOSURE`); a field rather than a constant so two contracts can
+    #: be told apart programmatically (`p2-yield-probe/prd.md` D9), which § 10.1 asks for.
+    retrieval: str
+
+    @classmethod
+    def parse(cls, block: Mapping[str, Any]) -> GenerationContract:
+        """Read a sidecar's `generation_contract` block, including one that predates this shape.
+
+        `reports/baseline/report.json` was written before the retry fields and the retrieval
+        field existed, and the committed artifacts are static — never regenerated — so a reader
+        of the baseline sidecar runs against the old five-field shape forever. The missing
+        fields default to the state that document actually describes: `retrieval` to
+        `"oracle"`, the setting the baseline disclosed in prose, and the retry trio to the
+        no-retries state (budget `0`, no template, no vocabulary), because a document that
+        predates retries had none. The defaults are populated here, at the one place old
+        bytes meet the new dataclass, and nowhere else: a new contract's fields are written
+        explicitly by the sidecar, so a reader never has to guess them.
+        """
+        return cls(
+            prompt_sha256=block["prompt_sha256"],
+            sampler=block["sampler"],
+            max_tokens=block["max_tokens"],
+            extractor_version=block["extractor_version"],
+            dev_subset=tuple(block["dev_subset"]),
+            retry_budget=block.get("retry_budget", 0),
+            retry_template_sha256=block.get("retry_template_sha256", ""),
+            diagnosis_vocabulary_version=block.get("diagnosis_vocabulary_version", ""),
+            retrieval=block.get("retrieval", "oracle"),
+        )
+
 
 @dataclass(frozen=True)
 class Funnel:
@@ -471,6 +515,7 @@ def _require_provenance(provenance: Provenance, contract: GenerationContract) ->
             ("sampler", contract.sampler),
             ("max_tokens", contract.max_tokens),
             ("extractor_version", contract.extractor_version),
+            ("retrieval", contract.retrieval),
         )
         if not value
     ]
@@ -479,6 +524,15 @@ def _require_provenance(provenance: Provenance, contract: GenerationContract) ->
             f"the provenance block is missing {blank}. PREREGISTRATION.md:131-132 fixes the "
             "pinned inputs a figure is only interpretable against, and a rendered blank is worse "
             "than a refusal: it looks like a field somebody considered"
+        )
+    if contract.retry_budget > 0 and (
+        not contract.retry_template_sha256 or not contract.diagnosis_vocabulary_version
+    ):
+        raise IncompleteProvenance(
+            f"the contract declares a retry budget of {contract.retry_budget} and a blank "
+            "retry template or diagnosis vocabulary. A budget that names no template is a "
+            "retry nobody can audit — the three retry fields describe one machinery, and "
+            "they must come together or not at all"
         )
 
 
@@ -731,11 +785,18 @@ def _render(
         "the number and is not pinned, so a later figure measured under a changed contract is "
         f"not comparable to this one. Template SHA-256 `{contract.prompt_sha256}`; sampler "
         f"{contract.sampler}; token budget {contract.max_tokens}; extractor version "
-        f"{contract.extractor_version}; development subset "
+        f"{contract.extractor_version}; retrieval {contract.retrieval}; development subset "
         + (
             ", ".join(f"`{name}`" for name in contract.dev_subset)
             if contract.dev_subset
             else "none declared"
+        )
+        + (
+            f"; retry budget {contract.retry_budget}; retry template SHA-256 "
+            f"`{contract.retry_template_sha256}`; diagnosis vocabulary version "
+            f"`{contract.diagnosis_vocabulary_version}`"
+            if contract.retry_budget > 0
+            else ""
         )
         + " — excluded from every count above, because scoring a task the contract was iterated "
         "against would be optimising on the outcome.",
@@ -810,6 +871,10 @@ def _payload(
             "max_tokens": contract.max_tokens,
             "extractor_version": contract.extractor_version,
             "dev_subset": list(contract.dev_subset),
+            "retry_budget": contract.retry_budget,
+            "retry_template_sha256": contract.retry_template_sha256,
+            "diagnosis_vocabulary_version": contract.diagnosis_vocabulary_version,
+            "retrieval": contract.retrieval,
         },
     }
     return json.dumps(body, indent=2, sort_keys=True) + "\n"
