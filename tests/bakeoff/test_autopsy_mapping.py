@@ -112,6 +112,8 @@ def _transcribed(candidate: str, task_id: str, completion: str) -> Transcribed:
         prompt_sha256="0" * 64,
         prompt=f"Fix the bug in {task_id}.",
         completion=completion,
+        attempt=1,
+        decision="graded",
     )
 
 
