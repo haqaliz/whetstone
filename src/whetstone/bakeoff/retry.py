@@ -43,8 +43,16 @@ refuses all of them. This module may not be imported by anything under `verify/`
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
+from dataclasses import dataclass
 
-from whetstone.bakeoff.diffcheck import Trigger, diagnosis_of
+from whetstone.bakeoff.diffcheck import (
+    Trigger,
+    classify_completion,
+    diagnosis_of,
+    trigger_of,
+)
+from whetstone.bakeoff.generator import Generator
 
 #: How many retries a (candidate, task) may get (spec B4). One contract field's value; the
 #: wrapper's default and the driver's composition both read it from here so they cannot
@@ -93,4 +101,75 @@ def retry_template_sha256() -> str:
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
-__all__ = ["RETRY_BUDGET", "RETRY_INSTRUCTION", "retry_prompt", "retry_template_sha256"]
+def _decide(completion: str) -> Trigger | None:
+    """The default decision: the validator's trigger mapping over the autopsy's verdict.
+
+    Imported, never reimplemented — the trigger decision must be the taxonomy itself, or the
+    online retry and the offline autopsy could disagree about the same bytes
+    (`diffcheck.py:1-31`).
+    """
+    return trigger_of(classify_completion(completion))
+
+
+@dataclass(frozen=True)
+class Retry:
+    """A `Generator` wrapper: re-ask, bounded and trigger-gated, and decide the last draw.
+
+    The one-method seam is not widened: this is a wrapper, like `run.Sealed` and
+    `run.Recording`, so `sweep` and `score` learn nothing about retries. `generate(prompt)`
+    runs the first attempt, decides after it, and — while the verdict is a trigger and the
+    budget (B4: `RETRY_BUDGET` retries, `1 + budget` total generations) remains — re-asks
+    with `retry_prompt(first, trigger)`, each retry named for its own verdict's trigger and
+    built from the first-attempt prompt (B1). The last completion is returned; earlier ones
+    are superseded, and the record-follows-generation rule means a prompt refused by the
+    seal raises `ContractChanged` out of `inner.generate` with no record and no further
+    attempts.
+
+    The wrapper decides only; it does not catch. An exception from `inner` propagates
+    untouched — the `sweep` discipline (`sweep.py:109-112`), because an interrupted run must
+    stop rather than produce a full-looking record set with holes in it.
+
+    Deterministic by construction: the decision is a pure function of the completion, the
+    inner is greedy, and nothing here reads the clock or the filesystem — two runs over the
+    same stub table ask the same questions in the same order (asserted in `test_retry.py`).
+    """
+
+    #: What actually generates. Called once per attempt, never between attempts.
+    inner: Generator
+
+    #: How many retries a (candidate, task) may get; the loop stops at `1 + budget`
+    #: total generations even if every verdict triggers. The contract field's value,
+    #: one home (`RETRY_BUDGET`).
+    budget: int = RETRY_BUDGET
+
+    #: The retry decision: a completion in, a trigger or `None` out. Defaults to the
+    #: validator's mapping over the autopsy's verdict — the taxonomy by identity, never
+    #: reimplemented.
+    decide: Callable[[str], Trigger | None] = _decide
+
+    def generate(self, prompt: str) -> str:
+        """The decided completion: attempt, decide, retry while triggered and within budget.
+
+        The first prompt is kept as the base of every retry prompt (B1) — each retry is a
+        second draw of the same question, told which shape to fix, and the whole retry
+        vocabulary is pre-rendered from this one prompt at freeze time (PRD D8).
+        """
+        first = prompt
+        completion = self.inner.generate(prompt)
+        trigger = self.decide(completion)
+        attempts = 1
+        while trigger is not None and attempts < 1 + self.budget:
+            prompt = retry_prompt(first, trigger)
+            completion = self.inner.generate(prompt)
+            attempts += 1
+            trigger = self.decide(completion)
+        return completion
+
+
+__all__ = [
+    "RETRY_BUDGET",
+    "RETRY_INSTRUCTION",
+    "Retry",
+    "retry_prompt",
+    "retry_template_sha256",
+]

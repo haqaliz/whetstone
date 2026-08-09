@@ -1,4 +1,4 @@
-"""The retry prompt: first-attempt prompt plus one finite diagnosis sentence, never the completion.
+"""The retry: a finite, sealed-friendly prompt builder, and the budgeted wrapper that asks it.
 
 The format-hardening wall is that candidates write diffs git refuses to parse. The retry
 converts: re-ask the model, bounded and only when the evidence says the attempt was
@@ -22,23 +22,47 @@ Everything asserted here follows from that contract:
   can publish it as a contract field: it moves on any byte change to the instruction or a
   sentence (a template edit voids the run, like any other), and equals the digest of the
   same content twice.
+* **`Retry` is a budgeted, trigger-gated wrapper on the one-method `Generator` seam.** The
+  decision is `trigger_of(classify_completion(text))` by default — the taxonomy imported by
+  identity — and the loop issues at most `budget` retries (B4: 2), each with the retry
+  prompt for the *current* trigger, and returns the last completion. `StubGenerator` raises
+  `UnstubbedPrompt` on an unstubbed prompt, which is the instrument these tests use to
+  assert exactly what the wrapper asked: every retry prompt a test expects must be stubbed.
+  The wrapper never catches: an exception from its inner propagates untouched, the `sweep`
+  discipline (`sweep.py:109-112`). Determinism is by construction — a pure decision over a
+  greedy inner — and asserted by replaying one stub table through two wrapper instances.
 
-No model, no `mlx`, no network, no `run.py`, no `scoring`: the builder is pure string work,
-and the module's own no-inference AST walk refuses the inference and driver roots — the
-same walk shape as `test_autopsy_guards.py:225-256` and `test_diffcheck.py:441-469`.
+No model, no `mlx`, no network, no `run.py`, no `scoring`: the builder is pure string work
+and the wrapper is a pure decide-loop, and the module's own no-inference AST walk refuses
+the inference and driver roots — the same walk shape as `test_autopsy_guards.py:225-256`
+and `test_diffcheck.py:441-469`.
 """
 
 from __future__ import annotations
 
 import ast
 import hashlib
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
+from bakeoff.test_diffcheck import (
+    COUNT_MISMATCH,
+    END_OF_OUTPUT_STUB,
+    LOOP_TEXT,
+    WELL_FORMED,
+)
 from whetstone.bakeoff import diffcheck
 from whetstone.bakeoff.diffcheck import Trigger, diagnosis_of
-from whetstone.bakeoff.retry import RETRY_INSTRUCTION, retry_prompt, retry_template_sha256
+from whetstone.bakeoff.generator import Generator, StubGenerator, UnstubbedPrompt
+from whetstone.bakeoff.retry import (
+    RETRY_BUDGET,
+    RETRY_INSTRUCTION,
+    Retry,
+    retry_prompt,
+    retry_template_sha256,
+)
 
 #: The repository root, reached from `tests/bakeoff/` — the git working tree the no-inference
 #: walk measures.
@@ -215,6 +239,244 @@ def test_retry_template_sha256_moves_when_a_sentence_moves(
         "WHY THIS IS A FAILURE: the digest is not a hex SHA-256, so it could not be "
         "compared across runs by a reader"
     )
+
+
+# --------------------------------------------------------------------------------------------
+# The Retry wrapper: budgeted, trigger-gated, exception-transparent, deterministic.
+# --------------------------------------------------------------------------------------------
+
+
+class _Observed:
+    """A `Generator` wrapper that records every prompt it is handed, then delegates.
+
+    The instrument these tests assert the wrapper's decisions with: `Retry` is a wrapper, so
+    the only observable of what it asked is the sequence of prompts it passed down. The
+    recorded list is deliberately not frozen — it is the test's own log of the run.
+    """
+
+    def __init__(self, inner: Generator) -> None:
+        self.inner = inner
+        self.prompts: list[str] = []
+
+    def generate(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.inner.generate(prompt)
+
+
+def _verdicts(*sequence: Trigger | None) -> Callable[[str], Trigger | None]:
+    """A decide stub replaying a fixed verdict sequence; the last verdict repeats forever.
+
+    The injected decision's only job is to make the wrapper's loop move through a known
+    script — retry, retry, stop — independent of the completions. A repeating last verdict
+    is what a real verdict sequence looks like at budget exhaustion: the wrapper keeps
+    getting a trigger and must stop on budget, not on the verdict.
+    """
+    seen: list[int] = []
+
+    def decide(_completion: str) -> Trigger | None:
+        seen.append(1)
+        index = len(seen) - 1
+        return sequence[index if index < len(sequence) else len(sequence) - 1]
+
+    return decide
+
+
+def test_a_non_triggering_completion_is_returned_unchanged_after_one_generation() -> None:
+    """A well-formed diff is graded, not retried: one generation, the completion unchanged.
+
+    `well-formed` must reach git and the verifier — a retry here would re-ask a question the
+    first draw already answered. The unchanged return is the wrapper's honesty contract: the
+    decided completion is byte-for-byte what the inner produced.
+    """
+    observed = _Observed(StubGenerator({FIRST: WELL_FORMED}))
+    wrapper = Retry(inner=observed)
+
+    decided = wrapper.generate(FIRST)
+
+    assert decided == WELL_FORMED, (
+        "WHY THIS IS A FAILURE: the wrapper changed the completion it decided to grade. The "
+        "decided text must be exactly what the base wrote"
+    )
+    assert observed.prompts == [FIRST], (
+        f"WHY THIS IS A FAILURE: a non-triggering completion was asked for "
+        f"{len(observed.prompts)} generations. A well-formed diff must reach git and be "
+        "graded, never re-asked"
+    )
+
+
+def test_a_trigger_gets_its_retry_prompt_and_the_retry_s_completion_is_returned() -> None:
+    """Trigger → one retry with `retry_prompt(first, trigger)`; the retry's text is decided.
+
+    The retry prompt is built from the **first-attempt** prompt and the **current** verdict's
+    trigger — never from the previous retry prompt and never from the completion. The retry
+    stops as soon as a draw stops triggering: budget is a ceiling, not a spend requirement.
+    """
+    answers = {FIRST: COUNT_MISMATCH, retry_prompt(FIRST, Trigger.HUNK_COUNT_MISMATCH): WELL_FORMED}
+    observed = _Observed(StubGenerator(answers))
+    wrapper = Retry(inner=observed)
+
+    decided = wrapper.generate(FIRST)
+
+    assert observed.prompts == [
+        FIRST,
+        retry_prompt(FIRST, Trigger.HUNK_COUNT_MISMATCH),
+    ], (
+        f"WHY THIS IS A FAILURE: the wrapper asked {observed.prompts!r}. A trigger must be "
+        "retried with exactly the retry prompt for its trigger, and a non-triggering retry "
+        "must stop"
+    )
+    assert decided == WELL_FORMED, (
+        "WHY THIS IS A FAILURE: the wrapper did not decide the retry's completion. The "
+        "deciding completion is the last attempted completion (PRD R3)"
+    )
+
+
+def test_a_completion_that_always_triggers_issues_exactly_budget_retries_and_stops() -> None:
+    """Budget discipline: at most `1 + budget` generations, never an infinite loop.
+
+    Every draw here triggers — the stub holds one triggering answer for the first prompt and
+    one for its retry prompt (the wrapper asks the same retry prompt again when the trigger
+    repeats). The wrapper must stop at `1 + budget` generations and return the last
+    completion, and must never ask a fourth time.
+    """
+    retried = retry_prompt(FIRST, Trigger.HUNK_COUNT_MISMATCH)
+    observed = _Observed(StubGenerator({FIRST: COUNT_MISMATCH, retried: COUNT_MISMATCH}))
+    wrapper = Retry(inner=observed)
+
+    decided = wrapper.generate(FIRST)
+
+    assert observed.prompts == [FIRST, retried, retried], (
+        f"WHY THIS IS A FAILURE: the wrapper asked for {len(observed.prompts)} generations "
+        f"({observed.prompts!r}) rather than exactly 1 + {RETRY_BUDGET}. A wrapper without a "
+        "budget is an infinite loop the moment the base keeps triggering"
+    )
+    assert decided == COUNT_MISMATCH, (
+        "WHY THIS IS A FAILURE: at budget exhaustion the decided completion is not the last "
+        "attempt's. The last completion is what the run carries forward and scores"
+    )
+
+
+def test_the_retry_prompt_carries_the_current_trigger_and_the_first_prompt() -> None:
+    """Each retry names its own verdict's trigger, over the first-attempt prompt.
+
+    A run whose verdicts differ across attempts — count-mismatch, then a hunk that dies on a
+    bare line — must ask two different retry prompts, each built from the *first* prompt and
+    that attempt's *own* trigger. The first-attempt prompt is the base so the retry stays a
+    second draw of the same question, not a chain of prompts no freeze could enumerate.
+    """
+    answers = {
+        FIRST: "first attempt",
+        retry_prompt(FIRST, Trigger.HUNK_COUNT_MISMATCH): "second attempt",
+        retry_prompt(FIRST, Trigger.HUNK_DIES_EARLY): "third attempt",
+    }
+    observed = _Observed(StubGenerator(answers))
+    wrapper = Retry(
+        inner=observed,
+        decide=_verdicts(
+            Trigger.HUNK_COUNT_MISMATCH, Trigger.HUNK_DIES_EARLY, Trigger.HUNK_DIES_EARLY
+        ),
+    )
+
+    decided = wrapper.generate(FIRST)
+
+    assert observed.prompts == [
+        FIRST,
+        retry_prompt(FIRST, Trigger.HUNK_COUNT_MISMATCH),
+        retry_prompt(FIRST, Trigger.HUNK_DIES_EARLY),
+    ], (
+        f"WHY THIS IS A FAILURE: the wrapper asked {observed.prompts!r}. Each retry must be "
+        "the first-attempt prompt plus the fixed instruction plus the current verdict's "
+        "diagnosis"
+    )
+    assert decided == "third attempt", (
+        "WHY THIS IS A FAILURE: the decided completion is not the last attempt's"
+    )
+
+
+def test_a_retry_that_stops_early_leaves_the_budget_unspent() -> None:
+    """A non-trigger ends the loop: budget 2 does not mean three generations.
+
+    The budget is a ceiling on retries, never a spend requirement — a wrapper that always
+    used its full budget would re-ask a question the second draw already answered.
+    """
+    retried = retry_prompt(FIRST, Trigger.HUNK_COUNT_MISMATCH)
+    observed = _Observed(StubGenerator({FIRST: COUNT_MISMATCH, retried: WELL_FORMED}))
+    wrapper = Retry(inner=observed)
+
+    wrapper.generate(FIRST)
+
+    assert len(observed.prompts) == 2, (
+        f"WHY THIS IS A FAILURE: the wrapper issued {len(observed.prompts)} generations "
+        "before the retry stopped triggering. A well-formed retry must be graded, not "
+        "re-asked"
+    )
+
+
+def test_an_unstubbed_retry_prompt_raises_through_the_wrapper_untouched() -> None:
+    """Exceptions from the inner are not caught: an interrupted run must stop (`sweep.py:109-112`).
+
+    The first attempt triggers, and the retry prompt is deliberately left unstubbed — the
+    inner refuses it. The wrapper must not swallow that refusal into a partial success: the
+    run stops, as an interrupted run must, having checkpointed what it completed.
+    """
+    wrapper = Retry(inner=StubGenerator({FIRST: COUNT_MISMATCH}))
+
+    with pytest.raises(UnstubbedPrompt):
+        wrapper.generate(FIRST)
+
+
+def test_the_same_stub_table_decides_the_same_sequence_across_two_instances() -> None:
+    """Determinism by construction: one stub table, two wrappers, byte-identical asks.
+
+    The decision is a pure function of the completion and the wrapper is greedy, so two
+    instances over the same table must ask the same prompts in the same order and decide
+    the same completion. That is the property that makes a stored transcript replayable
+    (PRD R3): if two runs over one table could diverge, no record could be re-derived.
+    """
+    answers = {
+        FIRST: COUNT_MISMATCH,
+        retry_prompt(FIRST, Trigger.HUNK_COUNT_MISMATCH): WELL_FORMED,
+    }
+    first_observed = _Observed(StubGenerator(answers))
+    second_observed = _Observed(StubGenerator(answers))
+
+    first_decided = Retry(inner=first_observed).generate(FIRST)
+    second_decided = Retry(inner=second_observed).generate(FIRST)
+
+    assert first_observed.prompts == second_observed.prompts, (
+        "WHY THIS IS A FAILURE: two wrapper instances over the same stub table asked "
+        f"different questions ({first_observed.prompts!r} vs {second_observed.prompts!r}). "
+        "The wrapper's decisions are not a pure function of the completions, and a stored "
+        "transcript could not be replayed"
+    )
+    assert first_decided == second_decided, (
+        "WHY THIS IS A FAILURE: two wrapper instances over the same stub table decided "
+        "different completions"
+    )
+
+
+def test_the_end_of_output_death_and_the_loop_collapse_never_retry() -> None:
+    """The two non-trigger shapes that would waste budget: truncation and the chat loop.
+
+    `end-of-output` is truncation *inferred from shape* — the budget ran out, and a fresh
+    draw of the same budget would stop at the same place. `im-start-loop` is nothing
+    content-side can convert. Both must reach one generation and stop, the cross-check with
+    aspect 1's own fixtures (`test_diffcheck.py:141-158`).
+    """
+    for completion in (END_OF_OUTPUT_STUB, LOOP_TEXT):
+        observed = _Observed(StubGenerator({FIRST: completion}))
+
+        decided = Retry(inner=observed).generate(FIRST)
+
+        assert observed.prompts == [FIRST], (
+            f"WHY THIS IS A FAILURE: a {completion!r}-shaped completion was retried. "
+            "Truncation and the loop collapse are not convertible shapes; a retry would "
+            "burn budget on missing content or re-ask a question no draw can answer"
+        )
+        assert decided == completion, (
+            "WHY THIS IS A FAILURE: the decided completion is not the one generation the "
+            "wrapper observed"
+        )
 
 
 # --------------------------------------------------------------------------------------------
