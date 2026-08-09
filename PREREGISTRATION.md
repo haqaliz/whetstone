@@ -310,6 +310,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-08-01 | The generation contract is an unpinned input that moves the numbers (§ 10.1) | 2 — adds a disclosure | No |
 | 2026-08-01 | On one public instance, § 4's contamination signature is undetectable (§ 10.2) | 2 — adds a disclosure | No |
 | 2026-08-04 | Donor names replaced by stable pseudonyms throughout; the redaction disclosed (§ 10.3) | 2 — adds a disclosure | No |
+| 2026-08-09 | The format-hardening contract is a second, non-comparable generation contract; its report has its own home (§ 10.4) | 2 — adds a disclosure | No |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. §§ 7.1, 7.2 and 7.3
@@ -411,3 +412,25 @@ above do not cover them. Closing it means re-minting the corpus, which would inv
 recorded manifest hashes and re-run the liveness proof; it is deliberately not done here, and the
 redaction is therefore **partial by choice**. The miner no longer writes a donor path or name into
 any newly committed file (`whetstone mine --label`).
+
+### 10.4 The format-hardening contract is a second generation contract, declared non-comparable — 2026-08-09
+
+**Type 2 (§ 8.2): a disclosure, added.** It closes no open item, sets no threshold, and rewords
+nothing in § 1, § 4, or § 6.
+
+**The disclosure.** The format-hardening slice hardens the generation contract § 10.1 names: a
+candidate may be re-asked after a parse refusal, under a **retry budget of two**, with each retry
+prompt fixed by a frozen template. The hardened contract publishes its retry budget, a digest of
+the retry template, and a digest of the diagnosis vocabulary that decides a retry, as
+generation-contract fields — so two contracts can be told apart programmatically, which is what
+§ 10.1 obliges from here on. The retrieval setting remains the oracle setting of § 10.1, and the
+hardened contract declares its own development subset, excluded from both sources before anything
+runs and never scored by the contract it was developed against (M7b).
+
+**The two reports are declared non-comparable.** A figure measured under the hardened contract
+is not comparable to one measured under the contract the baseline report publishes — the two
+differ in an unpinned input, the generation contract. `reports/baseline/` and
+`reports/format-hardening/` are therefore declared non-comparable homes: each is the only home
+of its own figures, and neither is a second home for the other's. The baseline's artifacts are
+static and are not regenerated. At the time of this amendment no count has been measured under
+the hardened contract, and none is claimed here.

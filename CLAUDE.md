@@ -203,6 +203,34 @@ This file orients a coding agent working in this repository. Read it first.
 > frozen. The retry path has its own no-inference AST walk (no `mlx`, no `run.py`, no `scoring`),
 > and `retry_template_sha256()` is the digest aspect `contract-report` publishes.
 >
+> **Format-hardening aspect 3 — `contract-report` — is done** (`docs/planning/p2-format-hardening/contract-report/`;
+> spec at `spec.md`, plan at `plan_20260809.md`). The two contracts are now told apart by their
+> published fields: `GenerationContract` carries `retry_budget` (`RETRY_BUDGET`),
+> `retry_template_sha256` (`retry_template_sha256()`), `diagnosis_vocabulary_version` (a digest
+> over the sorted diagnosis sentences, `diffcheck.diagnosis_vocabulary_sha256()`), and `retrieval`
+> — `"oracle"` today, the machine-readability fix (yield-probe D9). A retries-disabled run's
+> contract keeps the no-retries shape (budget 0, blank digests) so it stays byte-identical to the
+> baseline's; a retried run's declares the whole machinery, and the committed baseline sidecar
+> predates all four fields and still parses — `GenerationContract.parse` defaults `retrieval` to
+> `"oracle"` and the retry trio to the no-retries state, so `reports/baseline/report.json` keeps
+> reading. The report writer supports a second directory: `reports/format-hardening/` with
+> `report.md`/`report.json`/`cost.json`, both arms' verdict counts under their own contract
+> fields, the non-comparability sentence, per-arm token-spend disclosure, and a pointer to the
+> gitignored breakdown home — never restating a classifier count (`finding.md:89-92`). **The
+> one-home guard moved a second time, only on the D6 argument in both docstrings** (the file list
+> in `test_report.py:961`'s copy and its opposite-sign twin in `test_transcript_locality.py:73-101`):
+> the two directories measure different generation contracts and are declared non-comparable, so
+> neither is a competing home for the same figure; a silent list extension is refused. The
+> committed artifacts in the new directory are the declaration — no count, no arm, no figure
+> restated from `reports/baseline/` — until the measured arm renders the two contracts and their
+> figures into it. `PREREGISTRATION.md` § 10.4 (Type 2, 2026-08-09) discloses the hardened
+> contract — retry budget, retry template digest, diagnosis vocabulary digest, retrieval stays
+> oracle, a new declared dev subset — and declares the two reports non-comparable, with its row
+> in the amendment log; nothing above § 10 was edited and no proportion appears in any spelling.
+> The dev-subset mechanism is proven as the three layers it is: exclusion from **both** sources
+> before anything runs, `UnknownDevSubset` refusal for an id that matches nothing, and the
+> `ScoredDevSubset` backstop in the report.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
@@ -380,7 +408,8 @@ CLAUDE.md                       # This file
 CONTRIBUTING.md                 # Dev setup, test-first contract, ground rules
 PREREGISTRATION.md              # What P4 may claim, fixed before any number existed
 RELEASING.md                    # Tag-push release mechanism (nothing released yet)
-reports/baseline/               # The P1 bake-off — the only home for any figure about a model
+reports/baseline/               # The P1 bake-off — the only home of the baseline's figures
+reports/format-hardening/       # The hardened arm's report — non-comparable, by the D6 argument
 .claude/skills/                 # The repo's own workflow skills (see below)
 docs/
   ROADMAP.md                    # 2–3 month phased plan + milestones — authoritative today

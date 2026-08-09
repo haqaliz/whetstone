@@ -94,6 +94,33 @@ released version until it exists in the code.
   the baseline's. The retry path has its own no-inference AST walk (no `mlx`, no `run.py`,
   no `scoring`), and `retry_template_sha256()` is the digest aspect `contract-report`
   publishes.
+- **The generation contract now tells two contracts apart by their published fields.**
+  `GenerationContract` gains `retry_budget` (`RETRY_BUDGET`), `retry_template_sha256` (a
+  digest of the retry instruction plus the sorted diagnosis sentences), a
+  `diagnosis_vocabulary_version` (a digest over the sorted sentences alone, computed by the
+  validator's own `diagnosis_vocabulary_sha256()`), and `retrieval` — today `"oracle"`, the
+  machine-readability fix (yield-probe D9). A retries-disabled run's contract keeps the
+  no-retries shape (budget 0, blank digests), so it stays byte-identical to the baseline's;
+  a retried run's declares the whole machinery. The committed baseline sidecar predates all
+  four fields and still parses: `GenerationContract.parse` defaults `retrieval` to
+  `"oracle"` and the retry trio to the no-retries state, and the baseline report.json keeps
+  reading unchanged.
+- **The format-hardening report** (`reports/format-hardening/`): a second home, on the D6
+  argument. `report.build_contract_comparison` renders both arms' verdict counts under their
+  own contract fields, the non-comparability sentence, per-arm token spend, and a pointer to
+  the gitignored breakdown home — never restating a classifier count (`finding.md:89-92`).
+  The committed artifacts are the declaration: no count, no arm, until the measured arm
+  renders them. The one-home guard moved a second time, only with the D6 argument in both
+  docstrings (`test_report.py` and its opposite-sign twin in `test_transcript_locality.py`):
+  the two directories measure different generation contracts and are declared non-comparable,
+  so neither is a competing home for the same figure. `reports/baseline/` is untouched.
+- **`PREREGISTRATION.md` § 10.4** (Type 2, dated 2026-08-09): discloses the hardened
+  contract — retry budget of two, retry template digest, diagnosis vocabulary digest,
+  retrieval stays oracle, a new declared dev subset — and declares the two reports
+  non-comparable, with its row in the amendment log. Nothing above § 10 was edited, no
+  placeholder, no proportion in any spelling; the dev-subset mechanism is proven as three
+  layers (exclusion from both sources before anything runs, `UnknownDevSubset` refusal,
+  `ScoredDevSubset` backstop).
 
 
 ## [0.2.0] - 2026-08-06
