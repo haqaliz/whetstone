@@ -121,6 +121,25 @@ released version until it exists in the code.
   placeholder, no proportion in any spelling; the dev-subset mechanism is proven as three
   layers (exclusion from both sources before anything runs, `UnknownDevSubset` refusal,
   `ScoredDevSubset` backstop).
+- **The retry-eligible pre-analysis** (`src/whetstone/bakeoff/preanalysis.py`): the offline,
+  stdlib-only, deterministic read of the stored autopsy outputs (schema
+  `whetstone-preanalysis/1`, refused under any published path, its own no-inference AST
+  walk) that applies the validator's own trigger mapping by identity and counts the
+  retry-eligible ceiling per candidate before any GPU is spent. Run over the two stored
+  runs: the retry-eligible subset of the stored parse refusals is a large majority, and one
+  candidate's ceiling is zero — its `im-start-loop` wall, a per-candidate finding. The
+  numbers live in the gitignored `runs/format-hardening-preanalysis/ceiling.json`, their
+  only home. The ceiling is material, so the arm's halt condition did not fire.
+- **`--retries` on the run CLI**: the retry switch existed in `conduct` but was unreachable;
+  the flag is exposed with parser and wiring tests watched failing first, off by default so
+  an unflagged re-run stays the baseline contract.
+- **The hardened-arm runbook** (`docs/planning/p2-format-hardening/measured-arm/runbook.md`):
+  the operator's command for the arm — the real donor roots (`belay`, `contig`), five
+  declared dev-subset ids verified against the corpus, the journal and transcript in a
+  sibling evidence directory (the harness refuses a transcript under `--out`), the halt
+  conditions, and the post-run attribution/autopsy commands. The arm itself has not run;
+  the measured before/after cause breakdown is unspent until it does, and nothing here
+  claims a figure it didn't produce.
 
 
 ## [0.2.0] - 2026-08-06

@@ -231,6 +231,28 @@ This file orients a coding agent working in this repository. Read it first.
 > before anything runs, `UnknownDevSubset` refusal for an id that matches nothing, and the
 > `ScoredDevSubset` backstop in the report.
 >
+> **Format-hardening aspect 4, first half — the pre-analysis and the runbook — is done**
+> (`docs/planning/p2-format-hardening/measured-arm/`; spec at `spec.md`, plan at
+> `plan_20260809.md`). `src/whetstone/bakeoff/preanalysis.py` is the offline, stdlib-only,
+> deterministic read of the stored autopsy outputs (schema `whetstone-preanalysis/1`, refused
+> under any published path, its own no-inference AST walk) that applies **the same trigger
+> mapping as the validator** — `diffcheck.trigger_of_cause`, asserted identical — and counts the
+> **retry-eligible ceiling** per candidate before any GPU is spent. The ceiling was measured over
+> the two stored runs, and the definition was written in the module before the run: the
+> retry-eligible subset of the stored parse refusals is a **large majority** — the numbers live
+> in the gitignored `runs/format-hardening-preanalysis/ceiling.json`, which is their only home —
+> and one candidate's ceiling is **zero**, its `im-start-loop` wall, which is a per-candidate
+> finding rather than a tie (the dig predicted exactly that shape). The ceiling is material, so
+> the arm's halt condition did not fire and the runbook is written: `--retries` is now a real
+> CLI flag (the switch existed in `conduct` but was unreachable — exposed, with the parser and
+> wiring tests watched failing first), the donor roots are the real names (`belay`, `contig`),
+> and the journal and transcript live in a sibling evidence directory because the harness
+> refuses a transcript under `--out` — exactly as it should. **The arm itself has NOT run.** It
+> is the operator's GPU pass, commanded from the runbook; until it does, `reports/format-hardening/`
+> still holds the declaration rendering aspect 3 committed, and the measured before/after cause
+> breakdown — the slice's deliverable — is unspent. Nothing in this paragraph claims a figure
+> the arm didn't produce.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
