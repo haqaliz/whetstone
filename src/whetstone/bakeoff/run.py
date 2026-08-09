@@ -825,6 +825,16 @@ def build_parser() -> argparse.ArgumentParser:
         "path nobody chose. It may not be inside --out, which is published, and it is ignored "
         "under --probe, which measures time and gathers no evidence.",
     )
+    parser.add_argument(
+        "--retries",
+        action="store_true",
+        help="the format-hardening arm's switch (PRD R5): fold the retry vocabulary into the "
+        "frozen contract and compose the budgeted retry wrapper, so a parse-refusal shape can be "
+        "re-asked up to the budget. Off by default, so an unflagged re-run is the baseline "
+        "contract, byte for byte. A retry is never composed without a transcript — the wrapper "
+        "writes the per-attempt records itself — so on a run without --transcript this flag is "
+        "still today's run, with the same composition.",
+    )
 
     return parser
 
@@ -861,6 +871,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             probe=arguments.probe,
             journal=arguments.journal,
             transcript=arguments.transcript,
+            retries=arguments.retries,
         )
     except (TranscriptNotPrivate, UnknownCandidate) as refusal:
         parser.error(str(refusal))
