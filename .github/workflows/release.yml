@@ -34,6 +34,16 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # `fetch-depth: 0` is load-bearing for the branch guards
+          # (`tests/bakeoff/test_autopsy_guards.py`, `test_autopsy_partition.py`,
+          # `test_format_hardening_frozen.py`): `git diff --stat origin/master -- src/...` is the
+          # assertion that the reward path did not move, and the default tag checkout carries only
+          # the tagged commit — no `origin/master` ref — so the guards die with `fatal: bad
+          # revision 'origin/master'` instead of running (seen on the v0.3.0 verify run, which
+          # published nothing, which is the gate doing its job). Same fix as `ci.yml`'s
+          # (`09def29`): a guard that cannot run is a green run that proves nothing.
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
