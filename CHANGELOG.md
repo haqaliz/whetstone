@@ -13,6 +13,38 @@ released version until it exists in the code.
 
 ### Added
 
+- **The online diff validator** (`src/whetstone/bakeoff/diffcheck.py`): the autopsy's taxonomy
+  consulted at grading time, by identity — `classify_completion` and the cause and death enums
+  are the autopsy's own objects, imported never copied and asserted `is` in a test, so the
+  online trigger decision and the offline autopsy cannot disagree about the same bytes. The
+  trigger mapping is the taxonomy, not a second git pass: `hunk-count-mismatch` and a first-hunk
+  death on a bare line or the closing fence fire a retry; `well-formed`, `im-start-loop`, the
+  inferred `end-of-output` truncation, `no-diff`, `unrecognised-shape`, and — until the
+  measured-arm pre-analysis flips it through the one parameter that exists for exactly that —
+  `header-without-hunk` never do. The diagnosis vocabulary is finite and fixed: one constant
+  sentence per trigger, no format argument, no digit — a sentence with a hole would make the
+  retry prompt set unbounded and the seal unfreezable — and the finiteness rule is asserted in
+  the suite. The validator is classify-only: it has no authoring power and no task context, its
+  own no-inference AST walk forbids `mlx`/`torch`/`transformers`/`run`, and nothing it does can
+  change a byte of the diff it decides on.
+- **The transcript now carries the retry.** Every attempt is a record: `Transcribed` gains
+  `attempt` (one-based within the run) and `decision` (`"retry"` when a later record follows,
+  `"graded"` when it is the decided record for its key), the codec is updated field by field so
+  an old-schema line fails decode rather than defaulting, and `replay()` still selects the last
+  record per (candidate, task) — the frozen consumers (`attribution.py`, `autopsy.py`) read the
+  same transcript as ever. A last record declaring `"retry"` is refused as corruption (a run
+  killed between the retry and its completion), raised, never repaired.
+- **The anti-credulity proof, watched failing and sub-verdict-pinned.** A held-path edit —
+  well-formed, trigger-shaped (the shape a retry fires on), and mixed with a real source fix —
+  survives validator and extractor byte-for-byte and reaches STRICT, which refuses it at the
+  `patch-scope` sub-verdict specifically while WEAK accepts it: the differential
+  `(Outcome.OUT_OF_SCOPE, Status.FAIL, Status.PASS)` is asserted per shape, and a deliberately
+  credulous validator that drops held-path hunks (using `test_blobs` as a sanitisation list,
+  exactly what R4 forbids) is proven in the suite to lose that differential.
+- **The AC2 pins now cover the whole reward path**: `src/whetstone/verify/`, `patch.py` and
+  `attribution.py` are asserted byte-identical to `origin/master` — the `attribution.py` pin
+  that was missing, added — and the pin is proven able to fail against a synthetic tree with a
+  planted change in each path.
 - **The autopsy** (`python -m whetstone.bakeoff.autopsy`): an offline, deterministic,
   stdlib-only classifier that reads a bake-off transcript and says which zero each rollout
   was — the content-level read the yield-probe correction demanded before a fourth fix.

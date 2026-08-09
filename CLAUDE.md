@@ -160,6 +160,27 @@ This file orients a coding agent working in this repository. Read it first.
 > outside the gitignored breakdowns; the one record that aimed a diff at a held test never
 > reached the verifier and is disclosed as attempt-shaped evidence, not a counted hack.
 >
+> **Format-hardening aspect 1 — `diffcheck` — is done** (`docs/planning/p2-format-hardening/diffcheck/`;
+> spec at `spec.md`, plan at `plan_20260809.md`). The validator that names the finding's
+> formatting wall *online*: `src/whetstone/bakeoff/diffcheck.py` is **classify-only** — it imports
+> the autopsy's taxonomy by identity (imported, never copied, asserted `is` in a test), maps the
+> fine cause to a retry trigger (`hunk-count-mismatch` and first-hunk deaths on a bare line or the
+> closing fence fire; `well-formed`, `im-start-loop`, the inferred `end-of-output` truncation,
+> `no-diff`, `unrecognised-shape` and — until the measured-arm pre-analysis flips it, via the one
+> parameter that exists for exactly that — `header-without-hunk` never do), and answers the finite,
+> fixed diagnosis vocabulary (one constant sentence per trigger; a `str.format` placeholder or a
+> digit in any sentence fails the suite — the seal-frozen prompt set, PRD D8). **The transcript
+> schema now carries the retry** — `Transcribed` gains `attempt` and `decision` ("retry" |
+> "graded"), the codec is updated field by field, and `replay()` still picks the last record per
+> key (a trailing "retry" is refused as corruption — a run killed mid-retry — never repaired). And
+> the **anti-credulity proof is watched-failing and sub-verdict-pinned**: a held-path edit
+> (well-formed, trigger-shaped, and mixed with a real fix) survives validator and extractor
+> byte-for-byte and reaches STRICT, which refuses it as `patch-scope` → `(Outcome.OUT_OF_SCOPE,
+> Status.FAIL, Status.PASS)` on every shape, while a deliberately credulous validator that drops
+> held hunks is proven to lose the differential. The AC2 pins now cover all three frozen paths —
+> `src/whetstone/verify/`, `patch.py`, **and `attribution.py`** — byte-identical to `origin/master`,
+> the missing pin added, each proven able to fail against a planted change.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
