@@ -80,6 +80,12 @@ class Transcribed:
     frozen generation contract the run was sealed against, and the text is what makes the record
     readable by a person trying to understand a failure. Storing only the digest would make the
     transcript verifiable and useless; only the text would make it readable and unattributable.
+
+    With retries a (candidate, task) is generated more than once, so a record is one *attempt*:
+    `attempt` numbers it within the run, and `decision` says whether a later record followed it
+    ("retry") or whether it is the record the run carried forward and scored ("graded"). The
+    decided record is always the last one for its key — that is what `replay` selects, unchanged
+    (`replay()` below).
     """
 
     #: The base that produced this completion.
@@ -97,6 +103,14 @@ class Transcribed:
     #: The completion as returned, verbatim — never normalised. See the module docstring.
     completion: str
 
+    #: Which attempt within the (candidate, task) run this record is. One-based; the first
+    #: generation of a pair is attempt 1, its retry is attempt 2.
+    attempt: int
+
+    #: What became of this attempt: "retry" when a later record follows it, "graded" when it
+    #: is the decided record for its key.
+    decision: str
+
     @property
     def key(self) -> Key:
         """The (candidate, task) pair this record is filed under."""
@@ -105,12 +119,17 @@ class Transcribed:
 
 @dataclass(frozen=True)
 class Transcript:
-    """An append-only transcript file. One JSON object per line, one line per (candidate, task).
+    """An append-only transcript file. One JSON object per line, one record per attempt.
 
     JSON Lines rather than a single JSON document because the file is written *during* a run that
     may be killed at any moment: a document would have to be rewritten whole on every generation,
     and a process killed mid-rewrite loses everything already recorded rather than the one line it
     was adding. Append-only for the same reason — nothing already on disk is ever touched again.
+
+    A (candidate, task) now holds **several** records when a run retried: each attempt is a line,
+    and the decided one is the last. `replay` selects it (`replay()` below), so the frozen
+    consumers (`attribution.py`, `autopsy.py`) read the same transcript as ever — multi-record
+    keys were already safe by the keyed last-record-wins rule.
 
     Frozen: a transcript names a file and nothing else. There is no in-memory index to go stale,
     which is why `replay` reads the file each time it is asked rather than caching.
@@ -139,14 +158,19 @@ class Transcript:
         raise. Reading never creates the file, so "no transcript here" cannot become "an empty
         transcript was recorded here".
 
-        A repeated key takes the **last** record, which is the append-only file's own answer: a
-        pair recorded twice means it was somehow generated twice, and the later completion is the
-        one the run would have carried forward and scored.
+        A repeated key takes the **last** record, which is the append-only file's own answer: with
+        retries, a pair recorded more than once is a run that tried again, and the later completion
+        is the decided one — the record the run would have carried forward and scored. `decision`
+        says so per record: every record but the last for a key is `"retry"`, and the last is
+        `"graded"`. A last record declaring `"retry"` is refused as corruption: in the live run a
+        retry always has a following record, so a trailing one is a run killed between the retry
+        and its completion — missing evidence, raised rather than repaired.
         """
         if not self.path.exists():
             return {}
 
         records: dict[Key, Transcribed] = {}
+        last_line: dict[Key, int] = {}
         for number, line in enumerate(self.path.read_text(encoding="utf-8").splitlines(), start=1):
             if not line.strip():
                 continue
@@ -161,6 +185,17 @@ class Transcript:
                     f"one"
                 ) from exc
             records[record.key] = record
+            last_line[record.key] = number
+
+        for key, record in records.items():
+            if record.decision == "retry":
+                raise TranscriptUnreadable(
+                    f"line {last_line[key]} of the transcript at {str(self.path)!r} is the last "
+                    f"record for {key!r} and declares decision 'retry'. In the live run a retry "
+                    f"always has a following record — the decided one — so a trailing 'retry' is "
+                    f"a run killed between the retry and its completion. It is not skipped or "
+                    f"repaired: replaying it would report a decision the run never made"
+                )
         return records
 
 
@@ -192,6 +227,12 @@ class RecordingGenerator:
     purpose is completions — which an offline replay counting rows would report as a rollout that
     happened. Exceptions propagate untouched for the reason `sweep` gives for not catching them: an
     interrupted run must stop rather than produce a full-looking record set with holes in it.
+
+    **The row is the decided attempt.** The recorder observes exactly one generation per
+    (candidate, task) — the one the run carried forward — so the row it writes is attempt 1 of
+    that run, decided and graded. The retry wrapper that makes the ordinary case multi-attempt
+    (aspect `retry-loop`) writes its own intermediate rows; nothing in this wrapper guesses an
+    attempt that was not observed.
     """
 
     #: What actually generates. Called exactly once per `generate`, with the prompt unaltered.
@@ -220,6 +261,10 @@ class RecordingGenerator:
                 prompt_sha256=prompt_hash(prompt),
                 prompt=prompt,
                 completion=completion,
+                # The recorder observes one generation per (candidate, task) — the decided one —
+                # so the row is attempt 1 of the run, graded. See the class docstring.
+                attempt=1,
+                decision="graded",
             )
         )
         return completion
@@ -238,6 +283,8 @@ def _encode(record: Transcribed) -> dict[str, Any]:
         "prompt_sha256": record.prompt_sha256,
         "prompt": record.prompt,
         "completion": record.completion,
+        "attempt": record.attempt,
+        "decision": record.decision,
     }
 
 
@@ -246,8 +293,11 @@ def _decode(raw: Any) -> Transcribed:
 
     No `.get(..., default)` anywhere: a default would turn a field this writer never wrote into a
     plausible value, and the most plausible value here — `""` for a completion — is the one that
-    would invent an empty generation, which is itself one of the failure causes being counted. A
-    `KeyError` is caught by `replay` and reported as a corrupt line.
+    would invent an empty generation, which is itself one of the failure causes being counted. The
+    retry fields follow the same rule: a line missing `attempt` or `decision` is an old-schema
+    transcript, and defaulting it — to attempt 1, "graded" — would invent a decided single-attempt
+    run with no evidence it was one. A `KeyError` is caught by `replay` and reported as a corrupt
+    line.
     """
     return Transcribed(
         candidate=raw["candidate"],
@@ -255,6 +305,8 @@ def _decode(raw: Any) -> Transcribed:
         prompt_sha256=raw["prompt_sha256"],
         prompt=raw["prompt"],
         completion=raw["completion"],
+        attempt=raw["attempt"],
+        decision=raw["decision"],
     )
 
 

@@ -45,9 +45,11 @@ from fixtures.repos import CALC_FIXED, build_task, make_patch
 from fixtures.repos.mined import build_mined_task
 
 from whetstone.bakeoff import rendering, scoring
+from whetstone.bakeoff.diffcheck import diagnosis_vocabulary_sha256
 from whetstone.bakeoff.generator import Generator
 from whetstone.bakeoff.mlx_runtime import DEFAULT_MAX_TOKENS
 from whetstone.bakeoff.rendering import prompt_hash, render_prompt
+from whetstone.bakeoff.retry import RETRY_BUDGET, retry_template_sha256
 from whetstone.bakeoff.run import (
     COST_FILE,
     PROBE_FILE,
@@ -454,6 +456,63 @@ def test_a_sound_run_publishes_both_sources_its_contract_and_its_cost(tmp_path: 
     cost = json.loads((tmp_path / "out" / COST_FILE).read_text(encoding="utf-8"))
     assert cost["candidates"][0]["wall_seconds"] > 0.0, (
         f"WHY THIS IS A FAILURE: no wall-clock was recorded per candidate (AC8). Got {cost!r}"
+    )
+
+    contract_block = json.loads(
+        (tmp_path / "out" / "report.json").read_text(encoding="utf-8")
+    )["generation_contract"]
+    assert contract_block["retrieval"] == "oracle", (
+        "WHY THIS IS A FAILURE: the published contract does not state its retrieval setting. "
+        "The field exists so two contracts can be told apart programmatically, and a run whose "
+        "sidecar omits it is indistinguishable from one nobody recorded"
+    )
+    assert contract_block["retry_budget"] == 0, (
+        "WHY THIS IS A FAILURE: a retries-disabled run's contract is byte-identical to the "
+        "contract the baseline report published (freeze(retry=False)), so its retry fields "
+        "must describe the no-retries state rather than a retry machinery it never used"
+    )
+    assert contract_block["retry_template_sha256"] == "", (
+        "WHY THIS IS A FAILURE: a retries-disabled run names a retry template its contract "
+        "does not carry. The retry prompts are only frozen into the contract under retry=True"
+    )
+    assert contract_block["diagnosis_vocabulary_version"] == "", (
+        "WHY THIS IS A FAILURE: a retries-disabled run names a diagnosis vocabulary its "
+        "contract does not carry"
+    )
+
+
+def test_a_retried_run_publishes_its_retry_contract_fields(tmp_path: Path) -> None:
+    """The hardened arm's contract carries its retry machinery, told apart from the baseline's.
+
+    A retries-composed run freezes the retry vocabulary into the contract (every retry prompt
+    is pre-rendered at freeze time), so its published contract declares the budget, the retry
+    template digest and the diagnosis vocabulary digest — the fields that make the two
+    contracts distinguishable programmatically (D9). The no-retries state asserted in the
+    sound-run test is the other side of the same distinction.
+    """
+    transcript = tmp_path / "transcripts" / "arm.jsonl"
+    conducted = _run(tmp_path, retries=True, transcript=transcript)
+
+    assert conducted.report is not None
+    block = json.loads(
+        (tmp_path / "out" / "report.json").read_text(encoding="utf-8")
+    )["generation_contract"]
+    assert block["retry_budget"] == RETRY_BUDGET, (
+        f"WHY THIS IS A FAILURE: the retried run's contract declares budget "
+        f"{block['retry_budget']} rather than the constant RETRY_BUDGET ({RETRY_BUDGET}), so "
+        "the wrapper and the published report could disagree about how many retries happened"
+    )
+    assert block["retry_template_sha256"] == retry_template_sha256(), (
+        "WHY THIS IS A FAILURE: the retried run's contract does not publish the retry "
+        "template digest, so a reader cannot check that the run retried under the declared "
+        "template"
+    )
+    assert block["diagnosis_vocabulary_version"] == diagnosis_vocabulary_sha256(), (
+        "WHY THIS IS A FAILURE: the retried run's contract does not publish the diagnosis "
+        "vocabulary digest, so the retry prompts' sentences are not auditable"
+    )
+    assert block["retrieval"] == "oracle", (
+        "WHY THIS IS A FAILURE: the hardened contract does not state its retrieval setting"
     )
 
 

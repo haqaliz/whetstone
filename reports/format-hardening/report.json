@@ -1,0 +1,7 @@
+{
+  "arms": [],
+  "breakdown_home": "runs/format-hardening-arm/",
+  "measurement": "format-hardening contract comparison; not the pinned baseline of PREREGISTRATION.md:126-128",
+  "non_comparable": true,
+  "recorded_on": "2026-08-09"
+}

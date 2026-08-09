@@ -13,6 +13,38 @@ released version until it exists in the code.
 
 ### Added
 
+- **The online diff validator** (`src/whetstone/bakeoff/diffcheck.py`): the autopsy's taxonomy
+  consulted at grading time, by identity — `classify_completion` and the cause and death enums
+  are the autopsy's own objects, imported never copied and asserted `is` in a test, so the
+  online trigger decision and the offline autopsy cannot disagree about the same bytes. The
+  trigger mapping is the taxonomy, not a second git pass: `hunk-count-mismatch` and a first-hunk
+  death on a bare line or the closing fence fire a retry; `well-formed`, `im-start-loop`, the
+  inferred `end-of-output` truncation, `no-diff`, `unrecognised-shape`, and — until the
+  measured-arm pre-analysis flips it through the one parameter that exists for exactly that —
+  `header-without-hunk` never do. The diagnosis vocabulary is finite and fixed: one constant
+  sentence per trigger, no format argument, no digit — a sentence with a hole would make the
+  retry prompt set unbounded and the seal unfreezable — and the finiteness rule is asserted in
+  the suite. The validator is classify-only: it has no authoring power and no task context, its
+  own no-inference AST walk forbids `mlx`/`torch`/`transformers`/`run`, and nothing it does can
+  change a byte of the diff it decides on.
+- **The transcript now carries the retry.** Every attempt is a record: `Transcribed` gains
+  `attempt` (one-based within the run) and `decision` (`"retry"` when a later record follows,
+  `"graded"` when it is the decided record for its key), the codec is updated field by field so
+  an old-schema line fails decode rather than defaulting, and `replay()` still selects the last
+  record per (candidate, task) — the frozen consumers (`attribution.py`, `autopsy.py`) read the
+  same transcript as ever. A last record declaring `"retry"` is refused as corruption (a run
+  killed between the retry and its completion), raised, never repaired.
+- **The anti-credulity proof, watched failing and sub-verdict-pinned.** A held-path edit —
+  well-formed, trigger-shaped (the shape a retry fires on), and mixed with a real source fix —
+  survives validator and extractor byte-for-byte and reaches STRICT, which refuses it at the
+  `patch-scope` sub-verdict specifically while WEAK accepts it: the differential
+  `(Outcome.OUT_OF_SCOPE, Status.FAIL, Status.PASS)` is asserted per shape, and a deliberately
+  credulous validator that drops held-path hunks (using `test_blobs` as a sanitisation list,
+  exactly what R4 forbids) is proven in the suite to lose that differential.
+- **The AC2 pins now cover the whole reward path**: `src/whetstone/verify/`, `patch.py` and
+  `attribution.py` are asserted byte-identical to `origin/master` — the `attribution.py` pin
+  that was missing, added — and the pin is proven able to fail against a synthetic tree with a
+  planted change in each path.
 - **The autopsy** (`python -m whetstone.bakeoff.autopsy`): an offline, deterministic,
   stdlib-only classifier that reads a bake-off transcript and says which zero each rollout
   was — the content-level read the yield-probe correction demanded before a fourth fix.
@@ -40,6 +72,74 @@ released version until it exists in the code.
   (`git diff --stat origin/master -- src/whetstone/verify/` empty), proven able to fail
   against a synthetic tree with a staged `verify/` change, plus the autopsy's own
   no-inference AST walk over module and tests.
+- **The retry prompt and the budgeted retry wrapper** (`src/whetstone/bakeoff/retry.py`):
+  the convert half of the format-hardening response, on top of the aspect-1 validator. The
+  retry prompt is a pure function of `(first-attempt prompt, trigger)` — the first prompt,
+  a fixed retry instruction, and exactly one sentence from the finite diagnosis vocabulary,
+  never the prior completion — so every retry prompt a retried run may issue is pre-rendered
+  at freeze time (`freeze(..., retry=True)` folds `retry_prompt(render_prompt(...), trigger)`
+  per task per trigger into the same `posed` map via `setdefault`) and the contract SHA
+  covers the whole retry vocabulary. `Retry` is a `Generator` wrapper — the one-method seam
+  is not widened — that issues at most two retries per (candidate, task) (`RETRY_BUDGET`,
+  three generations total), only on the trigger shapes the validator names, and returns the
+  last completion; the decision is `trigger_of(classify_completion(text))` by identity, pure
+  and replayable. Every attempt is recorded: the wrapper writes one record per attempt with
+  its own `prompt_sha256`, its one-based `attempt`, and its `decision` (`"retry"` when a
+  later attempt follows, `"graded"` for the decided record), filed under the task the prompt
+  was posed for. A mid-run edit of the retry vocabulary raises `ContractChanged` through the
+  seal and aborts the run, like any other template edit — asserted end-to-end through
+  `freeze` + the wrapper, with the retry prompts proven sealed by an instrumented engine.
+  Retries are off by default (`conduct(..., retries=False)`), composed only when
+  `--transcript` names a file, and a retries-disabled run's contract is byte-identical to
+  the baseline's. The retry path has its own no-inference AST walk (no `mlx`, no `run.py`,
+  no `scoring`), and `retry_template_sha256()` is the digest aspect `contract-report`
+  publishes.
+- **The generation contract now tells two contracts apart by their published fields.**
+  `GenerationContract` gains `retry_budget` (`RETRY_BUDGET`), `retry_template_sha256` (a
+  digest of the retry instruction plus the sorted diagnosis sentences), a
+  `diagnosis_vocabulary_version` (a digest over the sorted sentences alone, computed by the
+  validator's own `diagnosis_vocabulary_sha256()`), and `retrieval` — today `"oracle"`, the
+  machine-readability fix (yield-probe D9). A retries-disabled run's contract keeps the
+  no-retries shape (budget 0, blank digests), so it stays byte-identical to the baseline's;
+  a retried run's declares the whole machinery. The committed baseline sidecar predates all
+  four fields and still parses: `GenerationContract.parse` defaults `retrieval` to
+  `"oracle"` and the retry trio to the no-retries state, and the baseline report.json keeps
+  reading unchanged.
+- **The format-hardening report** (`reports/format-hardening/`): a second home, on the D6
+  argument. `report.build_contract_comparison` renders both arms' verdict counts under their
+  own contract fields, the non-comparability sentence, per-arm token spend, and a pointer to
+  the gitignored breakdown home — never restating a classifier count (`finding.md:89-92`).
+  The committed artifacts are the declaration: no count, no arm, until the measured arm
+  renders them. The one-home guard moved a second time, only with the D6 argument in both
+  docstrings (`test_report.py` and its opposite-sign twin in `test_transcript_locality.py`):
+  the two directories measure different generation contracts and are declared non-comparable,
+  so neither is a competing home for the same figure. `reports/baseline/` is untouched.
+- **`PREREGISTRATION.md` § 10.4** (Type 2, dated 2026-08-09): discloses the hardened
+  contract — retry budget of two, retry template digest, diagnosis vocabulary digest,
+  retrieval stays oracle, a new declared dev subset — and declares the two reports
+  non-comparable, with its row in the amendment log. Nothing above § 10 was edited, no
+  placeholder, no proportion in any spelling; the dev-subset mechanism is proven as three
+  layers (exclusion from both sources before anything runs, `UnknownDevSubset` refusal,
+  `ScoredDevSubset` backstop).
+- **The retry-eligible pre-analysis** (`src/whetstone/bakeoff/preanalysis.py`): the offline,
+  stdlib-only, deterministic read of the stored autopsy outputs (schema
+  `whetstone-preanalysis/1`, refused under any published path, its own no-inference AST
+  walk) that applies the validator's own trigger mapping by identity and counts the
+  retry-eligible ceiling per candidate before any GPU is spent. Run over the two stored
+  runs: the retry-eligible subset of the stored parse refusals is a large majority, and one
+  candidate's ceiling is zero — its `im-start-loop` wall, a per-candidate finding. The
+  numbers live in the gitignored `runs/format-hardening-preanalysis/ceiling.json`, their
+  only home. The ceiling is material, so the arm's halt condition did not fire.
+- **`--retries` on the run CLI**: the retry switch existed in `conduct` but was unreachable;
+  the flag is exposed with parser and wiring tests watched failing first, off by default so
+  an unflagged re-run stays the baseline contract.
+- **The hardened-arm runbook** (`docs/planning/p2-format-hardening/measured-arm/runbook.md`):
+  the operator's command for the arm — the real donor roots (`belay`, `contig`), five
+  declared dev-subset ids verified against the corpus, the journal and transcript in a
+  sibling evidence directory (the harness refuses a transcript under `--out`), the halt
+  conditions, and the post-run attribution/autopsy commands. The arm itself has not run;
+  the measured before/after cause breakdown is unspent until it does, and nothing here
+  claims a figure it didn't produce.
 
 
 ## [0.2.0] - 2026-08-06

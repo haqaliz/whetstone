@@ -55,6 +55,7 @@ from typing import Any
 
 from whetstone import __version__
 from whetstone.bakeoff import patch as extraction
+from whetstone.bakeoff.diffcheck import Trigger, diagnosis_vocabulary_sha256
 from whetstone.bakeoff.generator import Generator
 from whetstone.bakeoff.journal import Journal
 from whetstone.bakeoff.mlx_runtime import DEFAULT_MAX_TOKENS, PINNED_MLX_LM, SAMPLER, MlxGenerator
@@ -68,6 +69,7 @@ from whetstone.bakeoff.report import (
     funnel_from_ledger,
     write,
 )
+from whetstone.bakeoff.retry import RETRY_BUDGET, Retry, retry_prompt, retry_template_sha256
 from whetstone.bakeoff.scoring import Interpreters, Rollout
 from whetstone.bakeoff.selection import Contender
 from whetstone.bakeoff.sources import oracle_sources
@@ -405,7 +407,7 @@ def select_candidates(fetched: Sequence[Any], only: Sequence[str]) -> tuple[Any,
     return tuple(one for one in fetched if one in chosen)
 
 
-def freeze(tasks: Sequence[Task], *, pool: Path | None = None) -> Contract:
+def freeze(tasks: Sequence[Task], *, pool: Path | None = None, retry: bool = False) -> Contract:
     """Fix the question, over the scored set, before anything is loaded or generated.
 
     Takes the tasks rather than reading the template's source. A source digest would move when a
@@ -428,6 +430,15 @@ def freeze(tasks: Sequence[Task], *, pool: Path | None = None) -> Contract:
     and each is recorded against the task that posed it so a completion can be filed under the task
     it answers rather than under one inferred from its text.
 
+    **`retry` folds the retry vocabulary into the same map.** The retry prompt is a pure function
+    of `(first-attempt prompt, trigger)` (spec B1), so every retry prompt a retried run may issue
+    is pre-rendered here, per task, per trigger, through the same `setdefault` — one task's prompts
+    map to that task, the contract SHA covers the whole retry vocabulary, and `Sealed` accepts a
+    retry prompt at runtime exactly when it was frozen before the run (PRD D8). Off by default:
+    a retries-disabled run's contract is byte-identical to the contract the baseline report
+    published, so a reader recomputing that SHA from the committed manifests gets the published
+    value.
+
     **`pool` must be the one `score` is given, and this is the seam where that bites.** A public
     task's file set is declared by its committed gold patch, so a seal taken without the pool omits
     a prompt the rollout then renders — and the sealed generator, correctly, refuses to send a
@@ -440,10 +451,14 @@ def freeze(tasks: Sequence[Task], *, pool: Path | None = None) -> Contract:
         sources = oracle_sources(task, pool=pool)
         if sources.files is None:
             continue
+        first = render_prompt(task, sources.files)
         # `setdefault`, so the first task to pose a question keeps it. See `Contract.posed` for why
         # a collision is sound: two tasks rendering one prompt are one question, and greedy
         # decoding gives both the same answer.
-        posed.setdefault(prompt_hash(render_prompt(task, sources.files)), task.task_id)
+        posed.setdefault(prompt_hash(first), task.task_id)
+        if retry:
+            for trigger in Trigger:
+                posed.setdefault(prompt_hash(retry_prompt(first, trigger)), task.task_id)
     return Contract(
         sha256=hashlib.sha256("\n".join(sorted(posed)).encode("utf-8")).hexdigest(),
         posed=MappingProxyType(posed),
@@ -487,6 +502,7 @@ def conduct(
     probe: int | None = None,
     journal: Path | None = None,
     transcript: Path | None = None,
+    retries: bool = False,
     engine: Engine = mlx_engine,
 ) -> Conducted:
     """Run the bake-off: verify the weights, freeze the question, sweep, and publish or refuse.
@@ -511,6 +527,12 @@ def conduct(
     `transcript` keeps every prompt and completion, so the cause of a zero can be re-derived offline
     rather than by paying for another night of generation. Undefaulted, and checked against `out`
     before anything else happens — see `TranscriptNotPrivate`.
+
+    `retries` is the format-hardening arm's switch, **off by default until the measured arm opts
+    in** (PRD R5): when on, `freeze` folds the retry vocabulary into the contract and the entrant
+    loop composes the budgeted retry wrapper. A retry is never composed without a transcript — the
+    wrapper writes the per-attempt records itself, and `--transcript` is the operator's choice —
+    so `retries` on a transcript-less run is still today's run, with the same composition.
     """
     _refuse_published_transcript(transcript, out)
     os.environ[HF_HUB_OFFLINE] = "1"
@@ -518,7 +540,7 @@ def conduct(
     private_tasks, public_tasks, declared = _partition(
         load_task_roots(tasks), load_tasks(public), dev_subset
     )
-    contract = freeze((*private_tasks, *public_tasks), pool=pool)
+    contract = freeze((*private_tasks, *public_tasks), pool=pool, retry=retries)
     fetched = select_candidates(load_weights(weights), only)
 
     interpreters = Interpreters(workspace=workspace / "environments")
@@ -551,9 +573,25 @@ def conduct(
         # stream and the property would hold by construction rather than by design.
         asked: Generator = Sealed(inner=engine(one, max_tokens), contract=contract)
         if kept is not None:
-            asked = Recording(
-                inner=asked, transcript=kept, candidate=one.repo_id, contract=contract
-            )
+            if retries:
+                # The retried composition. The retry wrapper is itself the per-attempt recorder —
+                # it holds the transcript, the candidate and the frozen `posed` map, and writes one
+                # record per attempt with the attempt/decision fields aspect 1 added — so it wraps
+                # the sealed engine directly. `Sealed` stays innermost: every prompt, first and
+                # retry, must pass the frozen-set check (PRD D8), and a seal-refused retry prompt
+                # raises `ContractChanged` through the wrapper with no record for that attempt and
+                # no further attempts.
+                asked = Retry(
+                    inner=asked,
+                    transcript=kept,
+                    candidate=one.repo_id,
+                    contract=contract.posed,
+                    budget=RETRY_BUDGET,
+                )
+            else:
+                asked = Recording(
+                    inner=asked, transcript=kept, candidate=one.repo_id, contract=contract
+                )
         runs = {
             source: sweep(
                 candidate=one.repo_id,
@@ -617,6 +655,10 @@ def conduct(
             max_tokens=max_tokens,
             extractor_version=_extractor_version(),
             dev_subset=declared,
+            retry_budget=RETRY_BUDGET if retries else 0,
+            retry_template_sha256=retry_template_sha256() if retries else "",
+            diagnosis_vocabulary_version=diagnosis_vocabulary_sha256() if retries else "",
+            retrieval="oracle",
         ),
         funnel=funnel_from_ledger(funnel),
     )
@@ -783,6 +825,16 @@ def build_parser() -> argparse.ArgumentParser:
         "path nobody chose. It may not be inside --out, which is published, and it is ignored "
         "under --probe, which measures time and gathers no evidence.",
     )
+    parser.add_argument(
+        "--retries",
+        action="store_true",
+        help="the format-hardening arm's switch (PRD R5): fold the retry vocabulary into the "
+        "frozen contract and compose the budgeted retry wrapper, so a parse-refusal shape can be "
+        "re-asked up to the budget. Off by default, so an unflagged re-run is the baseline "
+        "contract, byte for byte. A retry is never composed without a transcript — the wrapper "
+        "writes the per-attempt records itself — so on a run without --transcript this flag is "
+        "still today's run, with the same composition.",
+    )
 
     return parser
 
@@ -819,6 +871,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             probe=arguments.probe,
             journal=arguments.journal,
             transcript=arguments.transcript,
+            retries=arguments.retries,
         )
     except (TranscriptNotPrivate, UnknownCandidate) as refusal:
         parser.error(str(refusal))

@@ -41,6 +41,8 @@ def _transcript(path: Path, rows: list[tuple[str, str, str]]) -> None:
                 prompt_sha256="0" * 64,
                 prompt="irrelevant to attribution",
                 completion=completion,
+                attempt=1,
+                decision="graded",
             )
         )
 

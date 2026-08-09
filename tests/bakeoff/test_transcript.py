@@ -44,16 +44,26 @@ AWKWARD = (
 )
 
 
-def record(**overrides: str) -> Transcribed:
+def record(
+    *,
+    candidate: str = "base-a",
+    task_id: str = "t1",
+    prompt_sha256: str = "0" * 64,
+    prompt: str = "Fix addition.\n\nFailing: tests/test_calc.py::test_add\n",
+    completion: str = AWKWARD,
+    attempt: int = 1,
+    decision: str = "graded",
+) -> Transcribed:
     """One plausible record, with the awkward completion by default."""
-    fields = {
-        "candidate": "base-a",
-        "task_id": "t1",
-        "prompt_sha256": "0" * 64,
-        "prompt": "Fix addition.\n\nFailing: tests/test_calc.py::test_add\n",
-        "completion": AWKWARD,
-    }
-    return Transcribed(**(fields | overrides))
+    return Transcribed(
+        candidate=candidate,
+        task_id=task_id,
+        prompt_sha256=prompt_sha256,
+        prompt=prompt,
+        completion=completion,
+        attempt=attempt,
+        decision=decision,
+    )
 
 
 def test_a_completion_survives_the_round_trip_byte_for_byte(tmp_path: Path) -> None:
@@ -133,15 +143,16 @@ def test_a_missing_file_replays_empty_and_is_not_a_corrupt_one(tmp_path: Path) -
 
 
 def test_a_repeated_key_takes_the_later_record(tmp_path: Path) -> None:
-    """Two records for one (candidate, task) means the pair ran twice; the second is what happened.
+    """Two records for one (candidate, task) is a retry; the later, graded one is what happened.
 
     The append-only file's own answer, and the same rule the journal follows: the later write is
-    the one whose completion the run would have carried forward, so replaying the earlier one
-    would attribute a cause to text that was superseded.
+    the one whose completion the run would have carried forward and scored, so replaying the
+    earlier one would attribute a cause to text that was superseded. The first record declares
+    `"retry"` — the retry schema's honest shape for a superseded attempt.
     """
     transcript = Transcript(path=tmp_path / "transcript.jsonl")
-    first = record(completion="I have made no change.")
-    second = record(completion=AWKWARD)
+    first = record(attempt=1, decision="retry", completion="I have made no change.")
+    second = record(attempt=2, decision="graded", completion=AWKWARD)
 
     transcript.append(first)
     transcript.append(second)
@@ -168,8 +179,16 @@ def test_every_field_reaches_disk_under_its_own_name(tmp_path: Path) -> None:
 
     stored = json.loads(transcript.path.read_text(encoding="utf-8").splitlines()[0])
 
-    assert set(stored) == {"candidate", "task_id", "prompt_sha256", "prompt", "completion"}, (
-        "WHY THIS IS A FAILURE: the line on disk does not carry exactly the five declared fields. "
+    assert set(stored) == {
+        "candidate",
+        "task_id",
+        "prompt_sha256",
+        "prompt",
+        "completion",
+        "attempt",
+        "decision",
+    }, (
+        "WHY THIS IS A FAILURE: the line on disk does not carry exactly the seven declared fields. "
         f"A field written without a decoder round-trips lossily rather than failing. Got {stored!r}"
     )
     assert stored["completion"] == AWKWARD, (

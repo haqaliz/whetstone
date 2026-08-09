@@ -26,6 +26,7 @@ produced by a real run, and this suite must leave `reports/` absent.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -36,8 +37,11 @@ from pathlib import Path
 import pytest
 
 from whetstone.bakeoff.control import Control, Origin, Probe
+from whetstone.bakeoff.diffcheck import Trigger, diagnosis_of, diagnosis_vocabulary_sha256
 from whetstone.bakeoff.journal import Step
 from whetstone.bakeoff.report import (
+    ContractArm,
+    ContractComparison,
     Entrant,
     Funnel,
     GenerationContract,
@@ -45,10 +49,12 @@ from whetstone.bakeoff.report import (
     MissingSource,
     Provenance,
     ScoredDevSubset,
+    build_contract_comparison,
     build_report,
     funnel_from_ledger,
     tally,
     write,
+    write_comparison,
 )
 from whetstone.bakeoff.scoring import Outcome, Rollout
 from whetstone.bakeoff.selection import Contender
@@ -176,6 +182,10 @@ CONTRACT = GenerationContract(
     max_tokens=600,
     extractor_version="1",
     dev_subset=("dev-a", "dev-b"),
+    retry_budget=2,
+    retry_template_sha256="b" * 64,
+    diagnosis_vocabulary_version="c" * 64,
+    retrieval="oracle",
 )
 
 
@@ -210,6 +220,59 @@ def _standard() -> list[Entrant]:
             private=[Outcome.SOLVED, Outcome.NOT_APPLIED, Outcome.NOT_SOLVED, Outcome.UNVERIFIED],
         ),
     ]
+
+
+#: The gitignored home the format-hardening report points at for its classifier counts. The
+#: stored baseline arms' breakdowns live here; the hardened arm's land here too (measured-arm,
+#: R5). A pointer the tests can assert on.
+BREAKDOWN_HOME = "runs/format-hardening-arm/"
+
+#: A declared-not-yet-measured date for the comparison document. An input, never the clock.
+RECORDED_ON = "2026-08-09"
+
+
+def _comparison_arms() -> tuple[ContractArm, ContractArm]:
+    """Two synthetic arms: the baseline-shaped contract and the hardened one, with distinct figures.
+
+    The figures are chosen to collide with nothing in `reports/baseline/` — denominator 11 and
+    no count that appears in the baseline report — so the no-restatement test can assert
+    disjointness without arithmetic acrobatics. `arm-a` is the no-retries shape (a
+    retries-disabled run's contract is byte-identical to the baseline's, `freeze(retry=False)`)
+    and `arm-b` the hardened shape (retry budget, retry template digest, vocabulary digest).
+    """
+    first = ContractArm(
+        name="arm-a",
+        contract=GenerationContract(
+            prompt_sha256="a" * 64,
+            sampler="greedy",
+            max_tokens=600,
+            extractor_version="1",
+            dev_subset=(),
+            retry_budget=0,
+            retry_template_sha256="",
+            diagnosis_vocabulary_version="",
+            retrieval="oracle",
+        ),
+        tallies=(tally("one", _records("one", [Outcome.SOLVED] * 5 + [Outcome.NOT_SOLVED] * 6)),),
+        generation_seconds=111.0,
+    )
+    second = ContractArm(
+        name="arm-b",
+        contract=GenerationContract(
+            prompt_sha256="b" * 64,
+            sampler="greedy",
+            max_tokens=600,
+            extractor_version="2",
+            dev_subset=("dev-x",),
+            retry_budget=2,
+            retry_template_sha256="d" * 64,
+            diagnosis_vocabulary_version="e" * 64,
+            retrieval="oracle",
+        ),
+        tallies=(tally("two", _records("two", [Outcome.SOLVED] * 7 + [Outcome.NOT_SOLVED] * 4)),),
+        generation_seconds=222.0,
+    )
+    return (first, second)
 
 
 # --------------------------------------------------------------------------------------------
@@ -785,6 +848,147 @@ def test_a_provenance_block_missing_a_field_is_refused() -> None:
     )
 
 
+def test_a_five_field_contract_constructed_the_old_way_fails() -> None:
+    """The retry fields and retrieval are required, so the old shape cannot mean "no retries".
+
+    A contract built without them would publish a hardened run's figure under a contract that
+    says nothing about its retries or its retrieval — the indistinguishability § 10.1 obliges
+    the report to end. Old *documents* are handled by `GenerationContract.parse`, which fills
+    the defaults at the one place old bytes meet the new dataclass; a caller constructing by
+    hand has no such excuse.
+    """
+    with pytest.raises(TypeError):
+        GenerationContract(
+            prompt_sha256="a" * 64,
+            sampler="greedy",
+            max_tokens=600,
+            extractor_version="1",
+            dev_subset=("dev-a", "dev-b"),
+        )
+
+
+def test_a_contract_round_trips_through_the_sidecar() -> None:
+    """The nine fields survive the sidecar and parse back to the same contract.
+
+    A reader that recomputes a contract from the published JSON must get the contract the
+    report was rendered under. The sidecar is the machine-readable half of the provenance,
+    and a field lost in it is a field no program can tell apart.
+    """
+    report = build_report(
+        entrants=_standard(), provenance=PROVENANCE, contract=CONTRACT, funnel=FUNNEL
+    )
+    block = json.loads(report.payload)["generation_contract"]
+    assert GenerationContract.parse(block) == CONTRACT
+
+
+def test_the_committed_baseline_sidecar_still_parses_under_the_new_dataclass() -> None:
+    """`reports/baseline/report.json` predates the new fields and must keep parsing.
+
+    The committed artifacts are static and never regenerated, so a reader of the baseline
+    sidecar runs against the old five-field shape forever. `retrieval` defaults to `"oracle"`
+    — the setting the baseline disclosed in prose — and the retry fields default to the state
+    that document actually describes: no retries existed, so there is no budget, no retry
+    template and no diagnosis vocabulary.
+    """
+    baseline = REPO_ROOT / "reports" / "baseline" / "report.json"
+    block = json.loads(baseline.read_text(encoding="utf-8"))["generation_contract"]
+    parsed = GenerationContract.parse(block)
+
+    assert parsed.retrieval == "oracle", (
+        "WHY THIS IS A FAILURE: the baseline ran under the oracle retrieval setting, disclosed "
+        "in its prose; parsing it under any other setting would mislabel every baseline figure"
+    )
+    retry_fields = (
+        parsed.retry_budget,
+        parsed.retry_template_sha256,
+        parsed.diagnosis_vocabulary_version,
+    )
+    assert retry_fields == (0, "", ""), (
+        "WHY THIS IS A FAILURE: the baseline predates retries, so a parsed contract claiming a "
+        "retry machinery would describe a contract the baseline never used"
+    )
+    "retry machinery would describe a contract the baseline never used"
+    for field in ("prompt_sha256", "sampler", "max_tokens", "extractor_version"):
+        assert getattr(parsed, field) == block[field], (
+            f"WHY THIS IS A FAILURE: parsing the old sidecar changed {field!r}, so a reader "
+            "recomputing the baseline contract from its published JSON gets a different "
+            "contract than the one the figures were measured under"
+        )
+    assert parsed.dev_subset == tuple(block["dev_subset"]), (
+        "WHY THIS IS A FAILURE: the baseline's declared development subset did not survive "
+        "parsing. The exclusion is part of what the counts mean"
+    )
+
+
+def test_the_sidecar_writes_the_new_contract_fields_explicitly() -> None:
+    """The four new fields are written, never defaulted — a reader must not guess them.
+
+    `retrieval` in particular is stated per contract: the field exists so two contracts can be
+    told apart programmatically (`p2-yield-probe/prd.md` D9), and a default that hides it would
+    publish indistinguishability in machine-readable form.
+    """
+    block = json.loads(_payload())["generation_contract"]
+    for field, expected in (
+        ("retry_budget", CONTRACT.retry_budget),
+        ("retry_template_sha256", CONTRACT.retry_template_sha256),
+        ("diagnosis_vocabulary_version", CONTRACT.diagnosis_vocabulary_version),
+        ("retrieval", CONTRACT.retrieval),
+    ):
+        assert block[field] == expected, (
+            f"WHY THIS IS A FAILURE: the sidecar does not write {field!r} explicitly. A reader "
+            "of the JSON would have to guess the value, and a guess is how two contracts come "
+            "to look alike"
+        )
+
+
+def test_a_retry_budget_without_its_template_is_refused() -> None:
+    """A budget that names no template would publish a retry nobody could audit.
+
+    The three retry fields describe one machinery — budget, template digest, vocabulary
+    digest. A contract declaring a budget and a blank template is a contract that retried
+    under a template its own report cannot name, refused the same way any blank contract
+    field is.
+    """
+    with pytest.raises(IncompleteProvenance) as refusal:
+        build_report(
+            entrants=_standard(),
+            provenance=PROVENANCE,
+            contract=GenerationContract(
+                prompt_sha256="a" * 64,
+                sampler="greedy",
+                max_tokens=600,
+                extractor_version="1",
+                dev_subset=(),
+                retry_budget=2,
+                retry_template_sha256="",
+                diagnosis_vocabulary_version="c" * 64,
+                retrieval="oracle",
+            ),
+            funnel=FUNNEL,
+        )
+    assert "retry" in str(refusal.value), (
+        f"WHY THIS IS A FAILURE: the refusal does not name the retry fields. Got "
+        f"{str(refusal.value)!r}"
+    )
+
+
+def test_the_diagnosis_vocabulary_version_is_a_digest_of_the_sorted_sentences() -> None:
+    """The contract field a reader can recompute with stdlib alone.
+
+    The version is a digest over the sorted diagnosis sentences, spelled here so a reader can
+    reproduce it without importing anything beyond the standard library — the same
+    construction `test_retry.py` pins for the retry template hash. A sentence edit moves the
+    digest and voids any run frozen before it, like any other template change.
+    """
+    material = "\n".join(sorted(diagnosis_of(trigger) for trigger in Trigger))
+    expected = hashlib.sha256(material.encode("utf-8")).hexdigest()
+    assert diagnosis_vocabulary_sha256() == expected, (
+        "WHY THIS IS A FAILURE: the vocabulary version is not the digest over the sorted "
+        "sentences, so a reader cannot recompute the contract field from the published "
+        "vocabulary"
+    )
+
+
 def test_a_dev_subset_task_that_reached_the_scored_set_is_refused() -> None:
     """M7b: the tasks the contract was developed against may not be scored by it.
 
@@ -958,16 +1162,213 @@ def test_the_funnel_matches_the_committed_rejection_ledger() -> None:
     )
 
 
+# --------------------------------------------------------------------------------------------
+# AC14 — the second-contract report: both arms, both contracts, non-comparability declared
+# --------------------------------------------------------------------------------------------
+
+
+def _comparison_document(arms: Sequence[ContractArm] = _comparison_arms()) -> ContractComparison:
+    """The rendered comparison document for the synthetic arms, and its sidecars."""
+    return build_contract_comparison(
+        arms=arms, breakdown_home=BREAKDOWN_HOME, recorded_on=RECORDED_ON
+    )
+
+
+def test_a_two_contract_report_renders_both_contracts_fields_distinctly() -> None:
+    """Each arm's figures sit under that arm's own contract fields — the pair is the point.
+
+    The whole reason the directory exists is that a count and the contract that produced it
+    belong together (`PREREGISTRATION.md:356-361`): told apart programmatically by their
+    published fields. `arm-a` is the no-retries shape and must not claim a retry machinery;
+    `arm-b` is the hardened shape and must state every retry field. The non-comparability
+    sentence sits beside the pair, because the two contracts are declared non-comparable.
+    """
+    document = _comparison_document()
+    _, first, second = document.markdown.split("## Arm: ")
+
+    assert "retry budget" not in first, (
+        "WHY THIS IS A FAILURE: the no-retries arm claims a retry machinery. Its contract "
+        "predates retries (budget 0, no template, no vocabulary), and a reader of its section "
+        "must be told that"
+    )
+    assert "retry budget 2" in second and ("d" * 64) in second and ("e" * 64) in second, (
+        "WHY THIS IS A FAILURE: the hardened arm's section does not carry its retry fields — "
+        "budget, retry template digest, diagnosis vocabulary digest — so the two contracts are "
+        "not distinguishable from their published fields"
+    )
+    assert ("a" * 64) in first and ("b" * 64) in second, (
+        "WHY THIS IS A FAILURE: the arms' prompt hashes are not stated beside their own "
+        "figures, so a reader cannot tell which contract a count was measured under"
+    )
+    assert "retrieval oracle" in first and "retrieval oracle" in second, (
+        "WHY THIS IS A FAILURE: a section omits the retrieval setting, so the pair is not "
+        "machine-told-apart even though the field exists for exactly that"
+    )
+    assert NON_COMPARABILITY in document.markdown, (
+        "WHY THIS IS A FAILURE: the two arms are presented side by side without "
+        "PREREGISTRATION.md:136-137's sentence. They differ in an unpinned input — the "
+        "generation contract — and the report must say they are not comparable figures"
+    )
+
+
+def test_the_two_contract_report_discloses_token_spend_per_arm() -> None:
+    """The arm's measured generation seconds, summed from its own cost records.
+
+    A bucket shift between the arms must not be misread as the model improving at formats when
+    the harness bought three draws (`p2-format-hardening/prd.md` R6): the report states each
+    arm's spend, in prose and in the cost sidecar.
+    """
+    document = _comparison_document()
+    cost = json.loads(document.cost)
+
+    assert "111.0" in document.markdown and "222.0" in document.markdown, (
+        "WHY THIS IS A FAILURE: a token-spend disclosure is missing from one of the arms. The "
+        "hardened arm spends up to three draws per task against the baseline arm's one, and "
+        "the comparison must carry that asymmetry in each arm's own section"
+    )
+    assert [arm["generation_seconds"] for arm in cost["arms"]] == [111.0, 222.0], (
+        f"WHY THIS IS A FAILURE: the cost sidecar does not carry the per-arm spend. Got "
+        f"{cost['arms']!r}"
+    )
+
+
+def test_the_two_contract_report_points_at_the_breakdown_home() -> None:
+    """The pointer rule: the classifier counts' home is named, and nothing from it is restated.
+
+    `finding.md:89-92`: any document quoting a classifier count must point at the gitignored
+    breakdown as its home, or it creates a second home for the same figure. The home is named
+    in prose and in the sidecar, and the no-restatement half is asserted next.
+    """
+    document = _comparison_document()
+    payload = json.loads(document.payload)
+
+    assert BREAKDOWN_HOME in document.markdown, (
+        "WHY THIS IS A FAILURE: the report names no home for the classifier counts behind its "
+        "figures. A count without a stated home is a count the next reader cannot check"
+    )
+    assert payload["breakdown_home"] == BREAKDOWN_HOME, (
+        "WHY THIS IS A FAILURE: the sidecar does not name the breakdown home, so a program "
+        "reading the JSON cannot find the counts either"
+    )
+    assert "never restates" in document.markdown.lower(), (
+        "WHY THIS IS A FAILURE: the pointer does not say that this document does not restate "
+        "the breakdowns. An unnamed prohibition is a prohibition nobody can check"
+    )
+
+
+def test_the_two_contract_report_restates_no_baseline_figure() -> None:
+    """*(adversarial)* No rendered figure in the new report lives in `reports/baseline/`.
+
+    The pointer rule as a test, asserted the strongest way available: every `N of M` figure the
+    new document renders is disjoint from every `N of M` figure the committed baseline report
+    renders. A figure that appears in both is a figure with two homes, which is exactly how two
+    disagreeing numbers come to exist.
+    """
+    document = _comparison_document()
+    written = " ".join((document.markdown, document.payload, document.cost))
+    figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", written)}
+    assert figures, (
+        "WHY THIS IS A FAILURE: the report renders no figures at all, so this test's "
+        "disjointness assertion would pass vacuously over an empty document"
+    )
+    baseline = (REPO_ROOT / "reports" / "baseline" / "report.md").read_text(encoding="utf-8")
+    baseline_figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", baseline)}
+    overlap = figures & baseline_figures
+    assert not overlap, (
+        f"WHY THIS IS A FAILURE: the new report restates {overlap}, which already lives in "
+        "reports/baseline/report.md. A figure quoted twice is a figure that can disagree with "
+        "itself, and the one-home rule exists so that cannot happen"
+    )
+
+
+def test_a_second_contract_report_with_no_measured_arm_states_so() -> None:
+    """The committed state of the directory: declared, not yet measured, and holding no figure.
+
+    The arm has not run, so the committed artifacts cannot carry a figure — neither the arm's
+    own (none exists) nor the baseline's (restating it is forbidden). The declaration says
+    exactly that, names the two contracts non-comparable, and holds no figure of its own.
+    """
+    document = _comparison_document(arms=())
+
+    assert "has not run" in document.markdown, (
+        "WHY THIS IS A FAILURE: a directory whose arm has not run says nothing about that. A "
+        "reader finding counts here later could not tell when they appeared"
+    )
+    assert "non-comparable" in document.markdown, (
+        "WHY THIS IS A FAILURE: the declaration does not state that the two contracts are "
+        "declared non-comparable — the argument the directory's existence rests on"
+    )
+    assert "reports/baseline/" in document.markdown, (
+        "WHY THIS IS A FAILURE: the declaration does not name which directory's figures it "
+        "does not restate"
+    )
+    assert not re.search(r"\d+ of \d+", document.markdown), (
+        "WHY THIS IS A FAILURE: the declaration renders a figure, but no measurement exists. "
+        "A count here would be either a restated baseline figure or an invented one"
+    )
+
+
+def test_the_comparison_writer_writes_the_three_artifacts_and_nothing_else(
+    tmp_path: Path,
+) -> None:
+    """report.md, report.json and cost.json — the same shape as `reports/baseline/`'s.
+
+    A reader learns one layout for both directories; a fourth file in either is a stray with a
+    figure-shaped home. Nothing is written outside the destination.
+    """
+    into = tmp_path / "format-hardening"
+    written = write_comparison(_comparison_document(), into)
+
+    assert {path.name for path in written} == {"report.md", "report.json", "cost.json"}, (
+        f"WHY THIS IS A FAILURE: the writer produced {[path.name for path in written]}. The "
+        "directory's committed shape is the same three artifacts as reports/baseline/"
+    )
+    assert sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*")) == [
+        "format-hardening",
+        "format-hardening/cost.json",
+        "format-hardening/report.json",
+        "format-hardening/report.md",
+    ], "WHY THIS IS A FAILURE: the writer touched a path outside the destination it was given"
+
+
+def test_the_comparison_document_is_a_pure_function_of_its_inputs() -> None:
+    """The same inputs render byte-identical output, like the bake-off document.
+
+    The format-hardening report is committed evidence once the arm runs; a reader who
+    regenerates it and gets different bytes cannot tell a re-render from a re-measurement. The
+    three strings are asserted together, so no half of the document can drift on its own.
+    """
+    first = _comparison_document()
+    second = _comparison_document()
+    assert (first.markdown, first.payload, first.cost) == (
+        second.markdown,
+        second.payload,
+        second.cost,
+    ), (
+        "WHY THIS IS A FAILURE: two renders of the same inputs differ, so the committed "
+        "document could not be regenerated byte-for-byte and its diff would mean nothing"
+    )
+
+
 def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> None:
-    """AC13: `reports/baseline/` is the only home for a figure about a model.
+    """AC13: `reports/baseline/` and `reports/format-hardening/`, each the only home of its own.
 
     **What this guard asserts moved when the bake-off ran, and the guard moved with it.** It was
     written while this aspect could only render into a temporary directory, and it asserted that
     `reports/` was absent outright — the honest form of *"nothing here has run a model"*. Slice 5
     ran one, so that literal is now false and the invariant underneath it is what survives:
-    `reports/` holds the bake-off's three artifacts and nothing besides. A second report
-    appearing beside them would be a second home for a figure, and two homes is exactly how two
-    figures come to disagree with each other.
+    `reports/` holds each report's three artifacts and nothing besides. A report appearing in a
+    directory that is not its home is a second home for a figure, and two homes is exactly how
+    two figures come to disagree with each other.
+
+    **The guard moved again when the format-hardening arm's home landed, and only on the D6
+    argument.** `reports/format-hardening/` joined the list on the ground that the two
+    directories measure **different generation contracts** and are declared non-comparable
+    (`PREREGISTRATION.md` § 10.4), so neither is a competing home for the same figure: the
+    baseline's figures live in `reports/baseline/` and the hardened contract's in
+    `reports/format-hardening/`. A figure from one appearing in the other is still the
+    two-homes failure the paragraph above refuses, and a silent list extension remains refused —
+    the permission is the argument, in this docstring.
 
     `reports/local/` is excluded because `.gitignore` reserves it for the user's own nightly
     output, which is their data and never ours to assert on.
@@ -985,12 +1386,16 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
         "reports/baseline/cost.json",
         "reports/baseline/report.json",
         "reports/baseline/report.md",
+        "reports/format-hardening/cost.json",
+        "reports/format-hardening/report.json",
+        "reports/format-hardening/report.md",
     ], (
-        f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts are the "
-        "only sanctioned home for a figure about a model — the prose report, its "
-        "machine-readable form, and the measured cost. A file missing means the report is "
-        "incomplete; a file extra means there is a second place a figure can live, and the next "
-        "reader has no way to tell which of two disagreeing numbers is the real one"
+        f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts and the "
+        "format-hardening arm's three are the sanctioned homes for a figure — each directory "
+        "its own, on the D6 argument that the two measure different generation contracts and "
+        "are declared non-comparable. A file missing means the report is incomplete; a file "
+        "extra means there is a second place a figure can live, and the next reader has no way "
+        "to tell which of two disagreeing numbers is the real one"
     )
     # Flattened, because the sentence wraps inside a blockquote and a guard that a re-wrap could
     # silence is a guard that stops describing the document without anybody noticing —

@@ -80,6 +80,8 @@ TRANSCRIPT_LINES = (
         "prompt_sha256": "ab" * 32,
         "prompt": "fix t1\n",
         "completion": "no patch here, sorry\n",
+        "attempt": 1,
+        "decision": "graded",
     },
     {
         "candidate": "base-a",
@@ -87,6 +89,8 @@ TRANSCRIPT_LINES = (
         "prompt_sha256": "ab" * 32,
         "prompt": "fix t2\n",
         "completion": LOOP_COMPLETION,
+        "attempt": 1,
+        "decision": "graded",
     },
     {
         "candidate": "base-a",
@@ -94,6 +98,8 @@ TRANSCRIPT_LINES = (
         "prompt_sha256": "ab" * 32,
         "prompt": "fix t3\n",
         "completion": f"```diff\n{GOOD_DIFF}```\n",
+        "attempt": 1,
+        "decision": "graded",
     },
 )
 

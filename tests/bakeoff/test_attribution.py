@@ -170,6 +170,8 @@ def record(completion: str, *, candidate: str = "base-a", task_id: str = "task-1
         prompt_sha256="0" * 64,
         prompt="fix the bug",
         completion=completion,
+        attempt=1,
+        decision="graded",
     )
 
 

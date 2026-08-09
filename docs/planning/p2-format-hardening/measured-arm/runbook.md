@@ -1,0 +1,144 @@
+# Runbook — the measured format-hardening arm
+
+**Phase 2 of the `measured-arm` aspect.** Spec: `spec.md` (D-arm1..D-arm4).
+Plan: `plan_20260809.md` Phase 2. Executed by the **operator** (aliz), on the primary
+checkout's machine; the post-run analysis is deterministic and agent-verifiable (D-arm3).
+
+**Before this runbook was written, the ceiling was measured** (Phase 1, `preanalysis.py`):
+retry-eligible **118**, inferred-truncation **5**, ceiling **113** across the two stored arms
+(per candidate: arm-a 14B 37/34, 3B 43/42, 7B 0/0; budget-2048 14B 38/37 — the gitignored
+document is `runs/format-hardening-preanalysis/ceiling.json`). The ceiling is **not near
+zero**, so the arm proceeds. The 7B candidate's zero is its own halt signal: retries cannot
+convert a loop collapse, and the run below still sweeps it because the baseline contract did —
+the before/after comparison needs the same matrix.
+
+## The dev subset (D-arm2, named before the run)
+
+`belay-2e149603209a belay-353359e9ac6e belay-3e3051c4192a belay-844db07ed482 belay-9dba3ea557f5`
+
+These are the tasks whose prompts the retry template was tuned against: they are retry-eligible
+in **both** stored runs' autopsy records (the Phase 1 pre-analysis's `dev_subset_candidates`
+intersection), so the tuning corpus covered their failure shapes. The ids are excluded from
+**both** sources before anything runs (`conduct` partitions first, `run.py:951`), an id
+matching no task is refused (`UnknownDevSubset`), and the report's `ScoredDevSubset` backstop
+refuses the publication if any dev id ever reached a scored set. All five are verified present
+in the corpus (`tasks/local/belay/*.json`).
+
+## The command
+
+Run from the worktree root (`/Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-format-hardening`):
+
+```bash
+uv run python -m whetstone.bakeoff.run \
+  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
+  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
+  --public /Users/aliz/dev/at/whetstone/tasks/public/instances \
+  --pool /Users/aliz/dev/at/whetstone/tasks/public/pool.json \
+  --funnel /Users/aliz/dev/at/whetstone/tasks/public/ineligible.json \
+  --weights /Users/aliz/dev/at/whetstone/weights \
+  --out runs/format-hardening-arm \
+  --workspace runs/format-hardening-workspace \
+  --timeout 900 \
+  --recorded-on 2026-08-09 \
+  --retries \
+  --dev-subset belay-2e149603209a \
+  --dev-subset belay-353359e9ac6e \
+  --dev-subset belay-3e3051c4192a \
+  --dev-subset belay-844db07ed482 \
+  --dev-subset belay-9dba3ea557f5 \
+  --journal runs/format-hardening-arm-evidence/journal.jsonl \
+  --transcript runs/format-hardening-arm-evidence/transcript.jsonl
+```
+
+Every flag verified against `run.py`'s parser (`build_parser`, `run.py:691-839`) at write time.
+Notes on the choices:
+
+- **The donor roots are `belay/` (21 tasks) and `contig/` (45 tasks)** — the miner's
+  per-donor directories, verified on disk. The plan draft's `donor-a`/`donor-b` placeholder
+  names do not exist; the pseudonymous names are `belay` (donor B, 21) and `contig`
+  (donor A, 45), 66 tasks total. `load_tasks` refuses the parent directory, so each donor is
+  named separately.
+- **`--public` is the instances directory** (`tasks/public/instances/`, holding
+  `pallets__flask-4045.json`), `--pool` and `--funnel` are the committed ledger paths. Source A
+  is published beside source B always; neither source may appear alone.
+- **`--timeout 900`** — seconds allowed per verification. The yield-probe docs do **not**
+  record the value arm-a used, so no precedent exists to copy; the choice is grounded in the
+  measured evidence instead: the P1 cost record (`reports/baseline/cost.json`) shows total
+  verification of 183 s (3B), 8 s (7B), 197 s (14B) across 64 tasks plus control — seconds per
+  verification, including provisioning. 900 s is headroom against a genuinely hung
+  verification without letting one eat the night, and a timeout is `UNVERIFIED`, never `FAIL`.
+- **`--retries`** — the arm's switch (aspect 2 composition), off by default; this run is the
+  first to opt in. The contract it freezes carries the retry budget, template digest and
+  diagnosis vocabulary (`contract-report` fields), so the report states the hardened contract
+  rather than implying it.
+- **The transcript and journal live in `runs/format-hardening-arm-evidence/`, NOT inside
+  `--out`.** The plan draft's placeholder put them under `runs/format-hardening-arm/`, which
+  the harness refuses: `--out` is the published directory, and a transcript inside it is
+  private donor code staged for publication by a path default (`TranscriptNotPrivate`,
+  `run.py:939-960`, asserted end-to-end in `test_run_transcript.py`). The report lands in
+  `runs/format-hardening-arm/` (gitignored), the evidence in the sibling gitignored root.
+- **Workspace rules:** `runs/format-hardening-workspace` must be **empty** at start (delete it
+  and let the run recreate it; the run is not resumable from a partially deleted workspace),
+  and it is never inside `--out`. The run is **not** resumable across a deleted workspace.
+- **`--recorded-on` is an input, never the clock**: 2026-08-09 is the declared date.
+
+## Expected runtime
+
+The yield probe's measured **~1.5 h** for the baseline contract (spec D-arm3, a measured figure
+labeled as such) is a **floor**: retries add generation time — up to three draws per
+retry-eligible task instead of one — stated as **unknown** rather than guessed. Plan for a
+night.
+
+## Halt conditions
+
+1. **Any provisioning or checkout failure** — the "uniform-across-candidates" tell: a failure
+   hitting every candidate identically is a harness defect, not a finding about the bases.
+   Stop, fix, restart from the empty workspace.
+2. **The ceiling near zero** — not the case here (113), but the discipline stands: a run whose
+   pre-analysis shows nothing to convert is not run (PRD R5).
+3. **Any `UnstubbedPrompt`-style failure** — a retry prompt the frozen contract does not carry
+   raises `ContractChanged` through the seal and **aborts the run**; that is a template moved
+   after freeze, and the run is void, not repaired.
+4. **Never reuse a workspace.** A fresh run is a fresh empty workspace.
+
+## Expected artifacts (all gitignored)
+
+- `runs/format-hardening-arm/{report.md,report.json,cost.json}` — the hardened arm's report,
+  with the retry contract fields and the non-comparability sentence (aspect 3 writer).
+- `runs/format-hardening-arm-evidence/{journal.jsonl,transcript.jsonl}` — AC7's discipline:
+  journal + transcript make the rerun per-task checkable.
+- The ceiling document it was measured against: `runs/format-hardening-preanalysis/ceiling.json`.
+
+## Post-run analysis (agent-verifiable, offline)
+
+Run from the worktree root, in order (the autopsy's own post-run shape,
+`docs/planning/p2-diff-autopsy/autopsy/plan_20260809.md:326-328`):
+
+```bash
+uv run python -m whetstone.bakeoff.attribution \
+  --transcript runs/format-hardening-arm-evidence/transcript.jsonl \
+  --out runs/format-hardening-arm-evidence/attribution.json \
+  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
+  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig
+
+uv run python -m whetstone.bakeoff.autopsy \
+  --transcript runs/format-hardening-arm-evidence/transcript.jsonl \
+  --attribution runs/format-hardening-arm-evidence/attribution.json \
+  --out runs/diff-autopsy/format-hardening-arm.json
+```
+
+Then verify:
+
+1. **Zero `unrecognised-shape`** in the autopsy output, or the named-divergence finding the
+   instrument requires (`finding.md:108-110`) — a taxonomy correction, not a pass.
+2. **Mapping violations zero** (the fine→coarse assertion; a contradiction is reported, never
+   reconciled).
+3. The before/after breakdown — both stored arms and the new arm, per candidate, assembled
+   from the autopsy documents by the Phase 3 comparison tooling into the gitignored
+   `runs/format-hardening-preanalysis/comparison.md` home.
+4. The report (`reports/format-hardening/`) is assembled by Phase 4 with both contracts, both
+   token spends, the ceiling the arm was measured against (113), the non-comparability
+   sentence, and the pointer to the breakdowns — **never restating a classifier count**.
+
+The public instance's rollout is expected to attribute as `UNATTRIBUTED` (no donor commit, no
+checkout root named for it) — the same named gap the stored runs carry, never a skipped row.

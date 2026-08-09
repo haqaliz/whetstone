@@ -160,6 +160,99 @@ This file orients a coding agent working in this repository. Read it first.
 > outside the gitignored breakdowns; the one record that aimed a diff at a held test never
 > reached the verifier and is disclosed as attempt-shaped evidence, not a counted hack.
 >
+> **Format-hardening aspect 1 — `diffcheck` — is done** (`docs/planning/p2-format-hardening/diffcheck/`;
+> spec at `spec.md`, plan at `plan_20260809.md`). The validator that names the finding's
+> formatting wall *online*: `src/whetstone/bakeoff/diffcheck.py` is **classify-only** — it imports
+> the autopsy's taxonomy by identity (imported, never copied, asserted `is` in a test), maps the
+> fine cause to a retry trigger (`hunk-count-mismatch` and first-hunk deaths on a bare line or the
+> closing fence fire; `well-formed`, `im-start-loop`, the inferred `end-of-output` truncation,
+> `no-diff`, `unrecognised-shape` and — until the measured-arm pre-analysis flips it, via the one
+> parameter that exists for exactly that — `header-without-hunk` never do), and answers the finite,
+> fixed diagnosis vocabulary (one constant sentence per trigger; a `str.format` placeholder or a
+> digit in any sentence fails the suite — the seal-frozen prompt set, PRD D8). **The transcript
+> schema now carries the retry** — `Transcribed` gains `attempt` and `decision` ("retry" |
+> "graded"), the codec is updated field by field, and `replay()` still picks the last record per
+> key (a trailing "retry" is refused as corruption — a run killed mid-retry — never repaired). And
+> the **anti-credulity proof is watched-failing and sub-verdict-pinned**: a held-path edit
+> (well-formed, trigger-shaped, and mixed with a real fix) survives validator and extractor
+> byte-for-byte and reaches STRICT, which refuses it as `patch-scope` → `(Outcome.OUT_OF_SCOPE,
+> Status.FAIL, Status.PASS)` on every shape, while a deliberately credulous validator that drops
+> held hunks is proven to lose the differential. The AC2 pins now cover all three frozen paths —
+> `src/whetstone/verify/`, `patch.py`, **and `attribution.py`** — byte-identical to `origin/master`,
+> the missing pin added, each proven able to fail against a planted change.
+>
+> **Format-hardening aspect 2 — the `retry-loop` — is done** (`docs/planning/p2-format-hardening/retry-loop/`;
+> spec at `spec.md`, plan at `plan_20260809.md`). The validator classifies; the retry converts.
+> `src/whetstone/bakeoff/retry.py` holds the retry prompt builder and the `Retry` wrapper on the
+> one-method `Generator` seam. The prompt is a **pure function of `(first-attempt prompt, trigger)`** —
+> the first prompt, a fixed `RETRY_INSTRUCTION`, and one sentence from the finite diagnosis
+> vocabulary, **never the prior completion** (spec B1: completion-derived content would make the
+> prompt set unbounded and the seal unfreezable) — so `freeze(..., retry=True)` pre-renders
+> `retry_prompt(render_prompt(...), trigger)` per task per trigger into the same `posed` map via
+> `setdefault`, and the contract SHA covers the whole retry vocabulary. The wrapper issues at most
+> `RETRY_BUDGET` (2) retries per (candidate, task), only on the validator's trigger shapes, returns
+> the last completion, and writes **one record per attempt** — its own `prompt_sha256`, its
+> one-based `attempt`, and its `decision` ("retry" | "graded") — filed under the task the prompt
+> was posed for; the wrapper itself holds the recording pieces (the transcript, the candidate, the
+> `posed` map), because no one-method, sealed-prompt channel can carry the wrapper's decision down
+> to a recorder — the recording moved *into* the wrapper, and `Recording`/`RecordingGenerator`
+> stay untouched for the retries-disabled path. Retries are **off by default**
+> (`conduct(..., retries=False)`), composed only when `--transcript` names a file; a mid-run
+> retry-template edit raises `ContractChanged` through the seal and aborts the run, asserted
+> end-to-end, and the seal-held test proves every prompt an instrumented engine is asked was
+> frozen. The retry path has its own no-inference AST walk (no `mlx`, no `run.py`, no `scoring`),
+> and `retry_template_sha256()` is the digest aspect `contract-report` publishes.
+>
+> **Format-hardening aspect 3 — `contract-report` — is done** (`docs/planning/p2-format-hardening/contract-report/`;
+> spec at `spec.md`, plan at `plan_20260809.md`). The two contracts are now told apart by their
+> published fields: `GenerationContract` carries `retry_budget` (`RETRY_BUDGET`),
+> `retry_template_sha256` (`retry_template_sha256()`), `diagnosis_vocabulary_version` (a digest
+> over the sorted diagnosis sentences, `diffcheck.diagnosis_vocabulary_sha256()`), and `retrieval`
+> — `"oracle"` today, the machine-readability fix (yield-probe D9). A retries-disabled run's
+> contract keeps the no-retries shape (budget 0, blank digests) so it stays byte-identical to the
+> baseline's; a retried run's declares the whole machinery, and the committed baseline sidecar
+> predates all four fields and still parses — `GenerationContract.parse` defaults `retrieval` to
+> `"oracle"` and the retry trio to the no-retries state, so `reports/baseline/report.json` keeps
+> reading. The report writer supports a second directory: `reports/format-hardening/` with
+> `report.md`/`report.json`/`cost.json`, both arms' verdict counts under their own contract
+> fields, the non-comparability sentence, per-arm token-spend disclosure, and a pointer to the
+> gitignored breakdown home — never restating a classifier count (`finding.md:89-92`). **The
+> one-home guard moved a second time, only on the D6 argument in both docstrings** (the file list
+> in `test_report.py:961`'s copy and its opposite-sign twin in `test_transcript_locality.py:73-101`):
+> the two directories measure different generation contracts and are declared non-comparable, so
+> neither is a competing home for the same figure; a silent list extension is refused. The
+> committed artifacts in the new directory are the declaration — no count, no arm, no figure
+> restated from `reports/baseline/` — until the measured arm renders the two contracts and their
+> figures into it. `PREREGISTRATION.md` § 10.4 (Type 2, 2026-08-09) discloses the hardened
+> contract — retry budget, retry template digest, diagnosis vocabulary digest, retrieval stays
+> oracle, a new declared dev subset — and declares the two reports non-comparable, with its row
+> in the amendment log; nothing above § 10 was edited and no proportion appears in any spelling.
+> The dev-subset mechanism is proven as the three layers it is: exclusion from **both** sources
+> before anything runs, `UnknownDevSubset` refusal for an id that matches nothing, and the
+> `ScoredDevSubset` backstop in the report.
+>
+> **Format-hardening aspect 4, first half — the pre-analysis and the runbook — is done**
+> (`docs/planning/p2-format-hardening/measured-arm/`; spec at `spec.md`, plan at
+> `plan_20260809.md`). `src/whetstone/bakeoff/preanalysis.py` is the offline, stdlib-only,
+> deterministic read of the stored autopsy outputs (schema `whetstone-preanalysis/1`, refused
+> under any published path, its own no-inference AST walk) that applies **the same trigger
+> mapping as the validator** — `diffcheck.trigger_of_cause`, asserted identical — and counts the
+> **retry-eligible ceiling** per candidate before any GPU is spent. The ceiling was measured over
+> the two stored runs, and the definition was written in the module before the run: the
+> retry-eligible subset of the stored parse refusals is a **large majority** — the numbers live
+> in the gitignored `runs/format-hardening-preanalysis/ceiling.json`, which is their only home —
+> and one candidate's ceiling is **zero**, its `im-start-loop` wall, which is a per-candidate
+> finding rather than a tie (the dig predicted exactly that shape). The ceiling is material, so
+> the arm's halt condition did not fire and the runbook is written: `--retries` is now a real
+> CLI flag (the switch existed in `conduct` but was unreachable — exposed, with the parser and
+> wiring tests watched failing first), the donor roots are the real names (`belay`, `contig`),
+> and the journal and transcript live in a sibling evidence directory because the harness
+> refuses a transcript under `--out` — exactly as it should. **The arm itself has NOT run.** It
+> is the operator's GPU pass, commanded from the runbook; until it does, `reports/format-hardening/`
+> still holds the declaration rendering aspect 3 committed, and the measured before/after cause
+> breakdown — the slice's deliverable — is unspent. Nothing in this paragraph claims a figure
+> the arm didn't produce.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
@@ -337,7 +430,8 @@ CLAUDE.md                       # This file
 CONTRIBUTING.md                 # Dev setup, test-first contract, ground rules
 PREREGISTRATION.md              # What P4 may claim, fixed before any number existed
 RELEASING.md                    # Tag-push release mechanism (nothing released yet)
-reports/baseline/               # The P1 bake-off — the only home for any figure about a model
+reports/baseline/               # The P1 bake-off — the only home of the baseline's figures
+reports/format-hardening/       # The hardened arm's report — non-comparable, by the D6 argument
 .claude/skills/                 # The repo's own workflow skills (see below)
 docs/
   ROADMAP.md                    # 2–3 month phased plan + milestones — authoritative today

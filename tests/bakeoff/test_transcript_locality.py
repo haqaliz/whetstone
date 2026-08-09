@@ -74,9 +74,17 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
     """The opposite-sign control, and the aspect's AC9 in one assertion.
 
     `reports/` must stay committable — a report nobody can read supports no published number — and
-    it must still hold exactly the bake-off's three artifacts. Instrumentation produces local
-    evidence only; a fourth file here would mean this aspect published a figure, which it has no
-    contract to do and no non-comparability disclosure to do it under.
+    it must still hold exactly each report directory's three artifacts. Instrumentation produces
+    local evidence only; a fourth file here would mean this aspect published a figure, which it
+    has no contract to do and no non-comparability disclosure to do it under.
+
+    **The guard moved again when the format-hardening arm's home landed, and only on the D6
+    argument** — the same amendment, in lock-step with `test_report.py:961`'s copy. The two
+    directories measure **different generation contracts** and are declared non-comparable
+    (`PREREGISTRATION.md` § 10.4), so neither is a competing home for the same figure: the
+    baseline's figures live in `reports/baseline/` and the hardened contract's in
+    `reports/format-hardening/`. A silent list extension remains refused — the permission is
+    the argument, in this docstring.
     """
     published = _check_ignore("reports/")
     assert published.returncode == 1, (
@@ -93,9 +101,14 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
         "reports/baseline/cost.json",
         "reports/baseline/report.json",
         "reports/baseline/report.md",
+        "reports/format-hardening/cost.json",
+        "reports/format-hardening/report.json",
+        "reports/format-hardening/report.md",
     ], (
         f"reports/ holds {held}. The instrumentation aspect publishes nothing: it produces "
-        "transcripts and a breakdown, both local. A file appearing here means a figure about a "
-        "model was published without the changed-contract disclosure PREREGISTRATION.md:356-361 "
-        "requires beside one"
+        "transcripts and a breakdown, both local. Each report directory holds exactly its own "
+        "three artifacts — the bake-off's in reports/baseline/ and the format-hardening arm's "
+        "in reports/format-hardening/, non-comparable by the D6 argument — and a file appearing "
+        "elsewhere means a figure about a model was published without the changed-contract "
+        "disclosure PREREGISTRATION.md:356-361 requires beside one"
     )
