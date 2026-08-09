@@ -31,6 +31,17 @@ reports both side by side, and the tallies are counted over the journal's rollou
 ceiling is carried from the pre-analysis document's own `combined.totals.ceiling`, never
 recomputed.
 
+**The report door (D5, R3).** `--render-report` is the first production caller of the shipped
+writer: per arm, the journal is replayed (a missing journal is refused by name — the arm has
+not run — and a journal that records nothing is refused the same way), the control discipline
+is enforced (`control.py:492`: no `INTACT` probe, no counts), the per-candidate tallies come
+from `report.tally` by identity, the token spend is summed over the arm's rollouts, and the
+contract comes from the arm's sidecar's `generation_contract` block via
+`GenerationContract.parse` (which backfills the old five-field shape, `report.py:220-243`).
+Zero arms are refused: the committed declaration is not re-rendered by the door, and a
+half-truth render is refused. `--recorded-on` is declared by the operator, never read from a
+clock; `--breakdown-home` names the gitignored home the report points at, never restates one.
+
 **The run keys.** A run is keyed by its autopsy document's path stem (`arm-a` for
 `…/arm-a.json`, the pre-analysis precedent) and matched to a journal by the journal's parent
 directory's name (`arm-a` for `…/arm-a/journal.jsonl`) — the stored corpus names its journals
@@ -66,7 +77,13 @@ from whetstone.bakeoff.preanalysis import (
     is_inferred_truncation,
     refuse_published_out,
 )
-from whetstone.bakeoff.report import tally
+from whetstone.bakeoff.report import (
+    ContractArm,
+    GenerationContract,
+    build_contract_comparison,
+    tally,
+    write_comparison,
+)
 from whetstone.bakeoff.scoring import Rollout
 
 #: The document this module writes.
@@ -804,55 +821,235 @@ def render_markdown(document: Mapping[str, object]) -> str:
     return "\n".join(lines)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """Read the journals, autopsy documents, and the pre-analysis document; write the breakdown.
+def build_contract_arms(
+    groups: Sequence[tuple[str, Path, Path]],
+) -> tuple[ContractArm, ...]:
+    """Read one arm group and build its `ContractArm`: journal, control, tallies, contract.
 
-    The door of the measured arm's Phase 3: `python -m whetstone.bakeoff.comparison
-    --journal PATH [--journal ...] --autopsy PATH [--autopsy ...] --preanalysis PATH
-    --out PATH`. The document is written at `--out` and the markdown render beside it
-    (the same stem with a `.md` suffix), so the runbook's named breakdown home
-    (`runs/format-hardening-preanalysis/comparison.md`) is written by the same
+    The report door's per-arm read (D5). In order: the journal must exist — a missing one
+    means the arm has not run and must not read as zero rollouts; it must replay clean
+    (`JournalUnreadable` propagates as the named reason); it must record at least one step;
+    its probes must include an `INTACT` control (`control.py:492` — nothing from a run whose
+    harness was never shown intact becomes a count); the per-candidate tallies come from
+    `report.tally` by identity — the single place each published figure is defined; the
+    token spend is summed over the arm's rollouts; and the contract comes from the sidecar's
+    `generation_contract` block via `GenerationContract.parse`, which backfills the old
+    five-field shape (`report.py:220-243`).
+    """
+    arms: list[ContractArm] = []
+    for name, journal_path, contract_path in groups:
+        if not journal_path.is_file():
+            raise _UsageError(
+                f"arm {name!r} has not run: its journal at {str(journal_path)!r} is not a "
+                "file. A run that never happened must not read as zero rollouts"
+            )
+        try:
+            steps = Journal(journal_path).replay()
+        except JournalUnreadable as exc:
+            raise _UsageError(str(exc)) from exc
+        if not steps:
+            raise _UsageError(
+                f"arm {name!r} records nothing: its journal at {str(journal_path)!r} holds "
+                "no steps. A run that recorded nothing yields no counts"
+            )
+        observed = sorted({step.probe.control.value for step in steps.values()})
+        if not any(step.probe.control is Control.INTACT for step in steps.values()):
+            raise _UsageError(
+                f"arm {name!r} carries no INTACT control probe — its journal's probes are "
+                f"{observed} — so nothing measured in it is proven to be about the base "
+                f"(`control.py:492`). A run whose harness was never shown intact yields no "
+                "counts"
+            )
+        rollouts_by_candidate: dict[str, list[Rollout]] = {}
+        for step in steps.values():
+            rollouts_by_candidate.setdefault(step.rollout.candidate, []).append(step.rollout)
+        tallies = tuple(
+            tally(candidate, rollouts)
+            for candidate, rollouts in sorted(rollouts_by_candidate.items())
+        )
+        generation_seconds = sum(
+            rollout.generation_seconds
+            for rollouts in rollouts_by_candidate.values()
+            for rollout in rollouts
+        )
+        arms.append(
+            ContractArm(
+                name=name,
+                contract=_read_contract(name, contract_path),
+                tallies=tallies,
+                generation_seconds=generation_seconds,
+            )
+        )
+    return tuple(arms)
+
+
+def _read_contract(name: str, path: Path) -> GenerationContract:
+    """The arm's contract from its sidecar's `generation_contract` block, parsed strictly.
+
+    The sidecar is the report sidecar shape (`report.json`); the block is its
+    `generation_contract` dict. A sidecar that is not JSON, a block that is not an object,
+    or a block `GenerationContract.parse` cannot read is refused by name — a contract that
+    cannot be read cannot name the count measured under it.
+    """
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise _UsageError(
+            f"the contract sidecar at {str(path)!r} for arm {name!r} could not be read as "
+            f"JSON ({type(exc).__name__}: {exc})"
+        ) from exc
+    except OSError as exc:
+        raise _UsageError(
+            f"the contract sidecar at {str(path)!r} for arm {name!r} could not be read: {exc}"
+        ) from exc
+    if not isinstance(raw, dict):
+        raise _UsageError(
+            f"the contract sidecar at {str(path)!r} for arm {name!r} is not a JSON object"
+        )
+    block = raw.get("generation_contract")
+    if not isinstance(block, dict):
+        raise _UsageError(
+            f"the contract sidecar at {str(path)!r} for arm {name!r} carries no "
+            "'generation_contract' block, so the arm's contract cannot be named"
+        )
+    try:
+        return GenerationContract.parse(block)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _UsageError(
+            f"the generation_contract block at {str(path)!r} for arm {name!r} is missing a "
+            f"field ({type(exc).__name__}: {exc})"
+        ) from exc
+
+
+def render_report(
+    *,
+    arms: Sequence[ContractArm],
+    breakdown_home: str,
+    recorded_on: str,
+    out: Path,
+) -> tuple[Path, Path, Path]:
+    """Render the two-contract report for `arms` into `out` — the door of D5.
+
+    The first production caller of the shipped writer: builds the document with
+    `report.build_contract_comparison` and writes exactly the three artifacts with
+    `report.write_comparison`, both by identity. A pure function of its inputs (the writer
+    is deterministic, and `recorded_on` is declared, never read from a clock), so the same
+    invocation always writes the same bytes.
+    """
+    document = build_contract_comparison(
+        arms=arms, breakdown_home=breakdown_home, recorded_on=recorded_on
+    )
+    return write_comparison(document, into=out)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """The comparison CLI: the breakdown mode, and the report door (`--render-report`).
+
+    **Breakdown mode** (`--journal PATH [--journal ...] --autopsy PATH [--autopsy ...]
+    --preanalysis PATH --out PATH`): the document is written at `--out` and the markdown
+    render beside it (the same stem with a `.md` suffix), so the runbook's named breakdown
+    home (`runs/format-hardening-preanalysis/comparison.md`) is written by the same
     invocation that writes the document. `--out` is checked **before** anything is
-    loaded — the refusal is
-    `preanalysis.refuse_published_out` by identity — and every other refusal is exit 2 with
-    the reason named. The assertion's violations do not refuse: the document is still written
-    with them listed and the CLI exits 1 — reported, never reconciled. A clean run writes
-    byte-identical output across invocations.
+    loaded — the refusal is `preanalysis.refuse_published_out` by identity — and every
+    other refusal is exit 2 with the reason named. The assertion's violations do not
+    refuse: the document is still written with them listed and the CLI exits 1 — reported,
+    never reconciled. A clean run writes byte-identical output across invocations.
+
+    **The report door** (`--render-report --arm NAME --journal PATH --contract PATH
+    [--arm ...] --breakdown-home STR --recorded-on DATE --out DIR`): builds each arm's
+    `ContractArm` from its journal and sidecar (`build_contract_arms`) and renders
+    `report.md`, `report.json` and `cost.json` into `--out` via the shipped writer
+    (`render_report`). Zero arms, a misaligned group, or a missing `--recorded-on` /
+    `--breakdown-home` / `--out` is refused as exit 2 — the committed declaration is not
+    re-rendered by the door, and a half-truth render is refused. `--recorded-on` is
+    declared by the operator, never read from a clock.
     """
     parser = argparse.ArgumentParser(
         prog="python -m whetstone.bakeoff.comparison",
         description=(
-            "Assemble the before/after breakdown over stored runs: journals, autopsy "
-            "documents and the pre-analysis ceiling document, per run per candidate, with "
-            "the trigger mapping asserted against the pre-analysis document's decisions. "
-            "Offline: no model is loaded and no network is touched, and the document is "
-            "written only under a documented gitignored root."
+            "The measured arm's post-run chain. Breakdown mode: journals, autopsy documents "
+            "and the pre-analysis ceiling document, per run per candidate, with the trigger "
+            "mapping asserted against the pre-analysis document's decisions. Report door "
+            "(--render-report): journals and contract sidecars into the two-contract report "
+            "via the shipped writer. Offline: no model is loaded and no network is touched."
         ),
+    )
+    parser.add_argument(
+        "--render-report",
+        action="store_true",
+        help="the report door: journals and contract sidecars into the two-contract report",
+    )
+    parser.add_argument(
+        "--arm",
+        action="append",
+        type=str,
+        help="an arm's name (render-report; repeatable, one per --journal/--contract group)",
     )
     parser.add_argument(
         "--journal",
         action="append",
-        required=True,
         type=Path,
-        help="a run's journal file (repeatable; the run key is the parent directory's name)",
+        help=(
+            "a run's journal file (breakdown: repeatable, keyed by the parent directory's "
+            "name; render-report: one per arm)"
+        ),
+    )
+    parser.add_argument(
+        "--contract",
+        action="append",
+        type=Path,
+        help="an arm's contract sidecar (render-report; repeatable, one per --arm)",
+    )
+    parser.add_argument(
+        "--breakdown-home",
+        type=str,
+        help="the gitignored home of the classifier counts the report points at (render-report)",
+    )
+    parser.add_argument(
+        "--recorded-on",
+        type=str,
+        help="the date the render is recorded under, declared by the operator (render-report)",
     )
     parser.add_argument(
         "--autopsy",
         action="append",
-        required=True,
         type=Path,
-        help="a stored whetstone-autopsy/1 document (repeatable)",
+        help="a stored whetstone-autopsy/1 document (breakdown; repeatable)",
     )
     parser.add_argument(
         "--preanalysis",
-        required=True,
         type=Path,
-        help="the whetstone-preanalysis/1 ceiling document",
+        help="the whetstone-preanalysis/1 ceiling document (breakdown)",
     )
     parser.add_argument(
-        "--out", required=True, type=Path, help="where the document is written"
+        "--out", type=Path, help="where the document is written (breakdown) or the directory "
+        "the three artifacts are rendered into (render-report)"
     )
     namespace = parser.parse_args(argv)
+
+    if namespace.render_report:
+        return _render_report_main(namespace)
+    return _breakdown_main(namespace)
+
+
+def _breakdown_main(namespace: argparse.Namespace) -> int:
+    """The breakdown mode's invocation handling: shape checks, then locality, then build."""
+    missing = [
+        name
+        for name, value in (
+            ("--journal", namespace.journal),
+            ("--autopsy", namespace.autopsy),
+            ("--preanalysis", namespace.preanalysis),
+            ("--out", namespace.out),
+        )
+        if value is None
+    ]
+    if missing:
+        print(
+            f"whetstone comparison: missing {', '.join(missing)}",
+            file=sys.stderr,
+        )
+        return 2
 
     out = namespace.out
     try:
@@ -893,6 +1090,62 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 1 if violations else 0
 
 
+def _render_report_main(namespace: argparse.Namespace) -> int:
+    """The report door's invocation handling: the shape checks, then the per-arm reads.
+
+    Refusals in fixed order, each exit 2 with the reason named: zero arms (the committed
+    declaration is not re-rendered by the door, and a half-truth render is refused); arm
+    groups that do not line up (every arm needs exactly one journal and one contract);
+    missing `--breakdown-home`; missing `--recorded-on` (an input, never the clock); missing
+    `--out`; then each arm's own refusals inside `build_contract_arms`. Nothing is written
+    by a refused invocation.
+    """
+    try:
+        names = list(namespace.arm or [])
+        journals = list(namespace.journal or [])
+        contracts = list(namespace.contract or [])
+        if not names:
+            raise _UsageError(
+                "no arms given: the committed declaration is not re-rendered by the door, "
+                "and a half-truth render is refused. Pass at least one "
+                "--arm NAME --journal PATH --contract PATH group"
+            )
+        if not (len(names) == len(journals) == len(contracts)):
+            raise _UsageError(
+                f"the arm groups do not line up: {len(names)} arm names, {len(journals)} "
+                f"journals, {len(contracts)} contracts — every arm needs exactly one "
+                "journal and one contract sidecar"
+            )
+        if namespace.breakdown_home is None:
+            raise _UsageError(
+                "--breakdown-home is required: the render points at the gitignored home of "
+                "the classifier counts, and never restates one"
+            )
+        if namespace.recorded_on is None:
+            raise _UsageError(
+                "--recorded-on is required: the operator declares the date the render is "
+                "recorded under, never the clock"
+            )
+        if namespace.out is None:
+            raise _UsageError(
+                "--out is required: the directory the three artifacts are written into"
+            )
+        arms = build_contract_arms(tuple(zip(names, journals, contracts, strict=True)))
+        written = render_report(
+            arms=arms,
+            breakdown_home=namespace.breakdown_home,
+            recorded_on=namespace.recorded_on,
+            out=namespace.out,
+        )
+    except _UsageError as exc:
+        print(f"whetstone comparison: {exc}", file=sys.stderr)
+        return 2
+
+    for path in written:
+        print(f"wrote {path}")
+    return 0
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
 
@@ -902,11 +1155,18 @@ __all__ = [
     "COMPARISON_SCHEMA",
     "DENOMINATOR_DISCLOSURE",
     "MARKDOWN_HOME",
+    "ContractArm",
+    "GenerationContract",
     "assert_trigger_mapping",
+    "build_contract_arms",
+    "build_contract_comparison",
     "build_document",
     "is_inferred_truncation",
     "main",
     "refuse_published_out",
     "render_markdown",
+    "render_report",
+    "tally",
     "trigger_of_cause",
+    "write_comparison",
 ]

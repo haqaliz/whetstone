@@ -24,6 +24,13 @@ alone (`report.tally` by identity — the single place each published figure is 
 ceiling from the pre-analysis document's own `combined.totals.ceiling`; a planted different
 value must appear, and the document is byte-deterministic across invocations.
 
+**The report door is the writer's first production caller.** `--render-report` builds the
+`ContractArm`s from journals and contract sidecars by identity — `report.tally`,
+`GenerationContract.parse`, `build_contract_comparison`, `write_comparison` — and the tests
+below pin its refusals (no arms; an arm whose journal has not run or records nothing; an
+unproven control; a sidecar without a `generation_contract` block; a missing `--recorded-on`)
+and the disjointness guard against `reports/baseline/`'s figures.
+
 All fixtures are synthetic replicas of the stored artifacts' shapes (`runs/{arm-a,budget-2048}/
 journal.jsonl`, `runs/diff-autopsy/{arm-a,budget-2048}.json`,
 `runs/format-hardening-preanalysis/ceiling.json`), toy candidates and task ids, tiny — never
@@ -34,12 +41,13 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import shutil
 from pathlib import Path
 
 import pytest
 
-from whetstone.bakeoff import comparison, diffcheck, preanalysis
+from whetstone.bakeoff import comparison, diffcheck, preanalysis, report
 from whetstone.bakeoff.autopsy import IGNORED_OUT_ROOTS, FineCause
 from whetstone.bakeoff.control import Control, Origin, Probe
 from whetstone.bakeoff.diffcheck import trigger_of_cause
@@ -1185,4 +1193,523 @@ def test_the_comparison_path_imports_no_inference_library(relative: str) -> None
         f"{relative} contains no import at all, so the assertion above holds for a file "
         "nothing was checked against. A guard that walks a set of files must find imports "
         "in them (`CONTRIBUTING.md:60`)."
+    )
+
+
+# --------------------------------------------------------------------------------------------
+# The report door: --render-report over synthetic journals and contract sidecars.
+# --------------------------------------------------------------------------------------------
+
+#: The old five-field `generation_contract` block: the shape `reports/baseline/report.json`
+#: was written with, before the retry trio and the retrieval field existed. `pinned` is the
+#: committed sidecar's own field and is not read by `GenerationContract.parse`
+#: (`report.py:220-243` backfills the rest).
+BASELINE_CONTRACT_BLOCK: dict[str, object] = {
+    "pinned": False,
+    "prompt_sha256": "a" * 64,
+    "sampler": "greedy: argmax over the final logprob axis",
+    "max_tokens": 600,
+    "extractor_version": "1",
+    "dev_subset": [],
+}
+
+#: The hardened block: every field explicit, the retry trio carried (`retry_budget` 2).
+HARDENED_CONTRACT_BLOCK: dict[str, object] = {
+    "pinned": False,
+    "prompt_sha256": "b" * 64,
+    "sampler": "greedy: argmax over the final logprob axis",
+    "max_tokens": 600,
+    "extractor_version": "2",
+    "dev_subset": ["dev-x"],
+    "retry_budget": 2,
+    "retry_template_sha256": "d" * 64,
+    "diagnosis_vocabulary_version": "e" * 64,
+    "retrieval": "oracle",
+}
+
+#: The baseline arm's journal: 11 rollouts for candidate "one", 5 solved. Denominator 11 is
+#: a denominator `reports/baseline/report.md` never renders (its own are 1, 63, 189, 299,
+#: 300), so the door's normal render is disjoint from the baseline by construction.
+BASELINE_ARM_STEPS: list[Step] = [
+    _step(
+        "one", f"t-{i:02d}", outcome=Outcome.SOLVED, generation_seconds=10.0,
+        strict=Status.PASS, weak=Status.PASS,
+    )
+    for i in range(5)
+] + [
+    _step(
+        "one", f"t-{i:02d}", outcome=Outcome.NOT_SOLVED, generation_seconds=10.0,
+        strict=Status.FAIL, weak=Status.FAIL,
+    )
+    for i in range(5, 11)
+]
+
+#: The hardened arm's journal: 11 rollouts for candidate "two", 7 solved, at a different spend.
+HARDENED_ARM_STEPS: list[Step] = [
+    _step(
+        "two", f"t-{i:02d}", outcome=Outcome.SOLVED, generation_seconds=20.0,
+        strict=Status.PASS, weak=Status.PASS,
+    )
+    for i in range(7)
+] + [
+    _step(
+        "two", f"t-{i:02d}", outcome=Outcome.NOT_SOLVED, generation_seconds=20.0,
+        strict=Status.FAIL, weak=Status.FAIL,
+    )
+    for i in range(7, 11)
+]
+
+#: The gitignored breakdown home the door's render points at (the runbook's named home).
+BREAKDOWN_HOME = "runs/format-hardening-arm/"
+
+#: A declared date for the door's render — an input, never the clock.
+RECORDED_ON = "2026-08-10"
+
+
+def _write_sidecar(tmp_path: Path, name: str, block: dict[str, object]) -> Path:
+    """A contract sidecar on disk: the report sidecar shape, with a `generation_contract` block."""
+    path = tmp_path / f"{name}-sidecar.json"
+    path.write_text(
+        json.dumps(
+            {"measurement": "synthetic", "generation_contract": block},
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _door_fixture(tmp_path: Path) -> dict[str, Path]:
+    """The two synthetic arms, whole: journals and contract sidecars."""
+    return {
+        "baseline_journal": _write_journal(tmp_path, "arm-a", BASELINE_ARM_STEPS),
+        "hardened_journal": _write_journal(tmp_path, "arm-b", HARDENED_ARM_STEPS),
+        "baseline_sidecar": _write_sidecar(tmp_path, "arm-a", BASELINE_CONTRACT_BLOCK),
+        "hardened_sidecar": _write_sidecar(tmp_path, "arm-b", HARDENED_CONTRACT_BLOCK),
+    }
+
+
+def _two_arm_render_argv(fixture: dict[str, Path], out: Path) -> list[str]:
+    """The render-report invocation over the two synthetic arms."""
+    return [
+        "--render-report",
+        "--arm", "arm-a",
+        "--journal", str(fixture["baseline_journal"]),
+        "--contract", str(fixture["baseline_sidecar"]),
+        "--arm", "arm-b",
+        "--journal", str(fixture["hardened_journal"]),
+        "--contract", str(fixture["hardened_sidecar"]),
+        "--breakdown-home", BREAKDOWN_HOME,
+        "--recorded-on", RECORDED_ON,
+        "--out", str(out),
+    ]
+
+
+def _written(out: Path, name: str) -> str:
+    """One artifact of a door render, as text."""
+    return (out / name).read_text(encoding="utf-8")
+
+
+def test_the_render_report_door_writes_the_three_artifacts_and_nothing_else(
+    tmp_path: Path,
+) -> None:
+    """report.md, report.json and cost.json into `--out`, and nothing anywhere else.
+
+    The same layout as `reports/baseline/`'s, so a reader learns one shape for both
+    directories; a fourth file in either is a stray with a figure-shaped home.
+    """
+    fixture = _door_fixture(tmp_path)
+    out = tmp_path / "render"
+    exit_code = comparison.main(_two_arm_render_argv(fixture, out))
+
+    assert exit_code == 0, exit_code
+    assert {path.name for path in out.rglob("*")} == {"report.md", "report.json", "cost.json"}, (
+        [str(path) for path in out.rglob("*")]
+    )
+    assert {path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*")} == {
+        "arm-a",
+        "arm-a/journal.jsonl",
+        "arm-b",
+        "arm-b/journal.jsonl",
+        "arm-a-sidecar.json",
+        "arm-b-sidecar.json",
+        "render",
+        "render/cost.json",
+        "render/report.json",
+        "render/report.md",
+    }, "WHY THIS IS A FAILURE: the door touched a path outside the destination it was given"
+
+
+def test_each_arms_section_carries_only_its_own_contract_fields(tmp_path: Path) -> None:
+    """The retry trio appears only under the hardened arm; the baseline arm keeps its old shape.
+
+    `reports/baseline/report.json` predates the retry fields, so its section must not claim a
+    retry machinery; the hardened arm's must state every retry field — the pair told apart by
+    the published fields (`p2-yield-probe/prd.md` D9).
+    """
+    fixture = _door_fixture(tmp_path)
+    out = tmp_path / "render"
+    exit_code = comparison.main(_two_arm_render_argv(fixture, out))
+
+    assert exit_code == 0, exit_code
+    _, baseline, hardened = _written(out, "report.md").split("## Arm: ")
+
+    assert ("a" * 64) in baseline, baseline
+    assert "retry budget" not in baseline, baseline
+    assert "retrieval oracle" in baseline, baseline
+    assert "development subset none declared" in baseline, baseline
+
+    assert ("b" * 64) in hardened, hardened
+    assert ("d" * 64) in hardened and ("e" * 64) in hardened, hardened
+    assert "retry budget 2" in hardened, hardened
+    assert "retrieval oracle" in hardened, hardened
+
+
+def test_token_spend_appears_in_prose_and_in_the_cost_sidecar(tmp_path: Path) -> None:
+    """Each arm's summed generation seconds: in prose, and in `cost.arms[].generation_seconds`.
+
+    The hardened arm spends up to three draws per task against the baseline arm's one, so the
+    asymmetry must be carried in each arm's own section (`p2-format-hardening/prd.md` R6), in
+    prose and machine-readably.
+    """
+    fixture = _door_fixture(tmp_path)
+    out = tmp_path / "render"
+    exit_code = comparison.main(_two_arm_render_argv(fixture, out))
+
+    assert exit_code == 0, exit_code
+    markdown = _written(out, "report.md")
+    cost = json.loads(_written(out, "cost.json"))
+
+    assert "110.0" in markdown and "220.0" in markdown, markdown
+    assert [arm["generation_seconds"] for arm in cost["arms"]] == [110.0, 220.0], cost
+
+
+def test_the_door_render_carries_the_non_comparability_sentence_and_the_breakdown_pointer(
+    tmp_path: Path,
+) -> None:
+    """The two contracts are declared non-comparable, and the breakdown home is named.
+
+    `PREREGISTRATION.md:136-137`'s sentence must sit beside the pair, and the gitignored home
+    of the classifier counts must be pointed at — named, never restated (`finding.md:89-92`).
+    """
+    fixture = _door_fixture(tmp_path)
+    out = tmp_path / "render"
+    exit_code = comparison.main(_two_arm_render_argv(fixture, out))
+
+    assert exit_code == 0, exit_code
+    markdown = _written(out, "report.md")
+    payload = json.loads(_written(out, "report.json"))
+
+    assert (
+        "A figure measured on one side of a changed pinned input may not be compared with one "
+        "measured on the other." in markdown
+    ), markdown
+    assert BREAKDOWN_HOME in markdown, markdown
+    assert payload["breakdown_home"] == BREAKDOWN_HOME, payload
+    assert payload["non_comparable"] is True, payload
+
+
+def test_the_door_render_restates_no_baseline_figure_and_catches_a_planted_collision(
+    tmp_path: Path,
+) -> None:
+    """*(adversarial)* The one-home rule as a test: disjoint from `reports/baseline/`, and the
+    guard can see a planted collision.
+
+    The fixture's denominator 11 shares no figure with the baseline (whose denominators are
+    1, 63, 189, 299, 300), so the door's own render is disjoint by construction. A planted
+    arm with denominator 63 and one solved task renders `1 of 63` and `0 of 63`, which DO
+    live in `reports/baseline/report.md` — the disjointness check must find them.
+    """
+    fixture = _door_fixture(tmp_path)
+    baseline = (REPO_ROOT / "reports" / "baseline" / "report.md").read_text(encoding="utf-8")
+    baseline_figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", baseline)}
+    assert baseline_figures, (
+        "WHY THIS IS A FAILURE: the committed baseline renders no `N of M` figures, so the "
+        "disjointness guard has nothing to guard against"
+    )
+
+    out = tmp_path / "render"
+    exit_code = comparison.main(_two_arm_render_argv(fixture, out))
+    assert exit_code == 0, exit_code
+    written = " ".join(_written(out, name) for name in ("report.md", "report.json", "cost.json"))
+    figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", written)}
+    assert figures, (
+        "WHY THIS IS A FAILURE: the door render carries no `N of M` figures, so the "
+        "disjointness assertion would pass vacuously over an empty document"
+    )
+    assert not figures & baseline_figures, (
+        f"WHY THIS IS A FAILURE: the door restates {figures & baseline_figures}, which "
+        "already lives in reports/baseline/report.md. A figure quoted twice is a figure "
+        "that can disagree with itself"
+    )
+
+    planted_steps: list[Step] = [
+        _step(
+            "planted", "t-00", outcome=Outcome.SOLVED, generation_seconds=1.0,
+            strict=Status.PASS, weak=Status.PASS,
+        )
+    ] + [
+        _step(
+            "planted", f"t-{i:02d}", outcome=Outcome.NOT_SOLVED, generation_seconds=1.0,
+            strict=Status.FAIL, weak=Status.FAIL,
+        )
+        for i in range(1, 63)
+    ]
+    planted_journal = _write_journal(tmp_path, "planted", planted_steps)
+    planted_out = tmp_path / "planted-render"
+    exit_code = comparison.main(
+        [
+            "--render-report",
+            "--arm", "planted",
+            "--journal", str(planted_journal),
+            "--contract", str(fixture["hardened_sidecar"]),
+            "--breakdown-home", BREAKDOWN_HOME,
+            "--recorded-on", RECORDED_ON,
+            "--out", str(planted_out),
+        ]
+    )
+    assert exit_code == 0, exit_code
+    planted_written = " ".join(
+        _written(planted_out, name) for name in ("report.md", "report.json", "cost.json")
+    )
+    planted_figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", planted_written)}
+    overlap = planted_figures & baseline_figures
+    assert overlap, (
+        "WHY THIS IS A FAILURE: the planted arm's `1 of 63` / `0 of 63` figures were not "
+        "found by the disjointness check. A collision the guard cannot see is a figure "
+        "with two homes"
+    )
+
+
+def test_the_render_report_door_is_byte_deterministic(tmp_path: Path) -> None:
+    """Two invocations over the same inputs write byte-identical artifacts.
+
+    The writer is deterministic and `--recorded-on` is an input, never the clock — a render
+    that changed between two invocations could not be regenerated, and its diff would mean
+    nothing.
+    """
+    fixture = _door_fixture(tmp_path)
+    out = tmp_path / "render"
+    argv = _two_arm_render_argv(fixture, out)
+    first = comparison.main(argv)
+    first_bytes = {
+        name: (out / name).read_bytes() for name in ("report.md", "report.json", "cost.json")
+    }
+    second = comparison.main(argv)
+    second_bytes = {
+        name: (out / name).read_bytes() for name in ("report.md", "report.json", "cost.json")
+    }
+
+    assert first == 0 and second == 0
+    assert first_bytes == second_bytes, (
+        "WHY THIS IS A FAILURE: two invocations over the same inputs wrote different bytes. "
+        "A render that changes between reads of the same runs is evidence nobody can "
+        "re-derive"
+    )
+
+
+# --------------------------------------------------------------------------------------------
+# The report door's refusals: no arms, an arm that has not run, an unproven control.
+# --------------------------------------------------------------------------------------------
+
+
+def test_render_report_with_no_arms_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The committed declaration is not re-rendered by the door: zero arms is exit 2.
+
+    A half-truth render is refused by the PRD (R3); with no arms the door would render the
+    declaration, which is the committed state and is never rebuilt by the door.
+    """
+    exit_code = comparison.main(["--render-report"])
+
+    assert exit_code == 2, exit_code
+    message = capsys.readouterr().err
+    assert "no arms" in message, message
+
+
+def test_render_report_refuses_an_arm_whose_journal_has_not_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A missing journal means the arm has not run — a refusal, never zero rollouts."""
+    fixture = _door_fixture(tmp_path)
+    missing = tmp_path / "never-ran" / "journal.jsonl"
+
+    exit_code = comparison.main(
+        [
+            "--render-report",
+            "--arm", "ghost",
+            "--journal", str(missing),
+            "--contract", str(fixture["baseline_sidecar"]),
+            "--breakdown-home", BREAKDOWN_HOME,
+            "--recorded-on", RECORDED_ON,
+            "--out", str(tmp_path / "render"),
+        ]
+    )
+
+    assert exit_code == 2, exit_code
+    message = capsys.readouterr().err
+    assert "ghost" in message and "has not run" in message, message
+
+
+def test_render_report_refuses_an_empty_journal(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A journal that records nothing yields no counts — refused, never read as zero rollouts."""
+    fixture = _door_fixture(tmp_path)
+    empty = tmp_path / "empty" / "journal.jsonl"
+    empty.parent.mkdir()
+    empty.write_text("", encoding="utf-8")
+
+    exit_code = comparison.main(
+        [
+            "--render-report",
+            "--arm", "ghost",
+            "--journal", str(empty),
+            "--contract", str(fixture["baseline_sidecar"]),
+            "--breakdown-home", BREAKDOWN_HOME,
+            "--recorded-on", RECORDED_ON,
+            "--out", str(tmp_path / "render"),
+        ]
+    )
+
+    assert exit_code == 2, exit_code
+    message = capsys.readouterr().err
+    assert "ghost" in message and "records nothing" in message, message
+
+
+def test_render_report_refuses_an_arm_without_an_intact_probe(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A run that never proved the harness yields no counts (`control.py:492` discipline).
+
+    The journal records work, but every probe is BROKEN — nothing measured in it is proven
+    to be about the base, so nothing from it may become a count, in the report or anywhere.
+    """
+    fixture = _door_fixture(tmp_path)
+    unproven_journal = _write_journal(
+        tmp_path,
+        "unproven",
+        [
+            _step(
+                "one", "t-01", outcome=Outcome.NOT_SOLVED, generation_seconds=1.0,
+                strict=Status.FAIL, weak=Status.FAIL, control=Control.BROKEN,
+            )
+        ],
+    )
+
+    exit_code = comparison.main(
+        [
+            "--render-report",
+            "--arm", "unproven",
+            "--journal", str(unproven_journal),
+            "--contract", str(fixture["baseline_sidecar"]),
+            "--breakdown-home", BREAKDOWN_HOME,
+            "--recorded-on", RECORDED_ON,
+            "--out", str(tmp_path / "render"),
+        ]
+    )
+
+    assert exit_code == 2, exit_code
+    message = capsys.readouterr().err
+    assert "unproven" in message and "INTACT" in message, message
+
+
+def test_render_report_refuses_a_sidecar_without_a_generation_contract_block(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A sidecar that does not name its contract cannot name the count under it."""
+    fixture = _door_fixture(tmp_path)
+    bare = tmp_path / "bare-sidecar.json"
+    bare.write_text(json.dumps({"measurement": "synthetic"}), encoding="utf-8")
+
+    exit_code = comparison.main(
+        [
+            "--render-report",
+            "--arm", "arm-a",
+            "--journal", str(fixture["baseline_journal"]),
+            "--contract", str(bare),
+            "--breakdown-home", BREAKDOWN_HOME,
+            "--recorded-on", RECORDED_ON,
+            "--out", str(tmp_path / "render"),
+        ]
+    )
+
+    assert exit_code == 2, exit_code
+    message = capsys.readouterr().err
+    assert "arm-a" in message and "generation_contract" in message, message
+
+
+def test_render_report_refuses_a_missing_recorded_on(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--recorded-on` is an input, never the clock — the door refuses to invent one."""
+    fixture = _door_fixture(tmp_path)
+    argv = _two_arm_render_argv(fixture, tmp_path / "render")
+    index = argv.index("--recorded-on")
+    del argv[index : index + 2]
+
+    exit_code = comparison.main(argv)
+
+    assert exit_code == 2, exit_code
+    message = capsys.readouterr().err
+    assert "--recorded-on" in message, message
+
+
+def test_render_report_refuses_arm_groups_of_unequal_length(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Every arm needs exactly one journal and one contract; a mismatch is refused, never zipped.
+
+    Three separate repeatable flags would zip silently if their counts disagreed — a
+    misaligned arm would inherit another arm's journal. The counts must line up or the
+    invocation is refused by name.
+    """
+    fixture = _door_fixture(tmp_path)
+
+    exit_code = comparison.main(
+        [
+            "--render-report",
+            "--arm", "arm-a",
+            "--arm", "arm-b",
+            "--journal", str(fixture["baseline_journal"]),
+            "--contract", str(fixture["baseline_sidecar"]),
+            "--breakdown-home", BREAKDOWN_HOME,
+            "--recorded-on", RECORDED_ON,
+            "--out", str(tmp_path / "render"),
+        ]
+    )
+
+    assert exit_code == 2, exit_code
+    message = capsys.readouterr().err
+    assert "2 arm names" in message and "1 journals" in message, message
+
+
+def test_the_report_door_uses_the_writer_by_identity() -> None:
+    """The door's seams are `report`'s own — imported by identity, never reimplemented.
+
+    `GenerationContract.parse` is the one place old sidecar bytes meet the new dataclass
+    (`report.py:220-243`); the tallies come from `report.tally` — the single place each
+    published figure is defined; and the render is the shipped writer's own. A second
+    spelling of any of these would be a second opinion about the same number.
+    """
+    assert comparison.tally is report.tally, (
+        "WHY THIS IS A FAILURE: the door does not use report.tally by identity. A second "
+        "definition of a published count would be the drop waiting to happen"
+    )
+    assert comparison.GenerationContract is report.GenerationContract, (
+        "WHY THIS IS A FAILURE: the door does not use report.GenerationContract.parse by "
+        "identity, so old sidecar bytes could be backfilled by a second rule"
+    )
+    assert comparison.ContractArm is report.ContractArm, (
+        "WHY THIS IS A FAILURE: the door does not build report.ContractArm itself"
+    )
+    assert comparison.build_contract_comparison is report.build_contract_comparison, (
+        "WHY THIS IS A FAILURE: the door does not call report.build_contract_comparison by "
+        "identity"
+    )
+    assert comparison.write_comparison is report.write_comparison, (
+        "WHY THIS IS A FAILURE: the door does not call report.write_comparison by identity"
     )
