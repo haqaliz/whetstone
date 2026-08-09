@@ -9,7 +9,7 @@ build-backend = "hatchling.build"
 # `__version__` resolves the DISTRIBUTION name, so changing one without the other breaks it
 # loudly.
 name = "whetstonehq"
-version = "0.2.0"
+version = "0.3.0"
 description = "A model that trains itself overnight — and proves it didn't cheat."
 readme = "README.md"
 requires-python = ">=3.10"
