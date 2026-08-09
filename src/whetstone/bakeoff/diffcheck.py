@@ -73,6 +73,30 @@ class Trigger(str, Enum):
 _RETRYABLE_DEATHS = frozenset({DeathKind.BARE_LINE.value, DeathKind.FENCE_CUT.value})
 
 
+def trigger_of_cause(
+    cause: FineCause,
+    detail: str,
+    *,
+    header_without_hunk_is_trigger: bool = False,
+) -> Trigger | None:
+    """The retry decision from a verdict's two fields, without the record object.
+
+    The stored autopsy documents (`autopsy.py:912-925`) carry `cause` and `detail` as strings,
+    so the measured-arm pre-analysis (`preanalysis.py`) needs the mapping split into its two
+    inputs — and the split must be the validator's own decision, never a second spelling of it.
+    `trigger_of` delegates here by identity, so the online verdict and the offline pre-analysis
+    cannot disagree about the same record (asserted over the whole cross-product in
+    `tests/bakeoff/test_preanalysis.py`).
+    """
+    if cause is FineCause.HUNK_COUNT_MISMATCH:
+        return Trigger.HUNK_COUNT_MISMATCH
+    if cause is FineCause.HUNK_DIES_EARLY and detail in _RETRYABLE_DEATHS:
+        return Trigger.HUNK_DIES_EARLY
+    if cause is FineCause.HEADER_WITHOUT_HUNK and header_without_hunk_is_trigger:
+        return Trigger.HEADER_WITHOUT_HUNK
+    return None
+
+
 def trigger_of(
     result: AutopsyResult, *, header_without_hunk_is_trigger: bool = False
 ) -> Trigger | None:
@@ -87,13 +111,11 @@ def trigger_of(
     `header_without_hunk_is_trigger` is for. Nothing else changes the decision: the mapping
     is a pure function of the verdict, so it is replayable from a stored transcript (PRD R3).
     """
-    if result.cause is FineCause.HUNK_COUNT_MISMATCH:
-        return Trigger.HUNK_COUNT_MISMATCH
-    if result.cause is FineCause.HUNK_DIES_EARLY and result.detail in _RETRYABLE_DEATHS:
-        return Trigger.HUNK_DIES_EARLY
-    if result.cause is FineCause.HEADER_WITHOUT_HUNK and header_without_hunk_is_trigger:
-        return Trigger.HEADER_WITHOUT_HUNK
-    return None
+    return trigger_of_cause(
+        result.cause,
+        result.detail,
+        header_without_hunk_is_trigger=header_without_hunk_is_trigger,
+    )
 
 
 #: The finite, fixed diagnosis vocabulary (PRD D8): one constant sentence per trigger. The
@@ -150,4 +172,5 @@ __all__ = [
     "diagnosis_of",
     "diagnosis_vocabulary_sha256",
     "trigger_of",
+    "trigger_of_cause",
 ]
