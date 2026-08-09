@@ -286,6 +286,79 @@ class Entrant:
 
 
 @dataclass(frozen=True)
+class ContractArm:
+    """One arm of the format-hardening comparison: its contract, and what it measured.
+
+    `tallies` are the arm's verdict counts, stated under this arm's own contract fields — a
+    count and the contract that produced it belong together, and the pair is the whole point of
+    the two-directory rule. An empty tuple means the arm has not run and no count exists.
+    `generation_seconds` is the arm's measured token spend, summed over its runs from the run's
+    own cost records; `None` means not measured.
+    """
+
+    #: The arm's name, as the run ledger records it (arm-a, the hardened arm, ...).
+    name: str
+
+    #: The contract every figure in this arm's section was measured under.
+    contract: GenerationContract
+
+    #: The arm's verdict counts, per candidate. Empty: the arm has not run.
+    tallies: tuple[Tally, ...] = ()
+
+    #: The arm's measured token spend. `None`: not measured.
+    generation_seconds: float | None = None
+
+
+@dataclass(frozen=True)
+class ContractComparison:
+    """The second-contract document and its sidecars, before either touches a disk.
+
+    The same shape as `Report` for the bake-off document, with the cost sidecar as the third
+    string so the directory's committed layout — report.md, report.json, cost.json — mirrors
+    `reports/baseline/`'s and a reader learns one layout for both.
+    """
+
+    #: The committed document.
+    markdown: str
+
+    #: The machine-readable sidecar.
+    payload: str
+
+    #: The measured cost sidecar, as text so the bytes are the artefact.
+    cost: str
+
+
+def _contract_fields(contract: GenerationContract) -> str:
+    """One contract's fields as the provenance block states them, in a fixed order.
+
+    The retry trio is rendered only when `retry_budget` is non-zero: a no-retries contract has
+    no retry template and no vocabulary, and rendering blanks would be a field that looks
+    considered. The fixed order is what makes the two contracts comparable by their published
+    fields — the machine-readability point of `retrieval` (`p2-yield-probe/prd.md` D9).
+    """
+    parts = [
+        f"template SHA-256 `{contract.prompt_sha256}`",
+        f"sampler {contract.sampler}",
+        f"token budget {contract.max_tokens}",
+        f"extractor version {contract.extractor_version}",
+        f"retrieval {contract.retrieval}",
+        "development subset "
+        + (
+            ", ".join(f"`{name}`" for name in contract.dev_subset)
+            if contract.dev_subset
+            else "none declared"
+        ),
+    ]
+    if contract.retry_budget > 0:
+        parts += [
+            f"retry budget {contract.retry_budget}",
+            f"retry template SHA-256 `{contract.retry_template_sha256}`",
+            f"diagnosis vocabulary version `{contract.diagnosis_vocabulary_version}`",
+        ]
+    return "; ".join(parts)
+
+
+@dataclass(frozen=True)
 class Tally:
     """Derived counts for one candidate over one source, each kept beside its denominator.
 
@@ -499,6 +572,156 @@ def write(report: Report, into: Path) -> tuple[Path, Path]:
     document.write_text(report.markdown, encoding="utf-8")
     sidecar.write_text(report.payload, encoding="utf-8")
     return (document, sidecar)
+
+
+def build_contract_comparison(
+    *,
+    arms: Sequence[ContractArm],
+    breakdown_home: str,
+    recorded_on: str,
+) -> ContractComparison:
+    """Render the format-hardening arm's document: both arms, both contracts, non-comparable.
+
+    The second-contract report, for `reports/format-hardening/`. Every arm's verdict counts are
+    stated under that arm's own contract fields; the non-comparability sentence
+    (`PREREGISTRATION.md:136-137`) sits beside the pair; each arm's measured token spend is
+    disclosed; and the gitignored home of the classifier counts is named, never restated
+    (`finding.md:89-92`). With no arms the document is the declaration: the directory is the
+    hardened contract's home, the two contracts are declared non-comparable, and no count is
+    measured — the state of the committed artifacts before the measured arm runs.
+
+    A pure function of its inputs, like `build_report`: no clock is read, no ledger is opened,
+    and every mapping is serialised in a fixed order, so the same inputs produce byte-identical
+    output. `recorded_on` is declared by the operator, never read from the clock.
+    """
+    lines = [
+        "# Format-hardening arm — two generation contracts, declared non-comparable",
+        "",
+        "This document reports the format-hardening arm: the declared source-B set scored under "
+        "a hardened generation contract — the retry-augmented contract — beside the arm that "
+        "ran the baseline contract. The two directories measure different generation contracts "
+        "and are declared non-comparable (`PREREGISTRATION.md` § 10.4): `reports/baseline/` "
+        "remains the only home of the baseline's figures, and this directory is the only home "
+        "of the hardened arm's — neither is a competing home for the same figure.",
+        "",
+        _NON_COMPARABILITY,
+        "",
+    ]
+    if not arms:
+        lines += [
+            "**No count is measured here: the arm has not run.** Both contracts, per-arm "
+            "verdict counts and per-arm token spend are rendered into this directory by the "
+            "measured arm, which also names the ceiling it ran against. Until then this "
+            "document holds no figure of its own and restates none from `reports/baseline/`.",
+            "",
+        ]
+    for arm in arms:
+        lines += [
+            f"## Arm: {arm.name}",
+            "",
+            f"**The contract.** {_contract_fields(arm.contract)}.",
+            "",
+        ]
+        if arm.tallies:
+            names = [counts.candidate for counts in arm.tallies]
+            columns = " | ".join(f"`{name}`" for name in names)
+            rule = "|".join(["---"] * (len(names) + 1))
+            lines += [
+                f"| Figure | {columns} |",
+                f"|{rule}|",
+                _row("solved", arm.tallies, lambda one: one.solved),
+                _row("coverage", arm.tallies, lambda one: one.covered),
+                _row("unverified", arm.tallies, lambda one: one.unverified),
+                _row("N", arm.tallies, lambda one: one.weaker_wins),
+                _row("no diff", arm.tallies, lambda one: one.no_diff),
+                _row("patch apply", arm.tallies, lambda one: one.not_applied),
+                _row("patch scope", arm.tallies, lambda one: one.out_of_scope),
+                _row("not solved", arm.tallies, lambda one: one.not_solved),
+                "",
+                "These counts are stated under this arm's own contract fields above: a count "
+                "and the contract that produced it belong together.",
+                "",
+            ]
+        else:
+            lines += [
+                "**No verdict counts: the arm has not run.** They are rendered here under this "
+                "contract's fields when the measured arm lands.",
+                "",
+            ]
+        if arm.generation_seconds is not None:
+            lines.append(
+                f"**Token spend.** Generation {arm.generation_seconds:.1f} seconds, summed over "
+                "this arm's runs from the run's own cost records."
+            )
+        else:
+            lines.append("**Token spend.** Not measured: the arm has not run.")
+        lines.append("")
+    lines += [
+        f"**The breakdowns.** The classifier counts behind these figures live in the gitignored "
+        f"home `{breakdown_home}`; this document points at them and never restates them, so a "
+        "classifier count has exactly one home.",
+        "",
+        f"Recorded on {recorded_on} (declared by the operator, never read from a clock).",
+    ]
+    return ContractComparison(
+        markdown="\n".join(lines),
+        payload=_comparison_payload(arms, breakdown_home, recorded_on),
+        cost=_comparison_cost(arms),
+    )
+
+
+def write_comparison(document: ContractComparison, into: Path) -> tuple[Path, Path, Path]:
+    """Write the comparison's three artifacts into `into`, and nothing anywhere else.
+
+    The same layout as `reports/baseline/` — report.md, report.json, cost.json — so a reader
+    learns one shape for both directories. Returns the paths so a caller can assert on what was
+    produced rather than reconstruct the names.
+    """
+    into.mkdir(parents=True, exist_ok=True)
+    markdown = into / "report.md"
+    sidecar = into / "report.json"
+    cost = into / "cost.json"
+    markdown.write_text(document.markdown, encoding="utf-8")
+    sidecar.write_text(document.payload, encoding="utf-8")
+    cost.write_text(document.cost, encoding="utf-8")
+    return (markdown, sidecar, cost)
+
+
+def _comparison_payload(
+    arms: Sequence[ContractArm], breakdown_home: str, recorded_on: str
+) -> str:
+    """The comparison's machine-readable sidecar. Sorted keys, fixed order, no clock."""
+    body: dict[str, Any] = {
+        "measurement": (
+            "format-hardening contract comparison; not the pinned baseline of "
+            "PREREGISTRATION.md:126-128"
+        ),
+        "non_comparable": True,
+        "breakdown_home": breakdown_home,
+        "recorded_on": recorded_on,
+        "arms": [
+            {
+                "name": arm.name,
+                "generation_contract": _contract_block(arm.contract),
+                "per_candidate": None if not arm.tallies else [_counts(one) for one in arm.tallies],
+                "generation_seconds": arm.generation_seconds,
+            }
+            for arm in arms
+        ],
+    }
+    return json.dumps(body, indent=2, sort_keys=True) + "\n"
+
+
+def _comparison_cost(arms: Sequence[ContractArm]) -> str:
+    """The comparison's cost sidecar: per-arm measured spend, or `None` where not measured."""
+    body: dict[str, Any] = {
+        "kind": "contract-comparison",
+        "arms": [
+            {"name": arm.name, "generation_seconds": arm.generation_seconds}
+            for arm in arms
+        ],
+    }
+    return json.dumps(body, indent=2, sort_keys=True) + "\n"
 
 
 def _require_provenance(provenance: Provenance, contract: GenerationContract) -> None:
@@ -783,21 +1006,8 @@ def _render(
         "",
         "**The generation contract, which is not among the five pinned inputs.** It determines "
         "the number and is not pinned, so a later figure measured under a changed contract is "
-        f"not comparable to this one. Template SHA-256 `{contract.prompt_sha256}`; sampler "
-        f"{contract.sampler}; token budget {contract.max_tokens}; extractor version "
-        f"{contract.extractor_version}; retrieval {contract.retrieval}; development subset "
-        + (
-            ", ".join(f"`{name}`" for name in contract.dev_subset)
-            if contract.dev_subset
-            else "none declared"
-        )
-        + (
-            f"; retry budget {contract.retry_budget}; retry template SHA-256 "
-            f"`{contract.retry_template_sha256}`; diagnosis vocabulary version "
-            f"`{contract.diagnosis_vocabulary_version}`"
-            if contract.retry_budget > 0
-            else ""
-        )
+        "not comparable to this one. "
+        + _contract_fields(contract)
         + " — excluded from every count above, because scoring a task the contract was iterated "
         "against would be optimising on the outcome.",
         "",
@@ -864,20 +1074,30 @@ def _payload(
             "tool_versions": dict(sorted(provenance.tool_versions.items())),
             "recorded_on": provenance.recorded_on,
         },
-        "generation_contract": {
-            "pinned": False,
-            "prompt_sha256": contract.prompt_sha256,
-            "sampler": contract.sampler,
-            "max_tokens": contract.max_tokens,
-            "extractor_version": contract.extractor_version,
-            "dev_subset": list(contract.dev_subset),
-            "retry_budget": contract.retry_budget,
-            "retry_template_sha256": contract.retry_template_sha256,
-            "diagnosis_vocabulary_version": contract.diagnosis_vocabulary_version,
-            "retrieval": contract.retrieval,
-        },
+        "generation_contract": _contract_block(contract),
     }
     return json.dumps(body, indent=2, sort_keys=True) + "\n"
+
+
+def _contract_block(contract: GenerationContract) -> dict[str, Any]:
+    """One contract as a mapping, every field explicit — the machine-readable half.
+
+    The one place the JSON shape of a contract is written. `retrieval` and the retry fields are
+    always stated here, never defaulted: a reader of the sidecar must not have to guess which
+    contract a figure was measured under.
+    """
+    return {
+        "pinned": False,
+        "prompt_sha256": contract.prompt_sha256,
+        "sampler": contract.sampler,
+        "max_tokens": contract.max_tokens,
+        "extractor_version": contract.extractor_version,
+        "dev_subset": list(contract.dev_subset),
+        "retry_budget": contract.retry_budget,
+        "retry_template_sha256": contract.retry_template_sha256,
+        "diagnosis_vocabulary_version": contract.diagnosis_vocabulary_version,
+        "retrieval": contract.retrieval,
+    }
 
 
 def _counts(counts: Tally) -> dict[str, Any]:
@@ -898,6 +1118,8 @@ def _counts(counts: Tally) -> dict[str, Any]:
 
 
 __all__ = [
+    "ContractArm",
+    "ContractComparison",
     "Entrant",
     "Funnel",
     "GenerationContract",
@@ -907,8 +1129,10 @@ __all__ = [
     "Report",
     "ScoredDevSubset",
     "Tally",
+    "build_contract_comparison",
     "build_report",
     "funnel_from_ledger",
     "tally",
     "write",
+    "write_comparison",
 ]

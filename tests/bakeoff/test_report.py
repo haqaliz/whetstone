@@ -40,6 +40,8 @@ from whetstone.bakeoff.control import Control, Origin, Probe
 from whetstone.bakeoff.diffcheck import Trigger, diagnosis_of, diagnosis_vocabulary_sha256
 from whetstone.bakeoff.journal import Step
 from whetstone.bakeoff.report import (
+    ContractArm,
+    ContractComparison,
     Entrant,
     Funnel,
     GenerationContract,
@@ -47,10 +49,12 @@ from whetstone.bakeoff.report import (
     MissingSource,
     Provenance,
     ScoredDevSubset,
+    build_contract_comparison,
     build_report,
     funnel_from_ledger,
     tally,
     write,
+    write_comparison,
 )
 from whetstone.bakeoff.scoring import Outcome, Rollout
 from whetstone.bakeoff.selection import Contender
@@ -216,6 +220,59 @@ def _standard() -> list[Entrant]:
             private=[Outcome.SOLVED, Outcome.NOT_APPLIED, Outcome.NOT_SOLVED, Outcome.UNVERIFIED],
         ),
     ]
+
+
+#: The gitignored home the format-hardening report points at for its classifier counts. The
+#: stored baseline arms' breakdowns live here; the hardened arm's land here too (measured-arm,
+#: R5). A pointer the tests can assert on.
+BREAKDOWN_HOME = "runs/format-hardening-arm/"
+
+#: A declared-not-yet-measured date for the comparison document. An input, never the clock.
+RECORDED_ON = "2026-08-09"
+
+
+def _comparison_arms() -> tuple[ContractArm, ContractArm]:
+    """Two synthetic arms: the baseline-shaped contract and the hardened one, with distinct figures.
+
+    The figures are chosen to collide with nothing in `reports/baseline/` — denominator 11 and
+    no count that appears in the baseline report — so the no-restatement test can assert
+    disjointness without arithmetic acrobatics. `arm-a` is the no-retries shape (a
+    retries-disabled run's contract is byte-identical to the baseline's, `freeze(retry=False)`)
+    and `arm-b` the hardened shape (retry budget, retry template digest, vocabulary digest).
+    """
+    first = ContractArm(
+        name="arm-a",
+        contract=GenerationContract(
+            prompt_sha256="a" * 64,
+            sampler="greedy",
+            max_tokens=600,
+            extractor_version="1",
+            dev_subset=(),
+            retry_budget=0,
+            retry_template_sha256="",
+            diagnosis_vocabulary_version="",
+            retrieval="oracle",
+        ),
+        tallies=(tally("one", _records("one", [Outcome.SOLVED] * 5 + [Outcome.NOT_SOLVED] * 6)),),
+        generation_seconds=111.0,
+    )
+    second = ContractArm(
+        name="arm-b",
+        contract=GenerationContract(
+            prompt_sha256="b" * 64,
+            sampler="greedy",
+            max_tokens=600,
+            extractor_version="2",
+            dev_subset=("dev-x",),
+            retry_budget=2,
+            retry_template_sha256="d" * 64,
+            diagnosis_vocabulary_version="e" * 64,
+            retrieval="oracle",
+        ),
+        tallies=(tally("two", _records("two", [Outcome.SOLVED] * 7 + [Outcome.NOT_SOLVED] * 4)),),
+        generation_seconds=222.0,
+    )
+    return (first, second)
 
 
 # --------------------------------------------------------------------------------------------
@@ -1102,6 +1159,194 @@ def test_the_funnel_matches_the_committed_rejection_ledger() -> None:
         "WHY THIS IS A FAILURE: the four-gate funnel this suite asserts on has drifted from "
         "tasks/public/ineligible.json. The ledger is the evidence; a figure quoted from memory "
         "beside it is the thing that goes stale"
+    )
+
+
+# --------------------------------------------------------------------------------------------
+# AC14 — the second-contract report: both arms, both contracts, non-comparability declared
+# --------------------------------------------------------------------------------------------
+
+
+def _comparison_document(arms: Sequence[ContractArm] = _comparison_arms()) -> ContractComparison:
+    """The rendered comparison document for the synthetic arms, and its sidecars."""
+    return build_contract_comparison(
+        arms=arms, breakdown_home=BREAKDOWN_HOME, recorded_on=RECORDED_ON
+    )
+
+
+def test_a_two_contract_report_renders_both_contracts_fields_distinctly() -> None:
+    """Each arm's figures sit under that arm's own contract fields — the pair is the point.
+
+    The whole reason the directory exists is that a count and the contract that produced it
+    belong together (`PREREGISTRATION.md:356-361`): told apart programmatically by their
+    published fields. `arm-a` is the no-retries shape and must not claim a retry machinery;
+    `arm-b` is the hardened shape and must state every retry field. The non-comparability
+    sentence sits beside the pair, because the two contracts are declared non-comparable.
+    """
+    document = _comparison_document()
+    _, first, second = document.markdown.split("## Arm: ")
+
+    assert "retry budget" not in first, (
+        "WHY THIS IS A FAILURE: the no-retries arm claims a retry machinery. Its contract "
+        "predates retries (budget 0, no template, no vocabulary), and a reader of its section "
+        "must be told that"
+    )
+    assert "retry budget 2" in second and ("d" * 64) in second and ("e" * 64) in second, (
+        "WHY THIS IS A FAILURE: the hardened arm's section does not carry its retry fields — "
+        "budget, retry template digest, diagnosis vocabulary digest — so the two contracts are "
+        "not distinguishable from their published fields"
+    )
+    assert ("a" * 64) in first and ("b" * 64) in second, (
+        "WHY THIS IS A FAILURE: the arms' prompt hashes are not stated beside their own "
+        "figures, so a reader cannot tell which contract a count was measured under"
+    )
+    assert "retrieval oracle" in first and "retrieval oracle" in second, (
+        "WHY THIS IS A FAILURE: a section omits the retrieval setting, so the pair is not "
+        "machine-told-apart even though the field exists for exactly that"
+    )
+    assert NON_COMPARABILITY in document.markdown, (
+        "WHY THIS IS A FAILURE: the two arms are presented side by side without "
+        "PREREGISTRATION.md:136-137's sentence. They differ in an unpinned input — the "
+        "generation contract — and the report must say they are not comparable figures"
+    )
+
+
+def test_the_two_contract_report_discloses_token_spend_per_arm() -> None:
+    """The arm's measured generation seconds, summed from its own cost records.
+
+    A bucket shift between the arms must not be misread as the model improving at formats when
+    the harness bought three draws (`p2-format-hardening/prd.md` R6): the report states each
+    arm's spend, in prose and in the cost sidecar.
+    """
+    document = _comparison_document()
+    cost = json.loads(document.cost)
+
+    assert "111.0" in document.markdown and "222.0" in document.markdown, (
+        "WHY THIS IS A FAILURE: a token-spend disclosure is missing from one of the arms. The "
+        "hardened arm spends up to three draws per task against the baseline arm's one, and "
+        "the comparison must carry that asymmetry in each arm's own section"
+    )
+    assert [arm["generation_seconds"] for arm in cost["arms"]] == [111.0, 222.0], (
+        f"WHY THIS IS A FAILURE: the cost sidecar does not carry the per-arm spend. Got "
+        f"{cost['arms']!r}"
+    )
+
+
+def test_the_two_contract_report_points_at_the_breakdown_home() -> None:
+    """The pointer rule: the classifier counts' home is named, and nothing from it is restated.
+
+    `finding.md:89-92`: any document quoting a classifier count must point at the gitignored
+    breakdown as its home, or it creates a second home for the same figure. The home is named
+    in prose and in the sidecar, and the no-restatement half is asserted next.
+    """
+    document = _comparison_document()
+    payload = json.loads(document.payload)
+
+    assert BREAKDOWN_HOME in document.markdown, (
+        "WHY THIS IS A FAILURE: the report names no home for the classifier counts behind its "
+        "figures. A count without a stated home is a count the next reader cannot check"
+    )
+    assert payload["breakdown_home"] == BREAKDOWN_HOME, (
+        "WHY THIS IS A FAILURE: the sidecar does not name the breakdown home, so a program "
+        "reading the JSON cannot find the counts either"
+    )
+    assert "never restates" in document.markdown.lower(), (
+        "WHY THIS IS A FAILURE: the pointer does not say that this document does not restate "
+        "the breakdowns. An unnamed prohibition is a prohibition nobody can check"
+    )
+
+
+def test_the_two_contract_report_restates_no_baseline_figure() -> None:
+    """*(adversarial)* No rendered figure in the new report lives in `reports/baseline/`.
+
+    The pointer rule as a test, asserted the strongest way available: every `N of M` figure the
+    new document renders is disjoint from every `N of M` figure the committed baseline report
+    renders. A figure that appears in both is a figure with two homes, which is exactly how two
+    disagreeing numbers come to exist.
+    """
+    document = _comparison_document()
+    written = " ".join((document.markdown, document.payload, document.cost))
+    figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", written)}
+    assert figures, (
+        "WHY THIS IS A FAILURE: the report renders no figures at all, so this test's "
+        "disjointness assertion would pass vacuously over an empty document"
+    )
+    baseline = (REPO_ROOT / "reports" / "baseline" / "report.md").read_text(encoding="utf-8")
+    baseline_figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", baseline)}
+    overlap = figures & baseline_figures
+    assert not overlap, (
+        f"WHY THIS IS A FAILURE: the new report restates {overlap}, which already lives in "
+        "reports/baseline/report.md. A figure quoted twice is a figure that can disagree with "
+        "itself, and the one-home rule exists so that cannot happen"
+    )
+
+
+def test_a_second_contract_report_with_no_measured_arm_states_so() -> None:
+    """The committed state of the directory: declared, not yet measured, and holding no figure.
+
+    The arm has not run, so the committed artifacts cannot carry a figure — neither the arm's
+    own (none exists) nor the baseline's (restating it is forbidden). The declaration says
+    exactly that, names the two contracts non-comparable, and holds no figure of its own.
+    """
+    document = _comparison_document(arms=())
+
+    assert "has not run" in document.markdown, (
+        "WHY THIS IS A FAILURE: a directory whose arm has not run says nothing about that. A "
+        "reader finding counts here later could not tell when they appeared"
+    )
+    assert "non-comparable" in document.markdown, (
+        "WHY THIS IS A FAILURE: the declaration does not state that the two contracts are "
+        "declared non-comparable — the argument the directory's existence rests on"
+    )
+    assert "reports/baseline/" in document.markdown, (
+        "WHY THIS IS A FAILURE: the declaration does not name which directory's figures it "
+        "does not restate"
+    )
+    assert not re.search(r"\d+ of \d+", document.markdown), (
+        "WHY THIS IS A FAILURE: the declaration renders a figure, but no measurement exists. "
+        "A count here would be either a restated baseline figure or an invented one"
+    )
+
+
+def test_the_comparison_writer_writes_the_three_artifacts_and_nothing_else(
+    tmp_path: Path,
+) -> None:
+    """report.md, report.json and cost.json — the same shape as `reports/baseline/`'s.
+
+    A reader learns one layout for both directories; a fourth file in either is a stray with a
+    figure-shaped home. Nothing is written outside the destination.
+    """
+    into = tmp_path / "format-hardening"
+    written = write_comparison(_comparison_document(), into)
+
+    assert {path.name for path in written} == {"report.md", "report.json", "cost.json"}, (
+        f"WHY THIS IS A FAILURE: the writer produced {[path.name for path in written]}. The "
+        "directory's committed shape is the same three artifacts as reports/baseline/"
+    )
+    assert sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*")) == [
+        "format-hardening",
+        "format-hardening/cost.json",
+        "format-hardening/report.json",
+        "format-hardening/report.md",
+    ], "WHY THIS IS A FAILURE: the writer touched a path outside the destination it was given"
+
+
+def test_the_comparison_document_is_a_pure_function_of_its_inputs() -> None:
+    """The same inputs render byte-identical output, like the bake-off document.
+
+    The format-hardening report is committed evidence once the arm runs; a reader who
+    regenerates it and gets different bytes cannot tell a re-render from a re-measurement. The
+    three strings are asserted together, so no half of the document can drift on its own.
+    """
+    first = _comparison_document()
+    second = _comparison_document()
+    assert (first.markdown, first.payload, first.cost) == (
+        second.markdown,
+        second.payload,
+        second.cost,
+    ), (
+        "WHY THIS IS A FAILURE: two renders of the same inputs differ, so the committed "
+        "document could not be regenerated byte-for-byte and its diff would mean nothing"
     )
 
 
