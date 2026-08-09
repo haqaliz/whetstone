@@ -52,7 +52,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 from whetstone.bakeoff import preanalysis
 from whetstone.bakeoff.autopsy import AUTOPSY_SCHEMA, FineCause
@@ -76,6 +76,13 @@ COMPARISON_SCHEMA = "whetstone-comparison/1"
 #: ceiling was measured over first (`runs/diff-autopsy/arm-a.json`). Named here, documented,
 #: and carried into every document's `before_after.before`.
 BEFORE_RUN = "arm-a"
+
+#: The documented gitignored home of the rendered markdown: the runbook's named breakdown
+#: home (`docs/planning/p2-format-hardening/measured-arm/runbook.md`), where the CLI writes
+#: `comparison.md` beside the document. Named here so the render's header can state where
+#: the breakdown lives; a render under any other gitignored path is still local evidence,
+#: but this is the home the runbook points at.
+MARKDOWN_HOME = "runs/format-hardening-preanalysis/comparison.md"
 
 #: The D6 denominator disclosure, written into every document: the journal's step count and
 #: the autopsy's classified-completion count are different measurements of the same run and
@@ -568,12 +575,245 @@ def build_document(
     )
 
 
+class _CandidateTable(NamedTuple):
+    """One candidate's before/after block, parsed into the render's rows and columns.
+
+    `counts` maps run stem to cause counts; `deltas` maps run stem to per-cause deltas
+    against the before run (empty when the before run is not among the inputs). Both keep
+    only the causes the document carries.
+    """
+
+    candidate: str
+    counts: dict[str, dict[str, int]]
+    deltas: dict[str, dict[str, int]]
+
+
+def _parse_before_after(before_after: Mapping[str, object]) -> tuple[str, list[_CandidateTable]]:
+    """The document's `before_after` block, parsed into the render's per-candidate tables.
+
+    Strict the way every other read in this module is: a block that does not carry the
+    shape the builder writes is refused by name, never matched by a guess — a render that
+    guessed a count would be a smoothing of the same kind the module exists to refuse.
+    """
+    before = before_after.get("before")
+    if not isinstance(before, str):
+        raise ValueError("the document's 'before_after' carries no 'before' run name")
+    per_candidate_raw = before_after.get("per_candidate")
+    if not isinstance(per_candidate_raw, Mapping):
+        raise ValueError(
+            "the document's 'before_after' carries no 'per_candidate' object, so the "
+            "per-candidate tables cannot be rendered"
+        )
+
+    tables: list[_CandidateTable] = []
+    for candidate, block in sorted(per_candidate_raw.items()):
+        if not isinstance(candidate, str) or not isinstance(block, Mapping):
+            raise ValueError(
+                "the document's 'before_after.per_candidate' carries a row that is not an "
+                "object"
+            )
+        runs_raw = block.get("runs")
+        deltas_raw = block.get("delta_vs_before")
+        if not isinstance(runs_raw, Mapping) or not isinstance(deltas_raw, Mapping):
+            raise ValueError(
+                f"the before/after block for candidate {candidate!r} carries no 'runs' or "
+                "no 'delta_vs_before' object, so its table cannot be rendered"
+            )
+        counts: dict[str, dict[str, int]] = {}
+        for stem, cause_counts in sorted(runs_raw.items()):
+            if not isinstance(stem, str) or not isinstance(cause_counts, Mapping):
+                raise ValueError(
+                    f"the before/after block for candidate {candidate!r} carries a run row "
+                    "that is not an object"
+                )
+            parsed: dict[str, int] = {}
+            for cause, value in cause_counts.items():
+                if not isinstance(cause, str) or not isinstance(value, int):
+                    raise ValueError(
+                        f"the before/after block for candidate {candidate!r} carries a "
+                        "cause count that is not an integer"
+                    )
+                parsed[cause] = value
+            counts[stem] = parsed
+        deltas: dict[str, dict[str, int]] = {}
+        for stem, cause_deltas in sorted(deltas_raw.items()):
+            if not isinstance(stem, str) or not isinstance(cause_deltas, Mapping):
+                raise ValueError(
+                    f"the before/after block for candidate {candidate!r} carries a delta "
+                    "row that is not an object"
+                )
+            parsed_deltas: dict[str, int] = {}
+            for cause, value in cause_deltas.items():
+                if not isinstance(cause, str) or not isinstance(value, int):
+                    raise ValueError(
+                        f"the before/after block for candidate {candidate!r} carries a "
+                        "delta that is not an integer"
+                    )
+                parsed_deltas[cause] = value
+            deltas[stem] = parsed_deltas
+        tables.append(_CandidateTable(candidate, counts, deltas))
+    return before, tables
+
+
+def _candidate_section(
+    table: _CandidateTable,
+    before: str,
+) -> list[str]:
+    """One candidate's markdown section: a table of observed causes against each run.
+
+    Rows are the union of causes observed across the runs that carry the candidate —
+    absent causes absent, never zero-filled (`autopsy.py:670-683`) — and columns are each
+    run's count beside its delta against the named before run. When the document carries
+    no deltas (the before run is not among the inputs), the delta columns are absent too.
+    """
+    stems = sorted(table.counts)
+    causes = sorted({cause for counts in table.counts.values() for cause in counts})
+    has_deltas = bool(table.deltas)
+
+    lines = [
+        f"## Candidate: {table.candidate}",
+        "",
+        "Rows are the causes observed in at least one run for this candidate — absent "
+        "causes absent, never zero-filled. Each run's count sits beside its delta against "
+        f"the before run ({before}).",
+        "",
+    ]
+    header = ["cause"]
+    for stem in stems:
+        header.append(stem)
+        if has_deltas:
+            header.append(f"delta vs {before}")
+    lines.append("| " + " | ".join(header) + " |")
+    lines.append("| " + " | ".join("---" for _ in header) + " |")
+    for cause in causes:
+        cells = [cause]
+        for stem in stems:
+            cells.append(str(table.counts[stem].get(cause, 0)))
+            if has_deltas:
+                cells.append(str(table.deltas[stem].get(cause, 0)))
+        lines.append("| " + " | ".join(cells) + " |")
+    lines.append("")
+    return lines
+
+
+def render_markdown(document: Mapping[str, object]) -> str:
+    """The before/after breakdown as markdown — deterministic, stdlib-only string building.
+
+    The render is a pure function of the `whetstone-comparison/1` document: the same
+    document always renders the same string, with no templates and no format placeholders.
+    It renders the document's own numbers and never recomputes one — the ceiling is the
+    document's `ceiling`, the per-candidate tables come from the document's `before_after`
+    block, the denominators come from each run's own `rollout_records` and
+    `autopsy_records` (D6, side by side, never fused), and every violation the document
+    carries is listed as carried — rendered, never smoothed. A document that does not
+    carry the shape the builder writes is refused by name.
+    """
+    schema = document.get("schema")
+    if not isinstance(schema, str):
+        raise ValueError("the document carries no 'schema' string, so the render cannot name it")
+    ceiling = document.get("ceiling")
+    if not isinstance(ceiling, int):
+        raise ValueError(
+            "the document carries no integer 'ceiling', so the ceiling cannot be rendered"
+        )
+    runs_raw = document.get("runs")
+    if not isinstance(runs_raw, Mapping):
+        raise ValueError(
+            "the document carries no 'runs' object, so the denominators cannot be rendered"
+        )
+    before_after_raw = document.get("before_after")
+    if not isinstance(before_after_raw, Mapping):
+        raise ValueError(
+            "the document carries no 'before_after' object, so the per-candidate tables "
+            "cannot be rendered"
+        )
+    violations_raw = document.get("violations")
+    if not isinstance(violations_raw, list):
+        raise ValueError(
+            "the document carries no 'violations' list, so the assertion cannot be reported"
+        )
+    disclosures_raw = document.get("disclosures")
+    if not isinstance(disclosures_raw, Mapping):
+        raise ValueError(
+            "the document carries no 'disclosures' object, so the D6 disclosure cannot be "
+            "rendered"
+        )
+    denominator_disclosure = disclosures_raw.get("denominators")
+    if not isinstance(denominator_disclosure, str):
+        raise ValueError("the document's disclosures carry no 'denominators' sentence")
+
+    run_denominators: list[tuple[str, int, int]] = []
+    for stem, block in sorted(runs_raw.items()):
+        if not isinstance(stem, str) or not isinstance(block, Mapping):
+            raise ValueError(
+                "the document's 'runs' carries a row that is not an object, so its "
+                "denominators cannot be rendered"
+            )
+        rollout_records = block.get("rollout_records")
+        autopsy_records = block.get("autopsy_records")
+        if not isinstance(rollout_records, int) or not isinstance(autopsy_records, int):
+            raise ValueError(
+                f"the document's 'runs' block for {stem!r} carries non-integer denominators"
+            )
+        run_denominators.append((stem, rollout_records, autopsy_records))
+
+    before, tables = _parse_before_after(before_after_raw)
+
+    lines: list[str] = [
+        f"# Before/after breakdown ({schema})",
+        "",
+        "The stored arms' before/after breakdown: journals and autopsy documents read "
+        "against the pre-analysis ceiling document. Local evidence under the gitignored "
+        f"runs/ root — never a published figure. Named home: {MARKDOWN_HOME}",
+        "",
+        f"Ceiling (carried from the pre-analysis document, never recomputed): {ceiling}",
+        "",
+        "## Denominators: rollout records vs autopsy records (D6)",
+        "",
+        denominator_disclosure,
+        "",
+        "| run | rollout records | autopsy records |",
+        "| --- | --- | --- |",
+    ]
+    for stem, rollout_records, autopsy_records in run_denominators:
+        lines.append(f"| {stem} | {rollout_records} | {autopsy_records} |")
+    lines.append("")
+
+    for table in tables:
+        lines.extend(_candidate_section(table, before))
+
+    lines.append("## Violations")
+    lines.append("")
+    if violations_raw:
+        lines.append(
+            f"{len(violations_raw)} violation(s) — each listed as the document carried it, "
+            "rendered, never smoothed."
+        )
+        lines.append("")
+        for number, violation in enumerate(violations_raw, start=1):
+            if not isinstance(violation, Mapping):
+                raise ValueError(
+                    f"violation {number} of the document is not an object, so it cannot be "
+                    "rendered"
+                )
+            fields = ", ".join(f"{key}={value!r}" for key, value in sorted(violation.items()))
+            lines.append(f"{number}. {fields}")
+    else:
+        lines.append("None — the trigger mapping asserted clean over every record (D4).")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Read the journals, autopsy documents, and the pre-analysis document; write the breakdown.
 
     The door of the measured arm's Phase 3: `python -m whetstone.bakeoff.comparison
     --journal PATH [--journal ...] --autopsy PATH [--autopsy ...] --preanalysis PATH
-    --out PATH`. `--out` is checked **before** anything is loaded — the refusal is
+    --out PATH`. The document is written at `--out` and the markdown render beside it
+    (the same stem with a `.md` suffix), so the runbook's named breakdown home
+    (`runs/format-hardening-preanalysis/comparison.md`) is written by the same
+    invocation that writes the document. `--out` is checked **before** anything is
+    loaded — the refusal is
     `preanalysis.refuse_published_out` by identity — and every other refusal is exit 2 with
     the reason named. The assertion's violations do not refuse: the document is still written
     with them listed and the CLI exits 1 — reported, never reconciled. A clean run writes
@@ -629,6 +869,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    markdown_out = out.with_suffix(".md")
+    markdown_out.write_text(render_markdown(document), encoding="utf-8")
 
     for stem in sorted(document["runs"]):
         block = document["runs"][stem]
@@ -647,6 +889,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         print("assertion: clean")
     print(f"\nwrote {out}")
+    print(f"wrote {markdown_out}")
     return 1 if violations else 0
 
 
@@ -658,10 +901,12 @@ __all__ = [
     "BEFORE_RUN",
     "COMPARISON_SCHEMA",
     "DENOMINATOR_DISCLOSURE",
+    "MARKDOWN_HOME",
     "assert_trigger_mapping",
     "build_document",
     "is_inferred_truncation",
     "main",
     "refuse_published_out",
+    "render_markdown",
     "trigger_of_cause",
 ]

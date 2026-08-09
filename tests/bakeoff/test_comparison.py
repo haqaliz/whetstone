@@ -966,6 +966,131 @@ def test_refuse_published_out_matches_the_preanalysis_door_on_every_documented_r
 
 
 # --------------------------------------------------------------------------------------------
+# The markdown render: deterministic, from the document's own numbers, violations included.
+# --------------------------------------------------------------------------------------------
+
+
+def _render_fixture(tmp_path: Path) -> str:
+    """The fixture document rendered to markdown — the fixture must build clean first."""
+    exit_code, document = _run_main(_argv(_fixture(tmp_path), tmp_path), tmp_path)
+    assert exit_code == 0, exit_code
+    assert document is not None
+    return comparison.render_markdown(document)
+
+
+def test_render_markdown_is_byte_deterministic(tmp_path: Path) -> None:
+    """The same document renders the same string, invocation after invocation.
+
+    The markdown is a pure function of the document: no clock, no environment, no
+    iteration order that is not sorted — two invocations over the same inputs must render
+    byte-identically, or the before/after changes between reads of the same runs.
+    """
+    first = _render_fixture(tmp_path)
+    second = _render_fixture(tmp_path)
+
+    assert first == second, (
+        "WHY THIS IS A FAILURE: the same document rendered to two different strings. A "
+        "breakdown that changes between reads of the same runs is evidence nobody can "
+        "re-derive"
+    )
+
+
+def test_the_render_heads_with_the_document_name_and_its_gitignored_home(
+    tmp_path: Path,
+) -> None:
+    """The header names the document and states where the breakdown lives (runbook.md:136-138)."""
+    render = _render_fixture(tmp_path)
+
+    assert "# Before/after breakdown (whetstone-comparison/1)" in render, render
+    assert "runs/format-hardening-preanalysis/comparison.md" in render, render
+
+
+def test_the_ceiling_and_the_denominators_appear_in_the_render(tmp_path: Path) -> None:
+    """The ceiling is rendered from the document and the D6 denominators sit side by side."""
+    render = _render_fixture(tmp_path)
+
+    assert (
+        "Ceiling (carried from the pre-analysis document, never recomputed): 99" in render
+    ), render
+    assert "## Denominators" in render, render
+    assert "| arm-a | 6 | 9 |" in render, render
+    assert "| budget-2048 | 3 | 4 |" in render, render
+    assert "rollout_records" in render and "autopsy_records" in render, render
+
+
+def test_only_observed_causes_become_rows_and_only_carried_candidates_appear(
+    tmp_path: Path,
+) -> None:
+    """Rows are the union of observed causes; absent causes are absent, never zero-filled.
+
+    `im-start-loop` and `header-without-hunk` were observed only for base-3b, so they must
+    appear only inside base-3b's table; `no-diff` and `unrecognised-shape` were observed by
+    nobody and must not appear anywhere. budget-2048 never carried base-3b, so base-3b's
+    table has no budget-2048 column.
+    """
+    render = _render_fixture(tmp_path)
+
+    fourteen_b = render.split("## Candidate: base-14b")[1].split("## Candidate: base-3b")[0]
+    assert "| hunk-count-mismatch | 2 | 0 | 2 | 0 |" in fourteen_b, fourteen_b
+    assert "| hunk-dies-early | 2 | 0 | 1 | -1 |" in fourteen_b, fourteen_b
+    assert "im-start-loop" not in fourteen_b, fourteen_b
+    assert "header-without-hunk" not in fourteen_b, fourteen_b
+
+    three_b = render.split("## Candidate: base-3b")[1].split("## Violations")[0]
+    assert "| im-start-loop |" in three_b, three_b
+    assert "| header-without-hunk |" in three_b, three_b
+    assert "budget-2048" not in three_b, three_b
+
+    assert "| no-diff |" not in render, render
+    assert "| unrecognised-shape |" not in render, render
+
+
+def test_a_planted_violation_is_rendered_never_smoothed(tmp_path: Path) -> None:
+    """A violation the document carries is listed verbatim — the render hides nothing."""
+    exit_code, document = _run_main(_argv(_fixture(tmp_path), tmp_path), tmp_path)
+    assert exit_code == 0, exit_code
+    assert document is not None
+    document["violations"].append(
+        {
+            "kind": "trigger-mismatch",
+            "stem": "arm-a",
+            "index": 0,
+            "candidate": "base-14b",
+            "task_id": "t-01",
+            "expected_trigger": "hunk-count-mismatch",
+            "actual_trigger": "hunk-dies-early",
+        }
+    )
+
+    render = comparison.render_markdown(document)
+
+    assert "## Violations" in render, render
+    assert "1 violation(s)" in render, render
+    assert "rendered, never smoothed" in render, render
+    assert "kind='trigger-mismatch'" in render, render
+    assert "actual_trigger='hunk-dies-early'" in render, render
+
+
+def test_the_cli_writes_the_markdown_beside_the_document(tmp_path: Path) -> None:
+    """The CLI writes `comparison.md` beside the document it names, byte-identical to the render."""
+    fixture = _fixture(tmp_path)
+    argv = _argv(fixture, tmp_path)
+    out = _out(tmp_path)
+    try:
+        exit_code = comparison.main(argv)
+        assert exit_code == 0, exit_code
+        document = json.loads(out.read_bytes())
+        markdown_out = out.with_suffix(".md")
+        assert markdown_out.is_file(), markdown_out
+        assert markdown_out.read_text(encoding="utf-8") == comparison.render_markdown(document), (
+            "WHY THIS IS A FAILURE: the markdown file differs from render_markdown(document). "
+            "The bytes on disk must be the render, so what the file says is what the render says"
+        )
+    finally:
+        shutil.rmtree(out.parent, ignore_errors=True)
+
+
+# --------------------------------------------------------------------------------------------
 # The identity discipline: the mapping and the truncation read are the seams' own.
 # --------------------------------------------------------------------------------------------
 
