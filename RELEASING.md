@@ -1,17 +1,11 @@
 # Releasing Whetstone
 
-> **Nothing has been released yet.** There are no git tags and no PyPI project.
->
-> **Updated 2026-08-05: `.github/workflows/release.yml` now exists**, so a tag would run
-> something. It has **never been exercised** — no tag has ever triggered it — so it is written
-> and reviewed rather than proven, and the first run is also its first test. Treat a step below
-> as working only once you have watched it work.
->
-> **The blocking prerequisite is not code.** PyPI trusted publishing for `whetstonehq` is not
-> configured (§ *One-time setup per channel*), so a tag today would publish a GitHub Release and
-> fail the PyPI job. That is harmless by design — the channels are independent jobs — but it
-> would leave the project's *first* release half-shipped, which is a poor first thing to be
-> permanent. Configure the publisher, then tag.
+> **The release machinery is proven.** `v0.3.0` (2026-08-09) was the first release: all four
+> release-workflow jobs ran green — the tagged-tree verification, the wheel/sdist build, the
+> PyPI publish for `whetstonehq`, and the GitHub Release with its artifacts. The one-time PyPI
+> trusted-publisher setup (§ *One-time setup per channel*) is configured. A tag push is the
+> entire release mechanism; treat a step below as working once you have watched it work, which
+> for the current machinery is the case.
 
 Releases are cut by **pushing a version tag** — tag-push is the entire release mechanism. There
 is no manual upload step and no `gh release create` by hand: when the workflow lands, the

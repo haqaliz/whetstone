@@ -140,6 +140,11 @@ released version until it exists in the code.
   conditions, and the post-run attribution/autopsy commands. The arm itself has not run;
   the measured before/after cause breakdown is unspent until it does, and nothing here
   claims a figure it didn't produce.
+
+## [0.4.0] - 2026-08-10
+
+### Added
+
 - **The before/after comparison** (`src/whetstone/bakeoff/comparison.py`): the runbook's
   Phase 3 tooling, now existing — journals, autopsy documents and the pre-analysis ceiling
   document into the per-candidate before/after breakdown (schema `whetstone-comparison/1`,
