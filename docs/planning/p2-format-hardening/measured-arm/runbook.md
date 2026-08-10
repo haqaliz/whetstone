@@ -111,21 +111,48 @@ night.
 
 ## Post-run analysis (agent-verifiable, offline)
 
-Run from the worktree root, in order (the autopsy's own post-run shape,
-`docs/planning/p2-diff-autopsy/autopsy/plan_20260809.md:326-328`):
+**Run with CWD at the primary checkout** (`/Users/aliz/dev/at/whetstone`), not the worktree
+root: the primary owns the gitignored store, and the analysis tooling refuses an `--out`
+outside the documented gitignored roots, so a relative `runs/` path must resolve to the
+primary's. Execute the worktree's branch code via its project:
 
 ```bash
-uv run python -m whetstone.bakeoff.attribution \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-format-hardening-measurement \
+  python -m whetstone.bakeoff.attribution \
   --transcript runs/format-hardening-arm-evidence/transcript.jsonl \
   --out runs/format-hardening-arm-evidence/attribution.json \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig
 
-uv run python -m whetstone.bakeoff.autopsy \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-format-hardening-measurement \
+  python -m whetstone.bakeoff.autopsy \
   --transcript runs/format-hardening-arm-evidence/transcript.jsonl \
   --attribution runs/format-hardening-arm-evidence/attribution.json \
-  --out runs/diff-autopsy/format-hardening-arm.json
+  --out runs/diff-autopsy/format-hardening-arm-evidence.json
+
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-format-hardening-measurement \
+  python -m whetstone.bakeoff.comparison \
+  --journal runs/arm-a/journal.jsonl \
+  --journal runs/budget-2048/journal.jsonl \
+  --journal runs/format-hardening-arm-evidence/journal.jsonl \
+  --autopsy runs/diff-autopsy/arm-a.json \
+  --autopsy runs/diff-autopsy/budget-2048.json \
+  --autopsy runs/diff-autopsy/format-hardening-arm-evidence.json \
+  --preanalysis runs/format-hardening-preanalysis/ceiling.json \
+  --out runs/format-hardening-preanalysis/comparison.json
+
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-format-hardening-measurement \
+  python -m whetstone.bakeoff.comparison --render-report \
+  --arm baseline --journal runs/arm-a/journal.jsonl \
+    --contract reports/baseline/report.json \
+  --arm hardened --journal runs/format-hardening-arm-evidence/journal.jsonl \
+    --contract runs/format-hardening-arm/report.json \
+  --breakdown-home runs/format-hardening-preanalysis/comparison.md \
+  --recorded-on 2026-08-10 \
+  --out reports/format-hardening
 ```
+
+(The `--recorded-on` date is the arm's declared date, an input never read from a clock.)
 
 Then verify:
 
@@ -134,11 +161,14 @@ Then verify:
 2. **Mapping violations zero** (the fine→coarse assertion; a contradiction is reported, never
    reconciled).
 3. The before/after breakdown — both stored arms and the new arm, per candidate, assembled
-   from the autopsy documents by the Phase 3 comparison tooling into the gitignored
-   `runs/format-hardening-preanalysis/comparison.md` home.
-4. The report (`reports/format-hardening/`) is assembled by Phase 4 with both contracts, both
-   token spends, the ceiling the arm was measured against (113), the non-comparability
-   sentence, and the pointer to the breakdowns — **never restating a classifier count**.
+   by `whetstone.bakeoff.comparison` (schema `whetstone-comparison/1`) into the gitignored
+   `runs/format-hardening-preanalysis/comparison.md` home; the trigger mapping is re-derived
+   by identity and asserted against the pre-analysis's decisions — a contradiction exits
+   nonzero, never reconciled.
+4. The report (`reports/format-hardening/`) is assembled by `--render-report` with both
+   contracts, both token spends, the ceiling the arm was measured against (113), the
+   non-comparability sentence, and the pointer to the breakdowns — **never restating a
+   classifier count**; the door refuses a missing journal, an unproven control, or zero arms.
 
 The public instance's rollout is expected to attribute as `UNATTRIBUTED` (no donor commit, no
 checkout root named for it) — the same named gap the stored runs carry, never a skipped row.
