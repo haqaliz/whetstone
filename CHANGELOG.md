@@ -140,6 +140,31 @@ released version until it exists in the code.
   conditions, and the post-run attribution/autopsy commands. The arm itself has not run;
   the measured before/after cause breakdown is unspent until it does, and nothing here
   claims a figure it didn't produce.
+- **The before/after comparison** (`src/whetstone/bakeoff/comparison.py`): the runbook's
+  Phase 3 tooling, now existing — journals, autopsy documents and the pre-analysis ceiling
+  document into the per-candidate before/after breakdown (schema `whetstone-comparison/1`,
+  refused under any published path, its own no-inference AST walk). The trigger mapping is
+  re-derived by identity and asserted against the pre-analysis's own decisions — a
+  contradiction is a named violation with a nonzero exit, never reconciled — the control
+  discipline is enforced (no `INTACT` probe, no counts), and the D6 denominators are
+  disclosed side by side (rollout records vs classified completions, plus the dev-subset
+  exclusion a hardened contract declares), never fused. Run over the two stored arms, the
+  assertion held over every record — no violations — byte-identical on re-invocation; the
+  markdown render lives at the runbook's named home
+  (`runs/format-hardening-preanalysis/comparison.md`), gitignored, the only home of the
+  numbers.
+- **The report door** (`--render-report` in the same module): the first production caller of
+  the shipped two-contract writer — journals and contract sidecars into
+  `build_contract_comparison`/`write_comparison` by identity, so the post-run assembly of
+  `reports/format-hardening/` is one command. A missing journal, an unproven control, or
+  zero arms is refused by name — the committed declaration is never re-rendered, and a
+  half-truth render is refused; `--recorded-on` is declared by the operator, never read from
+  a clock.
+- **The measured-arm finding** (`docs/planning/p2-format-hardening/measured-arm/finding.md`),
+  closing the slice: the before/after read is now a measurement end to end — the per-candidate
+  walls in words, the numbers in the gitignored breakdowns — and the pre-committed hold: the
+  arm itself has not run, the before/after stays unspent until it does, and nothing published
+  claims a figure the arm didn't produce.
 
 
 ## [0.2.0] - 2026-08-06

@@ -231,34 +231,49 @@ This file orients a coding agent working in this repository. Read it first.
 > before anything runs, `UnknownDevSubset` refusal for an id that matches nothing, and the
 > `ScoredDevSubset` backstop in the report.
 >
-> **Format-hardening aspect 4, first half — the pre-analysis and the runbook — is done**
-> (`docs/planning/p2-format-hardening/measured-arm/`; spec at `spec.md`, plan at
-> `plan_20260809.md`). `src/whetstone/bakeoff/preanalysis.py` is the offline, stdlib-only,
-> deterministic read of the stored autopsy outputs (schema `whetstone-preanalysis/1`, refused
-> under any published path, its own no-inference AST walk) that applies **the same trigger
-> mapping as the validator** — `diffcheck.trigger_of_cause`, asserted identical — and counts the
-> **retry-eligible ceiling** per candidate before any GPU is spent. The ceiling was measured over
-> the two stored runs, and the definition was written in the module before the run: the
-> retry-eligible subset of the stored parse refusals is a **large majority** — the numbers live
-> in the gitignored `runs/format-hardening-preanalysis/ceiling.json`, which is their only home —
-> and one candidate's ceiling is **zero**, its `im-start-loop` wall, which is a per-candidate
-> finding rather than a tie (the dig predicted exactly that shape). The ceiling is material, so
-> the arm's halt condition did not fire and the runbook is written: `--retries` is now a real
-> CLI flag (the switch existed in `conduct` but was unreachable — exposed, with the parser and
+> **Format-hardening aspect 4 — the measured arm — is done** (`docs/planning/p2-format-hardening/measured-arm/`;
+> spec at `spec.md`, plan at `plan_20260809.md`, finding at `finding.md`).
+> `src/whetstone/bakeoff/preanalysis.py` is the offline, stdlib-only, deterministic read of the
+> stored autopsy outputs (schema `whetstone-preanalysis/1`, refused under any published path,
+> its own no-inference AST walk) that applies **the same trigger mapping as the validator** —
+> `diffcheck.trigger_of_cause`, asserted identical — and counts the **retry-eligible ceiling**
+> per candidate before any GPU is spent. The ceiling was measured over the two stored runs, and
+> the definition was written in the module before the run: the retry-eligible subset of the
+> stored parse refusals is a **large majority** — the numbers live in the gitignored
+> `runs/format-hardening-preanalysis/ceiling.json`, which is their only home — and one
+> candidate's ceiling is **zero**, its `im-start-loop` wall, which is a per-candidate finding
+> rather than a tie (the dig predicted exactly that shape). The ceiling is material, so the
+> arm's halt condition did not fire and the runbook is written: `--retries` is now a real CLI
+> flag (the switch existed in `conduct` but was unreachable — exposed, with the parser and
 > wiring tests watched failing first), the donor roots are the real names (`belay`, `contig`),
 > and the journal and transcript live in a sibling evidence directory because the harness
-> refuses a transcript under `--out` — exactly as it should. **The arm itself has NOT run.** It
-> is the operator's GPU pass, commanded from the runbook; until it does, `reports/format-hardening/`
-> still holds the declaration rendering aspect 3 committed, and the measured before/after cause
-> breakdown — the slice's deliverable — is unspent. Nothing in this paragraph claims a figure
-> the arm didn't produce.
+> refuses a transcript under `--out` — exactly as it should. **The post-run read is now a
+> measurement too** (`src/whetstone/bakeoff/comparison.py`, schema `whetstone-comparison/1`,
+> its own no-inference AST walk): journals, autopsy documents and the pre-analysis ceiling
+> document become the per-candidate before/after breakdown, the trigger mapping **re-derived
+> by identity and asserted** against the pre-analysis's own decisions (a contradiction is a
+> named violation, never reconciled), the control discipline enforced (no `INTACT` probe, no
+> counts), the D6 denominators disclosed side by side (rollout records vs classified
+> completions, and the dev-subset exclusion a hardened contract declares), and the markdown
+> render at the runbook's named home (`runs/format-hardening-preanalysis/comparison.md`). The
+> stored arms were exercised through it: the assertion held over every record — zero
+> violations — and the output is byte-identical across invocations. The report door
+> (`--render-report` in the same module) is the first production caller of the aspect-3
+> writer, rendering `reports/format-hardening/` by identity from journals and contract
+> sidecars — only when an arm has run: a missing journal, an unproven control or zero arms is
+> refused by name, never a half-truth render. The finding (`finding.md`) states the measured
+> before in words and records the hold decision. **The arm itself has NOT run.** It is the
+> operator's GPU pass, commanded from the runbook; until it does, `reports/format-hardening/`
+> still holds the declaration rendering aspect 3 committed, and the measured before/after
+> cause breakdown — the slice's deliverable — is unspent. Nothing in this paragraph claims a
+> figure the arm didn't produce.
 >
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
 > so "measured once, re-measured never" is unspent. Cheat 6 and cheat 10 remain documented
-> residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did **not** close it. No
-> version has been released and there are no tags.
+> residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did **not** close it. The
+> only cut so far is v0.3.0, tagged 2026-08-09; nothing has been published to PyPI.
 >
 > Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. Describe the
 > state of the tree this file ships in, and never work in flight on a branch — a status that
