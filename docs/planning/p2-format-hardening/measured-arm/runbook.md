@@ -179,6 +179,13 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-ar
   --out runs/diff-autopsy/format-hardening-arm-evidence.json
 
 uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
+  python -m whetstone.bakeoff.preanalysis \
+  --autopsy runs/diff-autopsy/arm-a.json \
+  --autopsy runs/diff-autopsy/budget-2048.json \
+  --autopsy runs/diff-autopsy/format-hardening-arm-evidence.json \
+  --out runs/format-hardening-preanalysis/ceiling-with-arm.json
+
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
   python -m whetstone.bakeoff.comparison \
   --journal runs/arm-a/journal.jsonl \
   --journal runs/budget-2048/journal.jsonl \
@@ -186,7 +193,7 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-ar
   --autopsy runs/diff-autopsy/arm-a.json \
   --autopsy runs/diff-autopsy/budget-2048.json \
   --autopsy runs/diff-autopsy/format-hardening-arm-evidence.json \
-  --preanalysis runs/format-hardening-preanalysis/ceiling.json \
+  --preanalysis runs/format-hardening-preanalysis/ceiling-with-arm.json \
   --out runs/format-hardening-preanalysis/comparison.json
 
 uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
@@ -213,11 +220,17 @@ Then verify:
    by `whetstone.bakeoff.comparison` (schema `whetstone-comparison/1`) into the gitignored
    `runs/format-hardening-preanalysis/comparison.md` home; the trigger mapping is re-derived
    by identity and asserted against the pre-analysis's decisions — a contradiction exits
-   nonzero, never reconciled.
+   nonzero, never reconciled. **The pre-analysis step above is mandatory, not optional**: the
+   comparison asserts against the pre-analysis document's per-run decisions, and a run
+   without declared decisions is refused by name — the stored `ceiling.json` covers only the
+   two stored runs, so the extended document (`ceiling-with-arm.json`) must be produced
+   first. Its combined ceiling is a different measurement over a different record set than
+   the halt-check ceiling in this runbook's opening block; the two are never fused.
 4. The report (`reports/format-hardening/`) is assembled by `--render-report` with both
-   contracts, both token spends, the ceiling the arm was measured against (113), the
-   non-comparability sentence, and the pointer to the breakdowns — **never restating a
-   classifier count**; the door refuses a missing journal, an unproven control, or zero arms.
+   contracts, both token spends, the non-comparability sentence, and the pointer to the
+   breakdowns — **never restating a classifier count**; the door refuses a missing journal,
+   an unproven control, or zero arms. The ceiling's rendered home is the breakdown document
+   the report points at, not the report itself.
 
 The public instance's rollout is expected to attribute as `UNATTRIBUTED` (no donor commit, no
 checkout root named for it) — the same named gap the stored runs carry, never a skipped row.
