@@ -29,10 +29,10 @@ in the corpus (`tasks/local/belay/*.json`).
 1. **`uv sync --extra mlx` in the worktree** — generation needs the mlx extra; without it the
    run dies at first generation with `MlxUnavailable`, whose message names the fix
    (`src/whetstone/bakeoff/mlx_runtime.py:261-270`).
-2. **The workspace must be empty at start** — delete `runs/format-hardening-workspace` and let
-   the run recreate it; the rule is documentation-only in code (`run.py:753-759`), and a
-   reused or partially-deleted workspace degrades silently into `UNVERIFIED`/`UNPROVISIONED`,
-   never loudly.
+2. **The workspace must be empty at start** — delete
+   `/Users/aliz/dev/at/whetstone/runs/format-hardening-workspace` and let the run recreate it;
+   the rule is documentation-only in code (`run.py:753-759`), and a reused or partially-deleted
+   workspace degrades silently into `UNVERIFIED`/`UNPROVISIONED`, never loudly.
 3. **Evidence is machine-level** — the run's outputs live under the primary's gitignored
    `runs/`; evidence is never copied between checkouts.
 4. **The five dev-subset ids are verified present in `tasks/local/belay/` before launch**, so
@@ -51,8 +51,8 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-ar
   --pool /Users/aliz/dev/at/whetstone/tasks/public/pool.json \
   --funnel /Users/aliz/dev/at/whetstone/tasks/public/ineligible.json \
   --weights /Users/aliz/dev/at/whetstone/weights \
-  --out runs/format-hardening-arm \
-  --workspace runs/format-hardening-workspace \
+  --out /Users/aliz/dev/at/whetstone/runs/format-hardening-arm \
+  --workspace /Users/aliz/dev/at/whetstone/runs/format-hardening-workspace \
   --timeout 900 \
   --recorded-on <declared-at-run-time> \
   --retries \
@@ -61,17 +61,23 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-ar
   --dev-subset belay-3e3051c4192a \
   --dev-subset belay-844db07ed482 \
   --dev-subset belay-9dba3ea557f5 \
-  --journal runs/format-hardening-arm-evidence/journal.jsonl \
-  --transcript runs/format-hardening-arm-evidence/transcript.jsonl
+  --journal /Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence/journal.jsonl \
+  --transcript /Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence/transcript.jsonl
 ```
 
 Every flag verified against `run.py`'s parser (`build_parser`, `run.py:691-839`) at write time.
 Notes on the choices:
 
-- **CWD at the primary checkout** — the run's `--out`, workspace, journal and transcript are
-  relative `runs/` paths; executed from the primary they land in the primary's gitignored
-  store, which the post-run commands read — the arm writes where the post-run reads. The
-  branch code is executed via its project, never by running from the worktree root.
+- **Writable paths are absolute** — `--out`, `--workspace`, `--journal` and `--transcript`
+  name their files under the primary's gitignored `runs/` outright, so no part of the run
+  depends on CWD. This is not decoration: the workspace is built as `workspace / digest` and
+  provisioned by subprocesses whose CWD is not the run's (`run.py:546`, `scoring.py:351`), so
+  a relative workspace does not resolve there — every environment build fails, every rollout
+  is `UNPROVISIONED`, and the control arm proves nothing. **The run died exactly this way on
+  2026-08-12** (`HarnessNotProven` — the worktrees skill's documented pitfall); the absolute
+  forms above are the correction, and `tests/test_runbook_guards.py` refuses a relative
+  writable path from now on. The post-run commands keep relative `runs/` paths: those tools
+  run in-process from the primary CWD, which the stored runs' analysis already proved.
 - **The donor roots are `belay/` (21 tasks) and `contig/` (45 tasks)** — the miner's
   per-donor directories, verified on disk. The plan draft's `donor-a`/`donor-b` placeholder
   names do not exist; the pseudonymous names are `belay` (donor B, 21) and `contig`
@@ -96,9 +102,10 @@ Notes on the choices:
   private donor code staged for publication by a path default (`TranscriptNotPrivate`,
   `run.py:939-960`, asserted end-to-end in `test_run_transcript.py`). The report lands in
   `runs/format-hardening-arm/` (gitignored), the evidence in the sibling gitignored root.
-- **Workspace rules:** `runs/format-hardening-workspace` must be **empty** at start (delete it
-  and let the run recreate it; the run is not resumable from a partially deleted workspace),
-  and it is never inside `--out`. The run is **not** resumable across a deleted workspace.
+- **Workspace rules:** `/Users/aliz/dev/at/whetstone/runs/format-hardening-workspace` must be
+  **empty** at start (delete it and let the run recreate it; the run is not resumable from a
+  partially deleted workspace), and it is never inside `--out`. The run is **not** resumable
+  across a deleted workspace.
 - **`--recorded-on` is an input, never the clock**: the operator types the date the run
   starts; the value is declared at run time, never read from a clock.
 
@@ -129,11 +136,13 @@ it as corruption, never repaired (`src/whetstone/bakeoff/transcript.py:190-198`)
 procedure:
 
 1. **Quarantine the dead evidence directory by name** — e.g. move
-   `runs/format-hardening-arm-evidence/` to `runs/format-hardening-arm-evidence-dead-<date>/`.
-2. **Fresh empty workspace** — delete `runs/format-hardening-workspace`; a fresh run is a
-   fresh empty workspace (halt 4).
+   `/Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence/` to
+   `/Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence-dead-<date>/`.
+2. **Fresh empty workspace** — delete `/Users/aliz/dev/at/whetstone/runs/format-hardening-workspace`;
+   a fresh run is a fresh empty workspace (halt 4).
 3. **Fresh journal and transcript paths** — the restart's `--journal`/`--transcript` name a
-   new evidence directory (e.g. `runs/format-hardening-arm-evidence-2/`); never append to the
+   new evidence directory (e.g. `/Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence-2/`);
+   never append to the
    dead transcript, never reuse the dead paths.
 4. Re-run the arm command unchanged apart from the paths above.
 

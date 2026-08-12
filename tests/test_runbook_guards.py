@@ -31,6 +31,7 @@ to exist on this machine — so the suite is deterministic, offline and CI-safe.
 from __future__ import annotations
 
 import re
+import shlex
 from pathlib import Path
 
 from whetstone.bakeoff.run import build_parser
@@ -128,6 +129,47 @@ def test_the_parse_really_reads_the_runbooks_command() -> None:
     )
     assert "--retries" in arm, "the arm command no longer carries the switch that defines this run"
     assert "--dev-subset" in arm, "the arm command no longer names its dev subset"
+
+
+def _arm_values(block: str) -> dict[str, str]:
+    """The flag → value pairs the arm command passes, from the tokens after the module.
+
+    The block is shell-shaped (`\\` continuations, one flag per line); `shlex` in POSIX mode
+    removes the backslash-newline continuations and yields the tokens exactly as a shell
+    would. The first flag follows the module invocation; values are the tokens after each
+    flag that do not themselves start with `--`.
+    """
+    tokens = shlex.split(block.partition(ARM_MODULE)[2], posix=True)
+    values: dict[str, str] = {}
+    current: str | None = None
+    for token in tokens:
+        if token.startswith("--"):
+            current = token
+        elif current is not None:
+            values[current] = token
+            current = None
+    return values
+
+
+def test_the_arm_commands_writable_paths_are_absolute() -> None:
+    """The arm's `--out`, `--workspace`, `--journal` and `--transcript` are absolute paths.
+
+    The workspace is built as `workspace / digest` and provisioned by subprocesses whose CWD
+    is not the run's (`run.py:546`, `scoring.py:351`): a relative workspace does not resolve
+    there, every environment build fails, every rollout is `UNPROVISIONED`, and the control
+    arm proves nothing — the run died exactly this way on 2026-08-12 (`HarnessNotProven`,
+    halt condition 1, the worktrees skill's documented pitfall). The same class covers the
+    run's other writable paths: absolute means no part of the run depends on CWD.
+    """
+    values = _arm_values(_arm_block(_bash_blocks(_runbook())))
+    for flag in ("--out", "--workspace", "--journal", "--transcript"):
+        value = values.get(flag)
+        assert value, f"the arm command does not pass {flag}, so its path is unstated"
+        assert value.startswith("/"), (
+            f"the arm command passes {flag} a relative path {value!r}: the environment "
+            "builder and its subprocesses do not share the run's CWD, so the path does not "
+            "resolve there and every task is UNPROVISIONED — a night that proves nothing"
+        )
 
 
 def test_every_flag_the_arm_command_passes_exists_in_the_parser() -> None:
