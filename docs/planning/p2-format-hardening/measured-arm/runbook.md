@@ -19,40 +19,65 @@ the before/after comparison needs the same matrix.
 These are the tasks whose prompts the retry template was tuned against: they are retry-eligible
 in **both** stored runs' autopsy records (the Phase 1 pre-analysis's `dev_subset_candidates`
 intersection), so the tuning corpus covered their failure shapes. The ids are excluded from
-**both** sources before anything runs (`conduct` partitions first, `run.py:951`), an id
+**both** sources before anything runs (`conduct` partitions first, `run.py:540-542`), an id
 matching no task is refused (`UnknownDevSubset`), and the report's `ScoredDevSubset` backstop
 refuses the publication if any dev id ever reached a scored set. All five are verified present
 in the corpus (`tasks/local/belay/*.json`).
 
+## Before you run
+
+1. **`uv sync --extra mlx` in the worktree** — generation needs the mlx extra; without it the
+   run dies at first generation with `MlxUnavailable`, whose message names the fix
+   (`src/whetstone/bakeoff/mlx_runtime.py:261-270`).
+2. **The workspace must be empty at start** — delete
+   `/Users/aliz/dev/at/whetstone/runs/format-hardening-workspace` and let the run recreate it;
+   the rule is documentation-only in code (`run.py:753-759`), and a reused or partially-deleted
+   workspace degrades silently into `UNVERIFIED`/`UNPROVISIONED`, never loudly.
+3. **Evidence is machine-level** — the run's outputs live under the primary's gitignored
+   `runs/`; evidence is never copied between checkouts.
+4. **The five dev-subset ids are verified present in `tasks/local/belay/` before launch**, so
+   the `UnknownDevSubset` refusal cannot fire at launch time.
+
 ## The command
 
-Run from the worktree root (`/Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-format-hardening`):
+**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`), executing the branch code via its project (`uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run`):**
 
 ```bash
-uv run python -m whetstone.bakeoff.run \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
+  python -m whetstone.bakeoff.run \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
   --public /Users/aliz/dev/at/whetstone/tasks/public/instances \
   --pool /Users/aliz/dev/at/whetstone/tasks/public/pool.json \
   --funnel /Users/aliz/dev/at/whetstone/tasks/public/ineligible.json \
   --weights /Users/aliz/dev/at/whetstone/weights \
-  --out runs/format-hardening-arm \
-  --workspace runs/format-hardening-workspace \
+  --out /Users/aliz/dev/at/whetstone/runs/format-hardening-arm \
+  --workspace /Users/aliz/dev/at/whetstone/runs/format-hardening-workspace \
   --timeout 900 \
-  --recorded-on 2026-08-09 \
+  --recorded-on <declared-at-run-time> \
   --retries \
   --dev-subset belay-2e149603209a \
   --dev-subset belay-353359e9ac6e \
   --dev-subset belay-3e3051c4192a \
   --dev-subset belay-844db07ed482 \
   --dev-subset belay-9dba3ea557f5 \
-  --journal runs/format-hardening-arm-evidence/journal.jsonl \
-  --transcript runs/format-hardening-arm-evidence/transcript.jsonl
+  --journal /Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence/journal.jsonl \
+  --transcript /Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence/transcript.jsonl
 ```
 
 Every flag verified against `run.py`'s parser (`build_parser`, `run.py:691-839`) at write time.
 Notes on the choices:
 
+- **Writable paths are absolute** — `--out`, `--workspace`, `--journal` and `--transcript`
+  name their files under the primary's gitignored `runs/` outright, so no part of the run
+  depends on CWD. This is not decoration: the workspace is built as `workspace / digest` and
+  provisioned by subprocesses whose CWD is not the run's (`run.py:546`, `scoring.py:351`), so
+  a relative workspace does not resolve there — every environment build fails, every rollout
+  is `UNPROVISIONED`, and the control arm proves nothing. **The run died exactly this way on
+  2026-08-12** (`HarnessNotProven` — the worktrees skill's documented pitfall); the absolute
+  forms above are the correction, and `tests/test_runbook_guards.py` refuses a relative
+  writable path from now on. The post-run commands keep relative `runs/` paths: those tools
+  run in-process from the primary CWD, which the stored runs' analysis already proved.
 - **The donor roots are `belay/` (21 tasks) and `contig/` (45 tasks)** — the miner's
   per-donor directories, verified on disk. The plan draft's `donor-a`/`donor-b` placeholder
   names do not exist; the pseudonymous names are `belay` (donor B, 21) and `contig`
@@ -77,10 +102,12 @@ Notes on the choices:
   private donor code staged for publication by a path default (`TranscriptNotPrivate`,
   `run.py:939-960`, asserted end-to-end in `test_run_transcript.py`). The report lands in
   `runs/format-hardening-arm/` (gitignored), the evidence in the sibling gitignored root.
-- **Workspace rules:** `runs/format-hardening-workspace` must be **empty** at start (delete it
-  and let the run recreate it; the run is not resumable from a partially deleted workspace),
-  and it is never inside `--out`. The run is **not** resumable across a deleted workspace.
-- **`--recorded-on` is an input, never the clock**: 2026-08-09 is the declared date.
+- **Workspace rules:** `/Users/aliz/dev/at/whetstone/runs/format-hardening-workspace` must be
+  **empty** at start (delete it and let the run recreate it; the run is not resumable from a
+  partially deleted workspace), and it is never inside `--out`. The run is **not** resumable
+  across a deleted workspace.
+- **`--recorded-on` is an input, never the clock**: the operator types the date the run
+  starts; the value is declared at run time, never read from a clock.
 
 ## Expected runtime
 
@@ -101,6 +128,24 @@ night.
    after freeze, and the run is void, not repaired.
 4. **Never reuse a workspace.** A fresh run is a fresh empty workspace.
 
+## Killed-run restart
+
+A run killed mid-retry can leave a trailing `"retry"` record on the transcript; replay refuses
+it as corruption, never repaired (`src/whetstone/bakeoff/transcript.py:190-198`). A
+`ContractChanged` abort voids the run with no recovery — by design, the freeze seal. Restart
+procedure:
+
+1. **Quarantine the dead evidence directory by name** — e.g. move
+   `/Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence/` to
+   `/Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence-dead-<date>/`.
+2. **Fresh empty workspace** — delete `/Users/aliz/dev/at/whetstone/runs/format-hardening-workspace`;
+   a fresh run is a fresh empty workspace (halt 4).
+3. **Fresh journal and transcript paths** — the restart's `--journal`/`--transcript` name a
+   new evidence directory (e.g. `/Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence-2/`);
+   never append to the
+   dead transcript, never reuse the dead paths.
+4. Re-run the arm command unchanged apart from the paths above.
+
 ## Expected artifacts (all gitignored)
 
 - `runs/format-hardening-arm/{report.md,report.json,cost.json}` — the hardened arm's report,
@@ -113,24 +158,34 @@ night.
 
 **Run with CWD at the primary checkout** (`/Users/aliz/dev/at/whetstone`), not the worktree
 root: the primary owns the gitignored store, and the analysis tooling refuses an `--out`
-outside the documented gitignored roots, so a relative `runs/` path must resolve to the
-primary's. Execute the worktree's branch code via its project:
+outside the documented gitignored roots — `autopsy`, `preanalysis` and `comparison` gate
+(`IGNORED_OUT_ROOTS`, `src/whetstone/bakeoff/autopsy.py:716`, imported by identity);
+`attribution` does not gate (AC2-pinned, its output is intermediate), so its `--out` is
+operator discipline — so a relative `runs/` path must resolve to the primary's. Execute the
+worktree's branch code via its project:
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-format-hardening-measurement \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
   python -m whetstone.bakeoff.attribution \
   --transcript runs/format-hardening-arm-evidence/transcript.jsonl \
   --out runs/format-hardening-arm-evidence/attribution.json \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-format-hardening-measurement \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
   python -m whetstone.bakeoff.autopsy \
   --transcript runs/format-hardening-arm-evidence/transcript.jsonl \
   --attribution runs/format-hardening-arm-evidence/attribution.json \
   --out runs/diff-autopsy/format-hardening-arm-evidence.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-format-hardening-measurement \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
+  python -m whetstone.bakeoff.preanalysis \
+  --autopsy runs/diff-autopsy/arm-a.json \
+  --autopsy runs/diff-autopsy/budget-2048.json \
+  --autopsy runs/diff-autopsy/format-hardening-arm-evidence.json \
+  --out runs/format-hardening-preanalysis/ceiling-with-arm.json
+
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
   python -m whetstone.bakeoff.comparison \
   --journal runs/arm-a/journal.jsonl \
   --journal runs/budget-2048/journal.jsonl \
@@ -138,21 +193,22 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-format-hard
   --autopsy runs/diff-autopsy/arm-a.json \
   --autopsy runs/diff-autopsy/budget-2048.json \
   --autopsy runs/diff-autopsy/format-hardening-arm-evidence.json \
-  --preanalysis runs/format-hardening-preanalysis/ceiling.json \
+  --preanalysis runs/format-hardening-preanalysis/ceiling-with-arm.json \
   --out runs/format-hardening-preanalysis/comparison.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-format-hardening-measurement \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
   python -m whetstone.bakeoff.comparison --render-report \
   --arm baseline --journal runs/arm-a/journal.jsonl \
     --contract reports/baseline/report.json \
   --arm hardened --journal runs/format-hardening-arm-evidence/journal.jsonl \
     --contract runs/format-hardening-arm/report.json \
   --breakdown-home runs/format-hardening-preanalysis/comparison.md \
-  --recorded-on 2026-08-10 \
+  --recorded-on <declared-at-run-time> \
   --out reports/format-hardening
 ```
 
-(The `--recorded-on` date is the arm's declared date, an input never read from a clock.)
+(The `--recorded-on` date is the declared date — typed at run time by the operator, an input
+never read from a clock.)
 
 Then verify:
 
@@ -164,11 +220,17 @@ Then verify:
    by `whetstone.bakeoff.comparison` (schema `whetstone-comparison/1`) into the gitignored
    `runs/format-hardening-preanalysis/comparison.md` home; the trigger mapping is re-derived
    by identity and asserted against the pre-analysis's decisions — a contradiction exits
-   nonzero, never reconciled.
+   nonzero, never reconciled. **The pre-analysis step above is mandatory, not optional**: the
+   comparison asserts against the pre-analysis document's per-run decisions, and a run
+   without declared decisions is refused by name — the stored `ceiling.json` covers only the
+   two stored runs, so the extended document (`ceiling-with-arm.json`) must be produced
+   first. Its combined ceiling is a different measurement over a different record set than
+   the halt-check ceiling in this runbook's opening block; the two are never fused.
 4. The report (`reports/format-hardening/`) is assembled by `--render-report` with both
-   contracts, both token spends, the ceiling the arm was measured against (113), the
-   non-comparability sentence, and the pointer to the breakdowns — **never restating a
-   classifier count**; the door refuses a missing journal, an unproven control, or zero arms.
+   contracts, both token spends, the non-comparability sentence, and the pointer to the
+   breakdowns — **never restating a classifier count**; the door refuses a missing journal,
+   an unproven control, or zero arms. The ceiling's rendered home is the breakdown document
+   the report points at, not the report itself.
 
 The public instance's rollout is expected to attribute as `UNATTRIBUTED` (no donor commit, no
 checkout root named for it) — the same named gap the stored runs carry, never a skipped row.

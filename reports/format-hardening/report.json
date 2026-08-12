@@ -1,7 +1,132 @@
 {
-  "arms": [],
-  "breakdown_home": "runs/format-hardening-arm/",
+  "arms": [
+    {
+      "generation_contract": {
+        "dev_subset": [
+          "belay-0cfbb1590a70",
+          "belay-0f8651175ef8",
+          "belay-0fe4582aeac1"
+        ],
+        "diagnosis_vocabulary_version": "",
+        "extractor_version": "extract_patch@3e91bab8c123",
+        "max_tokens": 1024,
+        "pinned": false,
+        "prompt_sha256": "b7d6d3d4052db5e95a4e8eaa65d2728176406c580e260c4b637442ff333cd1ae",
+        "retrieval": "oracle",
+        "retry_budget": 0,
+        "retry_template_sha256": "",
+        "sampler": "greedy: argmax over the final logprob axis (mx.argmax(logprobs, axis=-1))"
+      },
+      "generation_seconds": 5320.178312209435,
+      "name": "baseline",
+      "per_candidate": [
+        {
+          "candidate": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+          "covered": 52,
+          "denominator": 64,
+          "failed": 52,
+          "no_diff": 0,
+          "not_applied": 43,
+          "not_solved": 9,
+          "out_of_scope": 0,
+          "solved": 0,
+          "unverified": 12,
+          "weaker_wins": 0
+        },
+        {
+          "candidate": "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit",
+          "covered": 51,
+          "denominator": 64,
+          "failed": 51,
+          "no_diff": 1,
+          "not_applied": 50,
+          "not_solved": 0,
+          "out_of_scope": 0,
+          "solved": 0,
+          "unverified": 13,
+          "weaker_wins": 0
+        },
+        {
+          "candidate": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+          "covered": 52,
+          "denominator": 64,
+          "failed": 52,
+          "no_diff": 43,
+          "not_applied": 8,
+          "not_solved": 1,
+          "out_of_scope": 0,
+          "solved": 0,
+          "unverified": 12,
+          "weaker_wins": 0
+        }
+      ]
+    },
+    {
+      "generation_contract": {
+        "dev_subset": [
+          "belay-2e149603209a",
+          "belay-353359e9ac6e",
+          "belay-3e3051c4192a",
+          "belay-844db07ed482",
+          "belay-9dba3ea557f5"
+        ],
+        "diagnosis_vocabulary_version": "4b5022c093b6cd7708dfff99840964c7617066f1f8e8669003a9c0d954ee91fd",
+        "extractor_version": "extract_patch@3e91bab8c123",
+        "max_tokens": 1024,
+        "pinned": false,
+        "prompt_sha256": "f5d431a1fe2cebd6089a9408a4f5bb9a7060f2c38645e766ad7a2ebb540c5cc9",
+        "retrieval": "oracle",
+        "retry_budget": 2,
+        "retry_template_sha256": "0ce3496235180696d715740fc517c05ed9c30f5ceb7a6c625e854a106bac7a2b",
+        "sampler": "greedy: argmax over the final logprob axis (mx.argmax(logprobs, axis=-1))"
+      },
+      "generation_seconds": 16693.073941838928,
+      "name": "hardened",
+      "per_candidate": [
+        {
+          "candidate": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+          "covered": 49,
+          "denominator": 62,
+          "failed": 49,
+          "no_diff": 5,
+          "not_applied": 31,
+          "not_solved": 13,
+          "out_of_scope": 0,
+          "solved": 0,
+          "unverified": 13,
+          "weaker_wins": 0
+        },
+        {
+          "candidate": "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit",
+          "covered": 50,
+          "denominator": 62,
+          "failed": 50,
+          "no_diff": 12,
+          "not_applied": 38,
+          "not_solved": 0,
+          "out_of_scope": 0,
+          "solved": 0,
+          "unverified": 12,
+          "weaker_wins": 0
+        },
+        {
+          "candidate": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+          "covered": 50,
+          "denominator": 62,
+          "failed": 50,
+          "no_diff": 41,
+          "not_applied": 8,
+          "not_solved": 1,
+          "out_of_scope": 0,
+          "solved": 0,
+          "unverified": 12,
+          "weaker_wins": 0
+        }
+      ]
+    }
+  ],
+  "breakdown_home": "runs/format-hardening-preanalysis/comparison.md",
   "measurement": "format-hardening contract comparison; not the pinned baseline of PREREGISTRATION.md:126-128",
   "non_comparable": true,
-  "recorded_on": "2026-08-09"
+  "recorded_on": "2026-08-12"
 }

@@ -1,4 +1,13 @@
 {
-  "arms": [],
+  "arms": [
+    {
+      "generation_seconds": 5320.178312209435,
+      "name": "baseline"
+    },
+    {
+      "generation_seconds": 16693.073941838928,
+      "name": "hardened"
+    }
+  ],
   "kind": "contract-comparison"
 }

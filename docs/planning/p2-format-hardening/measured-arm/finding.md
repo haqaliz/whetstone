@@ -1,102 +1,143 @@
-# Finding — the measured arm's before/after, tooled and held
+# Finding — the measured arm's before/after
 
-**Slice:** `p2-format-hardening` measured arm, completed by `format-hardening-measurement` ·
-**Written:** 2026-08-10, after the comparison instrument ran over the two stored arms.
-**Instrument:** `src/whetstone/bakeoff/comparison.py` (offline, deterministic, stdlib-only),
-on the pre-analysis and the autopsy behind it · **Local evidence:**
-`runs/format-hardening-preanalysis/{ceiling.json,comparison.json,comparison.md}` (gitignored —
-the only home of the numbers).
+**Slice:** `p2-format-hardening` measured arm, executed by `measured-arm-run` ·
+**Written:** 2026-08-12, after the arm ran and the post-run chain completed.
+**Instrument:** attribution → autopsy → comparison → report door, per the runbook's post-run
+section · **Local evidence:** `runs/format-hardening-arm/`, `runs/format-hardening-arm-evidence/`,
+`runs/diff-autopsy/`, `runs/format-hardening-preanalysis/` (gitignored — the only home of the
+numbers).
 
 ---
 
 ## 1. What this document is
 
-The measured-arm aspect (`docs/planning/p2-format-hardening/measured-arm/`) shipped its
-machinery and its runbook and stopped; what it did not ship is the analysis chain the runbook
-names. This unit built it, and this finding says what it produced. The operator's run now has
-one deterministic post-run chain — attribution, autopsy, comparison, report door — instead of
-an improvised read, and the transferable discipline is the one the diff autopsy established:
-**the read is a measurement, never a hand-read.** The before/after breakdown is assembled by a
-module that re-derives the trigger mapping by identity and asserts it against the decisions the
-pre-analysis recorded, so a disagreement between two instruments reading the same bytes is
-reported, never smoothed.
+The hold is spent. The previous finding (`finding.md`, 2026-08-10) recorded that the arm had
+not run and that everything it needed was built; this finding records that it ran, what the
+measurement shows, and the fork decision it converts into — argued strictly within the rule
+the PRD pre-committed before the run (`docs/planning/measured-arm-run/prd.md` M7). The
+transferable discipline is unchanged: **the read is a measurement, never a hand-read.** The
+trigger mapping is re-derived by identity and asserted against the pre-analysis's decisions
+over every record — the assertion held clean, and a contradiction would have been reported,
+never reconciled.
 
-**It carries no figure about a model**: the numbers live in the gitignored breakdowns, and a
-number quoted here would be a second home for itself.
+**This document carries no figure about a model**: verdict counts live in the two reports
+(`reports/baseline/`, `reports/format-hardening/` — declared non-comparable by the D6
+argument), classifier counts live in the gitignored breakdown home
+(`runs/format-hardening-preanalysis/comparison.md`), and a number quoted here would be a
+second home for itself.
 
-## 2. The measured before
+## 2. The run's story — two launches, one defect, one measurement
 
-The stored arms' breakdown — both stored runs, per candidate, with each cause count beside its
-delta against the named before run — was produced by the instrument, and the assertion held:
-the trigger mapping re-derived by identity agrees with the pre-analysis's own decisions over
-every stored record, zero violations, nothing to reconcile. Both runs carry the control
-discipline (an `INTACT` probe), so their counts are proven about the bases; the denominators
-are disclosed as D6 requires — each run's journal rollouts and its classified completions side
-by side, different measurements of the same run, never fused — and the double-token run
-carries only the candidate it swept, so its rows keep its own candidate set. The ceiling the
-arm was measured against is carried from the pre-analysis document, never recomputed.
+The first launch died before it measured anything: every environment build failed with a
+`FileNotFoundError` naming a **relative** workspace path, every rollout came back
+`UNPROVISIONED`, and the run stopped itself with `HarnessNotProven` — none of its tasks
+reached `INTACT`, so a run of zeroes would have been a result about a harness that graded
+nothing. The cause is the worktrees skill's documented pitfall: the workspace is built as
+`workspace / digest` and provisioned by subprocesses whose CWD is not the run's
+(`run.py:546`, `scoring.py:351`), so a relative path does not resolve there. The runbook had
+inherited the original plan's relative paths; the dig and the guard test had not caught them.
 
-The walls, in words, per candidate:
+The correction landed test-first in the unit itself: a guard asserting the arm's writable
+paths are absolute (RED on the runbook as it shipped, GREEN after), the four paths made
+absolute under the primary's `runs/`, and the runbook's rationale corrected
+(`tests/test_runbook_guards.py`, commit `e5fcd06`). The dead evidence is **quarantined, never
+deleted**: `runs/format-hardening-arm-evidence-dead-20260812-relative-workspace/` holds the
+dead run's journal — the defect's own record.
 
-- **One candidate is a loop-collapse wall.** Its breakdown is dominated by completions that
-  repeat their own chat-template tokens — nothing that looks like an answer, let alone a
-  patch — beside only a sliver of well-formed diffs. This is the shape the dig predicted, and
-  the pre-analysis measured the candidate's retry-eligible ceiling as empty: a retry fires on
-  a trigger-shaped parse refusal, and a loop collapse is not one.
-- **A second candidate is a hunk-count wall.** Its majority shape is `hunk-count-mismatch` —
-  the git-shaped skeleton whose hunk headers declare line counts the bodies do not satisfy —
-  with a minority of hunks dying early and a well-formed remainder. The double-token rerun
-  moved no cause bucket beyond noise: the wall is not shaped by the token budget.
-- **The third candidate is a hunk-dies-early spread.** Hunks that die on a line the diff
-  grammar does not accept dominate, beside a `hunk-count-mismatch` minority, a rare
-  `header-without-hunk`, and a well-formed remainder.
+The restart ran clean to completion: the control discipline held on every task of the sweep
+(the journal records `INTACT` probes throughout — their counts live in the run's own report),
+and the run's report was written under the hardened contract's fields: the retry budget, the
+retry template digest, the diagnosis vocabulary version, retrieval oracle, and the declared
+dev subset, with the non-comparability sentence beside the baseline arm's.
 
-## 3. The hold decision
+## 3. One instrument discovery, corrected in the same commit
 
-**The arm itself has not run.** It is the operator's GPU pass, commanded from the runbook
-(`docs/planning/p2-format-hardening/measured-arm/runbook.md`); the evidence directory the
-runbook names (`runs/format-hardening-arm-evidence/`) does not exist, so there is no journal,
-no transcript, and no after arm to compare.
+The runbook's post-run comparison command could not run as written. The comparison asserts
+the trigger mapping against the pre-analysis document's per-run `decisions` rows, and the
+stored ceiling document carries decisions only for the two stored runs — a run without
+declared decisions is refused by name (exit 2, nothing written), which is the instrument
+working as designed: an assertion cannot trust decisions a document does not declare. The
+runbook omitted the step that produces them. Corrected: the pre-analysis is re-run over all
+three autopsy documents, so the extended document's decisions cover the arm's own records,
+and the comparison runs against that document. The extended document's combined ceiling is a
+**different measurement over a different record set** than the halt-check ceiling the
+runbook's opening block pre-commits (which remains, with its provenance, in the original
+ceiling document); the two are never fused — each is labeled for what it is.
 
-Everything the slice planned to build exists and is verified: the pre-analysis measured the
-ceiling before any GPU was spent, the runbook commands the arm, the comparison instrument is
-exercised over the stored arms, the report door renders the two-contract report by identity,
-and this finding records the state. What is unspent is the before/after itself — stored arms
-versus the new arm — which becomes a measurement the moment the arm lands and the runbook's
-post-run sequence runs. Until then, `reports/format-hardening/` still holds the declaration
-aspect 3 committed: no count, no arm, and no figure the arm didn't produce.
+## 4. The measured before/after
 
-The decision to hold is pre-committed and unchanged — the completing unit's PRD names it
-(`docs/planning/format-hardening-measurement/prd.md` R-c), and the slice's own PRD makes a
-flat before/after, once the arm lands, a pre-committed publishable outcome
-(`p2-format-hardening/prd.md:310`). The slice is complete either way; the hold is not a
-placeholder for a hoped-for result.
+The walls, in words, per candidate — the counts live in the breakdown home and are not
+restated here:
 
-## 4. What is not claimed
+- **One candidate is a loop-collapse wall, and it is unchanged.** Its completions repeat
+  their own chat-template tokens; nothing retry-shaped ever fired, because the pre-analysis
+  measured its retry-eligible ceiling at zero before any GPU was spent. The dig predicted
+  exactly this shape; the measurement confirmed it without a single retry being issued — the
+  per-candidate finding stands, and no retry budget could have converted it.
+- **The second candidate's hunk-count wall receded.** A share of its retry-eligible parse
+  refusals converted into well-formed patches — the retry machinery did what it was built to
+  do — leaving a smaller hunk-count remainder and a new no-diff remainder.
+- **The third candidate's hunk-dies-early spread narrowed the same way**: fewer early hunks,
+  more well-formed completions, and its hunk-count refusal population gone.
 
-- That the retries will raise any count — **not predicted**: a flat before/after, the new arm
-  converting nothing the stored arms didn't, is a valid, publishable outcome, and the report
-  will state it plainly if that is what the measurement shows.
-- That `PREREGISTRATION.md` § 7.3 is closed — **untrue**: the base question stays open, and
-  this slice is not a base-selection signal.
-- That a base is selected — **untrue**: the roadmap's easier-stratum/larger-base fork stays
-  unsupported until the arm's measurement exists.
-- That the tooling measured the arm — **untrue**: it measured the stored runs. The arm's
-  measurement is the operator's, unspent until the run lands.
+**The common fact, which is the measurement's content:** well-formed patches apply but do not
+solve. The verdict counts under the hardened contract — their home is the rendered report,
+stated under that contract's own fields — show no rollout solved a task on the declared set:
+the same zero the baseline arm shows under its own contract. The formatting wall was the
+first wall, and the hardening cleared a share of it; the wall behind it is fix quality. That
+is the first measurement that reaches this question: the yield probe's premise — that the
+measurement had never reached *"can the bases fix these bugs"* — is now tested rather than
+inferred, and the answer it reaches is that the bases write acceptable patches and still do
+not fix the bugs.
+
+## 5. The fork decision (pre-committed rule M7, applied)
+
+> Per candidate, the retry-eligible parse refusals the arm's transcript converts into
+> well-formed or better, against the ceiling the pre-analysis measured, decides the P2 fork.
+> A flat arm means the format-hardening response is exhausted, and the next unit is the
+> roadmap's own named fork — an easier task stratum or a larger base — never a fourth
+> generation-contract change. (`docs/planning/measured-arm-run/prd.md` M7)
+
+- **Conversion happened** — material for the two trigger-eligible candidates, per the
+  breakdown home; the loop-collapse candidate was unconvertible by its own zero ceiling, a
+  per-candidate finding rather than a tie.
+- **The strict-PASS yield across the corpus is zero under the hardened contract** — the P2
+  premise, *training data from strict-PASS rollouts*, has no training data
+  (`docs/ROADMAP.md` § 4 P2). The pivot signal's condition is measured, not inferred.
+- **The decision:** the format-hardening response is exhausted as a yield lever. No fourth
+  generation-contract change follows — the rule forbids it by name. The next unit is the
+  roadmap's named fork: **an easier task stratum or a larger base**
+  (`docs/ROADMAP.md:387-389`), with the P2 pivot signal's own responses — stratify by
+  difficulty, raise *k* — as the next unit's options, chosen on this evidence. The evidence
+  now points one way the previous finding could not: the wall is no longer formatting, so the
+  fork's premise is supported directly rather than by elimination.
+
+## 6. What is not claimed
+
+- That the retries failed — **untrue**: they converted a material share of what they fired
+  on; the measurement of that is the breakdown home.
+- That a base is selected — **untrue**: solved zero under the hardened contract too, so
+  `PREREGISTRATION.md` § 7.3 stays open and no base is chosen.
+- That the arm's measurement is a baseline — **untrue**: the pinned baseline stands unmeasured
+  on the held-out split, which does not exist until P3; `reports/baseline/` is untouched.
+- That a looser verifier follows — **never**: the roadmap forbids it by name, and nothing here
+  touches the reward (`src/whetstone/verify/`, `patch.py`, `attribution.py` stay byte-identical
+  to `origin/master` — the AC2 pins held through the whole unit).
 - That this document carries a figure about a model — **it does not**: the numbers live in the
-  gitignored breakdowns, and a number quoted here would be a second home for itself.
+  two reports and the gitignored breakdown home, and a number quoted here would be a second
+  home for itself.
+- That `PREREGISTRATION.md` moved — **it did not**: R5 forbids an amendment, and § 10.4
+  already disclosed the hardened contract and the two reports' non-comparability.
 
-## 5. Where the evidence lives
+## 7. Where the evidence lives
 
-- The instrument: `src/whetstone/bakeoff/comparison.py` (and its tests under
-  `tests/bakeoff/test_comparison.py`), reusing `preanalysis.py`, the autopsy, and the
-  diff-check validator by identity.
-- The measurements: `runs/format-hardening-preanalysis/{ceiling.json,comparison.json,comparison.md}`
-  and the stored autopsy documents `runs/diff-autopsy/{arm-a,budget-2048}.json` — gitignored,
-  the only home of the numbers. The ceiling the arm will be measured against is the one the
-  runbook's opening block already commits (`runbook.md:8-10`).
-- **The post-run commands run from the primary checkout.** The primary owns the gitignored
-  store, so the breakdown's `--out` must resolve under the primary's `runs/` — run the
-  worktree's tooling with its own project, invoked from the primary root, e.g.
-  `uv run --project <worktree-path> python -m whetstone.bakeoff.comparison …` executed in
-  `/Users/aliz/dev/at/whetstone` (the runbook's post-run section, `runbook.md:112-144`).
+- The run's report: `runs/format-hardening-arm/{report.md,report.json,cost.json}` (gitignored).
+- The evidence: `runs/format-hardening-arm-evidence/{journal.jsonl,transcript.jsonl,attribution.json}`
+  (gitignored); the autopsy document `runs/diff-autopsy/format-hardening-arm-evidence.json`.
+- The breakdown home: `runs/format-hardening-preanalysis/comparison.md` (and
+  `ceiling-with-arm.json`, the extended decisions document; `ceiling.json`, the halt-check
+  document it was measured against) — gitignored, the only home of the numbers.
+- The dead run's quarantine: `runs/format-hardening-arm-evidence-dead-20260812-relative-workspace/`.
+- The published side: `reports/format-hardening/` — rendered by the report door from the
+  journals and contract sidecars by identity, both arms under their own contracts, declared
+  non-comparable.

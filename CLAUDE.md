@@ -262,11 +262,23 @@ This file orients a coding agent working in this repository. Read it first.
 > writer, rendering `reports/format-hardening/` by identity from journals and contract
 > sidecars — only when an arm has run: a missing journal, an unproven control or zero arms is
 > refused by name, never a half-truth render. The finding (`finding.md`) states the measured
-> before in words and records the hold decision. **The arm itself has NOT run.** It is the
-> operator's GPU pass, commanded from the runbook; until it does, `reports/format-hardening/`
-> still holds the declaration rendering aspect 3 committed, and the measured before/after
-> cause breakdown — the slice's deliverable — is unspent. Nothing in this paragraph claims a
-> figure the arm didn't produce.
+> before in words and records the hold decision. **The measured arm has now run and the
+> before/after is measured** (`measured-arm-run`, 2026-08-12; finding at `finding.md`): the
+> retries converted a material share of the retry-eligible parse refusals into well-formed
+> patches for the two trigger-eligible candidates, the loop-collapse candidate was
+> unconvertible by its own zero ceiling, and — the measurement's content — well-formed patches
+> apply but do not solve: no rollout solved a task on the declared set under the hardened
+> contract, so the format-hardening response is exhausted as a yield lever and the roadmap's
+> own named fork (an easier task stratum or a larger base) is the next unit, never a fourth
+> generation-contract change. The run's own report lives at the gitignored
+> `runs/format-hardening-arm/`; the published side is `reports/format-hardening/`, rendered by
+> the report door with both arms declared non-comparable; the classifier counts live in the
+> gitignored breakdown home `runs/format-hardening-preanalysis/comparison.md` and are not
+> restated anywhere else. The run surfaced two corrections, both landed test-first in the
+> unit: the arm's writable paths are now absolute and guarded (a relative workspace had died
+> `UNPROVISIONED`, `HarnessNotProven`, halt condition 1 — evidence quarantined, never
+> deleted), and the runbook's post-run chain now includes the pre-analysis extension step the
+> comparison's per-run decisions assertion requires.
 >
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of

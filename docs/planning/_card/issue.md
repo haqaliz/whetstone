@@ -1,38 +1,35 @@
-# Brief — format-hardening-measurement
+# Card — measured-arm-run
 
-**Source:** inline brief (handoff from `whetstone-next`, 2026-08-09). No GitHub issue exists
-for this slug; the id lives in the branch and PR.
+**Type:** feat · **Branch:** `feat/measured-arm-run/aliz` · **Owner:** aliz
+**Source:** inline brief (handed off by `whetstone-next`, 2026-08-12; no GitHub issue exists for this work)
 
-Complete the unspent code of the `p2-format-hardening` measured-arm aspect (plan
-`docs/planning/p2-format-hardening/measured-arm/plan_20260809.md` Phases 3–4; PRD R5–R6).
-Phase 1's pre-analysis already measured the retry-eligible ceiling (118 retry-eligible, 5
-inferred-truncation, 113 ceiling — gitignored `runs/format-hardening-preanalysis/ceiling.json`)
-and the runbook is written; the operator's GPU arm may or may not have run — build for both.
+## Brief
 
-**Deliverables:**
+Execute the measured format-hardening arm and complete the unspent before/after.
+First: refresh the stale worktree paths in `docs/planning/p2-format-hardening/measured-arm/runbook.md`
+(it names `feat-p2-format-hardening` and `feat-format-hardening-measurement`, which no longer
+exist) and re-verify every flag against `run.py`'s parser. Then the operator runs the arm's
+command from the runbook — `--retries`, the two donor roots, the five declared dev-subset ids,
+journal+transcript in the sibling evidence directory — accepting its halt conditions (uniform
+provisioning failure = harness defect; unstubbed retry prompt = void run; never reuse a
+workspace). Then run the post-run chain from the primary checkout: attribution, autopsy,
+comparison, and `--render-report` into `reports/format-hardening/`, and write the after-finding
+stating per-candidate before/after walls and the P2 fork decision. Acceptance: the evidence
+directory exists with journal+transcript, autopsy shows zero `unrecognised-shape` or a named
+divergence, comparison exits with zero mapping violations, the two-contract report renders with
+both arms' verdict counts and the non-comparability sentence, and the finding is written in the
+same commit that lands any runbook or taxonomy correction it surfaces. A flat before/after is a
+valid, pre-committed, publishable outcome — never a reason to weaken the verifier or the retry
+trigger mapping.
 
-1. A deterministic, stdlib-only comparison module (extend `preanalysis.py` or a sibling, TDD
-   with synthetic autopsy documents first, own no-inference AST walk) that assembles the
-   before/after cause breakdown from autopsy documents and writes only under gitignored roots.
-2. Render `reports/format-hardening/{report.md,report.json,cost.json}` via aspect 3's writer
-   with both arms, both contracts, per-arm token spend, the 113 ceiling, the non-comparability
-   sentence, and a pointer to the gitignored breakdowns — never restating a classifier count.
-3. `docs/planning/p2-format-hardening/measured-arm/finding.md` stating the before/after, the
-   halt/hold decision, and what is not claimed (no raised count predicted, no § 7.3 close, no
-   base selected).
-4. CLAUDE.md status + CHANGELOG updates in the same commit.
+## Grounding files (primary source of truth)
 
-**Acceptance criteria, written first:**
-
-- The comparison module is deterministic over synthetic documents with the fine→coarse mapping
-  asserted (a contradiction is reported, never reconciled) and refuses published paths.
-- The report states the flat-before/after as a valid outcome if that is what the data shows.
-- No figure about a model appears outside `reports/format-hardening/` and gitignored homes.
-- `uv run pytest`, `ruff check .`, `mypy src/`, the one-home guard, and `tests/test_docs.py`
-  all green.
-- `src/whetstone/verify/`, `patch.py`, and `attribution.py` stay byte-identical to
-  `origin/master`.
-
-**Caveat to plan around:** if the arm has not run when work starts, the tooling is verified on
-synthetic fixtures and the real breakdown lands the moment the operator's run produces
-`runs/format-hardening-arm-evidence/transcript.jsonl`.
+- `docs/planning/p2-format-hardening/measured-arm/runbook.md` — the command, halt conditions,
+  expected artifacts, post-run chain, verify steps
+- `docs/planning/p2-format-hardening/measured-arm/finding.md` — the hold decision (§ 3) and
+  where evidence lives (§ 5)
+- `docs/planning/p2-format-hardening/measured-arm/spec.md` (D-arm1..D-arm4) and
+  `plan_20260809.md`
+- `docs/planning/format-hardening-measurement/prd.md` (R-c: pre-committed flat outcome)
+- `docs/ROADMAP.md` § 4 P2 (the fork the arm's measurement decides)
+- `CHANGELOG.md` 0.3.0 / 0.4.0 (what shipped: preanalysis, retries, comparison, report door)

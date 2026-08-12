@@ -9,6 +9,45 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [0.5.0] - 2026-08-12
+
+### Added
+
+- **The measured format-hardening arm ran, and the before/after is measured.** The slice's
+  unspent deliverable (`docs/planning/p2-format-hardening/measured-arm/`) is spent: the
+  operator's GPU pass completed (`--retries`, the two donor roots, the five declared
+  dev-subset ids, evidence in the sibling gitignored directory), the post-run chain ran clean
+  (attribution → autopsy → comparison, zero mapping violations, the trigger mapping asserted
+  by identity over every record), and `reports/format-hardening/` was rendered by the report
+  door with both arms under their own contract fields and the non-comparability sentence. The
+  finding (`finding.md`) records the measurement and the fork decision; no classifier count is
+  restated anywhere outside the gitignored breakdown home
+  (`runs/format-hardening-preanalysis/comparison.md`).
+- **The arm's writable paths are absolute, and a guard holds them there.** The first launch
+  died with `HarnessNotProven`: a relative `--workspace` made every environment build fail
+  (`FileNotFoundError` on `workspace/digest/checkout` — provisioning subprocesses do not share
+  the run's CWD), every rollout `UNPROVISIONED`, zero controls `INTACT` — halt condition 1,
+  the worktrees skill's documented pitfall, hit in the field. The correction landed
+  test-first: `tests/test_runbook_guards.py` now refuses a relative `--out`/`--workspace`/
+  `--journal`/`--transcript` in the runbook's arm command (RED on the shipped runbook, GREEN
+  after), and the runbook commands absolute paths under the primary's `runs/`. The dead run's
+  evidence is quarantined by name, never deleted.
+- **The runbook's post-run chain now includes the pre-analysis extension step.** The
+  comparison asserts the trigger mapping against the pre-analysis document's per-run
+  decisions, and a run without declared decisions is refused by name (exit 2, nothing
+  written) — the stored ceiling document covered only the two stored runs, so the comparison
+  could not run as the runbook first wrote it. The corrected chain re-runs the pre-analysis
+  over all three autopsy documents (`ceiling-with-arm.json`) before the comparison, and the
+  runbook names the step mandatory.
+- **A refreshed runbook, guarded against the parser and against stale worktrees.** The
+  operator sheet now names exactly one worktree everywhere (the previous correction had
+  missed the arm command's CWD line), runs from the primary checkout via `uv run --project`,
+  carries the before-you-run block (mlx extra, empty workspace, machine-level evidence),
+  the killed-run restart procedure (fresh paths, quarantine by name, a `ContractChanged`
+  void is not recovered), and run-time-declared `--recorded-on` values. `tests/test_runbook_guards.py`
+  pins the flag surface to `build_parser` and the single-worktree structure, RED on the
+  pre-refresh runbook and GREEN after.
+
 ## [0.3.0] - 2026-08-09
 
 ### Added
