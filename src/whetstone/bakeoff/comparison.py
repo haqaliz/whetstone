@@ -42,6 +42,15 @@ Zero arms are refused: the committed declaration is not re-rendered by the door,
 half-truth render is refused. `--recorded-on` is declared by the operator, never read from a
 clock; `--breakdown-home` names the gitignored home the report points at, never restates one.
 
+**The stratum-report mode.** `--render-stratum-report` is the door's second mode, for the
+easier-stratum probe's home (`reports/easier-stratum/`). It takes **exactly one**
+`--arm NAME --journal PATH --contract PATH` group — the probe is one run under one contract;
+zero groups is refused with the declaration-not-re-rendered wording, a second group is
+refused by name — and reuses `build_contract_arms` unchanged, so its refusals hold by
+identity. `--stratum-doc` is required and is a pointer, never parsed; the render is
+`report.build_stratum_report`/`write_stratum_report` by identity. The two modes are mutually
+exclusive in effect: exactly one runs, and both flags together is a refused invocation.
+
 **The run keys.** A run is keyed by its autopsy document's path stem (`arm-a` for
 `…/arm-a.json`, the pre-analysis precedent) and matched to a journal by the journal's parent
 directory's name (`arm-a` for `…/arm-a/journal.jsonl`) — the stored corpus names its journals
@@ -81,8 +90,10 @@ from whetstone.bakeoff.report import (
     ContractArm,
     GenerationContract,
     build_contract_comparison,
+    build_stratum_report,
     tally,
     write_comparison,
+    write_stratum_report,
 )
 from whetstone.bakeoff.scoring import Rollout
 
@@ -963,6 +974,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     `--breakdown-home` / `--out` is refused as exit 2 — the committed declaration is not
     re-rendered by the door, and a half-truth render is refused. `--recorded-on` is
     declared by the operator, never read from a clock.
+
+    **The stratum-report door** (`--render-stratum-report --arm NAME --journal PATH
+    --contract PATH --stratum-doc PATH --breakdown-home STR --recorded-on DATE --out DIR`):
+    the probe's one arm into `reports/easier-stratum/`'s shape via
+    `report.build_stratum_report`/`write_stratum_report` by identity. Exactly one arm
+    group is accepted (zero refused with the declaration-not-re-rendered wording, two
+    refused by name); `--stratum-doc` is required as a pointer, never parsed; every other
+    refusal is exit 2 with the reason named, and nothing is written by a refused
+    invocation. The two report modes are mutually exclusive in effect: both flags
+    together is a refused invocation.
     """
     parser = argparse.ArgumentParser(
         prog="python -m whetstone.bakeoff.comparison",
@@ -971,7 +992,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "and the pre-analysis ceiling document, per run per candidate, with the trigger "
             "mapping asserted against the pre-analysis document's decisions. Report door "
             "(--render-report): journals and contract sidecars into the two-contract report "
-            "via the shipped writer. Offline: no model is loaded and no network is touched."
+            "via the shipped writer. Stratum-report door (--render-stratum-report): one "
+            "journal and contract sidecar into the easier-stratum report via the shipped "
+            "writer. Offline: no model is loaded and no network is touched."
         ),
     )
     parser.add_argument(
@@ -980,10 +1003,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="the report door: journals and contract sidecars into the two-contract report",
     )
     parser.add_argument(
+        "--render-stratum-report",
+        action="store_true",
+        help="the stratum-report door: one journal and contract sidecar into the "
+        "easier-stratum report",
+    )
+    parser.add_argument(
         "--arm",
         action="append",
         type=str,
-        help="an arm's name (render-report; repeatable, one per --journal/--contract group)",
+        help=(
+            "an arm's name (render-report / render-stratum-report; repeatable, one per "
+            "--journal/--contract group)"
+        ),
     )
     parser.add_argument(
         "--journal",
@@ -991,24 +1023,41 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help=(
             "a run's journal file (breakdown: repeatable, keyed by the parent directory's "
-            "name; render-report: one per arm)"
+            "name; render-report / render-stratum-report: one per arm)"
         ),
     )
     parser.add_argument(
         "--contract",
         action="append",
         type=Path,
-        help="an arm's contract sidecar (render-report; repeatable, one per --arm)",
+        help=(
+            "an arm's contract sidecar (render-report / render-stratum-report; repeatable, "
+            "one per --arm)"
+        ),
+    )
+    parser.add_argument(
+        "--stratum-doc",
+        type=str,
+        help=(
+            "the committed stratum document the probe scored, as a pointer — never parsed "
+            "(render-stratum-report)"
+        ),
     )
     parser.add_argument(
         "--breakdown-home",
         type=str,
-        help="the gitignored home of the classifier counts the report points at (render-report)",
+        help=(
+            "the gitignored home of the classifier counts the report points at "
+            "(render-report / render-stratum-report)"
+        ),
     )
     parser.add_argument(
         "--recorded-on",
         type=str,
-        help="the date the render is recorded under, declared by the operator (render-report)",
+        help=(
+            "the date the render is recorded under, declared by the operator "
+            "(render-report / render-stratum-report)"
+        ),
     )
     parser.add_argument(
         "--autopsy",
@@ -1022,13 +1071,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="the whetstone-preanalysis/1 ceiling document (breakdown)",
     )
     parser.add_argument(
-        "--out", type=Path, help="where the document is written (breakdown) or the directory "
-        "the three artifacts are rendered into (render-report)"
+        "--out",
+        type=Path,
+        help=(
+            "where the document is written (breakdown) or the directory the three artifacts "
+            "are rendered into (render-report / render-stratum-report)"
+        ),
     )
     namespace = parser.parse_args(argv)
 
+    if namespace.render_report and namespace.render_stratum_report:
+        print(
+            "whetstone comparison: --render-report and --render-stratum-report are mutually "
+            "exclusive — exactly one mode runs per invocation",
+            file=sys.stderr,
+        )
+        return 2
     if namespace.render_report:
         return _render_report_main(namespace)
+    if namespace.render_stratum_report:
+        return _render_stratum_report_main(namespace)
     return _breakdown_main(namespace)
 
 
@@ -1146,6 +1208,80 @@ def _render_report_main(namespace: argparse.Namespace) -> int:
     return 0
 
 
+def _render_stratum_report_main(namespace: argparse.Namespace) -> int:
+    """The stratum-report door's invocation handling: the shape checks, then the one arm.
+
+    Refusals in fixed order, each exit 2 with the reason named: zero arm groups (the
+    committed declaration is not re-rendered by the door, and a half-truth render is
+    refused); arm groups that do not line up (every arm needs exactly one journal and one
+    contract); more than one group (the probe is one run under one contract, so a second
+    group would be a second measurement shape, not this report's); missing
+    `--stratum-doc` (the changed-task-set claim must be checkable in the document — a
+    pointer, never parsed); missing `--breakdown-home`; missing `--recorded-on`; missing
+    `--out`; then the arm's own refusals inside `build_contract_arms`, unchanged. Nothing
+    is written by a refused invocation.
+    """
+    try:
+        names = list(namespace.arm or [])
+        journals = list(namespace.journal or [])
+        contracts = list(namespace.contract or [])
+        if not names:
+            raise _UsageError(
+                "no arms given: the committed declaration is not re-rendered by the door, "
+                "and a half-truth render is refused. Pass exactly one --arm NAME --journal "
+                "PATH --contract PATH group"
+            )
+        if not (len(names) == len(journals) == len(contracts)):
+            raise _UsageError(
+                f"the arm groups do not line up: {len(names)} arm names, {len(journals)} "
+                f"journals, {len(contracts)} contracts — every arm needs exactly one "
+                "journal and one contract sidecar"
+            )
+        if len(names) > 1:
+            raise _UsageError(
+                f"the stratum report takes exactly one arm group: {len(names)} were given. "
+                "The probe is one run under one contract, so a second group would be a "
+                "second measurement shape, not this report's"
+            )
+        if namespace.stratum_doc is None:
+            raise _UsageError(
+                "--stratum-doc is required: the render points at the committed stratum "
+                "document the probe scored, and never restates one of its counts"
+            )
+        if namespace.breakdown_home is None:
+            raise _UsageError(
+                "--breakdown-home is required: the render points at the gitignored home of "
+                "the classifier counts, and never restates one"
+            )
+        if namespace.recorded_on is None:
+            raise _UsageError(
+                "--recorded-on is required: the operator declares the date the render is "
+                "recorded under, never the clock"
+            )
+        if namespace.out is None:
+            raise _UsageError(
+                "--out is required: the directory the three artifacts are written into"
+            )
+        arms = build_contract_arms(tuple(zip(names, journals, contracts, strict=True)))
+        arm = arms[0]
+        document = build_stratum_report(
+            tallies=arm.tallies,
+            contract=arm.contract,
+            stratum_doc=namespace.stratum_doc,
+            breakdown_home=namespace.breakdown_home,
+            recorded_on=namespace.recorded_on,
+            generation_seconds=arm.generation_seconds,
+        )
+        written = write_stratum_report(document, into=namespace.out)
+    except _UsageError as exc:
+        print(f"whetstone comparison: {exc}", file=sys.stderr)
+        return 2
+
+    for path in written:
+        print(f"wrote {path}")
+    return 0
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
 
@@ -1161,6 +1297,7 @@ __all__ = [
     "build_contract_arms",
     "build_contract_comparison",
     "build_document",
+    "build_stratum_report",
     "is_inferred_truncation",
     "main",
     "refuse_published_out",
@@ -1169,4 +1306,5 @@ __all__ = [
     "tally",
     "trigger_of_cause",
     "write_comparison",
+    "write_stratum_report",
 ]

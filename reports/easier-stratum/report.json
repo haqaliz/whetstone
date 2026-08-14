@@ -1,0 +1,10 @@
+{
+  "breakdown_home": "runs/easier-stratum-arm/",
+  "generation_contract": null,
+  "measurement": "easier-stratum probe; a changed task set under the hardened contract, declared non-comparable (PREREGISTRATION.md \u00a7 10.5); not the pinned baseline of PREREGISTRATION.md:126-128",
+  "non_comparable": true,
+  "per_candidate": null,
+  "recorded_on": "2026-08-14",
+  "schema": "whetstone-stratum-report/1",
+  "stratum_doc": "tasks/stratum/easier.json"
+}

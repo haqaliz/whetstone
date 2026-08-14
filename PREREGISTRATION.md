@@ -311,6 +311,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-08-01 | On one public instance, § 4's contamination signature is undetectable (§ 10.2) | 2 — adds a disclosure | No |
 | 2026-08-04 | Donor names replaced by stable pseudonyms throughout; the redaction disclosed (§ 10.3) | 2 — adds a disclosure | No |
 | 2026-08-09 | The format-hardening contract is a second, non-comparable generation contract; its report has its own home (§ 10.4) | 2 — adds a disclosure | No |
+| 2026-08-14 | The easier-stratum probe scores a changed task set under the hardened contract; its report has its own non-comparable home (§ 10.5) | 2 — adds a disclosure | No |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. §§ 7.1, 7.2 and 7.3
@@ -434,3 +435,30 @@ differ in an unpinned input, the generation contract. `reports/baseline/` and
 of its own figures, and neither is a second home for the other's. The baseline's artifacts are
 static and are not regenerated. At the time of this amendment no count has been measured under
 the hardened contract, and none is claimed here.
+
+### 10.5 The easier-stratum probe scores a changed task set, declared non-comparable — 2026-08-14
+
+**Type 2 (§ 8.2): a disclosure, added.** It closes no open item, sets no threshold, and
+rewords nothing in § 1, § 4, or § 6.
+
+**The disclosure.** The format-hardening arm's pre-committed fork rule names an easier task
+stratum as the next unit (`docs/planning/p2-format-hardening/measured-arm/finding.md` § 5).
+The easier-stratum probe re-tests the P2 premise — that strict-PASS training data exists —
+on a difficulty stratum of the declared source-B set, selected by a pre-committed rule and
+declared in a committed stratum document before the probe runs. The probe runs the hardened
+generation contract § 10.4 discloses, on the stratum's tasks.
+
+**The three reports are declared non-comparable.** § 3 pins five inputs — model revision,
+task set, environment pins, seeds, and tool versions — and treats a change to any of them
+as invalidating a series. The task set is a different one here: the probe measures a new
+series, not an extension of an old one, and a figure from it may not be compared with one
+from `reports/baseline/` — a different task set and a different contract — or with one from
+`reports/format-hardening/` — a different task set under the same contract.
+`reports/easier-stratum/` is therefore the only home of the probe's figures, and the
+existing homes' artifacts are static and are not regenerated.
+
+**What the probe is not.** The probe is a yield test: it measures whether training data
+exists on the easier stratum, under the fork rule pre-committed in its PRD. It is not the
+pinned baseline of § 3 (`:126-128`), which stands unmeasured and may still be measured
+exactly once; it is not the held-out split of § 7.1, which remains open until P3. At the
+time of this amendment no count has been measured under the probe, and none is claimed here.

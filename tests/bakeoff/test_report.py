@@ -49,8 +49,10 @@ from whetstone.bakeoff.report import (
     MissingSource,
     Provenance,
     ScoredDevSubset,
+    StratumReport,
     build_contract_comparison,
     build_report,
+    build_stratum_report,
     funnel_from_ledger,
     tally,
     write,
@@ -1174,6 +1176,36 @@ def _comparison_document(arms: Sequence[ContractArm] = _comparison_arms()) -> Co
     )
 
 
+def _stratum_document() -> StratumReport:
+    """The rendered stratum document for the synthetic probe tallies, and its sidecars.
+
+    The synthetic tallies' denominators (37 and 41) are chosen to collide with nothing in
+    the six existing artifacts — their own denominators are 1, 62, 63, 64, 189, 299 and
+    300 — so the disjointness guard holds by construction, exactly like
+    `_comparison_arms`' denominator 11.
+    """
+    return build_stratum_report(
+        tallies=(
+            tally("one", _records("one", [Outcome.SOLVED] * 5 + [Outcome.NOT_SOLVED] * 32)),
+            tally(
+                "two",
+                _records(
+                    "two",
+                    [Outcome.SOLVED] * 7
+                    + [Outcome.OUT_OF_SCOPE] * 3
+                    + [Outcome.NO_DIFF] * 5
+                    + [Outcome.NOT_SOLVED] * 26,
+                ),
+            ),
+        ),
+        contract=CONTRACT,
+        stratum_doc="tasks/stratum/easier.json",
+        breakdown_home="runs/easier-stratum-arm/",
+        recorded_on=RECORDED_ON,
+        generation_seconds=333.0,
+    )
+
+
 def test_a_two_contract_report_renders_both_contracts_fields_distinctly() -> None:
     """Each arm's figures sit under that arm's own contract fields — the pair is the point.
 
@@ -1281,6 +1313,74 @@ def test_the_two_contract_report_restates_no_baseline_figure() -> None:
     )
 
 
+def test_the_stratum_report_restates_no_figure_from_an_existing_home() -> None:
+    """*(adversarial)* No rendered stratum figure lives in any of the six existing artifacts.
+
+    The changed-task-set home joins the guard on the same rule the earlier homes joined it
+    on, asserted the strongest way available: every `N of M` figure the synthetic stratum
+    document renders is disjoint from every `N of M` figure the six committed artifacts
+    render (`reports/baseline/` and `reports/format-hardening/`, each report.md,
+    report.json and cost.json). A figure that appears in both is a figure with two homes,
+    which is exactly how two disagreeing numbers come to exist.
+    """
+    document = _stratum_document()
+    written = " ".join((document.markdown, document.payload, document.cost))
+    figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", written)}
+    assert figures, (
+        "WHY THIS IS A FAILURE: the stratum document renders no figures at all, so this "
+        "test's disjointness assertion would pass vacuously over an empty document"
+    )
+    existing_figures: set[tuple[str, str]] = set()
+    for directory in ("baseline", "format-hardening"):
+        for name in ("report.md", "report.json", "cost.json"):
+            artifact = (REPO_ROOT / "reports" / directory / name).read_text(encoding="utf-8")
+            existing_figures |= {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", artifact)}
+    assert existing_figures, (
+        "WHY THIS IS A FAILURE: none of the six committed artifacts renders an `N of M` "
+        "figure, so the disjointness guard has nothing to guard against"
+    )
+    overlap = figures & existing_figures
+    assert not overlap, (
+        f"WHY THIS IS A FAILURE: the stratum document restates {overlap}, which already "
+        "lives in one of the six existing artifacts. A figure quoted twice is a figure "
+        "that can disagree with itself, and the one-home rule exists so that cannot happen"
+    )
+
+
+def test_the_stratum_disjointness_guard_catches_a_planted_overlap() -> None:
+    """*(adversarial)* The guard above can see a planted collision.
+
+    The synthetic fixture's denominators (37 and 41) are disjoint from every committed
+    artifact by construction; a planted tally over denominator 63 — one the baseline
+    report actually renders — must be found by the same scan. A collision the guard
+    cannot see is a figure with two homes.
+    """
+    planted = build_stratum_report(
+        tallies=(
+            tally(
+                "planted", _records("planted", [Outcome.SOLVED] + [Outcome.NOT_SOLVED] * 62)
+            ),
+        ),
+        contract=CONTRACT,
+        stratum_doc="tasks/stratum/easier.json",
+        breakdown_home="runs/easier-stratum-arm/",
+        recorded_on=RECORDED_ON,
+    )
+    written = " ".join((planted.markdown, planted.payload, planted.cost))
+    figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", written)}
+    assert ("1", "63") in figures, (
+        "WHY THIS IS A FAILURE: the planted tally over denominator 63 did not render "
+        "`1 of 63`, so the planted-overlap control is not testing what it claims"
+    )
+    baseline = (REPO_ROOT / "reports" / "baseline" / "report.md").read_text(encoding="utf-8")
+    baseline_figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", baseline)}
+    assert figures & baseline_figures, (
+        "WHY THIS IS A FAILURE: the planted `1 of 63` / `0 of 63` figures were not found "
+        "by the disjointness scan. A collision the guard cannot see is a figure with two "
+        "homes"
+    )
+
+
 def test_a_second_contract_report_with_no_measured_arm_states_so() -> None:
     """The committed state of the directory: declared, not yet measured, and holding no figure.
 
@@ -1370,6 +1470,17 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
     two-homes failure the paragraph above refuses, and a silent list extension remains refused —
     the permission is the argument, in this docstring.
 
+    **The guard moved a third time when the easier-stratum probe's home landed, and only on
+    the changed-task-set argument.** The task set is one of the five pinned inputs
+    (`PREREGISTRATION.md:131-132`), and a change to any pinned input invalidates the series
+    and starts a new one (`PREREGISTRATION.md:133-135`). The probe scores a **different task
+    set** — a pre-committed difficulty stratum of the declared source-B set — under the same
+    hardened contract, so its figures are a new series, declared non-comparable to both
+    existing homes (`PREREGISTRATION.md` § 10.5): the baseline's figures live in
+    `reports/baseline/`, the hardened arm's in `reports/format-hardening/`, and the probe's
+    in `reports/easier-stratum/` — each the only home of its own. A silent list extension
+    remains refused: the permission is the argument, in this docstring.
+
     `reports/local/` is excluded because `.gitignore` reserves it for the user's own nightly
     output, which is their data and never ours to assert on.
 
@@ -1386,16 +1497,21 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
         "reports/baseline/cost.json",
         "reports/baseline/report.json",
         "reports/baseline/report.md",
+        "reports/easier-stratum/cost.json",
+        "reports/easier-stratum/report.json",
+        "reports/easier-stratum/report.md",
         "reports/format-hardening/cost.json",
         "reports/format-hardening/report.json",
         "reports/format-hardening/report.md",
     ], (
-        f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts and the "
-        "format-hardening arm's three are the sanctioned homes for a figure — each directory "
-        "its own, on the D6 argument that the two measure different generation contracts and "
-        "are declared non-comparable. A file missing means the report is incomplete; a file "
-        "extra means there is a second place a figure can live, and the next reader has no way "
-        "to tell which of two disagreeing numbers is the real one"
+        f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts, the "
+        "format-hardening arm's three and the easier-stratum probe's three are the sanctioned "
+        "homes for a figure — each directory its own, on the D6 argument that the two "
+        "contracts differ and the changed-task-set argument that the probe scores a "
+        "different task set (`PREREGISTRATION.md` § 10.5), all declared non-comparable. A "
+        "file missing means the report is incomplete; a file extra means there is a second "
+        "place a figure can live, and the next reader has no way to tell which of two "
+        "disagreeing numbers is the real one"
     )
     # Flattened, because the sentence wraps inside a blockquote and a guard that a re-wrap could
     # silence is a guard that stops describing the document without anybody noticing —

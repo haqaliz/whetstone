@@ -73,6 +73,14 @@ from whetstone.bakeoff.retry import RETRY_BUDGET, Retry, retry_prompt, retry_tem
 from whetstone.bakeoff.scoring import Interpreters, Rollout
 from whetstone.bakeoff.selection import Contender
 from whetstone.bakeoff.sources import oracle_sources
+from whetstone.bakeoff.stratum import (
+    EmptyStratum,
+    StratumDigestMismatch,
+    StratumSchemaError,
+    UnknownStratumId,
+    include_stratum,
+    read_document,
+)
 from whetstone.bakeoff.sweep import Sweep, rankable, sweep
 from whetstone.bakeoff.transcript import RecordingGenerator, Transcript
 from whetstone.bakeoff.weights import Weights, load_weights
@@ -497,6 +505,7 @@ def conduct(
     timeout: float,
     recorded_on: str,
     dev_subset: Sequence[str] = (),
+    stratum: Path | None = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     only: Sequence[str] = (),
     probe: int | None = None,
@@ -533,13 +542,53 @@ def conduct(
     loop composes the budgeted retry wrapper. A retry is never composed without a transcript — the
     wrapper writes the per-attempt records itself, and `--transcript` is the operator's choice —
     so `retries` on a transcript-less run is still today's run, with the same composition.
+
+    `stratum` is the easier-stratum probe's pinned input (PRD M3): a committed
+    `whetstone-stratum/1` document whose membership the run is restricted to. The document is
+    **consumed, never recomputed** — a task set changed by the stratum is a new series — and
+    the loader is aspect 1's, by identity. The filter runs at the partition seam, before the
+    contract is frozen, so both audit trails cover the subset automatically: `freeze` digests
+    the posed prompts of the tasks it is handed, and `Conducted.scored` is derived from the
+    sweeps over the filtered sets. The dev-subset overlay is unchanged and applies **on top**
+    (PRD M3: dev ∩ stratum is exclusion, never a refusal), and an empty scored private set
+    after the overlay is refused **before** `freeze` — `MissingSource` would fire only after
+    the night is spent (report.py:488-493). Absent, the run is today's run, byte for byte —
+    the no-retries precedent (spec AC 10).
     """
     _refuse_published_transcript(transcript, out)
     os.environ[HF_HUB_OFFLINE] = "1"
 
+    private_root_tasks = load_task_roots(tasks)
+    stratum_clause = ""
+    if stratum is not None:
+        try:
+            loaded = read_document(stratum)
+        except ValueError as exc:
+            if isinstance(
+                exc, (StratumSchemaError, StratumDigestMismatch, EmptyStratum, UnknownStratumId)
+            ):
+                raise
+            raise StratumSchemaError(
+                f"the stratum document {str(stratum)!r} could not be read as a run input: "
+                f"{exc}. A document that half-parses selects a membership the run cannot "
+                "attribute, and a pinned input that cannot be read is refused rather than "
+                "defaulted"
+            ) from exc
+        private_root_tasks = include_stratum(loaded.membership, private_root_tasks)
+        stratum_clause = (
+            f"selected by the committed stratum at {stratum!s} (membership "
+            f"{len(loaded.membership)}); "
+        )
     private_tasks, public_tasks, declared = _partition(
-        load_task_roots(tasks), load_tasks(public), dev_subset
+        private_root_tasks, load_tasks(public), dev_subset
     )
+    if stratum is not None and not private_tasks:
+        raise EmptyStratum(
+            f"the stratum document {str(stratum)!r} left no private task to score: every "
+            "member of its membership was removed by the dev-subset overlay. The night would "
+            "be spent scoring source A alone and `MissingSource` would refuse the report only "
+            "after it — refused here, before the contract is frozen or anything is generated"
+        )
     contract = freeze((*private_tasks, *public_tasks), pool=pool, retry=retries)
     fetched = select_candidates(load_weights(weights), only)
 
@@ -640,7 +689,8 @@ def conduct(
                 # `tasks/recipes/`, which is the committed half built for exactly that.
                 f"source B: {len(private_tasks)} tasks from {len(tasks)} declared corpus "
                 f"{'directory' if len(tasks) == 1 else 'directories'} (labelled in "
-                f"tasks/recipes/); source A: {len(public_tasks)} from {public}. Declared and "
+                f"tasks/recipes/); {stratum_clause}source A: {len(public_tasks)} from "
+                f"{public}. Declared and "
                 "hash-recorded, and deliberately NOT called held out (PRD D4): "
                 "PREREGISTRATION.md § 7.1 leaves that split open and unspent"
             ),
@@ -780,6 +830,18 @@ def build_parser() -> argparse.ArgumentParser:
         "refused, because it would exclude nothing while the report said it had.",
     )
     parser.add_argument(
+        "--stratum",
+        type=Path,
+        help="the committed stratum document (schema whetstone-stratum/1) naming the source-B "
+        "membership this run is restricted to (PRD M3). The document is a pinned input — "
+        "consumed, never recomputed — and the loader refuses by name: an unknown schema, an "
+        "unknown field, a rule or document digest that no longer matches, a membership id "
+        "matching no loaded private task, a duplicated membership, a member the rule refused, "
+        "or a degenerate membership (empty, whole corpus, or empty after the dev-subset "
+        "overlay). Source A is still scored in full; both sources always publish together. "
+        "Off by default: without the flag the run is today's run, byte for byte.",
+    )
+    parser.add_argument(
         "--max-tokens",
         type=_positive,
         default=DEFAULT_MAX_TOKENS,
@@ -866,6 +928,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             timeout=arguments.timeout,
             recorded_on=arguments.recorded_on,
             dev_subset=arguments.dev_subset,
+            stratum=arguments.stratum,
             max_tokens=arguments.max_tokens,
             only=arguments.only,
             probe=arguments.probe,
@@ -873,7 +936,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             transcript=arguments.transcript,
             retries=arguments.retries,
         )
-    except (TranscriptNotPrivate, UnknownCandidate) as refusal:
+    except (
+        TranscriptNotPrivate,
+        UnknownCandidate,
+        StratumSchemaError,
+        StratumDigestMismatch,
+        EmptyStratum,
+        UnknownStratumId,
+    ) as refusal:
         parser.error(str(refusal))
     for cost in conducted.costs:
         print(

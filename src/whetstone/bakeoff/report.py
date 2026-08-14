@@ -687,6 +687,210 @@ def write_comparison(document: ContractComparison, into: Path) -> tuple[Path, Pa
     return (markdown, sidecar, cost)
 
 
+#: The machine-readable schema of the easier-stratum report sidecar.
+STRATUM_REPORT_SCHEMA = "whetstone-stratum-report/1"
+
+
+@dataclass(frozen=True)
+class StratumReport:
+    """The easier-stratum probe's document and its sidecars, before either touches a disk.
+
+    The same three-string shape as `ContractComparison`, so the directory's committed layout
+    — report.md, report.json, cost.json — mirrors the existing homes' and a reader learns one
+    layout for all of them.
+    """
+
+    #: The committed document.
+    markdown: str
+
+    #: The machine-readable sidecar.
+    payload: str
+
+    #: The measured cost sidecar, as text so the bytes are the artefact.
+    cost: str
+
+
+def build_stratum_report(
+    *,
+    tallies: Sequence[Tally],
+    contract: GenerationContract | None,
+    stratum_doc: str,
+    breakdown_home: str,
+    recorded_on: str,
+    generation_seconds: float | None = None,
+) -> StratumReport:
+    """Render the easier-stratum probe's document: one contract, a changed task set.
+
+    The probe's report, for `reports/easier-stratum/`. The probe scores a **different task
+    set** — a pre-committed difficulty stratum of the declared source-B set — under the
+    same hardened contract, and the task set is one of the five pinned inputs
+    (`PREREGISTRATION.md:131-132`), so its figures are a new series, declared
+    non-comparable to both existing homes (`PREREGISTRATION.md` § 10.5). The document
+    states that ground, renders the sidecar's contract fields beside the per-candidate
+    table (the same eight rows as the other homes), discloses the probe's token spend, and
+    points at the committed stratum document and the gitignored breakdown home — never
+    restating a count from either (`finding.md:89-92`). With no tallies the document is the
+    declaration: the home's ground, the three-homes non-comparability, and no count —
+    the state of the committed artifacts before the probe runs.
+
+    A pure function of its inputs, like the other writers: no clock is read, no ledger is
+    opened, and every mapping is serialised in a fixed order, so the same inputs produce
+    byte-identical output. `recorded_on` is declared by the operator, never read from the
+    clock; `stratum_doc` and `breakdown_home` are pointer strings, never parsed.
+    """
+    if tallies and contract is None:
+        raise ValueError(
+            "a stratum report with tallies needs the contract they were measured under: "
+            "a count without the contract that produced it is a figure that cannot be "
+            "told apart from any other"
+        )
+    lines = [
+        "# The easier-stratum probe — a changed task set, declared non-comparable",
+        "",
+        "This document reports the easier-stratum probe: the declared source-B set scored "
+        "under the hardened generation contract § 10.4 discloses, restricted to the "
+        "pre-committed difficulty stratum declared in the stratum document this report "
+        "points at below. The stratum's tasks are a **different task set** than the one "
+        "either existing home measured, and the task set is one of the five pinned inputs "
+        "(`PREREGISTRATION.md:131-132`) — a change to a pinned input invalidates a series "
+        "and starts a new one (`PREREGISTRATION.md:133-135`) — so the probe's figures are "
+        "a **new series**, declared non-comparable to both existing homes "
+        "(`PREREGISTRATION.md` § 10.5): `reports/baseline/` remains the only home of the "
+        "baseline's figures, `reports/format-hardening/` the only home of the hardened "
+        "arm's, and this directory the only home of the probe's — neither is a competing "
+        "home for the same figure.",
+        "",
+        _NON_COMPARABILITY,
+        "",
+        "The probe is a yield test: it measures whether strict-PASS training data exists "
+        "on the stratum. It is not the pinned baseline of `PREREGISTRATION.md:126-128`, "
+        "which stands unmeasured and may still be measured exactly once, and it is not "
+        "the held-out split of § 7.1, which remains open until P3.",
+        "",
+    ]
+    if not tallies:
+        lines += [
+            "**No count is measured here: the probe has not run.** Per-candidate verdict "
+            "counts, the contract's fields and the probe's token spend are rendered into "
+            "this directory by the report door after the probe runs. Until then this "
+            "document holds no figure of its own and restates none from "
+            "`reports/baseline/` or `reports/format-hardening/`.",
+            "",
+        ]
+    else:
+        if contract is None:
+            raise ValueError(
+                "a stratum report with tallies needs the contract they were measured "
+                "under: a count without the contract that produced it is a figure that "
+                "cannot be told apart from any other"
+            )
+        names = [counts.candidate for counts in tallies]
+        columns = " | ".join(f"`{name}`" for name in names)
+        rule = "|".join(["---"] * (len(names) + 1))
+        lines += [
+            "## The stratum",
+            "",
+            f"**The contract.** {_contract_fields(contract)}.",
+            "",
+            f"| Figure | {columns} |",
+            f"|{rule}|",
+            _row("solved", tallies, lambda one: one.solved),
+            _row("coverage", tallies, lambda one: one.covered),
+            _row("unverified", tallies, lambda one: one.unverified),
+            _row("N", tallies, lambda one: one.weaker_wins),
+            _row("no diff", tallies, lambda one: one.no_diff),
+            _row("patch apply", tallies, lambda one: one.not_applied),
+            _row("patch scope", tallies, lambda one: one.out_of_scope),
+            _row("not solved", tallies, lambda one: one.not_solved),
+            "",
+            "These counts are stated under the contract's fields above: a count and the "
+            "contract that produced it belong together. `N` is the harness's own "
+            "WEAK-PASS/STRICT-FAIL differential (`PREREGISTRATION.md:96-100`). The `N of "
+            "M` cells are counted over the probe's own denominator — the harness's "
+            "per-candidate denominator, which for a complete probe equals the stratum's "
+            "declared size less the dev-subset exclusions. The stratum document's "
+            "declared membership is pointed at below, never restated.",
+            "",
+        ]
+        if generation_seconds is not None:
+            lines.append(
+                f"**Token spend.** Generation {generation_seconds:.1f} seconds, summed "
+                "over the probe's rollouts from the run's own cost records."
+            )
+        else:
+            lines.append("**Token spend.** Not measured.")
+        lines.append("")
+    lines += [
+        f"**The stratum document.** The pre-committed difficulty stratum this probe "
+        f"scores is declared in `{stratum_doc}` — its rule digest and its membership — "
+        "and the probe's runbook names it before anything runs. This document points at "
+        "it and never restates a count from it, so the stratum's membership has exactly "
+        "one home.",
+        "",
+        f"**The breakdowns.** The classifier counts behind these figures live in the "
+        f"gitignored home `{breakdown_home}`; this document points at them and never "
+        "restates them, so a classifier count has exactly one home.",
+        "",
+        f"Recorded on {recorded_on} (declared by the operator, never read from a clock).",
+    ]
+    return StratumReport(
+        markdown="\n".join(lines),
+        payload=_stratum_payload(tallies, contract, stratum_doc, breakdown_home, recorded_on),
+        cost=_stratum_cost(generation_seconds),
+    )
+
+
+def write_stratum_report(document: StratumReport, into: Path) -> tuple[Path, Path, Path]:
+    """Write the stratum report's three artifacts into `into`, and nothing anywhere else.
+
+    The same layout as every other home — report.md, report.json, cost.json — so a reader
+    learns one shape for all of them. Returns the paths so a caller can assert on what was
+    produced rather than reconstruct the names.
+    """
+    into.mkdir(parents=True, exist_ok=True)
+    markdown = into / "report.md"
+    sidecar = into / "report.json"
+    cost = into / "cost.json"
+    markdown.write_text(document.markdown, encoding="utf-8")
+    sidecar.write_text(document.payload, encoding="utf-8")
+    cost.write_text(document.cost, encoding="utf-8")
+    return (markdown, sidecar, cost)
+
+
+def _stratum_payload(
+    tallies: Sequence[Tally],
+    contract: GenerationContract | None,
+    stratum_doc: str,
+    breakdown_home: str,
+    recorded_on: str,
+) -> str:
+    """The stratum report's machine-readable sidecar. Sorted keys, fixed order, no clock."""
+    body: dict[str, Any] = {
+        "schema": STRATUM_REPORT_SCHEMA,
+        "measurement": (
+            "easier-stratum probe; a changed task set under the hardened contract, "
+            "declared non-comparable (PREREGISTRATION.md § 10.5); not the pinned baseline "
+            "of PREREGISTRATION.md:126-128"
+        ),
+        "non_comparable": True,
+        "stratum_doc": stratum_doc,
+        "breakdown_home": breakdown_home,
+        "recorded_on": recorded_on,
+        "generation_contract": None if contract is None else _contract_block(contract),
+        "per_candidate": None if not tallies else [_counts(one) for one in tallies],
+    }
+    return json.dumps(body, indent=2, sort_keys=True) + "\n"
+
+
+def _stratum_cost(generation_seconds: float | None) -> str:
+    """The stratum report's cost sidecar: the probe's measured spend, or `None` if not measured."""
+    body: dict[str, Any] = {
+        "kind": "stratum-report",
+        "generation_seconds": generation_seconds,
+    }
+    return json.dumps(body, indent=2, sort_keys=True) + "\n"
+
+
 def _comparison_payload(
     arms: Sequence[ContractArm], breakdown_home: str, recorded_on: str
 ) -> str:
@@ -1118,6 +1322,7 @@ def _counts(counts: Tally) -> dict[str, Any]:
 
 
 __all__ = [
+    "STRATUM_REPORT_SCHEMA",
     "ContractArm",
     "ContractComparison",
     "Entrant",
@@ -1128,11 +1333,14 @@ __all__ = [
     "Provenance",
     "Report",
     "ScoredDevSubset",
+    "StratumReport",
     "Tally",
     "build_contract_comparison",
     "build_report",
+    "build_stratum_report",
     "funnel_from_ledger",
     "tally",
     "write",
     "write_comparison",
+    "write_stratum_report",
 ]

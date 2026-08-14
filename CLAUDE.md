@@ -218,7 +218,7 @@ This file orients a coding agent working in this repository. Read it first.
 > fields, the non-comparability sentence, per-arm token-spend disclosure, and a pointer to the
 > gitignored breakdown home — never restating a classifier count (`finding.md:89-92`). **The
 > one-home guard moved a second time, only on the D6 argument in both docstrings** (the file list
-> in `test_report.py:961`'s copy and its opposite-sign twin in `test_transcript_locality.py:73-101`):
+> in `test_report.py:1453`'s copy and its opposite-sign twin in `test_transcript_locality.py:73-119`):
 > the two directories measure different generation contracts and are declared non-comparable, so
 > neither is a competing home for the same figure; a silent list extension is refused. The
 > committed artifacts in the new directory are the declaration — no count, no arm, no figure
@@ -279,6 +279,104 @@ This file orients a coding agent working in this repository. Read it first.
 > `UNPROVISIONED`, `HarnessNotProven`, halt condition 1 — evidence quarantined, never
 > deleted), and the runbook's post-run chain now includes the pre-analysis extension step the
 > comparison's per-run decisions assertion requires.
+>
+> **The easier-stratum unit's first aspect — the difficulty axis and the committed stratum —
+> is done** (`docs/planning/p2-easier-stratum/`; spec at `difficulty-axis/spec.md`, plan at
+> `difficulty-axis/plan_20260814.md`). The fork's first arm needs a subset of the declared
+> source-B set that is *easier*, fixed before any rollout, and this is that selection, a
+> priori and in code: `src/whetstone/bakeoff/stratum.py` measures the reference fix's shape —
+> the non-test files a mined commit touched, and the hunks and added/deleted lines of the
+> gold patch derived from the donor at the task's pinned commits — through
+> `sources.changed_paths` and `derive.gold_patch` reused **by identity** (never copied,
+> asserted `is`), composed exactly as the control arm composes it and asserted
+> byte-identical to `control.reference_patch(task).diff` on all 66 tasks. The band is
+> pre-committed (one non-test file, at most two hunks, at most thirty changed lines), and the
+> rule's own hunk/line walk is validated as a measurement: its added/deleted agree with git's
+> own `--numstat` on all 66 tasks, a contradiction named, never reconciled. The stratum
+> document is committed at `tasks/stratum/easier.json` (schema `whetstone-stratum/1`) as the
+> probe's pinned input: rule digest (rule source + band, so any rule edit invalidates the
+> document by design), band, the 66-task corpus, per-task difficulty (files/hunks/
+> added/deleted plus the manifest tie-breaks f2p/pins/blobs), refusals, a **19-task
+> membership** (4 belay, 15 contig), and a `document_digest` the loader refuses a hand-edit
+> of. The loader is fail-closed by name — `UnknownStratumId`, `EmptyStratum` (empty or
+> whole-corpus, in the writer as well), `StratumSchemaError`, `StratumDigestMismatch` — and
+> the membership recomputation test re-derives the document from the machine corpus field by
+> field, skipping in CI with a reason naming exactly what is missing. The document carries
+> counts only, never paths and never patch content (the ledger's locality discipline, walked
+> with a canary), and the runbook door is `python -m whetstone.bakeoff.stratum --corpus
+> <roots> --out <path>`.
+>
+> **The easier-stratum unit's second aspect — the run-side stratum filter — is done** (spec at
+> `stratum-filter/spec.md`, plan at `stratum-filter/plan_20260814.md`). The probe now scores
+> exactly the stratum's tasks: `--stratum PATH` on the run door (`python -m
+> whetstone.bakeoff.run`) consumes the committed document — aspect 1's loader **by identity**
+> (imported, never copied, asserted `is`), with `include_stratum` applying the membership
+> against the loaded private corpus at the partition seam, **before** the contract is frozen,
+> so the seal and the scored set cover the subset automatically. The loader's membership
+> checks are completed where the landed suite stopped: an unknown field, a duplicated
+> membership, and a member the document refused rather than measured are each named refusals
+> (spec AC 4, D4-4), and the run-side refusal names the id **and the loaded ids** (spec Open
+> question 3, the `UnknownDevSubset` posture). The dev overlay applies **on top** — dev ∩
+> stratum is exclusion, never refusal, because the real probe's declared ids may fall inside
+> the band — an empty scored private set after the overlay is refused **before** freeze,
+> source A is always scored in full with both sources publishing together, and the task-set
+> sentence names the stratum document and its membership count. A run without the flag is
+> today's run byte for byte: the byte-identity test reproduces the unflagged contract SHA and
+> asserts the provenance sentence is literally the pre-stratum sentence. The adversarial proof
+> was watched failing against a deliberately credulous loader first: a doctored document
+> (membership edited to add a declared dev id, digest not regenerated) and a hand-edited
+> membership are each refused, naming the document digest and the expected value; a fully
+> regenerated doctored document passes the loader by construction — the layered defence is git
+> history + ordering + the recomputation test, stated, never reconciled (spec Open question 5)
+> — and the dev member it smuggles is then proven excluded end-to-end, never scored, excluded
+> from both denominators. The stratum path walks inference-free, and the AC2 pins —
+> `src/whetstone/verify/`, `patch.py`, `attribution.py` — are byte-identical to
+> `origin/master`.
+>
+> **The easier-stratum unit's third aspect — the stratum report home — is done** (spec at
+> `stratum-report/spec.md`, plan at `stratum-report/plan_20260814.md`). The probe's verdicts
+> now have a published home that is honest about what it is: `reports/easier-stratum/` holds
+> the three-artifact shape (`report.md`/`report.json`/`cost.json`, schema
+> `whetstone-stratum-report/1`), rendered by `report.build_stratum_report` /
+> `write_stratum_report` — deterministic and pure, reusing `_row`, `_over`, `tally`,
+> `_contract_fields`, `_contract_block` and `_counts` by identity — and by the report door's
+> second mode, `--render-stratum-report` in `comparison.py`, which takes **exactly one** arm
+> group (`build_contract_arms` reused unchanged, so its missing-journal / empty-journal /
+> no-`INTACT`-control refusals hold by identity), refuses zero or two groups by name, and
+> requires `--stratum-doc` as a pointer it never parses; `--render-report` is untouched. The
+> committed artifacts are the declaration — no count, no contract fields, "**No count is
+> measured here: the probe has not run.**" — generated by the writer, never hand-typed. **The
+> one-home guard moved a third time, only on the changed-task-set argument in both docstrings**
+> (the file list in `test_report.py:1453`'s copy and its opposite-sign twin in
+> `test_transcript_locality.py:73-119`): the task set is one of the five pinned inputs, the
+> probe scores a **different task set** under the same hardened contract, so its figures are a
+> new series declared non-comparable to both existing homes (`PREREGISTRATION.md` § 10.5,
+> Type 2, 2026-08-14) — each directory the only home of its own; a silent list extension
+> remains refused. The disjointness guard now scans **all six** existing artifacts, with the
+> planted-overlap control proved able to fail; the declaration-only home holds no `N of M`
+> figure in any of its three artifacts. Nothing above § 10 of the pre-registration was edited
+> and no proportion appears in any spelling.
+>
+> **The easier-stratum unit's fourth aspect — Phase 1 of `probe-run`, the runbook and its
+> guards — is done** (spec at `probe-run/spec.md`, plan at `probe-run/plan_20260814.md`).
+> The operator's sheet exists and a guard holds it: `docs/planning/p2-easier-stratum/probe-run/runbook.md`
+> opens with the candidate resolution (A2), decided before the run from the stored ceiling
+> document — the 14B and 3B candidates retained on their measured retry-eligible ceilings,
+> and `mlx-community/Qwen2.5-Coder-7B-Instruct-4bit` excluded by name for a measured zero
+> ceiling in both stored runs (its `im-start-loop` wall), per the pre-committed rule
+> (`prd.md:93-103`) — and carries the arm command (hardened contract: `--stratum`,
+> `--retries`, the five declared dev ids, `--only` × 2, absolute writable paths, CWD at the
+> primary), the halt conditions, the killed-run restart, and the post-run chain (attribution
+> → autopsy → the **mandatory** pre-analysis extension over all four autopsy documents → the
+> probe's own comparison → the stratum-report door). The guard is extended, never
+> parameterized (A1): `tests/test_probe_runbook_guards.py` imports the parse helpers from
+> the measured-arm module by identity (asserted `is`), the pinned module byte-untouched, and
+> pins the same seven properties plus the A2 resolution rule — every `--only` value is a name
+> the resolution block records, the excluded name appears in no `--only` value, and the block
+> states the zero-ceiling rule. The guard was watched failing against a deliberately wrong
+> stub runbook (relative writable paths, no `--stratum`, a stale worktree name) before the
+> real sheet existed. Phases 2–4 are operator-executed: the GPU probe itself, the post-run
+> chain, and the finding that applies the pre-committed fork rule (A6) are not built here.
 >
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
@@ -459,6 +557,7 @@ PREREGISTRATION.md              # What P4 may claim, fixed before any number exi
 RELEASING.md                    # Tag-push release mechanism (nothing released yet)
 reports/baseline/               # The P1 bake-off — the only home of the baseline's figures
 reports/format-hardening/       # The hardened arm's report — non-comparable, by the D6 argument
+reports/easier-stratum/         # The probe's home — non-comparable, changed task set (§ 10.5)
 .claude/skills/                 # The repo's own workflow skills (see below)
 docs/
   ROADMAP.md                    # 2–3 month phased plan + milestones — authoritative today

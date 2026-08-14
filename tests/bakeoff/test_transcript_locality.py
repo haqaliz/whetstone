@@ -85,6 +85,17 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
     baseline's figures live in `reports/baseline/` and the hardened contract's in
     `reports/format-hardening/`. A silent list extension remains refused — the permission is
     the argument, in this docstring.
+
+    **The guard moved a third time when the easier-stratum probe's home landed, and only on
+    the changed-task-set argument.** The task set is one of the five pinned inputs
+    (`PREREGISTRATION.md:131-132`), and a change to any pinned input invalidates the series
+    and starts a new one (`PREREGISTRATION.md:133-135`). The probe scores a **different task
+    set** — a pre-committed difficulty stratum of the declared source-B set — under the same
+    hardened contract, so its figures are a new series, declared non-comparable to both
+    existing homes (`PREREGISTRATION.md` § 10.5): the baseline's figures live in
+    `reports/baseline/`, the hardened arm's in `reports/format-hardening/`, and the probe's
+    in `reports/easier-stratum/` — each the only home of its own. A silent list extension
+    remains refused: the permission is the argument, in this docstring.
     """
     published = _check_ignore("reports/")
     assert published.returncode == 1, (
@@ -101,14 +112,18 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
         "reports/baseline/cost.json",
         "reports/baseline/report.json",
         "reports/baseline/report.md",
+        "reports/easier-stratum/cost.json",
+        "reports/easier-stratum/report.json",
+        "reports/easier-stratum/report.md",
         "reports/format-hardening/cost.json",
         "reports/format-hardening/report.json",
         "reports/format-hardening/report.md",
     ], (
         f"reports/ holds {held}. The instrumentation aspect publishes nothing: it produces "
         "transcripts and a breakdown, both local. Each report directory holds exactly its own "
-        "three artifacts — the bake-off's in reports/baseline/ and the format-hardening arm's "
-        "in reports/format-hardening/, non-comparable by the D6 argument — and a file appearing "
-        "elsewhere means a figure about a model was published without the changed-contract "
-        "disclosure PREREGISTRATION.md:356-361 requires beside one"
+        "three artifacts — the bake-off's in reports/baseline/, the format-hardening arm's in "
+        "reports/format-hardening/ and the easier-stratum probe's in "
+        "reports/easier-stratum/, non-comparable by the D6 and changed-task-set arguments — "
+        "and a file appearing elsewhere means a figure about a model was published without "
+        "the disclosure PREREGISTRATION.md:356-361 requires beside one"
     )
