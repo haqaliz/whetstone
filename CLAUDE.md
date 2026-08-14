@@ -280,6 +280,32 @@ This file orients a coding agent working in this repository. Read it first.
 > deleted), and the runbook's post-run chain now includes the pre-analysis extension step the
 > comparison's per-run decisions assertion requires.
 >
+> **The easier-stratum unit's first aspect — the difficulty axis and the committed stratum —
+> is done** (`docs/planning/p2-easier-stratum/`; spec at `difficulty-axis/spec.md`, plan at
+> `difficulty-axis/plan_20260814.md`). The fork's first arm needs a subset of the declared
+> source-B set that is *easier*, fixed before any rollout, and this is that selection, a
+> priori and in code: `src/whetstone/bakeoff/stratum.py` measures the reference fix's shape —
+> the non-test files a mined commit touched, and the hunks and added/deleted lines of the
+> gold patch derived from the donor at the task's pinned commits — through
+> `sources.changed_paths` and `derive.gold_patch` reused **by identity** (never copied,
+> asserted `is`), composed exactly as the control arm composes it and asserted
+> byte-identical to `control.reference_patch(task).diff` on all 66 tasks. The band is
+> pre-committed (one non-test file, at most two hunks, at most thirty changed lines), and the
+> rule's own hunk/line walk is validated as a measurement: its added/deleted agree with git's
+> own `--numstat` on all 66 tasks, a contradiction named, never reconciled. The stratum
+> document is committed at `tasks/stratum/easier.json` (schema `whetstone-stratum/1`) as the
+> probe's pinned input: rule digest (rule source + band, so any rule edit invalidates the
+> document by design), band, the 66-task corpus, per-task difficulty (files/hunks/
+> added/deleted plus the manifest tie-breaks f2p/pins/blobs), refusals, a **19-task
+> membership** (4 belay, 15 contig), and a `document_digest` the loader refuses a hand-edit
+> of. The loader is fail-closed by name — `UnknownStratumId`, `EmptyStratum` (empty or
+> whole-corpus, in the writer as well), `StratumSchemaError`, `StratumDigestMismatch` — and
+> the membership recomputation test re-derives the document from the machine corpus field by
+> field, skipping in CI with a reason naming exactly what is missing. The document carries
+> counts only, never paths and never patch content (the ledger's locality discipline, walked
+> with a canary), and the runbook door is `python -m whetstone.bakeoff.stratum --corpus
+> <roots> --out <path>`.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,

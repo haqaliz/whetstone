@@ -9,6 +9,27 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Added
+
+- **The pre-committed difficulty rule and the easier-stratum document.** The first aspect of
+  the easier-stratum probe (`docs/planning/p2-easier-stratum/`) is the task-side test of the
+  fork's first arm: select the declared source-B corpus's easier tasks, pre-committed before
+  any rollout. `src/whetstone/bakeoff/stratum.py` is the a priori axis — the reference fix's
+  shape, measured from the donor at the task's pinned commits, reusing `sources.changed_paths`
+  and `derive.gold_patch` by identity (never copied, asserted `is`, and byte-identical to the
+  control arm's own composition on all 66 tasks) — with a pre-committed band of one non-test
+  file, at most two hunks and at most thirty changed lines, and the rule's own hunk/line walk
+  validated as a measurement against git's `--numstat` on the whole corpus. The committed
+  stratum document (`tasks/stratum/easier.json`, schema `whetstone-stratum/1`) is the pinned
+  input: rule digest, band, the 66-task corpus, per-task difficulty counts, refusals, a
+  19-task membership, and a document digest that refuses a hand-edited payload. The loader is
+  fail-closed by name (unknown ids, degenerate memberships in both writer and loader, unknown
+  schema, digest drift), and the membership recomputation test re-derives the document from
+  the machine corpus field by field, skipping in CI with the reason named. The document
+  carries counts only — never paths, never patch content — walked structurally with a canary.
+
 ## [0.5.0] - 2026-08-12
 
 ### Added
