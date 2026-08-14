@@ -357,6 +357,27 @@ This file orients a coding agent working in this repository. Read it first.
 > figure in any of its three artifacts. Nothing above § 10 of the pre-registration was edited
 > and no proportion appears in any spelling.
 >
+> **The easier-stratum unit's fourth aspect — Phase 1 of `probe-run`, the runbook and its
+> guards — is done** (spec at `probe-run/spec.md`, plan at `probe-run/plan_20260814.md`).
+> The operator's sheet exists and a guard holds it: `docs/planning/p2-easier-stratum/probe-run/runbook.md`
+> opens with the candidate resolution (A2), decided before the run from the stored ceiling
+> document — the 14B and 3B candidates retained on their measured retry-eligible ceilings,
+> and `mlx-community/Qwen2.5-Coder-7B-Instruct-4bit` excluded by name for a measured zero
+> ceiling in both stored runs (its `im-start-loop` wall), per the pre-committed rule
+> (`prd.md:93-103`) — and carries the arm command (hardened contract: `--stratum`,
+> `--retries`, the five declared dev ids, `--only` × 2, absolute writable paths, CWD at the
+> primary), the halt conditions, the killed-run restart, and the post-run chain (attribution
+> → autopsy → the **mandatory** pre-analysis extension over all four autopsy documents → the
+> probe's own comparison → the stratum-report door). The guard is extended, never
+> parameterized (A1): `tests/test_probe_runbook_guards.py` imports the parse helpers from
+> the measured-arm module by identity (asserted `is`), the pinned module byte-untouched, and
+> pins the same seven properties plus the A2 resolution rule — every `--only` value is a name
+> the resolution block records, the excluded name appears in no `--only` value, and the block
+> states the zero-ceiling rule. The guard was watched failing against a deliberately wrong
+> stub runbook (relative writable paths, no `--stratum`, a stale worktree name) before the
+> real sheet existed. Phases 2–4 are operator-executed: the GPU probe itself, the post-run
+> chain, and the finding that applies the pre-committed fork rule (A6) are not built here.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,

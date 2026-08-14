@@ -13,6 +13,30 @@ released version until it exists in the code.
 
 ### Added
 
+- **The stratum-probe runbook and its guards.** The fourth aspect of the easier-stratum
+  probe (`docs/planning/p2-easier-stratum/probe-run/`), Phase 1: the operator's sheet for
+  the stratum probe — `runbook.md` — opens with the candidate resolution (A2), decided
+  before the run from the stored pre-analysis ceiling document: the 14B and 3B candidates
+  retained on their measured retry-eligible ceilings, and
+  `mlx-community/Qwen2.5-Coder-7B-Instruct-4bit` — retry-eligible 0, ceiling 0 in both
+  stored runs, its `im-start-loop` wall — excluded by name under the pre-committed rule
+  (`prd.md:93-103`); the arm command runs the hardened contract (`--stratum`, `--retries`,
+  the five declared dev ids, `--only` × 2, absolute writable paths) from the primary
+  checkout; and the post-run chain is written out — attribution → autopsy → the mandatory
+  pre-analysis extension over all four autopsy documents → the probe's own comparison → the
+  stratum-report door. The guard is extended, never parameterized (A1):
+  `tests/test_probe_runbook_guards.py` imports the parse helpers from
+  `tests/test_runbook_guards.py` by identity (asserted `is`; the pinned module is
+  byte-untouched) and re-binds only `RUNBOOK` and `STALE_WORKTREES`, pinning the same seven
+  properties (absolute writable paths, every arm flag in `build_parser`, worktree-shaped
+  project targets, exactly one worktree everywhere, arm CWD at the primary, no stale worktree
+  names, an anti-vacuity parse) plus the A2 resolution property — every `--only` value is a
+  name the resolution block records, the excluded name appears in no `--only` value, and the
+  block states the zero-ceiling rule. Watched failing first against a deliberately wrong stub
+  runbook (relative writable paths, no `--stratum`, a stale worktree name) before the real
+  sheet existed. The probe itself is operator-executed (Phases 2–4); no figure about a model
+  appears anywhere outside the report home and the gitignored breakdowns.
+
 - **The easier-stratum probe's report home.** The third aspect of the easier-stratum probe
   (`docs/planning/p2-easier-stratum/stratum-report/`): `report.build_stratum_report` /
   `write_stratum_report` render the probe's three-artifact document (schema
