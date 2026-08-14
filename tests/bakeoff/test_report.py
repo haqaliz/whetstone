@@ -49,8 +49,10 @@ from whetstone.bakeoff.report import (
     MissingSource,
     Provenance,
     ScoredDevSubset,
+    StratumReport,
     build_contract_comparison,
     build_report,
+    build_stratum_report,
     funnel_from_ledger,
     tally,
     write,
@@ -1174,6 +1176,36 @@ def _comparison_document(arms: Sequence[ContractArm] = _comparison_arms()) -> Co
     )
 
 
+def _stratum_document() -> StratumReport:
+    """The rendered stratum document for the synthetic probe tallies, and its sidecars.
+
+    The synthetic tallies' denominators (37 and 41) are chosen to collide with nothing in
+    the six existing artifacts — their own denominators are 1, 62, 63, 64, 189, 299 and
+    300 — so the disjointness guard holds by construction, exactly like
+    `_comparison_arms`' denominator 11.
+    """
+    return build_stratum_report(
+        tallies=(
+            tally("one", _records("one", [Outcome.SOLVED] * 5 + [Outcome.NOT_SOLVED] * 32)),
+            tally(
+                "two",
+                _records(
+                    "two",
+                    [Outcome.SOLVED] * 7
+                    + [Outcome.OUT_OF_SCOPE] * 3
+                    + [Outcome.NO_DIFF] * 5
+                    + [Outcome.NOT_SOLVED] * 26,
+                ),
+            ),
+        ),
+        contract=CONTRACT,
+        stratum_doc="tasks/stratum/easier.json",
+        breakdown_home="runs/easier-stratum-arm/",
+        recorded_on=RECORDED_ON,
+        generation_seconds=333.0,
+    )
+
+
 def test_a_two_contract_report_renders_both_contracts_fields_distinctly() -> None:
     """Each arm's figures sit under that arm's own contract fields — the pair is the point.
 
@@ -1278,6 +1310,74 @@ def test_the_two_contract_report_restates_no_baseline_figure() -> None:
         f"WHY THIS IS A FAILURE: the new report restates {overlap}, which already lives in "
         "reports/baseline/report.md. A figure quoted twice is a figure that can disagree with "
         "itself, and the one-home rule exists so that cannot happen"
+    )
+
+
+def test_the_stratum_report_restates_no_figure_from_an_existing_home() -> None:
+    """*(adversarial)* No rendered stratum figure lives in any of the six existing artifacts.
+
+    The changed-task-set home joins the guard on the same rule the earlier homes joined it
+    on, asserted the strongest way available: every `N of M` figure the synthetic stratum
+    document renders is disjoint from every `N of M` figure the six committed artifacts
+    render (`reports/baseline/` and `reports/format-hardening/`, each report.md,
+    report.json and cost.json). A figure that appears in both is a figure with two homes,
+    which is exactly how two disagreeing numbers come to exist.
+    """
+    document = _stratum_document()
+    written = " ".join((document.markdown, document.payload, document.cost))
+    figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", written)}
+    assert figures, (
+        "WHY THIS IS A FAILURE: the stratum document renders no figures at all, so this "
+        "test's disjointness assertion would pass vacuously over an empty document"
+    )
+    existing_figures: set[tuple[str, str]] = set()
+    for directory in ("baseline", "format-hardening"):
+        for name in ("report.md", "report.json", "cost.json"):
+            artifact = (REPO_ROOT / "reports" / directory / name).read_text(encoding="utf-8")
+            existing_figures |= {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", artifact)}
+    assert existing_figures, (
+        "WHY THIS IS A FAILURE: none of the six committed artifacts renders an `N of M` "
+        "figure, so the disjointness guard has nothing to guard against"
+    )
+    overlap = figures & existing_figures
+    assert not overlap, (
+        f"WHY THIS IS A FAILURE: the stratum document restates {overlap}, which already "
+        "lives in one of the six existing artifacts. A figure quoted twice is a figure "
+        "that can disagree with itself, and the one-home rule exists so that cannot happen"
+    )
+
+
+def test_the_stratum_disjointness_guard_catches_a_planted_overlap() -> None:
+    """*(adversarial)* The guard above can see a planted collision.
+
+    The synthetic fixture's denominators (37 and 41) are disjoint from every committed
+    artifact by construction; a planted tally over denominator 63 — one the baseline
+    report actually renders — must be found by the same scan. A collision the guard
+    cannot see is a figure with two homes.
+    """
+    planted = build_stratum_report(
+        tallies=(
+            tally(
+                "planted", _records("planted", [Outcome.SOLVED] + [Outcome.NOT_SOLVED] * 62)
+            ),
+        ),
+        contract=CONTRACT,
+        stratum_doc="tasks/stratum/easier.json",
+        breakdown_home="runs/easier-stratum-arm/",
+        recorded_on=RECORDED_ON,
+    )
+    written = " ".join((planted.markdown, planted.payload, planted.cost))
+    figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", written)}
+    assert ("1", "63") in figures, (
+        "WHY THIS IS A FAILURE: the planted tally over denominator 63 did not render "
+        "`1 of 63`, so the planted-overlap control is not testing what it claims"
+    )
+    baseline = (REPO_ROOT / "reports" / "baseline" / "report.md").read_text(encoding="utf-8")
+    baseline_figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", baseline)}
+    assert figures & baseline_figures, (
+        "WHY THIS IS A FAILURE: the planted `1 of 63` / `0 of 63` figures were not found "
+        "by the disjointness scan. A collision the guard cannot see is a figure with two "
+        "homes"
     )
 
 
