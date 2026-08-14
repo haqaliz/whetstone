@@ -20,6 +20,7 @@ a second answer to the same question, with only one of them reviewed.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,9 @@ from whetstone.bakeoff.stratum import (
     StratumSchemaError,
     UnknownStratumId,
 )
+
+#: The repository root, for the `python -m` entry-point test below.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 #: A value that only exists inside a task's held test file. If it turns up anywhere in the
 #: document, a file's contents did — which is the one thing the document may never carry
@@ -364,6 +368,52 @@ def test_main_accepts_two_corpus_roots_and_writes(tmp_path: Path) -> None:
     assert raw["schema"] == stratum.STRATUM_SCHEMA
     assert raw["corpus"] == ["synthetic-in-band", "synthetic-out-of-band"]
     assert raw["membership"] == ["synthetic-in-band"]
+
+
+def test_the_module_runs_as_python_m_for_the_runbook(tmp_path: Path) -> None:
+    """`python -m whetstone.bakeoff.stratum` is the runbook's door, and it must exist.
+
+    The plan's invocation for the committed document is the module entry point
+    (`plan_20260814.md` Phase 3), not a `whetstone` CLI flag — so the `__main__` guard is
+    part of the aspect's surface, and a module that imported cleanly without it would write
+    nothing while exiting 0, which is the runbook's exact failure shape.
+    """
+    _ = _corpus(tmp_path / "scratch")
+    manifest_dir = tmp_path / "corpus-a"
+    manifest_dir.mkdir(parents=True)
+    (manifest_dir / "synthetic-out-of-band.json").write_bytes(
+        (
+            tmp_path / "scratch" / "out-of-band" / "synthetic-out-of-band.json"
+        ).read_bytes()
+    )
+    (manifest_dir / "synthetic-in-band.json").write_bytes(
+        (
+            tmp_path / "scratch" / "in-band" / "synthetic-in-band.json"
+        ).read_bytes()
+    )
+    out = tmp_path / "stratum" / "easier.json"
+
+    completed = subprocess.run(
+        [
+            "python",
+            "-m",
+            "whetstone.bakeoff.stratum",
+            "--corpus",
+            str(manifest_dir),
+            "--out",
+            str(out),
+        ],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert out.is_file(), (
+        "the module entry point exited 0 without writing the document — the runbook would "
+        "then believe a stratum exists where none does."
+    )
 
 
 def test_main_refuses_an_out_under_the_local_corpus(tmp_path: Path) -> None:

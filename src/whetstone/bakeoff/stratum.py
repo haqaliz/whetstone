@@ -732,6 +732,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
 __all__ = [
     "BAND_MAX_CHANGED_LINES",
     "BAND_MAX_HUNKS",
