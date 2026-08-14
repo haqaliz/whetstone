@@ -47,6 +47,7 @@ STALE_WORKTREES = (
     "feat-measured-arm-run",
     "feat-p2-format-hardening",
     "feat-format-hardening-measurement",
+    "feat-p2-easier-stratum",
 )
 RETAINED = (
     "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",

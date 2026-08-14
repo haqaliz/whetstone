@@ -61,10 +61,10 @@ set. All five are verified present in the corpus (`tasks/local/belay/*.json`) be
 
 ## The command
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`), executing the branch code via its project (`uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-easier-stratum`):**
+**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`), executing the branch code via its project (`uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-easier-stratum \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution \
   python -m whetstone.bakeoff.run \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
@@ -186,20 +186,20 @@ outside the documented gitignored roots — `autopsy`, `preanalysis` and `compar
 operator discipline. Execute the worktree's branch code via its project:
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-easier-stratum \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution \
   python -m whetstone.bakeoff.attribution \
   --transcript runs/easier-stratum-evidence/transcript.jsonl \
   --out runs/easier-stratum-evidence/attribution.json \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-easier-stratum \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution \
   python -m whetstone.bakeoff.autopsy \
   --transcript runs/easier-stratum-evidence/transcript.jsonl \
   --attribution runs/easier-stratum-evidence/attribution.json \
   --out runs/diff-autopsy/easier-stratum-evidence.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-easier-stratum \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution \
   python -m whetstone.bakeoff.preanalysis \
   --autopsy runs/diff-autopsy/arm-a.json \
   --autopsy runs/diff-autopsy/budget-2048.json \
@@ -207,14 +207,14 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-easier-s
   --autopsy runs/diff-autopsy/easier-stratum-evidence.json \
   --out runs/easier-stratum-preanalysis/ceiling-with-probe.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-easier-stratum \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution \
   python -m whetstone.bakeoff.comparison \
   --journal runs/easier-stratum-evidence/journal.jsonl \
   --autopsy runs/diff-autopsy/easier-stratum-evidence.json \
   --preanalysis runs/easier-stratum-preanalysis/ceiling-with-probe.json \
   --out runs/easier-stratum-preanalysis/comparison.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-easier-stratum \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution \
   python -m whetstone.bakeoff.comparison --render-stratum-report \
   --arm easier-stratum \
   --journal runs/easier-stratum-evidence/journal.jsonl \
