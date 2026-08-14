@@ -1470,6 +1470,17 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
     two-homes failure the paragraph above refuses, and a silent list extension remains refused —
     the permission is the argument, in this docstring.
 
+    **The guard moved a third time when the easier-stratum probe's home landed, and only on
+    the changed-task-set argument.** The task set is one of the five pinned inputs
+    (`PREREGISTRATION.md:131-132`), and a change to any pinned input invalidates the series
+    and starts a new one (`PREREGISTRATION.md:133-135`). The probe scores a **different task
+    set** — a pre-committed difficulty stratum of the declared source-B set — under the same
+    hardened contract, so its figures are a new series, declared non-comparable to both
+    existing homes (`PREREGISTRATION.md` § 10.5): the baseline's figures live in
+    `reports/baseline/`, the hardened arm's in `reports/format-hardening/`, and the probe's
+    in `reports/easier-stratum/` — each the only home of its own. A silent list extension
+    remains refused: the permission is the argument, in this docstring.
+
     `reports/local/` is excluded because `.gitignore` reserves it for the user's own nightly
     output, which is their data and never ours to assert on.
 
@@ -1486,16 +1497,21 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
         "reports/baseline/cost.json",
         "reports/baseline/report.json",
         "reports/baseline/report.md",
+        "reports/easier-stratum/cost.json",
+        "reports/easier-stratum/report.json",
+        "reports/easier-stratum/report.md",
         "reports/format-hardening/cost.json",
         "reports/format-hardening/report.json",
         "reports/format-hardening/report.md",
     ], (
-        f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts and the "
-        "format-hardening arm's three are the sanctioned homes for a figure — each directory "
-        "its own, on the D6 argument that the two measure different generation contracts and "
-        "are declared non-comparable. A file missing means the report is incomplete; a file "
-        "extra means there is a second place a figure can live, and the next reader has no way "
-        "to tell which of two disagreeing numbers is the real one"
+        f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts, the "
+        "format-hardening arm's three and the easier-stratum probe's three are the sanctioned "
+        "homes for a figure — each directory its own, on the D6 argument that the two "
+        "contracts differ and the changed-task-set argument that the probe scores a "
+        "different task set (`PREREGISTRATION.md` § 10.5), all declared non-comparable. A "
+        "file missing means the report is incomplete; a file extra means there is a second "
+        "place a figure can live, and the next reader has no way to tell which of two "
+        "disagreeing numbers is the real one"
     )
     # Flattened, because the sentence wraps inside a blockquote and a guard that a re-wrap could
     # silence is a guard that stops describing the document without anybody noticing —
