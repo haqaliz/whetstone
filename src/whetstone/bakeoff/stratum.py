@@ -26,7 +26,7 @@ command reports hunk counts, and `verify.repo.declared_paths` — git's own `--n
 drops the added/deleted counts and reports renames by destination only (`repo.py:87-95`), so
 it cannot carry this measure even where it agrees with it. The walk counts `@@` hunk headers
 and `+`/`-` content lines over the git-produced patch text (always well-formed: `gold_patch`
-emits it), excluding file headers, `\ No newline` markers, and binary literal payload. The
+emits it), excluding file headers, `\\ No newline` markers, and binary literal payload. The
 corpus test asserts the walk's added/deleted against git's `--numstat` on all 66 real tasks —
 a contradiction is a named failure, never reconciled (the autopsy finding's discipline,
 `docs/planning/p2-diff-autopsy/finding.md:69-71`).
