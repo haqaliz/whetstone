@@ -87,8 +87,7 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
     the argument, in this docstring.
 
     **The guard moved a third time when the easier-stratum probe's home landed, and only on
-    the changed-task-set argument** — the same amendment, in lock-step with
-    `test_report.py`'s copy. The task set is one of the five pinned inputs
+    the changed-task-set argument.** The task set is one of the five pinned inputs
     (`PREREGISTRATION.md:131-132`), and a change to any pinned input invalidates the series
     and starts a new one (`PREREGISTRATION.md:133-135`). The probe scores a **different task
     set** — a pre-committed difficulty stratum of the declared source-B set — under the same
