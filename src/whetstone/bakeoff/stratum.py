@@ -36,12 +36,18 @@ a contradiction is a named failure, never reconciled (the autopsy finding's disc
 sorted ids, sorted keys, no timestamp, so two runs over one corpus are byte-identical and the
 recomputation test can compare — and refuse a degenerate membership by name: empty, or the
 whole declared corpus, is a usage error, never a vacuous pass (the empty-directory refusal of
-`manifest.py:70-75`). `read_document` is the fail-closed consumer: unknown schema, a rule
-whose digest no longer matches the document's, a hand-edited payload that breaks the
-`document_digest`, an id that does not resolve, and the two degenerate memberships are each a
-named refusal. The four loader refusals are defined here because the run-side filter (aspect
-2) imports them by identity — a second definition of "what may be selected" would be a second
-answer to the same question, with only one of them reviewed.
+`manifest.py:70-75`). `read_document` is the fail-closed consumer: unknown schema, an unknown
+field, a rule whose digest no longer matches the document's, a hand-edited payload that breaks
+the `document_digest`, an id that does not resolve, a duplicated membership entry, a member the
+document refused rather than measured, and the two degenerate memberships are each a named
+refusal. The four loader refusals are defined here because the run-side filter (aspect 2)
+imports them by identity — a second definition of "what may be selected" would be a second
+answer to the same question, with only one of them reviewed. The run-side half of the
+membership check — every id must resolve against the loaded private corpus — is
+`include_stratum`, this module's filter consumed by the run at the partition seam (aspect 2,
+spec D4-4, Open question 3); the document is consumed, never a live recomputation of a
+difficulty value, and drift is a named error in exactly the posture `UnknownDevSubset` holds
+for the dev subset.
 
 The document is evidence about the data, never the data (`tasks/README.md:126-128`): counts
 only — files/hunks/added/deleted and the manifest-structural tie-break fields — never path
@@ -300,6 +306,15 @@ _DIGESTED_FIELDS = (
     "membership",
 )
 
+#: Every field schema `whetstone-stratum/1` may carry. Anything else is an unknown field: a
+#: hand-edited or miswritten document, refused by name rather than silently read past
+#: (spec AC 4). Not derived from `_DIGESTED_FIELDS`, because `donor_heads` is read without
+#: being digested — the two sets answer different questions and one must not masquerade as
+#: the other.
+_KNOWN_FIELDS = frozenset(
+    {*_DIGESTED_FIELDS, "document_digest", "donor_heads"}
+)
+
 
 class UnknownStratumId(ValueError):
     """The document names a task it neither measured nor refused — or vice versa."""
@@ -487,6 +502,15 @@ def read_document(path: Path) -> Stratum:
             "rather than defaulting (spec N1)"
         )
 
+    unexpected = sorted(set(raw) - _KNOWN_FIELDS)
+    if unexpected:
+        raise StratumSchemaError(
+            f"stratum document {str(location)!r} carries unknown field {unexpected!r}; a "
+            "field this module does not read would be trusted by nobody and read by no one, "
+            "and a document that cannot be read as the shape it claims is not a document this "
+            "run trusts (spec AC 4)"
+        )
+
     if raw.get("rule_digest") != rule_digest():
         raise StratumDigestMismatch(
             f"stratum document {str(location)!r} was sealed under a different rule: its "
@@ -578,6 +602,22 @@ def read_document(path: Path) -> Stratum:
             "denominator"
         )
 
+    duplicated = sorted({one for one in membership if membership.count(one) > 1})
+    if duplicated:
+        raise StratumSchemaError(
+            f"stratum document {str(location)!r} repeats {duplicated!r} in its membership; a "
+            "membership that cannot be read as a set is not the set the rule selected, and a "
+            "run that read it twice would count every member twice (spec D4-4)"
+        )
+    unmeasured = sorted(set(membership) - measured_ids)
+    if unmeasured:
+        raise UnknownStratumId(
+            f"stratum document {str(location)!r} lists {unmeasured!r} in its membership, but "
+            f"records a refusal for {unmeasured!r} rather than a difficulty; the membership "
+            "must name exactly tasks the rule measured, and a refused task is not selectable "
+            "(spec D4-4)"
+        )
+
     if not membership:
         raise EmptyStratum(
             f"stratum document {str(location)!r} has an empty membership; a stratum of "
@@ -606,6 +646,33 @@ def read_document(path: Path) -> Stratum:
         refusals=refusals,
         membership=membership,
     )
+
+
+def include_stratum(membership: Sequence[str], tasks: Sequence[Task]) -> tuple[Task, ...]:
+    """The run-side inclusion: the stratum's membership applied to a loaded private corpus.
+
+    The loader validates the document against itself; this is the half of spec D4-4's
+    membership check only the run can perform: every membership id must resolve against the
+    **loaded private** tasks, refused by name with the loaded ids (spec Open question 3,
+    mirroring `run.py:968-976`). A public id — or a mistyped one — would select nothing while
+    the run reported a stratum, which is the `UnknownDevSubset` failure shape in a second
+    spelling.
+
+    The included tasks come back in the corpus's **load order**, never in membership order
+    (spec D5): a run's sequence is a property of the corpus as today, and the contract SHA
+    never depends on how the document's list happened to be spelled.
+    """
+    members = set(membership)
+    loaded = {task.task_id for task in tasks}
+    unmatched = sorted(members - loaded)
+    if unmatched:
+        raise UnknownStratumId(
+            f"the stratum's membership names {unmatched}, which match no loaded private "
+            "task. A stratum is defined over the loaded private corpus, and an id that "
+            "resolves nowhere would select nothing while the run reported it had. Fix the "
+            f"ids or the loading. Loaded task ids: {sorted(loaded)}"
+        )
+    return tuple(task for task in tasks if task.task_id in members)
 
 
 def _require(raw: dict[str, Any], key: str, kind: type[Any], location: Path) -> None:
@@ -756,6 +823,7 @@ __all__ = [
     "document_digest_of",
     "gold_patch",
     "in_band",
+    "include_stratum",
     "main",
     "measure_patch",
     "read_document",
