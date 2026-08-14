@@ -528,3 +528,127 @@ def test_the_run_uses_aspect_ones_loader_and_filter_by_identity() -> None:
         "only one of them reviewed"
     )
     assert run_module.include_stratum is stratum.include_stratum
+
+
+# --------------------------------------------------------------------------------------------
+# The adversarial proof (AC 9): doctored documents refused — watched failing against a
+# deliberately credulous loader first, then held shut by the real loader (the diffcheck
+# credulity precedent, `CONTRIBUTING.md:56-60`).
+# --------------------------------------------------------------------------------------------
+
+
+def _credulous(path: Path) -> tuple[str, ...]:
+    """The loader without the checks: parse the JSON, trust the membership as spelled.
+
+    This is the stand-in the doctored fixtures were **watched failing against** before the
+    real checks existed: it reads the membership and nothing else — no schema, no digests,
+    no id resolution — so a doctored document sails through it. It stays in the suite
+    because the refusal assertions below are only load-bearing if the *checks*, not the
+    fixtures' shape, are what refuses.
+    """
+    raw = json.loads(Path(path).read_text())
+    return tuple(raw["membership"])
+
+
+def test_a_doctored_document_is_refused_where_a_credulous_loader_would_trust_it(
+    tmp_path: Path,
+) -> None:
+    """AC 9: a valid-looking document whose membership gained a declared dev id is refused.
+
+    The doctored shape — membership edited to add `dev-b`, the `document_digest` **not**
+    regenerated — is exactly what a smuggler would produce: every field type is right, the
+    added id is a plausible member, and nothing about the file's shape is off. The credulous
+    stand-in accepts it (proven in-line, so the refusal below is the checks' doing), and the
+    real loader refuses rather than trusts, naming the document digest.
+    """
+    doc = _stratum(
+        tmp_path / "doc", ("alpha", "gamma"), corpus=("alpha", "beta", "gamma", "dev-b")
+    )
+    raw = json.loads(doc.read_text())
+    raw["membership"] = ["alpha", "gamma", "dev-b"]
+    doc.write_text(json.dumps(raw))
+
+    assert set(_credulous(doc)) == {"alpha", "gamma", "dev-b"}, (
+        "the credulous stand-in did not actually accept the doctored membership, so the "
+        "refusal assertions below would be proving something about the fixture instead of "
+        "about the checks"
+    )
+    with pytest.raises(StratumDigestMismatch) as refusal:
+        stratum.read_document(doc)
+    message = str(refusal.value)
+    assert "document" in message.lower(), (
+        f"WHY THIS IS A FAILURE: the refusal does not name the document digest: {message!r}"
+    )
+    assert stratum.document_digest_of(raw) in message, (
+        f"WHY THIS IS A FAILURE: the refusal does not show the expected digest, so the "
+        f"tampering cannot be checked against the payload: {message!r}"
+    )
+
+
+def test_a_hand_edited_membership_is_refused_where_a_credulous_loader_would_trust_it(
+    tmp_path: Path,
+) -> None:
+    """AC 9: a hand-edited membership in an otherwise valid document is refused, not trusted.
+
+    The second doctored shape: the membership replaced with a different legitimate-looking
+    selection (not merely extended), the digest left stale. The stand-in trusts it; the real
+    loader refuses, naming the document digest and the expected value.
+    """
+    doc = _stratum(tmp_path / "doc", ("alpha", "gamma"))
+    raw = json.loads(doc.read_text())
+    raw["membership"] = ["gamma"]
+    doc.write_text(json.dumps(raw))
+
+    assert tuple(_credulous(doc)) == ("gamma",), (
+        "the credulous stand-in did not accept the hand-edited membership, so the refusal "
+        "assertion below proves nothing about the checks"
+    )
+    with pytest.raises(StratumDigestMismatch) as refusal:
+        stratum.read_document(doc)
+    message = str(refusal.value)
+    assert "document" in message.lower(), (
+        f"WHY THIS IS A FAILURE: the refusal does not name the document digest: {message!r}"
+    )
+    assert stratum.document_digest_of(raw) in message, (
+        f"WHY THIS IS A FAILURE: the refusal does not show the expected digest: {message!r}"
+    )
+
+
+def test_the_checks_distinguish_tampering_from_regeneration_and_the_dev_member_is_excluded(
+    tmp_path: Path,
+) -> None:
+    """The negative control + the dev-smuggle end-to-end (AC 9, D7).
+
+    A **fully regenerated** doctored document — the digest recomputed through the module's
+    own `document_digest_of`, so none of the loader's checks can fire — passes the run-side
+    checks by construction; that is the layered defence's stated residual (spec Open question
+    5: git history + ordering + aspect 1's recomputation test, stated, never reconciled).
+    What the run itself does is then proven end-to-end: a dev id inside the membership never
+    reaches scoring, because the dev overlay applies on top of the stratum (D7) — a dev
+    member is excluded from the scored set and from both denominators, never refused (the
+    real probe's declared ids may fall inside the band).
+    """
+    root = tmp_path / "arm"
+    ids = ("alpha", "beta", "gamma", "dev-b")
+    doc = _stratum(root / "doc", ("alpha", "beta", "dev-b"), corpus=ids)
+
+    loaded = stratum.read_document(doc)
+    assert "dev-b" in loaded.membership, (
+        "the regenerated doctored document did not survive the loader, so the negative "
+        "control did not control for anything"
+    )
+
+    conducted = _run(tmp_path, private=ids, stratum=doc, dev_subset=["dev-b"])
+
+    assert "dev-b" not in conducted.scored, (
+        f"WHY THIS IS A FAILURE: a dev id smuggled through the stratum reached the scored "
+        f"set ({conducted.scored}). The overlay must apply on top of the stratum (D7), so "
+        "the dev member is excluded even when the document claims it"
+    )
+    assert conducted.report is not None
+    assert conducted.report.private[0].denominator == 2, (
+        f"WHY THIS IS A FAILURE: the private denominator is "
+        f"{conducted.report.private[0].denominator} rather than 2. The dev member is "
+        "excluded from the denominator the report publishes"
+    )
+    assert conducted.report.public[0].denominator == 1
