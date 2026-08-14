@@ -21,18 +21,17 @@ for inference imports at the bottom of this file.
 from __future__ import annotations
 
 import ast
-import base64
 import json
-from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
-from fixtures.repos import _git
-from fixtures.repos.mined import (
-    MINED_TESTS_AFTER,
-    MINED_TESTS_BEFORE,
-    Mined,
-    build_mined_task,
+from fixtures.repos.mined import Mined, build_mined_task
+from fixtures.repos.variant import (
+    MULTI_BUGGY,
+    MULTI_FIXED,
+    NO_NEWLINE_FIXED,
+    build_variant_task,
+    single_file_task,
 )
 
 from whetstone.bakeoff import sources, stratum
@@ -42,115 +41,6 @@ from whetstone.verify.task import load_task
 
 #: The repository root, for the no-inference walk at the bottom of this file.
 REPO_ROOT = Path(__file__).resolve().parents[2]
-
-#: The held test pair every synthetic donor here carries, in the mined shape: one test that
-#: must flip red to green and one that stays green (`fixtures/repos/mined.py:43-63`).
-_ADDITION_TESTS_BEFORE = MINED_TESTS_BEFORE
-_ADDITION_TESTS_AFTER = MINED_TESTS_AFTER
-
-#: A one-file bug/fix pair: `add` subtracts at the parent and adds at the child.
-_CALC_BUGGY = "def add(a, b):\n    return a - b\n"
-_CALC_FIXED = "def add(a, b):\n    return a + b\n"
-
-#: A one-file fix editing three separate regions, so the hunks exceed the band while the
-#: file count does not — the multi-hunk shape that must fall outside the band. The regions
-#: are separated by twelve untouched lines each, so git's three-line hunk context cannot
-#: merge them: three edits closer than seven unchanged lines apart are one hunk.
-_MULTI_SEPARATOR = "# separator line, untouched\n" * 12
-_MULTI_BUGGY = (
-    "def add(a, b):\n    return a - b\n"
-    + _MULTI_SEPARATOR
-    + "def sub(a, b):\n    return a + b\n"
-    + _MULTI_SEPARATOR
-    + "def mul(a, b):\n    return a / b\n"
-)
-_MULTI_FIXED = (
-    "def add(a, b):\n    return a + b\n"
-    + _MULTI_SEPARATOR
-    + "def sub(a, b):\n    return a - b\n"
-    + _MULTI_SEPARATOR
-    + "def mul(a, b):\n    return a * b\n"
-)
-
-#: The `\\ No newline` margin: the fixed file lacks the trailing newline its parent had, so the
-#: diff carries git's no-newline marker lines, which are annotations, never content.
-_NO_NEWLINE_FIXED = "def add(a, b):\n    return a + b"
-
-
-def _commit_files(donor: Path, files: Mapping[str, str | bytes | None], *, subject: str) -> str:
-    """Write ``files`` into ``donor`` (``None`` deletes), commit, and return the SHA.
-
-    The same builder `build_mined_task` commits through (`fixtures/repos/mined.py:192-207`),
-    extended for ``bytes`` so a binary fixture is possible. ``_git`` pins the identity and the
-    dates, so a fixture repository has the same SHAs on every machine and every run.
-    """
-    for relative, contents in files.items():
-        target = donor / relative
-        if contents is None:
-            target.unlink()
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(contents, bytes):
-            target.write_bytes(contents)
-        else:
-            target.write_text(contents)
-    _git(["add", "--all"], cwd=donor)
-    _git(["commit", "--quiet", "--message", subject], cwd=donor)
-    return _git(["rev-parse", "HEAD"], cwd=donor).strip()
-
-
-def _build_variant(
-    root: Path,
-    task_id: str,
-    before: Mapping[str, str | bytes],
-    after: Mapping[str, str | bytes],
-    *,
-    subject: str = "Fix the bug",
-) -> Mined:
-    """A two-commit donor whose fixing commit touches exactly the given non-test files.
-
-    Every variant carries the same held test pair as the mined fixture, so the manifest loads
-    and the donor is a plausible mined task; the variant files are the whole non-test diff.
-    """
-    donor = Path(root) / "donor"
-    donor.mkdir(parents=True)
-    _git(["init", "--quiet", "--initial-branch=main"], cwd=donor)
-    parent = _commit_files(
-        donor, {"tests/test_addition.py": _ADDITION_TESTS_BEFORE, **before}, subject="Seed"
-    )
-    commit = _commit_files(
-        donor, {"tests/test_addition.py": _ADDITION_TESTS_AFTER, **after}, subject=subject
-    )
-
-    manifest = {
-        "task_id": task_id,
-        "source": "private",
-        "repo_url": str(donor),
-        "base_commit": parent,
-        "environment": {"python": "3.12", "pins": [], "import_roots": ["."]},
-        "problem_statement": subject,
-        "fail_to_pass": ["tests/test_addition.py::test_add_is_addition"],
-        "pass_to_pass": ["tests/test_addition.py::test_adding_zero_is_the_identity"],
-        "test_blobs": {
-            "tests/test_addition.py": base64.b64encode(
-                _ADDITION_TESTS_AFTER.encode("utf-8")
-            ).decode("ascii")
-        },
-        "provenance": {"donor": donor.name, "commit": commit, "parent": parent},
-    }
-    manifest_path = Path(root) / f"{task_id}.json"
-    manifest_path.write_text(json.dumps(manifest))
-    return Mined(task=load_task(manifest_path), donor=donor, commit=commit, parent=parent)
-
-
-def _single_file(root: Path, task_id: str, *, after: str = _CALC_FIXED) -> Mined:
-    """The in-band shape: exactly one non-test file, one hunk, one line either way."""
-    return _build_variant(
-        root,
-        task_id,
-        {"calc.py": _CALC_BUGGY},
-        {"calc.py": after},
-    )
 
 
 def _source_a_shaped(root: Path) -> tuple[Path, Mined]:
@@ -199,7 +89,7 @@ def test_the_default_mined_fix_measures_two_files_and_two_hunks(tmp_path: Path) 
 
 def test_a_single_file_fix_is_in_the_band(tmp_path: Path) -> None:
     """One non-test file, one hunk, two changed lines: the band's exact home."""
-    fixture = _single_file(tmp_path / "task", "synthetic-single-file")
+    fixture = single_file_task(tmp_path / "task", "synthetic-single-file")
 
     difficulty = stratum.difficulty_of(fixture.task)
 
@@ -218,11 +108,11 @@ def test_a_single_file_fix_is_in_the_band(tmp_path: Path) -> None:
 
 def test_a_multi_hunk_single_file_fix_is_outside_the_band(tmp_path: Path) -> None:
     """Three hunks in one file: inside on files, outside on hunks — the band must reject it."""
-    fixture = _build_variant(
+    fixture = build_variant_task(
         tmp_path / "task",
         "synthetic-multi-hunk",
-        {"calc.py": _MULTI_BUGGY},
-        {"calc.py": _MULTI_FIXED},
+        {"calc.py": MULTI_BUGGY},
+        {"calc.py": MULTI_FIXED},
     )
 
     difficulty = stratum.difficulty_of(fixture.task)
@@ -313,12 +203,12 @@ def test_the_band_constants_are_the_pre_committed_numbers() -> None:
 
 def test_in_band_accepts_the_band_and_rejects_both_other_axes(tmp_path: Path) -> None:
     """Membership is `files == 1 and hunks <= 2 and added + deleted <= 30`, no exceptions."""
-    in_band = _single_file(tmp_path / "in-band", "synthetic-in-band")
-    multi = _build_variant(
+    in_band = single_file_task(tmp_path / "in-band", "synthetic-in-band")
+    multi = build_variant_task(
         tmp_path / "multi",
         "synthetic-multi-hunk",
-        {"calc.py": _MULTI_BUGGY},
-        {"calc.py": _MULTI_FIXED},
+        {"calc.py": MULTI_BUGGY},
+        {"calc.py": MULTI_FIXED},
     )
     out_files = build_mined_task(tmp_path / "out-files")
 
@@ -334,7 +224,7 @@ def test_a_binary_gold_patch_counts_zero_added_and_deleted(tmp_path: Path) -> No
     base85 literal into the diff. Payload lines are never `+`/`-` unified content; counting
     them would report a binary-only fix as a many-line edit.
     """
-    fixture = _build_variant(
+    fixture = build_variant_task(
         tmp_path / "task",
         "synthetic-binary",
         {"data.bin": b"\x00\x01\x02\x03"},
@@ -358,7 +248,7 @@ def test_a_binary_gold_patch_counts_zero_added_and_deleted(tmp_path: Path) -> No
 
 def test_the_no_newline_marker_is_never_counted(tmp_path: Path) -> None:
     """`\\ No newline at end of file` annotates a hunk; it is not a content line."""
-    fixture = _single_file(tmp_path / "task", "synthetic-no-newline", after=_NO_NEWLINE_FIXED)
+    fixture = single_file_task(tmp_path / "task", "synthetic-no-newline", after=NO_NEWLINE_FIXED)
 
     difficulty = stratum.difficulty_of(fixture.task)
 
