@@ -632,8 +632,9 @@ def read_document(path: Path) -> Stratum:
     if raw.get("document_digest") != document_digest_of(raw):
         raise StratumDigestMismatch(
             f"stratum document {str(location)!r} carries a document_digest that does not "
-            f"match its own payload: a hand-edited membership, band or value breaks the "
-            "digest, and the loader refuses rather than trusts (spec D5)"
+            f"match its own payload: expected {document_digest_of(raw)}, got "
+            f"{raw.get('document_digest')!r}. A hand-edited membership, band or value breaks "
+            "the digest, and the loader refuses rather than trusts (spec D5)"
         )
 
     return Stratum(
