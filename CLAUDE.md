@@ -306,6 +306,33 @@ This file orients a coding agent working in this repository. Read it first.
 > with a canary), and the runbook door is `python -m whetstone.bakeoff.stratum --corpus
 > <roots> --out <path>`.
 >
+> **The easier-stratum unit's second aspect — the run-side stratum filter — is done** (spec at
+> `stratum-filter/spec.md`, plan at `stratum-filter/plan_20260814.md`). The probe now scores
+> exactly the stratum's tasks: `--stratum PATH` on the run door (`python -m
+> whetstone.bakeoff.run`) consumes the committed document — aspect 1's loader **by identity**
+> (imported, never copied, asserted `is`), with `include_stratum` applying the membership
+> against the loaded private corpus at the partition seam, **before** the contract is frozen,
+> so the seal and the scored set cover the subset automatically. The loader's membership
+> checks are completed where the landed suite stopped: an unknown field, a duplicated
+> membership, and a member the document refused rather than measured are each named refusals
+> (spec AC 4, D4-4), and the run-side refusal names the id **and the loaded ids** (spec Open
+> question 3, the `UnknownDevSubset` posture). The dev overlay applies **on top** — dev ∩
+> stratum is exclusion, never refusal, because the real probe's declared ids may fall inside
+> the band — an empty scored private set after the overlay is refused **before** freeze,
+> source A is always scored in full with both sources publishing together, and the task-set
+> sentence names the stratum document and its membership count. A run without the flag is
+> today's run byte for byte: the byte-identity test reproduces the unflagged contract SHA and
+> asserts the provenance sentence is literally the pre-stratum sentence. The adversarial proof
+> was watched failing against a deliberately credulous loader first: a doctored document
+> (membership edited to add a declared dev id, digest not regenerated) and a hand-edited
+> membership are each refused, naming the document digest and the expected value; a fully
+> regenerated doctored document passes the loader by construction — the layered defence is git
+> history + ordering + the recomputation test, stated, never reconciled (spec Open question 5)
+> — and the dev member it smuggles is then proven excluded end-to-end, never scored, excluded
+> from both denominators. The stratum path walks inference-free, and the AC2 pins —
+> `src/whetstone/verify/`, `patch.py`, `attribution.py` — are byte-identical to
+> `origin/master`.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,

@@ -13,6 +13,24 @@ released version until it exists in the code.
 
 ### Added
 
+- **The run-side stratum filter.** The second aspect of the easier-stratum probe
+  (`docs/planning/p2-easier-stratum/stratum-filter/`): the bake-off run now accepts
+  `--stratum PATH` and scores exactly the committed stratum's tasks from the loaded source-B
+  corpora. The document is a pinned input, consumed through aspect 1's loader by identity
+  (imported, never copied, asserted `is`), and `include_stratum` applies the membership
+  against the loaded private corpus at the partition seam, before the contract is frozen, so
+  the sealed prompt set and the scored set cover the subset automatically. The loader's
+  membership checks are completed where they stopped: unknown fields, duplicated membership
+  entries, and members the rule refused rather than measured are each named refusals, and a
+  membership id matching no loaded private task is refused with the loaded ids. The dev-subset
+  overlay applies on top (dev ∩ stratum is exclusion, never refusal), an empty scored private
+  set after the overlay is refused before freeze, source A is always scored in full, and the
+  report's task-set sentence names the stratum document and its membership count. A run
+  without the flag is byte-identical to today's run, reproduced by the byte-identity test.
+  Doctored documents — membership edited with a stale digest — are refused rather than
+  trusted, watched failing against a deliberately credulous loader first; a fully regenerated
+  document passes by design, with the dev member it smuggles proven excluded end-to-end.
+
 - **The pre-committed difficulty rule and the easier-stratum document.** The first aspect of
   the easier-stratum probe (`docs/planning/p2-easier-stratum/`) is the task-side test of the
   fork's first arm: select the declared source-B corpus's easier tasks, pre-committed before
