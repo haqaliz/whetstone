@@ -1,10 +1,48 @@
 {
-  "breakdown_home": "runs/easier-stratum-arm/",
-  "generation_contract": null,
+  "breakdown_home": "runs/easier-stratum-preanalysis/comparison.md",
+  "generation_contract": {
+    "dev_subset": [],
+    "diagnosis_vocabulary_version": "4b5022c093b6cd7708dfff99840964c7617066f1f8e8669003a9c0d954ee91fd",
+    "extractor_version": "extract_patch@3e91bab8c123",
+    "max_tokens": 1024,
+    "pinned": false,
+    "prompt_sha256": "f81e95f6085140a3523ac207126c4f9f879a015df203d5f3de5c994414af48dc",
+    "retrieval": "oracle",
+    "retry_budget": 2,
+    "retry_template_sha256": "0ce3496235180696d715740fc517c05ed9c30f5ceb7a6c625e854a106bac7a2b",
+    "sampler": "greedy: argmax over the final logprob axis (mx.argmax(logprobs, axis=-1))"
+  },
   "measurement": "easier-stratum probe; a changed task set under the hardened contract, declared non-comparable (PREREGISTRATION.md \u00a7 10.5); not the pinned baseline of PREREGISTRATION.md:126-128",
   "non_comparable": true,
-  "per_candidate": null,
-  "recorded_on": "2026-08-14",
+  "per_candidate": [
+    {
+      "candidate": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+      "covered": 16,
+      "denominator": 20,
+      "failed": 16,
+      "no_diff": 0,
+      "not_applied": 10,
+      "not_solved": 6,
+      "out_of_scope": 0,
+      "solved": 0,
+      "unverified": 4,
+      "weaker_wins": 0
+    },
+    {
+      "candidate": "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit",
+      "covered": 17,
+      "denominator": 20,
+      "failed": 17,
+      "no_diff": 2,
+      "not_applied": 15,
+      "not_solved": 0,
+      "out_of_scope": 0,
+      "solved": 0,
+      "unverified": 3,
+      "weaker_wins": 0
+    }
+  ],
+  "recorded_on": "2026-08-15",
   "schema": "whetstone-stratum-report/1",
-  "stratum_doc": "tasks/stratum/easier.json"
+  "stratum_doc": "/Users/aliz/dev/at/whetstone/tasks/stratum/easier.json"
 }

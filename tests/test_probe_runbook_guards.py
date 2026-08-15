@@ -40,13 +40,17 @@ from pathlib import Path
 import test_runbook_guards as guards
 from test_runbook_guards import PROJECT_TARGET
 
+from whetstone.bakeoff import run
 from whetstone.bakeoff.run import build_parser
+from whetstone.bakeoff.stratum import read_document
 
 RUNBOOK = Path(__file__).parent.parent / "docs/planning/p2-easier-stratum/probe-run/runbook.md"
+STRATUM_DOC = Path(__file__).parent.parent / "tasks/stratum/easier.json"
 STALE_WORKTREES = (
     "feat-measured-arm-run",
     "feat-p2-format-hardening",
     "feat-format-hardening-measurement",
+    "feat-p2-easier-stratum",
 )
 RETAINED = (
     "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
@@ -94,6 +98,24 @@ def _resolution_block(text: str) -> str:
         if "resolution" in section.splitlines()[0].lower():
             return section
     return ""
+
+
+def _dev_block(text: str) -> str:
+    """The dev-subset section: the `## ` heading naming the dev subset and its body."""
+    for section in re.split(r"(?m)^## ", text)[1:]:
+        if "dev subset" in section.splitlines()[0].lower():
+            return section
+    return ""
+
+
+def _dev_subset_values(block: str) -> set[str]:
+    """The values of every `--dev-subset` flag the arm command passes."""
+    tokens = shlex.split(block.partition(ARM_MODULE)[2], posix=True)
+    return {
+        tokens[index + 1]
+        for index, token in enumerate(tokens)
+        if token == "--dev-subset" and index + 1 < len(tokens)
+    }
 
 
 def test_the_guard_imports_its_parse_helpers_by_identity() -> None:
@@ -309,4 +331,64 @@ def test_the_resolution_block_names_and_excludes_the_candidates() -> None:
     assert "ceiling 0" in resolution, (
         "the resolution block no longer states the zero-ceiling rule the exclusion was "
         "decided on"
+    )
+
+
+def test_the_stratum_loader_is_run_imports_by_identity() -> None:
+    """The guard reads the membership with the loader the run consumes, never a copy.
+
+    `conduct` filters the private tasks through `include_stratum` before the dev overlay
+    (`run.py:577`), and `_partition` refuses a declared dev id that matches nothing in the
+    resulting universe (`run.py:1038-1046`). The guard must therefore read the committed
+    document with the very loader the run uses — one parse implementation, by identity,
+    matching the repo's discipline (`run.read_document is read_document`).
+    """
+    assert run.read_document is read_document
+
+
+def test_every_declared_dev_id_is_a_stratum_member() -> None:
+    """A `--dev-subset` id that is not a stratum member dies at launch, never excludes.
+
+    The dev overlay applies on top of the stratum (`run.py:552-554`): an id outside the
+    band matches nothing in the scored set, and the harness refuses the vacuous declaration
+    by name (`UnknownDevSubset`, `run.py:1038-1046`) — observed 2026-08-15, when the sheet
+    carried the measured arm's five ids into this run and the launch died before freeze.
+    Membership is the exclusion for out-of-band ids; declaring them is refused, so the arm
+    command may declare only ids the committed stratum document's membership contains.
+    """
+    arm = _arm_block(_bash_blocks(_runbook()))
+    declared = _dev_subset_values(arm)
+    membership = set(read_document(STRATUM_DOC).membership)
+    outside = declared - membership
+    assert not outside, (
+        f"the arm command declares dev id(s) {sorted(outside)} that are not members of the "
+        "committed stratum document: they match nothing in the stratum-filtered scored set "
+        "and the run dies at launch with UnknownDevSubset. Drop them (the band already "
+        "excludes them) or move them into the membership"
+    )
+
+
+def test_an_empty_dev_overlay_is_stated_not_silent() -> None:
+    """Declaring no dev subset must name the exclusion, so silence cannot pass as absence.
+
+    The corrected sheet declares nothing — the five declared ids are outside the band, and
+    membership is the exclusion. A sheet that simply dropped the flags without recording why
+    would look identical in the parser; the section must state the fact, so a future
+    operator re-adding the vacuous declaration (or a reader misreading an empty field as an
+    omission) is refused or re-educated by the sheet itself.
+    """
+    arm = _arm_block(_bash_blocks(_runbook()))
+    declared = _dev_subset_values(arm)
+    if declared:
+        return
+    dev = _dev_block(_runbook())
+    assert dev, (
+        "the arm command declares no --dev-subset id and the runbook has no dev-subset "
+        "section, so the empty overlay is unexplained: a sheet that declares nothing must "
+        "name the exclusion that makes the declaration unnecessary"
+    )
+    assert "excluded by membership" in dev, (
+        "the dev-subset section does not state that the declared ids are excluded by the "
+        "stratum's membership, so the empty overlay reads as an omission rather than a "
+        "decision"
     )
