@@ -76,8 +76,12 @@ offline and deterministic, read-only against the primary's gitignored runs.
 
 **Must-have (operator phases — executed, not built):**
 
-6. The arm runs verbatim (hardened contract: `--stratum`, `--retries`, five dev ids,
-   `--only` × 2, absolute writable paths, `--recorded-on` declared at run time).
+6. The arm runs verbatim (hardened contract: `--stratum`, `--retries`, `--only` × 2,
+   absolute writable paths, `--recorded-on` declared at run time). **Corrected
+   2026-08-15 at launch, landed test-first:** the sheet's five declared dev ids are not
+   stratum members, the harness refused the vacuous declaration (`UnknownDevSubset`), and
+   the corrected arm declares no dev subset — the membership is the exclusion (guard
+   extended; see `probe-run/finding.md`).
 7. The post-run chain runs verbatim: attribution → autopsy → the mandatory pre-analysis
    extension over all four autopsy documents → comparison → the stratum-report door.
 8. The finding applies the fork rule (yield > 0 → P2's first slice on the stratum;
