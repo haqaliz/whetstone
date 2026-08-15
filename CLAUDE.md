@@ -378,6 +378,37 @@ This file orients a coding agent working in this repository. Read it first.
 > real sheet existed. Phases 2–4 are operator-executed: the GPU probe itself, the post-run
 > chain, and the finding that applies the pre-committed fork rule (A6) are not built here.
 >
+> **The easier-stratum probe then ran, and its zero fired the fork rule.** The probe
+> executed on the pre-committed stratum under the hardened contract and published its
+> finding (execution merged 2026-08-15): every candidate returned zero solved tasks with
+> the control intact, so the pre-committed fork rule (`p2-easier-stratum/prd.md:49-51`)
+> named the next unit — the larger-base arm — never a looser verifier and never a fourth
+> generation-contract change. The probe's M13-style read attributed the zero to premise
+> failure rather than axis failure: the formatting wall receded, well-formed patches
+> applied, and none turned the tests green.
+>
+> **The larger-base unit's code phase is done, and the arm itself has not run.** The
+> unit ships the operator's sheet (`docs/planning/larger-base-arm/runbook.md`) held by
+> its own guard (`tests/test_larger_base_runbook_guards.py`): the candidate resolved a
+> priori — the 32B-class base on the measured candidate family, the 7B excluded by name
+> for its measured zero ceiling — the mandatory probe pass before the night, the hardened
+> contract on the declared source-B set with the dev overlay restored, and the post-run
+> chain extended to five autopsy documents. The arm's figures have a published home that
+> is honest about what it is: `reports/larger-base/` holds the three-artifact shape
+> (report.md / report.json / cost.json, schema `whetstone-larger-base-report/1`),
+> rendered by `report.build_larger_base_report` / `write_larger_base_report` — pure and
+> deterministic, reusing `_row`, `_over`, `tally`, `_contract_fields`, `_contract_block`
+> and `_counts` by identity — and by the report door's third mode
+> `--render-larger-base-report` in `comparison.py` (exactly one arm group,
+> `build_contract_arms` reused unchanged, the three report modes mutually exclusive).
+> The one-home guard admits the fourth directory on the changed-candidate-set argument —
+> model revision is one of the five pinned inputs, so the arm's figures are a new series,
+> declared non-comparable to all three existing homes (`PREREGISTRATION.md` § 10.6, Type
+> 2, 2026-08-15) — and the amendment disclosed the series before any figure existed for
+> it. **No count is published and none has been measured under the arm**: the operator
+> phases — the probe pass, the night, the post-run chain, the finding — are executed, not
+> built, and `reports/larger-base/` holds the declaration only.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
@@ -558,6 +589,7 @@ RELEASING.md                    # Tag-push release mechanism (nothing released y
 reports/baseline/               # The P1 bake-off — the only home of the baseline's figures
 reports/format-hardening/       # The hardened arm's report — non-comparable, by the D6 argument
 reports/easier-stratum/         # The probe's home — non-comparable, changed task set (§ 10.5)
+reports/larger-base/            # The arm's home — non-comparable, new candidate (§ 10.6)
 .claude/skills/                 # The repo's own workflow skills (see below)
 docs/
   ROADMAP.md                    # 2–3 month phased plan + milestones — authoritative today
