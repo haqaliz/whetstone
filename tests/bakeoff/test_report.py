@@ -1774,6 +1774,17 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
     in `reports/easier-stratum/` — each the only home of its own. A silent list extension
     remains refused: the permission is the argument, in this docstring.
 
+    **The guard moved a fourth time when the larger-base arm's home landed, and only on the
+    changed-candidate-set argument.** Model revision is one of the five pinned inputs
+    (`PREREGISTRATION.md:131-132`), and the arm scores the **same declared task set** under
+    the same hardened contract with a **new candidate** — a change to a pinned input, which
+    invalidates the series and starts a new one (`PREREGISTRATION.md:133-135`). So its
+    figures are a new series, declared non-comparable to all three existing homes
+    (`PREREGISTRATION.md` § 10.6): the baseline's figures live in `reports/baseline/`, the
+    hardened arm's in `reports/format-hardening/`, the probe's in `reports/easier-stratum/`,
+    and the arm's in `reports/larger-base/` — each the only home of its own. A silent list
+    extension remains refused: the permission is the argument, in this docstring.
+
     `reports/local/` is excluded because `.gitignore` reserves it for the user's own nightly
     output, which is their data and never ours to assert on.
 
@@ -1796,12 +1807,17 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
         "reports/format-hardening/cost.json",
         "reports/format-hardening/report.json",
         "reports/format-hardening/report.md",
+        "reports/larger-base/cost.json",
+        "reports/larger-base/report.json",
+        "reports/larger-base/report.md",
     ], (
         f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts, the "
-        "format-hardening arm's three and the easier-stratum probe's three are the sanctioned "
-        "homes for a figure — each directory its own, on the D6 argument that the two "
-        "contracts differ and the changed-task-set argument that the probe scores a "
-        "different task set (`PREREGISTRATION.md` § 10.5), all declared non-comparable. A "
+        "format-hardening arm's three, the easier-stratum probe's three and the larger-base "
+        "arm's three are the sanctioned homes for a figure — each directory its own, on the "
+        "D6 argument that the two contracts differ, the changed-task-set argument that the "
+        "probe scores a different task set (`PREREGISTRATION.md` § 10.5) and the "
+        "changed-candidate-set argument that the arm scores a new candidate "
+        "(`PREREGISTRATION.md` § 10.6), all declared non-comparable. A "
         "file missing means the report is incomplete; a file extra means there is a second "
         "place a figure can live, and the next reader has no way to tell which of two "
         "disagreeing numbers is the real one"
@@ -1821,4 +1837,103 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
         "WHY THIS IS A FAILURE: a proportion reached PREREGISTRATION.md. It is committed before "
         "the first measurement, so a proportion in it is either a target smuggled in as a result "
         "or a number that leaked back from one"
+    )
+
+
+def test_the_one_home_guard_catches_a_planted_artifact(tmp_path: Path) -> None:
+    """*(adversarial)* The twelve-artifact list can see a planted file under `reports/`.
+
+    The guard above asserts the sanctioned list by exact equality. The first half of this
+    control reproduces the sanctioned state in a synthetic tree — a planted tree that
+    differs from the real one would prove nothing about the guard's logic. The second
+    half plants a fourth artifact in the larger-base home and asserts the same scan flags
+    it: a file the guard cannot see is a second home for a figure, which is exactly how
+    two disagreeing numbers come to exist.
+    """
+    held = [
+        "reports/baseline/cost.json",
+        "reports/baseline/report.json",
+        "reports/baseline/report.md",
+        "reports/easier-stratum/cost.json",
+        "reports/easier-stratum/report.json",
+        "reports/easier-stratum/report.md",
+        "reports/format-hardening/cost.json",
+        "reports/format-hardening/report.json",
+        "reports/format-hardening/report.md",
+        "reports/larger-base/cost.json",
+        "reports/larger-base/report.json",
+        "reports/larger-base/report.md",
+    ]
+    for name in held:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x", encoding="utf-8")
+
+    def held_files(root: Path) -> list[str]:
+        relative = (
+            path.relative_to(root).as_posix()
+            for path in (root / "reports").rglob("*")
+            if path.is_file()
+        )
+        return sorted(name for name in relative if not name.startswith("reports/local/"))
+
+    assert held_files(tmp_path) == held, (
+        "WHY THIS IS A FAILURE: the synthetic tree does not reproduce the sanctioned "
+        "twelve-artifact state, so the planted half of this control is not testing the "
+        "guard's logic"
+    )
+    planted = tmp_path / "reports" / "larger-base" / "report.txt"
+    planted.write_text("a figure", encoding="utf-8")
+    observed = held_files(tmp_path)
+    assert observed != held, (
+        "WHY THIS IS A FAILURE: the planted artifact was absorbed by the guard's list. A "
+        "file the guard cannot see is a second home for a figure, and the next reader has "
+        "no way to tell which of two disagreeing numbers is the real one"
+    )
+    assert planted.relative_to(tmp_path).as_posix() in observed, observed
+
+
+def test_the_committed_larger_base_declaration_matches_the_writer() -> None:
+    """The committed declaration is the writer's output, regenerated byte-for-byte.
+
+    `reports/larger-base/`'s committed state is generated by the writer with no tallies —
+    the door refuses zero arms by design, so the declaration is a direct writer call —
+    and it holds no figure in any spelling. A hand-typed or edited artifact would differ
+    from a re-render, and this test would name it; a figure in the declaration would be a
+    count no measurement produced.
+    """
+    document = build_larger_base_report(
+        tallies=(),
+        contract=None,
+        candidate=LARGER_BASE_CANDIDATE,
+        dev_subset=(),
+        breakdown_home=LARGER_BASE_BREAKDOWN_HOME,
+        recorded_on=LARGER_BASE_RECORDED_ON,
+    )
+    home = REPO_ROOT / "reports" / "larger-base"
+    assert (home / "report.md").read_text(encoding="utf-8") == document.markdown, (
+        "WHY THIS IS A FAILURE: the committed report.md differs from the writer's "
+        "declaration render. The home's committed state must be the writer's output, never "
+        "hand-typed"
+    )
+    assert (home / "report.json").read_text(encoding="utf-8") == document.payload, (
+        "WHY THIS IS A FAILURE: the committed report.json differs from the writer's "
+        "declaration render"
+    )
+    assert (home / "cost.json").read_text(encoding="utf-8") == document.cost, (
+        "WHY THIS IS A FAILURE: the committed cost.json differs from the writer's "
+        "declaration render"
+    )
+    written = " ".join(
+        (home / name).read_text(encoding="utf-8")
+        for name in ("report.md", "report.json", "cost.json")
+    )
+    assert "No count is measured here: the arm has not run." in written, (
+        "WHY THIS IS A FAILURE: the committed declaration does not state that no count is "
+        "measured here"
+    )
+    assert not re.search(r"\d+ of \d+", written), (
+        "WHY THIS IS A FAILURE: a committed declaration artifact renders a figure, but no "
+        "measurement exists. A count here would be a restated figure from another home or "
+        "an invented one"
     )

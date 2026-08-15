@@ -1,0 +1,11 @@
+{
+  "breakdown_home": "runs/larger-base-arm/",
+  "candidate": "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit",
+  "dev_subset": [],
+  "generation_contract": null,
+  "measurement": "larger-base arm; a new candidate under the hardened contract, declared non-comparable (PREREGISTRATION.md \u00a7 10.6); not the pinned baseline of PREREGISTRATION.md:126-128",
+  "non_comparable": true,
+  "per_candidate": null,
+  "recorded_on": "2026-08-15",
+  "schema": "whetstone-larger-base-report/1"
+}
