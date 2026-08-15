@@ -24,18 +24,23 @@ resolved (`UnknownCandidate`, `run.py:400-404`), and the two retained repo ids s
 name-prefix (`run.py:396` matches by containment), so the flags cannot collide as substrings.
 The names and facts here are the stored document's, never invented at execution time.
 
-## The dev subset (named before the run)
+## The dev subset (declared, and its resolution for this run)
+
+The hardened contract's declared dev ids (`measured-arm/runbook.md:15-25`) — the tasks
+whose prompts the retry template was tuned against, retry-eligible in both stored runs'
+autopsy records — are:
 
 `belay-2e149603209a belay-353359e9ac6e belay-3e3051c4192a belay-844db07ed482 belay-9dba3ea557f5`
 
-These are the hardened contract's declared ids (`measured-arm/runbook.md:15-25`), carried
-over unchanged: the tasks whose prompts the retry template was tuned against, retry-eligible
-in both stored runs' autopsy records. They are excluded from **both** sources before anything
-runs (`conduct` partitions first, `run.py:540-542`); the dev overlay applies **on top** of the
-stratum (dev ∩ stratum is exclusion, never refusal, because the declared ids may fall inside
-the band); an id matching no task is refused (`UnknownDevSubset`, `run.py:963-982`); and the
-report's `ScoredDevSubset` backstop refuses publication if any dev id ever reached a scored
-set. All five are verified present in the corpus (`tasks/local/belay/*.json`) before launch.
+**None of them is a member of the committed stratum** (`tasks/stratum/easier.json` — the
+band excluded them), so **all five are excluded by membership**: none is scored by this run.
+The overlay that would declare them is vacuous and the harness refuses vacuous declarations
+by name: an id matching nothing in the stratum-filtered universe dies at launch
+(`UnknownDevSubset`, `run.py:1038-1046`), observed 2026-08-15 when this sheet first carried
+them. The arm command therefore declares **no dev subset**; the report's dev-subset field is
+empty, and the exclusion's evidence is the committed stratum document's membership rather
+than an overlay. The `ScoredDevSubset` backstop still refuses publication if any dev id ever
+reached a scored set.
 
 ## Before you run
 
@@ -48,8 +53,11 @@ set. All five are verified present in the corpus (`tasks/local/belay/*.json`) be
    workspace degrades silently into `UNVERIFIED`/`UNPROVISIONED`, never loudly.
 3. **Evidence is machine-level** — the run's outputs live under the primary's gitignored
    `runs/`; evidence is never copied between checkouts.
-4. **The five dev-subset ids are verified present in `tasks/local/belay/` before launch**, so
-   the `UnknownDevSubset` refusal cannot fire at launch time.
+4. **No dev overlay is declared, by the membership's own exclusion.** The five declared
+   dev ids are verified **outside** the stratum's membership (`tasks/stratum/easier.json`),
+   so the arm carries no `--dev-subset` flag and the `UnknownDevSubset` refusal cannot fire
+   at launch time (it fired once, on 2026-08-15, against the sheet that still declared
+   them).
 5. **The stratum document is verified present and committed at its path** —
    `/Users/aliz/dev/at/whetstone/tasks/stratum/easier.json`, the aspect-1 document (schema
    `whetstone-stratum/1`). The loader refuses by name a document whose digest no longer
@@ -80,11 +88,6 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-pro
   --timeout 900 \
   --recorded-on <declared-at-run-time> \
   --retries \
-  --dev-subset belay-2e149603209a \
-  --dev-subset belay-353359e9ac6e \
-  --dev-subset belay-3e3051c4192a \
-  --dev-subset belay-844db07ed482 \
-  --dev-subset belay-9dba3ea557f5 \
   --journal /Users/aliz/dev/at/whetstone/runs/easier-stratum-evidence/journal.jsonl \
   --transcript /Users/aliz/dev/at/whetstone/runs/easier-stratum-evidence/transcript.jsonl
 ```
