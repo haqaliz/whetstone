@@ -34,6 +34,7 @@ bound to the probe sheet as it exists and `feat-stratum-probe-execution` already
 
 from __future__ import annotations
 
+import re
 import shlex
 from pathlib import Path
 
@@ -420,22 +421,25 @@ def test_the_autopsy_document_stem_matches_the_journal_run_name() -> None:
     filename stem, which must equal the arm journal's parent directory name.
     """
     arm = _arm_block(_bash_blocks(_runbook()))
-    journal = _arm_values(arm, "--journal")
-    assert len(journal) == 1, (
-        f"the arm block names {len(journal)} journal path(s), not one: the run name the "
-        "comparison matches against is the journal's parent directory"
+    journal = _arm_values(arm).get("--journal")
+    assert journal is not None, (
+        "the arm block names no --journal path: the run name the comparison matches against "
+        "is the journal's parent directory"
     )
-    run_name = Path(journal[0]).parent.name
+    run_name = Path(journal).parent.name
     blocks = _bash_blocks(_runbook())
-    autopsy = next((b for b in blocks if "whetstone.bakeoff.autopsy" in b), None)
-    assert autopsy, (
+    chain = next((b for b in blocks if "whetstone.bakeoff.autopsy" in b), None)
+    assert chain, (
         "no bash block invokes whetstone.bakeoff.autopsy, so the arm's autopsy document is "
         "unpinned: the comparison matches the journal and autopsy by run name"
     )
-    tokens = shlex.split(autopsy.partition("whetstone.bakeoff.autopsy")[2], posix=True)
+    tokens = shlex.split(chain, posix=True)
+    start = tokens.index("whetstone.bakeoff.autopsy")
+    module_tokens = [i for i, t in enumerate(tokens) if re.match(r"whetstone\.bakeoff\.[a-z]+$", t)]
+    end = next((i for i in module_tokens if i > start), len(tokens))
     outs = [
         tokens[index + 1]
-        for index, token in enumerate(tokens)
+        for index, token in enumerate(tokens[start:end], start=start)
         if token == "--out" and index + 1 < len(tokens)
     ]
     assert len(outs) == 1, f"the autopsy block names {len(outs)} --out path(s), not one"
