@@ -60,7 +60,7 @@ FIVE_AUTOPSY_STEMS = (
     "budget-2048",
     "format-hardening-arm-evidence",
     "easier-stratum-evidence",
-    "larger-base-evidence",
+    "larger-base-arm-evidence",
 )
 
 _bash_blocks = guards._bash_blocks
@@ -407,6 +407,43 @@ def test_every_declared_dev_id_is_stated_in_the_dev_section() -> None:
     assert not missing, (
         f"the dev-subset section does not state declared id(s) {missing}: the arm's overlay "
         "is not the sheet's declared overlay"
+    )
+
+
+def test_the_autopsy_document_stem_matches_the_journal_run_name() -> None:
+    """The comparison matches the journal and autopsy by run name, and refuses a mismatch.
+
+    Observed in the field on 2026-08-18: the arm's post-run chain wrote the autopsy to
+    `runs/diff-autopsy/larger-base-evidence.json` while the journal lived in
+    `runs/larger-base-arm-evidence/`, and the comparison refused by name — "the journal and
+    autopsy runs do not match". The run name is the autopsy document's own: its `--out`
+    filename stem, which must equal the arm journal's parent directory name.
+    """
+    arm = _arm_block(_bash_blocks(_runbook()))
+    journal = _arm_values(arm, "--journal")
+    assert len(journal) == 1, (
+        f"the arm block names {len(journal)} journal path(s), not one: the run name the "
+        "comparison matches against is the journal's parent directory"
+    )
+    run_name = Path(journal[0]).parent.name
+    blocks = _bash_blocks(_runbook())
+    autopsy = next((b for b in blocks if "whetstone.bakeoff.autopsy" in b), None)
+    assert autopsy, (
+        "no bash block invokes whetstone.bakeoff.autopsy, so the arm's autopsy document is "
+        "unpinned: the comparison matches the journal and autopsy by run name"
+    )
+    tokens = shlex.split(autopsy.partition("whetstone.bakeoff.autopsy")[2], posix=True)
+    outs = [
+        tokens[index + 1]
+        for index, token in enumerate(tokens)
+        if token == "--out" and index + 1 < len(tokens)
+    ]
+    assert len(outs) == 1, f"the autopsy block names {len(outs)} --out path(s), not one"
+    stem = Path(outs[0]).stem
+    assert stem == run_name, (
+        f"the autopsy document's stem {stem!r} does not match the journal's run name "
+        f"{run_name!r}: the comparison refuses the mismatch by name, and the run's own "
+        "evidence cannot be read"
     )
 
 

@@ -230,7 +230,7 @@ refuses it as corruption, never repaired (`src/whetstone/bakeoff/transcript.py:1
 - `runs/larger-base-arm-evidence/{journal.jsonl,transcript.jsonl,attribution.json}` — journal
   + transcript + attribution make the rerun per-task checkable.
 - `runs/larger-base-probe/probe.json` — the D7 capacity record that gated the arm.
-- `runs/diff-autopsy/larger-base-evidence.json` — this arm's autopsy document, joining the
+- `runs/diff-autopsy/larger-base-arm-evidence.json` — this arm's autopsy document, joining the
   stored four.
 - `runs/larger-base-preanalysis/{ceiling-with-arm.json,comparison.json}` — the extended
   ceiling and the before/after comparison.
@@ -257,7 +257,7 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base
   python -m whetstone.bakeoff.autopsy \
   --transcript runs/larger-base-arm-evidence/transcript.jsonl \
   --attribution runs/larger-base-arm-evidence/attribution.json \
-  --out runs/diff-autopsy/larger-base-evidence.json
+  --out runs/diff-autopsy/larger-base-arm-evidence.json
 
 uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base-arm \
   python -m whetstone.bakeoff.preanalysis \
@@ -265,13 +265,13 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base
   --autopsy runs/diff-autopsy/budget-2048.json \
   --autopsy runs/diff-autopsy/format-hardening-arm-evidence.json \
   --autopsy runs/diff-autopsy/easier-stratum-evidence.json \
-  --autopsy runs/diff-autopsy/larger-base-evidence.json \
+  --autopsy runs/diff-autopsy/larger-base-arm-evidence.json \
   --out runs/larger-base-preanalysis/ceiling-with-arm.json
 
 uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base-arm \
   python -m whetstone.bakeoff.comparison \
   --journal runs/larger-base-arm-evidence/journal.jsonl \
-  --autopsy runs/diff-autopsy/larger-base-evidence.json \
+  --autopsy runs/diff-autopsy/larger-base-arm-evidence.json \
   --preanalysis runs/larger-base-preanalysis/ceiling-with-arm.json \
   --out runs/larger-base-preanalysis/comparison.json
 
