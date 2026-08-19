@@ -96,6 +96,17 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
     `reports/baseline/`, the hardened arm's in `reports/format-hardening/`, and the probe's
     in `reports/easier-stratum/` — each the only home of its own. A silent list extension
     remains refused: the permission is the argument, in this docstring.
+
+    **The guard moved a fourth time when the larger-base arm's home landed, and only on the
+    changed-candidate-set argument.** Model revision is one of the five pinned inputs
+    (`PREREGISTRATION.md:131-132`), and the arm scores the **same declared task set** under
+    the same hardened contract with a **new candidate** — a change to a pinned input, which
+    invalidates the series and starts a new one (`PREREGISTRATION.md:133-135`). So its
+    figures are a new series, declared non-comparable to all three existing homes
+    (`PREREGISTRATION.md` § 10.6): the baseline's figures live in `reports/baseline/`, the
+    hardened arm's in `reports/format-hardening/`, the probe's in `reports/easier-stratum/`,
+    and the arm's in `reports/larger-base/` — each the only home of its own. A silent list
+    extension remains refused: the permission is the argument, in this docstring.
     """
     published = _check_ignore("reports/")
     assert published.returncode == 1, (
@@ -118,12 +129,16 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
         "reports/format-hardening/cost.json",
         "reports/format-hardening/report.json",
         "reports/format-hardening/report.md",
+        "reports/larger-base/cost.json",
+        "reports/larger-base/report.json",
+        "reports/larger-base/report.md",
     ], (
         f"reports/ holds {held}. The instrumentation aspect publishes nothing: it produces "
         "transcripts and a breakdown, both local. Each report directory holds exactly its own "
         "three artifacts — the bake-off's in reports/baseline/, the format-hardening arm's in "
-        "reports/format-hardening/ and the easier-stratum probe's in "
-        "reports/easier-stratum/, non-comparable by the D6 and changed-task-set arguments — "
+        "reports/format-hardening/, the easier-stratum probe's in "
+        "reports/easier-stratum/ and the larger-base arm's in reports/larger-base/, "
+        "non-comparable by the D6, changed-task-set and changed-candidate-set arguments — "
         "and a file appearing elsewhere means a figure about a model was published without "
         "the disclosure PREREGISTRATION.md:356-361 requires beside one"
     )

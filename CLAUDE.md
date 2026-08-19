@@ -378,12 +378,54 @@ This file orients a coding agent working in this repository. Read it first.
 > real sheet existed. Phases 2–4 are operator-executed: the GPU probe itself, the post-run
 > chain, and the finding that applies the pre-committed fork rule (A6) are not built here.
 >
+> **The easier-stratum probe then ran, and its zero fired the fork rule.** The probe
+> executed on the pre-committed stratum under the hardened contract and published its
+> finding (execution merged 2026-08-15): every candidate returned zero solved tasks with
+> the control intact, so the pre-committed fork rule (`p2-easier-stratum/prd.md:49-51`)
+> named the next unit — the larger-base arm — never a looser verifier and never a fourth
+> generation-contract change. The probe's M13-style read attributed the zero to premise
+> failure rather than axis failure: the formatting wall receded, well-formed patches
+> applied, and none turned the tests green.
+>
+> **The larger-base unit is done, arm and all** (`docs/planning/larger-base-arm/`; the
+> operator's sheet at `runbook.md` held by its own guard
+> (`tests/test_larger_base_runbook_guards.py`)). The candidate was resolved a priori — the
+> 32B-class base on the measured candidate family, the 7B excluded by name for its
+> measured zero ceiling — the probe pass (D7) ran first and settled the ROADMAP § 10
+> capacity question by measurement (the 32B fits the machine's 36 GiB; MLX memory-maps
+> the safetensors, so the resident peak stays far below the weights' size), the hardened
+> contract on the declared source-B set with the dev overlay restored ran to completion
+> with the control discipline intact on every probe, and the post-run chain — attribution
+> → autopsy → the pre-analysis extension over all five autopsy documents → comparison →
+> the report door — ran clean. The arm's figures have a published home that is honest
+> about what it is: `reports/larger-base/` holds the three-artifact shape (report.md /
+> report.json / cost.json, schema `whetstone-larger-base-report/1`), rendered by
+> `report.build_larger_base_report` / `write_larger_base_report` — pure and
+> deterministic, reusing `_row`, `_over`, `tally`, `_contract_fields`, `_contract_block`
+> and `_counts` by identity — and by the report door's third mode
+> `--render-larger-base-report` in `comparison.py` (exactly one arm group,
+> `build_contract_arms` reused unchanged, the three report modes mutually exclusive).
+> The one-home guard admits the fourth directory on the changed-candidate-set argument —
+> model revision is one of the five pinned inputs, so the arm's figures are a new series,
+> declared non-comparable to all three existing homes (`PREREGISTRATION.md` § 10.6, Type
+> 2, 2026-08-15) — and the amendment disclosed the series before any figure existed for
+> it. **The measurement: the 32B produced the first nonzero strict-PASS yield the
+> harness has ever measured** — the fork rule pre-committed in the unit's PRD routes to
+> P2's first slice (rollouts + expert iteration) next, and the finding names the 32B as
+> the first candidate with evidence; § 7.3 closes only by a Type 1 amendment before the
+> measurement it governs runs. The finding also discloses the material unverified rate
+> (a timing property of the 32B's speed against the verification timeout — the P3 retry
+> discipline is the named response) and the one field correction the run surfaced (the
+> autopsy-stem alignment the comparison refused, landed test-first). Read
+> `docs/planning/larger-base-arm/finding.md` and `reports/larger-base/` before quoting
+> anything about it.
+>
 > **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
 > so "measured once, re-measured never" is unspent. Cheat 6 and cheat 10 remain documented
 > residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did **not** close it. The
-> only cut so far is v0.3.0, tagged 2026-08-09; nothing has been published to PyPI.
+> cuts so far are v0.3.0–v0.6.0, the last tagged 2026-08-14; nothing has been published to PyPI.
 >
 > Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. Describe the
 > state of the tree this file ships in, and never work in flight on a branch — a status that
@@ -558,6 +600,7 @@ RELEASING.md                    # Tag-push release mechanism (nothing released y
 reports/baseline/               # The P1 bake-off — the only home of the baseline's figures
 reports/format-hardening/       # The hardened arm's report — non-comparable, by the D6 argument
 reports/easier-stratum/         # The probe's home — non-comparable, changed task set (§ 10.5)
+reports/larger-base/            # The arm's home — non-comparable, new candidate (§ 10.6)
 .claude/skills/                 # The repo's own workflow skills (see below)
 docs/
   ROADMAP.md                    # 2–3 month phased plan + milestones — authoritative today

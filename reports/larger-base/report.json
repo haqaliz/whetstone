@@ -1,0 +1,48 @@
+{
+  "breakdown_home": "runs/larger-base-preanalysis/comparison.md",
+  "candidate": "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit",
+  "dev_subset": [
+    "belay-2e149603209a",
+    "belay-353359e9ac6e",
+    "belay-3e3051c4192a",
+    "belay-844db07ed482",
+    "belay-9dba3ea557f5"
+  ],
+  "generation_contract": {
+    "dev_subset": [
+      "belay-2e149603209a",
+      "belay-353359e9ac6e",
+      "belay-3e3051c4192a",
+      "belay-844db07ed482",
+      "belay-9dba3ea557f5"
+    ],
+    "diagnosis_vocabulary_version": "4b5022c093b6cd7708dfff99840964c7617066f1f8e8669003a9c0d954ee91fd",
+    "extractor_version": "extract_patch@3e91bab8c123",
+    "max_tokens": 1024,
+    "pinned": false,
+    "prompt_sha256": "f5d431a1fe2cebd6089a9408a4f5bb9a7060f2c38645e766ad7a2ebb540c5cc9",
+    "retrieval": "oracle",
+    "retry_budget": 2,
+    "retry_template_sha256": "0ce3496235180696d715740fc517c05ed9c30f5ceb7a6c625e854a106bac7a2b",
+    "sampler": "greedy: argmax over the final logprob axis (mx.argmax(logprobs, axis=-1))"
+  },
+  "measurement": "larger-base arm; a new candidate under the hardened contract, declared non-comparable (PREREGISTRATION.md \u00a7 10.6); not the pinned baseline of PREREGISTRATION.md:126-128",
+  "non_comparable": true,
+  "per_candidate": [
+    {
+      "candidate": "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit",
+      "covered": 49,
+      "denominator": 62,
+      "failed": 48,
+      "no_diff": 0,
+      "not_applied": 37,
+      "not_solved": 11,
+      "out_of_scope": 0,
+      "solved": 1,
+      "unverified": 13,
+      "weaker_wins": 0
+    }
+  ],
+  "recorded_on": "2026-08-18",
+  "schema": "whetstone-larger-base-report/1"
+}

@@ -90,9 +90,11 @@ from whetstone.bakeoff.report import (
     ContractArm,
     GenerationContract,
     build_contract_comparison,
+    build_larger_base_report,
     build_stratum_report,
     tally,
     write_comparison,
+    write_larger_base_report,
     write_stratum_report,
 )
 from whetstone.bakeoff.scoring import Rollout
@@ -982,7 +984,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     group is accepted (zero refused with the declaration-not-re-rendered wording, two
     refused by name); `--stratum-doc` is required as a pointer, never parsed; every other
     refusal is exit 2 with the reason named, and nothing is written by a refused
-    invocation. The two report modes are mutually exclusive in effect: both flags
+    invocation.
+
+    **The larger-base-report door** (`--render-larger-base-report --arm NAME --journal
+    PATH --contract PATH --breakdown-home STR --recorded-on DATE --out DIR`): the arm's
+    one run into `reports/larger-base/`'s shape via
+    `report.build_larger_base_report`/`write_larger_base_report` by identity. Exactly one
+    arm group is accepted (zero refused with the declaration-not-re-rendered wording, two
+    refused by name); the candidate comes from the arm's own tallies and the development
+    subset from the contract's own field — both pointers, never parsed; every other
+    refusal is exit 2 with the reason named, and nothing is written by a refused
+    invocation. The report modes are mutually exclusive in effect: more than one flag
     together is a refused invocation.
     """
     parser = argparse.ArgumentParser(
@@ -1007,6 +1019,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="the stratum-report door: one journal and contract sidecar into the "
         "easier-stratum report",
+    )
+    parser.add_argument(
+        "--render-larger-base-report",
+        action="store_true",
+        help="the larger-base-report door: one journal and contract sidecar into the "
+        "larger-base report",
     )
     parser.add_argument(
         "--arm",
@@ -1080,10 +1098,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     namespace = parser.parse_args(argv)
 
-    if namespace.render_report and namespace.render_stratum_report:
+    modes = [
+        name
+        for name, value in (
+            ("--render-report", namespace.render_report),
+            ("--render-stratum-report", namespace.render_stratum_report),
+            ("--render-larger-base-report", namespace.render_larger_base_report),
+        )
+        if value
+    ]
+    if len(modes) > 1:
         print(
-            "whetstone comparison: --render-report and --render-stratum-report are mutually "
-            "exclusive — exactly one mode runs per invocation",
+            f"whetstone comparison: {', '.join(modes)} are mutually exclusive — exactly "
+            "one mode runs per invocation",
             file=sys.stderr,
         )
         return 2
@@ -1091,6 +1118,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _render_report_main(namespace)
     if namespace.render_stratum_report:
         return _render_stratum_report_main(namespace)
+    if namespace.render_larger_base_report:
+        return _render_larger_base_report_main(namespace)
     return _breakdown_main(namespace)
 
 
@@ -1282,6 +1311,78 @@ def _render_stratum_report_main(namespace: argparse.Namespace) -> int:
     return 0
 
 
+def _render_larger_base_report_main(namespace: argparse.Namespace) -> int:
+    """The larger-base-report door's invocation handling: the shape checks, then the one arm.
+
+    Refusals in fixed order, each exit 2 with the reason named: zero arm groups (the
+    committed declaration is not re-rendered by the door, and a half-truth render is
+    refused); arm groups that do not line up (every arm needs exactly one journal and one
+    contract); more than one group (the arm is one run under one contract, so a second
+    group would be a second measurement shape, not this report's); missing
+    `--breakdown-home`; missing `--recorded-on`; missing `--out`; then the arm's own
+    refusals inside `build_contract_arms`, unchanged. Nothing is written by a refused
+    invocation. The candidate the render names comes from the arm's own tallies and the
+    development subset from the contract's own field — both pointers, never parsed.
+    """
+    try:
+        names = list(namespace.arm or [])
+        journals = list(namespace.journal or [])
+        contracts = list(namespace.contract or [])
+        if not names:
+            raise _UsageError(
+                "no arms given: the committed declaration is not re-rendered by the door, "
+                "and a half-truth render is refused. Pass exactly one --arm NAME --journal "
+                "PATH --contract PATH group"
+            )
+        if not (len(names) == len(journals) == len(contracts)):
+            raise _UsageError(
+                f"the arm groups do not line up: {len(names)} arm names, {len(journals)} "
+                f"journals, {len(contracts)} contracts — every arm needs exactly one "
+                "journal and one contract sidecar"
+            )
+        if len(names) > 1:
+            raise _UsageError(
+                f"the larger-base report takes exactly one arm group: {len(names)} were "
+                "given. The arm is one run under one contract, so a second group would be "
+                "a second measurement shape, not this report's"
+            )
+        if namespace.breakdown_home is None:
+            raise _UsageError(
+                "--breakdown-home is required: the render points at the gitignored home of "
+                "the classifier counts, and never restates one"
+            )
+        if namespace.recorded_on is None:
+            raise _UsageError(
+                "--recorded-on is required: the operator declares the date the render is "
+                "recorded under, never the clock"
+            )
+        if namespace.out is None:
+            raise _UsageError(
+                "--out is required: the directory the three artifacts are written into"
+            )
+        arms = build_contract_arms(tuple(zip(names, journals, contracts, strict=True)))
+        arm = arms[0]
+        tallies = arm.tallies
+        candidate = tallies[0].candidate
+        document = build_larger_base_report(
+            tallies=tallies,
+            contract=arm.contract,
+            candidate=candidate,
+            dev_subset=arm.contract.dev_subset,
+            breakdown_home=namespace.breakdown_home,
+            recorded_on=namespace.recorded_on,
+            generation_seconds=arm.generation_seconds,
+        )
+        written = write_larger_base_report(document, into=namespace.out)
+    except _UsageError as exc:
+        print(f"whetstone comparison: {exc}", file=sys.stderr)
+        return 2
+
+    for path in written:
+        print(f"wrote {path}")
+    return 0
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
 
@@ -1297,6 +1398,7 @@ __all__ = [
     "build_contract_arms",
     "build_contract_comparison",
     "build_document",
+    "build_larger_base_report",
     "build_stratum_report",
     "is_inferred_truncation",
     "main",
@@ -1306,5 +1408,6 @@ __all__ = [
     "tally",
     "trigger_of_cause",
     "write_comparison",
+    "write_larger_base_report",
     "write_stratum_report",
 ]

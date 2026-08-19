@@ -891,6 +891,220 @@ def _stratum_cost(generation_seconds: float | None) -> str:
     return json.dumps(body, indent=2, sort_keys=True) + "\n"
 
 
+#: The machine-readable schema of the larger-base report sidecar.
+LARGER_BASE_REPORT_SCHEMA = "whetstone-larger-base-report/1"
+
+
+@dataclass(frozen=True)
+class LargerBaseReport:
+    """The larger-base arm's document and its sidecars, before either touches a disk.
+
+    The same three-string shape as `StratumReport`, so the directory's committed layout
+    — report.md, report.json, cost.json — mirrors the existing homes' and a reader learns
+    one layout for all of them.
+    """
+
+    #: The committed document.
+    markdown: str
+
+    #: The machine-readable sidecar.
+    payload: str
+
+    #: The measured cost sidecar, as text so the bytes are the artefact.
+    cost: str
+
+
+def build_larger_base_report(
+    *,
+    tallies: Sequence[Tally],
+    contract: GenerationContract | None,
+    candidate: str,
+    dev_subset: Sequence[str],
+    breakdown_home: str,
+    recorded_on: str,
+    generation_seconds: float | None = None,
+) -> LargerBaseReport:
+    """Render the larger-base arm's document: one contract, a changed candidate.
+
+    The arm's report, for `reports/larger-base/`. The arm scores the **same declared
+    source-B set** under the same hardened contract § 10.4 discloses, with a **new
+    candidate** — and model revision is one of the five pinned inputs
+    (`PREREGISTRATION.md:131-132`), so a change to it invalidates the series and starts
+    a new one (`PREREGISTRATION.md:133-135`); the arm's figures are a new series,
+    declared non-comparable to all three existing homes (`PREREGISTRATION.md` § 10.6).
+    The document states that ground, renders the sidecar's contract fields beside the
+    per-candidate table (the same eight rows as the other homes), discloses the arm's
+    token spend, and points at the candidate and the gitignored breakdown home — never
+    restating a count from either. With no tallies the document is the declaration:
+    the home's ground, the four-homes non-comparability, and no count — the state of
+    the committed artifacts before the arm runs.
+
+    A pure function of its inputs, like the other writers: no clock is read, no ledger is
+    opened, and every mapping is serialised in a fixed order, so the same inputs produce
+    byte-identical output. `recorded_on` is declared by the operator, never read from the
+    clock; `candidate`, `dev_subset` and `breakdown_home` are pointer strings, never
+    parsed.
+    """
+    if tallies and contract is None:
+        raise ValueError(
+            "a larger-base report with tallies needs the contract they were measured "
+            "under: a count without the contract that produced it is a figure that "
+            "cannot be told apart from any other"
+        )
+    lines = [
+        "# The larger-base arm — a new candidate, declared non-comparable",
+        "",
+        "This document reports the larger-base arm: the declared source-B set scored "
+        "under the same hardened generation contract § 10.4 discloses, with the "
+        "declared development subset excluded from both sources before anything runs, "
+        "and with a **new candidate** — a change to the model revision, which is one of "
+        "the five pinned inputs (`PREREGISTRATION.md:131-132`), and a change to a "
+        "pinned input invalidates a series and starts a new one "
+        "(`PREREGISTRATION.md:133-135`). So the arm's figures are a **new series**, "
+        "declared non-comparable to all three existing homes (`PREREGISTRATION.md` "
+        "§ 10.6): `reports/baseline/` remains the only home of the baseline's figures, "
+        "`reports/format-hardening/` the only home of the hardened arm's, "
+        "`reports/easier-stratum/` the only home of the probe's, and this directory "
+        "the only home of the arm's — neither is a competing home for the same figure.",
+        "",
+        _NON_COMPARABILITY,
+        "",
+        "The arm is a yield test: it measures whether strict-PASS training data exists "
+        "on the declared set at a larger base. It is not the pinned baseline of "
+        "`PREREGISTRATION.md:126-128`, which stands unmeasured and may still be "
+        "measured exactly once, it is not the held-out split of § 7.1, which remains "
+        "open until P3, and it is not a base-selection closure — it produces evidence "
+        "only.",
+        "",
+    ]
+    if not tallies:
+        lines += [
+            "**No count is measured here: the arm has not run.** Per-candidate verdict "
+            "counts, the contract's fields and the arm's token spend are rendered into "
+            "this directory by the report door after the arm runs. Until then this "
+            "document holds no figure of its own and restates none from "
+            "`reports/baseline/`, `reports/format-hardening/` or "
+            "`reports/easier-stratum/`.",
+            "",
+        ]
+    else:
+        if contract is None:
+            raise ValueError(
+                "a larger-base report with tallies needs the contract they were "
+                "measured under: a count without the contract that produced it is a "
+                "figure that cannot be told apart from any other"
+            )
+        names = [counts.candidate for counts in tallies]
+        columns = " | ".join(f"`{name}`" for name in names)
+        rule = "|".join(["---"] * (len(names) + 1))
+        lines += [
+            "## The candidate",
+            "",
+            f"**The contract.** {_contract_fields(contract)}.",
+            "",
+            f"| Figure | {columns} |",
+            f"|{rule}|",
+            _row("solved", tallies, lambda one: one.solved),
+            _row("coverage", tallies, lambda one: one.covered),
+            _row("unverified", tallies, lambda one: one.unverified),
+            _row("N", tallies, lambda one: one.weaker_wins),
+            _row("no diff", tallies, lambda one: one.no_diff),
+            _row("patch apply", tallies, lambda one: one.not_applied),
+            _row("patch scope", tallies, lambda one: one.out_of_scope),
+            _row("not solved", tallies, lambda one: one.not_solved),
+            "",
+            "These counts are stated under the contract's fields above: a count and the "
+            "contract that produced it belong together. `N` is the harness's own "
+            "WEAK-PASS/STRICT-FAIL differential (`PREREGISTRATION.md:96-100`). The `N of "
+            "M` cells are counted over the arm's own denominator — the harness's "
+            "per-candidate denominator, which for a complete arm equals the declared "
+            "source-B set less the dev-subset exclusions — 61 private + 1 public = 62 "
+            "per candidate. The excluded ids are the declared development subset "
+            f"({', '.join(f'`{name}`' for name in dev_subset)}).",
+            "",
+        ]
+        if generation_seconds is not None:
+            lines.append(
+                f"**Token spend.** Generation {generation_seconds:.1f} seconds, summed "
+                "over the arm's rollouts from the run's own cost records."
+            )
+        else:
+            lines.append("**Token spend.** Not measured.")
+        lines.append("")
+    lines += [
+        f"**The candidate.** The arm scores `{candidate}` — the candidate the runbook's "
+        "resolution block names before anything runs. The series statement lives in the "
+        "runbook and in this directory; this document points at them and never restates "
+        "a count from either, so the candidate has exactly one home for its figures.",
+        "",
+        f"**The breakdowns.** The classifier counts behind these figures live in the "
+        f"gitignored home `{breakdown_home}`; this document points at them and never "
+        "restates them, so a classifier count has exactly one home.",
+        "",
+        f"Recorded on {recorded_on} (declared by the operator, never read from a clock).",
+    ]
+    return LargerBaseReport(
+        markdown="\n".join(lines),
+        payload=_larger_base_payload(
+            tallies, contract, candidate, dev_subset, breakdown_home, recorded_on
+        ),
+        cost=_larger_base_cost(generation_seconds),
+    )
+
+
+def write_larger_base_report(document: LargerBaseReport, into: Path) -> tuple[Path, Path, Path]:
+    """Write the larger-base report's three artifacts into `into`, and nothing anywhere else.
+
+    The same layout as every other home — report.md, report.json, cost.json — so a reader
+    learns one shape for all of them. Returns the paths so a caller can assert on what was
+    produced rather than reconstruct the names.
+    """
+    into.mkdir(parents=True, exist_ok=True)
+    markdown = into / "report.md"
+    sidecar = into / "report.json"
+    cost = into / "cost.json"
+    markdown.write_text(document.markdown, encoding="utf-8")
+    sidecar.write_text(document.payload, encoding="utf-8")
+    cost.write_text(document.cost, encoding="utf-8")
+    return (markdown, sidecar, cost)
+
+
+def _larger_base_payload(
+    tallies: Sequence[Tally],
+    contract: GenerationContract | None,
+    candidate: str,
+    dev_subset: Sequence[str],
+    breakdown_home: str,
+    recorded_on: str,
+) -> str:
+    """The larger-base report's machine-readable sidecar. Sorted keys, fixed order, no clock."""
+    body: dict[str, Any] = {
+        "schema": LARGER_BASE_REPORT_SCHEMA,
+        "measurement": (
+            "larger-base arm; a new candidate under the hardened contract, declared "
+            "non-comparable (PREREGISTRATION.md § 10.6); not the pinned baseline of "
+            "PREREGISTRATION.md:126-128"
+        ),
+        "non_comparable": True,
+        "candidate": candidate,
+        "dev_subset": list(dev_subset),
+        "breakdown_home": breakdown_home,
+        "recorded_on": recorded_on,
+        "generation_contract": None if contract is None else _contract_block(contract),
+        "per_candidate": None if not tallies else [_counts(one) for one in tallies],
+    }
+    return json.dumps(body, indent=2, sort_keys=True) + "\n"
+
+
+def _larger_base_cost(generation_seconds: float | None) -> str:
+    """The larger-base report's cost sidecar: the arm's measured spend, `None` if unmeasured."""
+    body: dict[str, Any] = {
+        "kind": "larger-base-report",
+        "generation_seconds": generation_seconds,
+    }
+    return json.dumps(body, indent=2, sort_keys=True) + "\n"
+
+
 def _comparison_payload(
     arms: Sequence[ContractArm], breakdown_home: str, recorded_on: str
 ) -> str:
@@ -1322,6 +1536,7 @@ def _counts(counts: Tally) -> dict[str, Any]:
 
 
 __all__ = [
+    "LARGER_BASE_REPORT_SCHEMA",
     "STRATUM_REPORT_SCHEMA",
     "ContractArm",
     "ContractComparison",
@@ -1329,6 +1544,7 @@ __all__ = [
     "Funnel",
     "GenerationContract",
     "IncompleteProvenance",
+    "LargerBaseReport",
     "MissingSource",
     "Provenance",
     "Report",
@@ -1336,11 +1552,13 @@ __all__ = [
     "StratumReport",
     "Tally",
     "build_contract_comparison",
+    "build_larger_base_report",
     "build_report",
     "build_stratum_report",
     "funnel_from_ledger",
     "tally",
     "write",
     "write_comparison",
+    "write_larger_base_report",
     "write_stratum_report",
 ]

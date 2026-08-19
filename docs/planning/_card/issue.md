@@ -1,32 +1,31 @@
-# Card — stratum-probe-execution
+# Card — larger-base-arm
 
 ## Brief
 
-The easier-stratum probe — the fork gate after P1's fired pivot signal — has all its
-machinery shipped (0.6.0) but has not run: `reports/easier-stratum/report.md` holds the
-declaration-only state and `runs/` has no evidence directory. The runbook
-(`docs/planning/p2-easier-stratum/probe-run/runbook.md`) is stale on master: every
-`uv run --project` target names the deleted `feat-p2-easier-stratum` worktree, and the
-guard never existence-checks a path, so the sheet is green while its commands fail.
+Execute the roadmap's named fork, second arm: a larger base. The easier-stratum probe ran and
+its finding (`docs/planning/p2-easier-stratum/probe-run/finding.md:27-32`) records yield == 0
+for every candidate with control intact, so the pre-committed fork rule
+(`docs/planning/p2-easier-stratum/prd.md:49-51`) routes to the larger-base arm — never a
+looser verifier, never a fourth generation-contract change.
 
-First slice, test-first: add `feat-p2-easier-stratum` to `STALE_WORKTREES` in
-`tests/test_probe_runbook_guards.py` and watch it go RED against the current sheet, then
-refresh the runbook onto the unit's fresh worktree (per the whetstone-worktrees
-convention), keeping the A2 resolution block and the retained/excluded candidate pins
-intact.
+Pre-commit the candidate and the task set before any rollout (a 32B-class open coder base,
+the next rung on the measured family; and, per the M13 read that the axis is not the binding
+constraint, re-test the premise on the declared source-B set), refresh the probe runbook onto
+the unit's worktree with the guard extended — RED watched first — then the operator runs the
+GPU pass, the post-run chain, and the finding, with the report door rendering figures into
+the arm's home.
 
-Then the operator executes the arm (overnight, GPU), runs the post-run chain verbatim
-(attribution → autopsy → the mandatory pre-analysis extension over all four autopsy
-documents → comparison → the stratum-report door), and writes the finding that applies
-the pre-committed fork rule (probe-run spec A6): yield > 0 → P2 loop next on the
-stratum; yield == 0 with control intact → larger-base arm, with the M13
-axis-falsification check stated in words on the autopsy/attribution read.
+Acceptance: guard suite green with the RED watched first, runbook executable from disk,
+control INTACT on every task, post-run chain refusals all named and passing, the finding
+applying the fork rule with the M13 axis check in words, and no figure about a model outside
+the report home and the gitignored breakdowns.
 
-Acceptance: the guard suite green with the RED watched first, the runbook's commands
-executable from disk (no dead worktree path anywhere), the post-run chain's refusals
-all named and passing, and no figure about a model anywhere outside
-`reports/easier-stratum/` and the gitignored breakdown home.
+Caveat for the dig: the 14B's `hunk-count-mismatch` wall persisted under the retry budget and
+the wall now sits at "applies but does not solve", so the candidate and task set must be
+pre-committed, and the dig must decide the report home and whether the probe's none-declared
+dev subset and the new arm's series need a `PREREGISTRATION.md` § 10.6 amendment.
 
 ## Source
 
-Inline brief (no GitHub issue — slug id, `feat stratum-probe-execution`).
+Inline brief (no GitHub issue — slug id, `feat larger-base-arm`), handed off from the
+`whetstone-next` session (2026-08-15).

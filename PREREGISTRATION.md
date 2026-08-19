@@ -312,6 +312,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-08-04 | Donor names replaced by stable pseudonyms throughout; the redaction disclosed (§ 10.3) | 2 — adds a disclosure | No |
 | 2026-08-09 | The format-hardening contract is a second, non-comparable generation contract; its report has its own home (§ 10.4) | 2 — adds a disclosure | No |
 | 2026-08-14 | The easier-stratum probe scores a changed task set under the hardened contract; its report has its own non-comparable home (§ 10.5) | 2 — adds a disclosure | No |
+| 2026-08-15 | The larger-base arm scores a new candidate under the hardened contract; its report has its own non-comparable home (§ 10.6) | 2 — adds a disclosure | No |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. §§ 7.1, 7.2 and 7.3
@@ -462,3 +463,33 @@ exists on the easier stratum, under the fork rule pre-committed in its PRD. It i
 pinned baseline of § 3 (`:126-128`), which stands unmeasured and may still be measured
 exactly once; it is not the held-out split of § 7.1, which remains open until P3. At the
 time of this amendment no count has been measured under the probe, and none is claimed here.
+
+### 10.6 The larger-base arm scores a new candidate, declared non-comparable — 2026-08-15
+
+**Type 2 (§ 8.2): a disclosure, added.** It closes no open item, sets no threshold, and
+rewords nothing in § 1, § 4, or § 6.
+
+**The disclosure.** The easier-stratum probe's pre-committed fork rule names the
+larger-base arm as the next unit after the probe's zero
+(`docs/planning/p2-easier-stratum/prd.md:44-55`). The arm re-tests the P2 premise — that
+strict-PASS training data exists — on the same declared source-B set, under the same
+hardened generation contract § 10.4 discloses, with a new candidate. Model revision is
+one of the five pinned inputs (`:131-132`), and a change to a pinned input invalidates a
+series and starts a new one (`:133-135`), so the arm's figures are a new series, not an
+extension of an old one.
+
+**The four reports are declared non-comparable.** A figure from the arm may not be
+compared with one from `reports/baseline/` — a different model revision under a
+different contract; with one from `reports/format-hardening/` — a different model
+revision under the same contract; or with one from `reports/easier-stratum/` — a
+different model revision and a different task set. `reports/larger-base/` is therefore
+the only home of the arm's figures, and the existing homes' artifacts are static and
+are not regenerated.
+
+**What the arm is not.** The arm is a measurement: it re-tests whether strict-PASS
+training data exists at a larger base. It is not the pinned baseline of § 3
+(`:126-128`), which stands unmeasured and may still be measured exactly once; it is not
+the held-out split of § 7.1, which remains open until P3; and it is not a
+base-selection closure — it produces evidence only, and § 7.3 closes by a Type 1
+amendment committed before the measurement it governs runs (§ 8.1). At the time of this
+amendment no count has been measured under the arm, and none is claimed here.
