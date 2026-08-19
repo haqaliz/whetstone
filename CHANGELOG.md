@@ -9,6 +9,31 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Added
+
+- **The larger-base arm ran, and the fork has its first positive result.** The roadmap's
+  named second response (`docs/ROADMAP.md:387-389`), executed end to end
+  (`docs/planning/larger-base-arm/`): the probe pass (D7) settled the ROADMAP § 10 capacity
+  question by measurement, the arm scored
+  `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit` on the declared source-B set under the
+  hardened contract § 10.4 discloses, and the 32B produced the **first nonzero strict-PASS
+  yield the harness has ever measured** — so the pre-committed fork rule routes the next
+  unit to P2's first slice (rollouts + expert iteration), and the finding names the 32B as
+  the first candidate with evidence (base selection itself closes § 7.3 only by a Type 1
+  amendment before P3's baseline). The published home is `reports/larger-base/` (schema
+  `whetstone-larger-base-report/1`), rendered by the report door's third mode
+  `--render-larger-base-report`; the one-home guard admitted it on the changed-candidate-set
+  argument, and `PREREGISTRATION.md` § 10.6 (Type 2, 2026-08-15) declared the series
+  non-comparable before any figure existed for it. Two disclosures in the finding: the
+  material unverified rate (a timing property of the 32B's ~6 tokens/second against the
+  verification timeout — the P3 retry discipline is the named response) and the one field
+  correction the run surfaced (the post-run chain's autopsy stem did not match the
+  journal's run name, the comparison refused it by name, and the guard now pins the
+  alignment, watched failing first). No figure about a model appears anywhere outside the
+  report home and the gitignored breakdown home.
+
 ## [0.6.0] - 2026-08-14
 
 ### Added

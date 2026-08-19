@@ -185,10 +185,11 @@ time. Notes on the choices:
 
 ## Expected runtime
 
-Stated as **unknown**, never guessed: one candidate, retries add up to three draws per
-retry-eligible task on the 61-task private set instead of one. GPU cost for a 32B matrix is
-unmeasured — one candidate × 61 private tasks × up to 3 generations + control probes, 900 s
-timeouts — plan for a night; the probe pass bounds it first (`prd.md:245-247`).
+Measured, not guessed, by the 2026-08-18 run: **~4.7 hours** for the full matrix (61 private
+tasks × up to three draws where retry-eligible + control probes, 900 s timeouts) — the probe
+pass's own per-task cost extrapolates to about this, and the night's cost record is the
+measured value. The probe pass bounds it before any re-run; the run is a single night either
+way.
 
 ## Halt conditions
 
