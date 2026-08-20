@@ -9,7 +9,55 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
-## [Unreleased]
+## [0.7.0] - 2026-08-20
+
+### Added
+
+- **The nightly improvement loop — P2's first slice, and the project's namesake.**
+  `whetstone run --night` (`docs/planning/p2-rollouts/`) draws `K` seeded attempts per task
+  under the hardened generation contract, keeps **only** the rollouts the STRICT verifier
+  passed, and LoRA-SFTs the base on those, writing `runs/<id>/` (a ledger of the pinned
+  seeds, model revision, task set and tool versions; the selected dataset; the per-draw
+  journals and transcripts) and — when the night selected anything and the declared capacity
+  probe fits — a hashed candidate under `checkpoints/<id>/`. All four P2 exit criteria are
+  asserted as tests rather than described: the door produces both directories, **every**
+  training example carries a recorded strict-PASS verdict, two nights at one seed produce a
+  byte-identical training set, and the ledger records the pinned inputs. The new package
+  `src/whetstone/loop/` is partitioned `EXEMPT` on the `bakeoff` precedent and **composes
+  rather than re-decides**: `freeze`/`Sealed`/`Recording`/`Retry`, `control.probe`,
+  `harness_status`, `sweep.rankable`, `Journal`, `Transcript`, `load_weights` and the single
+  definition of *solved* (`report.tally`'s `Outcome.SOLVED`) are all imported by identity.
+  The one new seam is the sampled draw: `K = 8` is a declared constant and never a flag
+  (raising it is the roadmap's named response to a low yield, as a diff before a night), the
+  per-attempt seed is `sha256(run_seed, task_id, attempt)` — never the builtin `hash`, which
+  is process-salted and would have made the determinism criterion a statement about
+  `PYTHONHASHSEED`, asserted by a cross-process test — and `sampler_for(1)` returns
+  `mlx_runtime.greedy_sampler` by identity, so a single-draw night and the bake-off are one
+  experiment. `Draw` wraps outermost, so a retry re-asks *within* a draw and consumes no new
+  seed; one journal and one transcript live **per draw index**, because both are keyed
+  `(candidate, task)` and `K` draws of one task would otherwise collapse to the last; the
+  control arm runs once per task and is shared across the draws, and a resumed night reuses
+  the recorded probe rather than taking a second one. `cli.py` gains this repository's one
+  edge from a guarded root into an exempt package — a single **function-local** import of
+  `whetstone.loop.night` inside the night handler, so `whetstone verify` never loads a model
+  — and `tests/test_reward_path_scope_is_partitioned.py` asserts it is the only such edge
+  **and** that it is function-local, both watched failing against planted imports. The
+  refusals are the substance: `UNVERIFIED` is not training data and neither is anything else
+  (the trainable partition is enumerated against `Outcome` and asserted complete), an example
+  must carry `SOLVED` *and* a recorded strict `PASS`, a win from an unproven control arm is
+  refused by name, a zero-strict-PASS night writes no checkpoint and states the empty outcome,
+  the LoRA capacity probe is declared before it ran with the memory fallback pre-committed on
+  (exceeding its headroom is a published capacity finding, not a constant to edit), a valid
+  split below its declared floor is *no valid split* stated verbatim in the checkpoint's
+  provenance, and the checkpoint is hashed weights-style with a re-verify so P3's gate can
+  check the bytes it compares. **Nothing is published**: a night's counts live only in its
+  gitignored run directory, the ledger and dataset documents carry hashes and verdicts and
+  never contents (canaries plant donor source text and assert it cannot reach either),
+  `reports/` gains no directory, and no `PREREGISTRATION.md` § 10 amendment is made because
+  § 10 discloses published series and this unit publishes none. **The night has not been
+  run** — the operator's sheet is `docs/planning/p2-rollouts/night-door/runbook.md`, held by
+  `tests/test_night_runbook_guards.py` and watched failing against a deliberately wrong stub
+  sheet.
 
 ### Added
 
