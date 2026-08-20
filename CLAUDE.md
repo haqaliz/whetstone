@@ -420,7 +420,70 @@ This file orients a coding agent working in this repository. Read it first.
 > `docs/planning/larger-base-arm/finding.md` and `reports/larger-base/` before quoting
 > anything about it.
 >
-> **What is not built.** All of P2–P4: no rollouts, no training, no promotion gate, no nightly
+> **P2's first slice — rollouts and expert iteration — is done** (`docs/ROADMAP.md` § P2; plans at
+> `docs/planning/p2-rollouts/{sampling,sft,night-door}/`). The project's namesake finally exists:
+> `whetstone run --night` draws `K` seeded attempts per task under the hardened contract, keeps
+> **only** the rollouts the STRICT verifier passed, LoRA-SFTs the base on those, and writes
+> `runs/<id>/` (ledger, dataset, per-draw journals and transcripts) plus a hashed candidate under
+> `checkpoints/<id>/`. All four P2 exit criteria are asserted as tests rather than described: the
+> door produces both directories, **every** training example carries a recorded strict-PASS
+> verdict, two nights at one seed produce a byte-identical training set, and the ledger records the
+> pinned seeds, model revision, task set and tool versions.
+>
+> **The new package is `src/whetstone/loop/`, partitioned EXEMPT on the `bakeoff` precedent, and it
+> composes rather than re-decides.** `freeze`/`Sealed`/`Recording`/`Retry`, `control.probe`,
+> `harness_status`, `sweep.rankable`, `Journal`, `Transcript`, `load_weights` and — critically — the
+> single definition of *solved* (`report.tally`'s `Outcome.SOLVED`, imported by identity) are all
+> the bake-off's own. The one genuinely new seam is the sampled draw: `sampling.K = 8` is a
+> **declared constant, never a flag** (raising it is the roadmap's named response to a low yield,
+> as a diff before a night), the per-attempt seed is `sha256(run_seed, task_id, attempt)` — never
+> the builtin `hash`, which is process-salted and would have made the determinism criterion a
+> statement about `PYTHONHASHSEED`, asserted by a cross-process test — and `sampler_for(1)` returns
+> `mlx_runtime.greedy_sampler` **by identity**, so a single-draw night and the bake-off are one
+> experiment. `Draw` wraps outermost so a retry re-asks *within* a draw and consumes no new seed;
+> one journal and one transcript live **per draw index**, because both are keyed `(candidate, task)`
+> and `K` draws of one task would otherwise collapse to the last. The control arm runs **once per
+> task** and is shared across the draws, and a resumed night reuses the recorded probe rather than
+> taking a second one.
+>
+> **`cli.py` gains the one edge this repository has from a guarded root into an exempt package**, and
+> it is argued rather than excused: `run --night` holds a single **function-local** import of
+> `whetstone.loop.night` inside its handler, so `whetstone verify` never executes it and never
+> imports `mlx_lm` even transitively. `tests/test_reward_path_scope_is_partitioned.py` asserts it is
+> the only such edge **and** that it is function-local, both watched failing against planted
+> imports; a second one, or the same one at module scope, fails the build.
+>
+> **The refusals are the part worth reading.** `UNVERIFIED` is not training data and neither is
+> anything else: the trainable partition is enumerated against `Outcome` and asserted complete, an
+> example must carry `SOLVED` *and* a recorded strict `PASS`, and a win from a run whose control arm
+> proved nothing is refused by name. A zero-strict-PASS night is a **published outcome** — it writes
+> no checkpoint, states the empty result in its ledger, and exits non-zero — because an adapter
+> trained on nothing is indistinguishable, to P3's gate, from one that learned something. The
+> LoRA capacity probe is D7-style and declared before it ran (a named step count, a stated headroom
+> against 36 GiB, with gradient checkpointing and accumulation **pre-committed on** so a failing
+> probe has nothing left to try); exceeding it is a capacity finding, not a constant to edit. The
+> valid split below its declared floor is *no valid split*, stated verbatim in the checkpoint's
+> provenance. The checkpoint is hashed weights-style with a `verify_checkpoint` re-hash, so P3 can
+> re-verify the bytes it compares.
+>
+> **Nothing is published by this unit and `reports/` gains no directory.** A night's counts live in
+> its own gitignored `runs/<id>/`, which is their only home; the ledger and the dataset document
+> carry hashes and verdicts and never contents (canaries plant donor source text and assert it
+> cannot reach either), and both documented homes are asserted gitignored. **No `PREREGISTRATION.md`
+> § 10 amendment was made, deliberately**: § 10 discloses published *series*, and this unit publishes
+> none. The loop's generation contract does differ from every published one in its `sampler` field
+> (categorical, seeded, versus greedy) — that difference is recorded in every run ledger, and the
+> amendment belongs to whichever later unit first publishes a figure measured under it.
+>
+> **The night itself has not been run.** The machinery is shipped and the operator's sheet is
+> written (`docs/planning/p2-rollouts/night-door/runbook.md`, held by
+> `tests/test_night_runbook_guards.py`: flags pinned to the shipped parser, writable paths absolute,
+> exactly one worktree, the five declared dev ids, the retained/excluded candidate resolution, and
+> the zero-yield rule stated as a result rather than a halt — watched failing against a deliberately
+> wrong stub sheet). The GPU pass is operator-executed, as every arm in this repository has been.
+>
+> **What is not built.** The nightly loop has never been *run*, so no training set, checkpoint or
+> yield figure exists yet. P3 and P4 are untouched: no promotion gate, no held-out split, no nightly
 > report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
 > so "measured once, re-measured never" is unspent. Cheat 6 and cheat 10 remain documented

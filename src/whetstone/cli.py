@@ -1,17 +1,27 @@
 """The `whetstone` command line entry point.
 
 The failure this module prevents: a ``--help`` that advertises work the code cannot do.
-Commands appear here only when something stands behind them, and two now do. ``verify`` runs
+Commands appear here only when something stands behind them, and three now do. ``verify`` runs
 the execution-grounded reward in `whetstone.verify.strict`: it applies a patch to a task's
 known-broken commit inside a sandbox, restores the operator-held tests from golden, and
 compares what pytest actually executed against what the task declared. ``mine`` is the other
 end — it turns a local repository into tasks the first command can run, proving each one live
-before it enters the corpus. There is still no loop, no gate and no report, so there are still
-no stubs for those.
+before it enters the corpus. ``run --night`` is the loop between them: it draws K seeded
+attempts per task, keeps only the rollouts that reward passed, and trains a candidate on them.
+There is still no gate and no report, so there are still no stubs for those.
 
-**Both subcommands share the same four exit codes and add no fifth.** A mint that produced no
-task exits ``FAIL_EXIT``, never 0: "nothing could be mined here" is a finding about a donor,
-and a caller checking ``rc == 0`` must never read it as a corpus.
+**``run --night`` is the one command here whose body is not in this file, and deliberately.**
+This module is a guarded root — it calls ``verify_strict``, and nothing it imports may reach an
+inference library. The loop reaches ``mlx_lm`` legitimately, so it lives in the EXEMPT
+``whetstone.loop`` package and ``run_night`` below holds a single **function-local** import into
+it: running ``whetstone verify`` never executes that line and never loads a model.
+``tests/test_reward_path_scope_is_partitioned.py`` asserts it is the only such edge and that it
+is function-local.
+
+**All three subcommands share the same four exit codes and add no fifth.** A mint that produced
+no task exits ``FAIL_EXIT``, never 0: "nothing could be mined here" is a finding about a donor,
+and a caller checking ``rc == 0`` must never read it as a corpus. A night that produced no
+candidate is the same shape and is floored the same way.
 
 ``--task`` takes a manifest or a **directory** of them, and the directory adds no fifth
 outcome. The set reduces worst-status-wins through the same `whetstone.verify.verdict.reduce`
@@ -96,6 +106,15 @@ _VERIFY_DESCRIPTION = (
     "the task's own tests in a sandbox. A directory reduces worst-status-wins: the run is a "
     "PASS only if every task passed. Exits 0 on PASS, 1 on FAIL, 2 on a usage error, and 3 "
     "when nothing could be verified."
+)
+
+_RUN_DESCRIPTION = (
+    "Run one night of the improvement loop: draw K seeded attempts at every task under the "
+    "frozen generation contract, keep only the rollouts the STRICT verifier passed, and LoRA-SFT "
+    "the base on those. Produces runs/<id>/ (ledger, dataset, per-draw journals and transcripts) "
+    "and, when the night selected anything and the capacity probe fits, a candidate under "
+    "checkpoints/<id>/. Every training example carries a recorded strict-PASS verdict by "
+    "construction; UNVERIFIED is never training data. Exits 0 only when a candidate was written."
 )
 
 _MINE_DESCRIPTION = (
@@ -186,6 +205,174 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_TASKS_ROOT,
         metavar="<path>",
         help="where the committed evidence goes: the liveness ledger and the donor's recipe",
+    )
+
+    night = commands.add_parser(
+        "run",
+        help="run one night of the improvement loop and emit a candidate",
+        description=_RUN_DESCRIPTION,
+    )
+    night.add_argument(
+        "--night",
+        action="store_true",
+        required=True,
+        help=(
+            "run a night. Required rather than implied: `whetstone run` with nothing behind it "
+            "would be a command that exits 0 having done nothing, and the roadmap names this "
+            "door as `run --night` so a later `run --day` cannot silently inherit its meaning"
+        ),
+    )
+    night.add_argument(
+        "--tasks",
+        type=Path,
+        required=True,
+        action="append",
+        metavar="<path>",
+        help=(
+            "source B: a private corpus directory, repeatable. The miner writes one directory per "
+            "donor, so the real corpus is one root per donor rather than their parent. Read by "
+            "path and never copied: it is the user's own code and lives outside any worktree"
+        ),
+    )
+    night.add_argument(
+        "--public",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help="source A: the eligible public instance(s). Drawn against always, beside source B",
+    )
+    night.add_argument(
+        "--pool",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help=(
+            "source A's committed pool. A public instance carries no donor commit, so its control "
+            "arm reads the gold patch from here rather than re-deriving one — without it every "
+            "public probe is a skip and the night proves nothing about its own harness"
+        ),
+    )
+    night.add_argument(
+        "--weights",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help=(
+            "the weights root holding provenance.json. Every recorded sha256 is re-checked before "
+            "a token is generated"
+        ),
+    )
+    night.add_argument(
+        "--runs",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help=(
+            "the gitignored root the run directory is created under (`runs/`). It holds the "
+            "ledger, the dataset, and the per-draw journals and transcripts — the user's own code, "
+            "quoted back. A path inside a reports/ directory is refused"
+        ),
+    )
+    night.add_argument(
+        "--checkpoints",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help=(
+            "the gitignored root the candidate is written under (`checkpoints/`). Refused inside "
+            "a reports/ directory, for the same reason --runs is"
+        ),
+    )
+    night.add_argument(
+        "--workspace",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help=(
+            "where sandboxes and provisioned environments are built. Never inside --runs: that "
+            "directory is the night's evidence and this one is gigabytes of scratch"
+        ),
+    )
+    night.add_argument(
+        "--timeout",
+        type=float,
+        required=True,
+        metavar="<seconds>",
+        help=(
+            "seconds allowed per verification. No default, matching the verifiers: a limit "
+            "inherited from elsewhere turns every slow task into an UNVERIFIED nobody can explain"
+        ),
+    )
+    night.add_argument(
+        "--recorded-on",
+        required=True,
+        metavar="<date>",
+        help=(
+            "the date the operator declares for this run. An input, never the clock — a ledger "
+            "that dated itself would differ from itself between two renders of the same records"
+        ),
+    )
+    night.add_argument(
+        "--run-id",
+        required=True,
+        metavar="<id>",
+        help=(
+            "the run's name, and the directory it gets under --runs and --checkpoints. An input "
+            "for the reason --recorded-on is: a generated id makes two invocations of the same "
+            "documented command produce two run directories nobody chose"
+        ),
+    )
+    night.add_argument(
+        "--run-seed",
+        type=int,
+        required=True,
+        metavar="<n>",
+        help=(
+            "the night's single seed. Every per-attempt seed is sha256(run_seed, task_id, "
+            "attempt), recorded in the ledger; the same seed over the same task set and contract "
+            "produces a byte-identical training set"
+        ),
+    )
+    night.add_argument(
+        "--dev-subset",
+        action="append",
+        default=[],
+        metavar="<task_id>",
+        help=(
+            "a task id the generation contract was developed against. Repeatable. Excluded from "
+            "both sources before anything is drawn; an id matching no task is refused, because it "
+            "would exclude nothing while the ledger said it had"
+        ),
+    )
+    night.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        metavar="<name>",
+        help=(
+            "draw with the candidate whose repo id contains NAME. A night trains one candidate, "
+            "so a weights root offering several needs this; a name matching nothing or several is "
+            "refused rather than resolved"
+        ),
+    )
+    night.add_argument(
+        "--probe",
+        type=int,
+        metavar="<n>",
+        help=(
+            "draw against only the first N source-B tasks and write NO checkpoint. Use it to "
+            "validate the whole chain cheaply before committing a night; a probe that trained "
+            "would produce a candidate from a self-chosen sample"
+        ),
+    )
+    night.add_argument(
+        "--no-retries",
+        action="store_true",
+        help=(
+            "draw under the un-hardened contract: no retry vocabulary frozen in, no retry "
+            "wrapper. Retries are ON by default here, because the hardened contract is the one "
+            "the evidence for this candidate was produced under; the ledger records which ran"
+        ),
     )
     return parser
 
@@ -329,6 +516,65 @@ def run_mine(
     return PASS_EXIT
 
 
+def run_night(args: argparse.Namespace) -> int:
+    """Dispatch one night into `whetstone.loop`, print its disclosure, and return the exit code.
+
+    **The import is function-local, and that is the whole design of this function.** This module
+    is a guarded root (`tests/test_no_inference_on_reward_path.py`): it calls `verify_strict`, it
+    is the reward's entry point, and nothing it imports may reach an inference library. The loop
+    reaches `mlx_lm` legitimately, so its body lives in the EXEMPT `whetstone.loop` package and
+    this file holds exactly one edge into it — inside the handler, so `whetstone verify` and
+    `whetstone mine` never execute it and never import `mlx_lm` even transitively. That the edge
+    is the only one, and that it is function-local, is asserted by
+    `tests/test_reward_path_scope_is_partitioned.py`; a second such import, or the same one moved
+    to module scope, fails the build.
+
+    **The exit code answers "is there a candidate", and never flatters.** A night that wrote a
+    checkpoint is `PASS_EXIT`. A night that did not is floored at `FAIL_EXIT` even when its own
+    task verdicts reduced to PASS — "the loop ran and produced nothing to promote" is a finding,
+    and a caller checking `rc == 0` must never read it as a candidate. A control arm that proved
+    nothing, or a verified rollout whose completion was never recorded, is `UNVERIFIED_EXIT`:
+    nothing could be concluded, which is deliberately neither 0 nor a usage error.
+    """
+    from whetstone.loop.night import REFUSALS, UNPROVEN, disclosure
+    from whetstone.loop.night import run_night as conduct_night
+
+    try:
+        night = conduct_night(
+            tasks=args.tasks,
+            public=args.public,
+            pool=args.pool,
+            weights=args.weights,
+            runs=args.runs,
+            checkpoints=args.checkpoints,
+            workspace=args.workspace,
+            timeout=args.timeout,
+            recorded_on=args.recorded_on,
+            run_id=args.run_id,
+            run_seed=args.run_seed,
+            dev_subset=args.dev_subset,
+            only=args.only,
+            probe=args.probe,
+            retries=not args.no_retries,
+        )
+    except REFUSALS as refusal:
+        print(f"whetstone run: {refusal}", file=sys.stderr)
+        return USAGE_ERROR
+    except UNPROVEN as unproven:
+        print(f"whetstone run: {unproven}", file=sys.stderr)
+        return UNVERIFIED_EXIT
+
+    for line in disclosure(night):
+        print(line)
+
+    if night.checkpoint is not None:
+        return PASS_EXIT
+    # Floored at FAIL: `reduce` can answer PASS over a task set every draw solved, and a night
+    # that solved everything and still wrote no candidate (a probe, a capacity finding) has not
+    # produced the thing this command exists to produce.
+    return max(FAIL_EXIT, _verdict_exit_code(night.status))
+
+
 def _task_verdict(task: Task, status: Status) -> Verdict:
     """One task's reduced status, as a Verdict, so a set of tasks folds the way sub-checks do."""
     return Verdict(
@@ -393,6 +639,9 @@ def main(argv: list[str] | None = None) -> int:
             seed=namespace.seed,
             tasks_root=namespace.tasks_root,
         )
+
+    if namespace.command == "run":
+        return run_night(namespace)
 
     # Every input the CLI accepts is handled above. Falling through means a flag or a
     # subcommand was added without a behaviour behind it: report usage and fail rather than

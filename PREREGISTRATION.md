@@ -4,10 +4,10 @@
 
 This document fixes what Whetstone will measure, which figure is the headline, how the result is
 reported, and what its known limitations are — **before** the first measurement is taken. It
-discharges `docs/ROADMAP.md` § 6 (`docs/ROADMAP.md:500-510`) and is P1 exit criterion 6
+discharges `docs/ROADMAP.md` § 6 (`docs/ROADMAP.md:508-518`) and is P1 exit criterion 6
 (`docs/ROADMAP.md:355-356`).
 
-`docs/ROADMAP.md` § 4, P4 (`docs/ROADMAP.md:458-459`) grades the published headline against this
+`docs/ROADMAP.md` § 4, P4 (`docs/ROADMAP.md:466-467`) grades the published headline against this
 file: *"The headline matches what `PREREGISTRATION.md` committed to, and both sources are
 published together."* So everything below is written to be checkable later by someone who did not
 write it — **including its own citations, which `tests/test_docs.py` resolves against the lines
@@ -121,7 +121,7 @@ promoted, and not rejected either, because no comparison was actually made.
 ## 3. The baseline protocol
 
 Every headline figure is a delta, so the "before" is pinned before anything trains
-(`docs/ROADMAP.md:486-495`).
+(`docs/ROADMAP.md:494-503`).
 
 - **A pinned baseline checkpoint** — the untrained open base, scored on the held-out set by the
   same STRICT verifier, with its provenance committed alongside: seeds, model revision, task set,
@@ -157,7 +157,7 @@ it were.
 **Every rate carries its denominator.** Nothing is reported as a bare proportion.
 
 **A zero or negative delta is published as plainly as a positive one**, in the same place, with
-the same prominence (`docs/ROADMAP.md:462-463`). Shipping the honest number even when modest is
+the same prominence (`docs/ROADMAP.md:470-471`). Shipping the honest number even when modest is
 the point; a flattering unsourced one is the failure.
 
 **This document contains no figure about a model** — not a target, not a projection, not an
@@ -235,7 +235,7 @@ them.
 ## 7. Open at the time of writing
 
 Three questions this document would naturally settle are genuinely undecided
-(`docs/ROADMAP.md:591-596`). Each is named with what closes it and by when. **An open item named
+(`docs/ROADMAP.md:599-604`). Each is named with what closes it and by when. **An open item named
 here is a commitment; a blank would be an IOU**, and a pre-registration containing blanks reads as
 a commitment while committing to nothing.
 

@@ -51,6 +51,7 @@ prove is proven about the shipped logic and not about a copy of it — the shape
 
 from __future__ import annotations
 
+import ast
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
@@ -80,14 +81,16 @@ _NOT_SOURCE = frozenset({"__pycache__", ".DS_Store"})
 #: verdict. The bake-off package, when it lands, is exempt because nothing guarded may import
 #: it and the dependency runs one way only — not because it is harmless.
 #:
-#: **It holds exactly one entry, and it held none until the bake-off landed.** Every other
-#: child of the package is guarded, and a reader should expect that to stay true: the only
-#: thing that belongs here is code the inference ban would be *wrong* about, and there is one
-#: such package. ``bakeoff`` is it — the first code in this tree that consults a model, and
-#: therefore the first thing that could not be guarded without the ban failing honestly. An
-#: earlier draft of this change also exempted ``__init__.py`` as a documented residual; it is
-#: guarded instead, because closing it cost one line and a residual is for a hole that is hard
-#: to close, not one nobody had to accept.
+#: **It holds two entries, and it held none until the bake-off landed.** Every other child of
+#: the package is guarded, and a reader should expect that to stay true: the only thing that
+#: belongs here is code the inference ban would be *wrong* about. ``bakeoff`` was the first —
+#: the first code in this tree that consults a model, and therefore the first thing that could
+#: not be guarded without the ban failing honestly — and ``loop`` is the second, for the same
+#: reason and with one extra obligation, because unlike the bake-off it is reachable from a
+#: guarded root by a single documented, function-local edge. An earlier draft of this change
+#: also exempted ``__init__.py`` as a documented residual; it is guarded instead, because
+#: closing it cost one line and a residual is for a hole that is hard to close, not one nobody
+#: had to accept.
 #:
 #: Note what a one-entry mapping does *not* weaken: the assertions that read it barely iterate,
 #: and their teeth come from the synthetic controls below, which run the same functions over
@@ -113,8 +116,33 @@ EXEMPT: Mapping[str, str] = {
         "own tests deliberately — this exemption is only sound while that assertion holds, "
         "and a reason whose proof sits in a file that may be restructured for unrelated "
         "reasons is a reason that can quietly stop being true."
-    )
+    ),
+    "loop": (
+        "the nightly improvement loop, which imports mlx_lm legitimately for the same reason "
+        "the bake-off does: it samples k attempts per task from a base model and LoRA-trains "
+        "on the ones the STRICT verifier passed. The same library is correct here and fatal "
+        "under verify/, and the only thing keeping those two facts apart is where the code "
+        "lives — so the loop is a SIBLING of verify/ and tasks/, never nested under either. "
+        "The dependency runs one way (loop -> bakeoff -> verify) with exactly ONE documented "
+        "edge in the other direction: cli.py holds a single FUNCTION-LOCAL import of "
+        "whetstone.loop.night inside the `run --night` handler, because the roadmap names "
+        "that command as the loop's door and a subcommand needs a call. That edge is not a "
+        "hole with a comment on it: "
+        "test_the_reward_path_reaches_the_exempt_packages_by_exactly_one_documented_edge at "
+        "the foot of this file asserts it is the only one and that it is function-local, so "
+        "`whetstone verify` — the reward's own entry point — never executes it and never "
+        "imports mlx_lm even transitively. A second such import, or the same one moved to "
+        "module scope, fails the build. As with bakeoff, the AST ban would not notice any of "
+        "this: it flags first-party imports whose dotted name carries an inference-shaped "
+        "component, and neither 'loop' nor 'night' is one."
+    ),
 }
+
+#: The one import edge that runs from a guarded root into an exempt package, spelled exactly.
+#: `(module under src/, the dotted prefix it may import)`. Everything else in either direction
+#: is a failure — see the `loop` reason above for why this edge exists at all and why it is one
+#: line rather than a rule.
+_DOCUMENTED_EDGE = (Path("whetstone/cli.py"), "whetstone.loop.night")
 
 
 def _scope(package_root: Path) -> list[str]:
@@ -387,4 +415,111 @@ def test_no_module_on_the_reward_path_imports_the_bakeoff_package() -> None:
         " 'bakeoff' is not one. Move the shared code into verify/ or tasks/, or invert the"
         " dependency; do not add bakeoff to GUARDED_ROOTS, which would fail the ban the moment"
         " the MLX adapter lands and put the pressure on the ban itself."
+    )
+
+
+def _edges_into_exempt_packages() -> list[tuple[Path, str, int]]:
+    """Every import from a guarded module into an exempt package: `(module, dotted, line)`.
+
+    Both exempt packages, in one walk, because the property is about the *partition* rather than
+    about either package: an exemption is sound exactly while nothing guarded can reach what it
+    excuses. A per-package copy of this walk would be two things to remember to extend when a
+    third exemption lands, and the one that got forgotten would still read as coverage.
+    """
+    return [
+        (path.relative_to(SRC), dotted, lineno)
+        for path in _modules()
+        for dotted, lineno in _imported_names(path, SRC)
+        if dotted.split(".")[:2] in (["whetstone", "bakeoff"], ["whetstone", "loop"])
+    ]
+
+
+def test_the_reward_path_reaches_the_exempt_packages_by_exactly_one_documented_edge() -> None:
+    """The `loop` exemption's own claim: one edge, spelled out, and nothing else.
+
+    ``bakeoff`` has no edge at all — the assertion above holds it at zero. ``loop`` has exactly
+    one, and it exists because ``docs/ROADMAP.md:399-400`` names ``whetstone run --night`` as the
+    loop's door: a subcommand has to call something, and the call has to be written somewhere.
+
+    **What makes that one edge sound is not that it is small.** It is that it is *function-local*
+    — asserted separately below — so the module graph of ``whetstone verify`` never contains it
+    and no reward run imports ``mlx_lm`` even transitively. This test is the half that says
+    "exactly one", and it is deliberately spelled as an equality against a constant rather than
+    as a rule about what is allowed: a rule ("cli.py may import loop") would silently admit a
+    second and a tenth import, and the whole point of an exemption in this file is that widening
+    it costs a diff somebody has to defend.
+    """
+    edges = _edges_into_exempt_packages()
+    module, prefix = _DOCUMENTED_EDGE
+    unexpected = sorted(
+        f"{one}:{lineno} imports {dotted!r}"
+        for one, dotted, lineno in edges
+        if not (one == module and (dotted == prefix or dotted.startswith(f"{prefix}.")))
+    )
+    assert not unexpected, (
+        "the reward path reaches an exempt package by an undocumented edge: "
+        + ", ".join(unexpected)
+        + "\n\nWHY THIS IS A FAILURE: bakeoff/ and loop/ are exempt from the inference ban only"
+        " because nothing guarded can reach them. Exactly one edge is documented —"
+        f" {module} importing {prefix!r}, function-locally, for the `run --night` door — and it"
+        " is written out in _DOCUMENTED_EDGE so that a second one lands in a diff rather than by"
+        " omission. Move the shared code, invert the dependency, or argue for a second edge here"
+        " and extend the constant; do not add these packages to GUARDED_ROOTS, which would fail"
+        " the inference ban honestly and put the pressure on the ban itself."
+    )
+    assert edges, (
+        "no module under the guarded roots imports either exempt package at all.\n\n"
+        "WHY THIS IS A FAILURE: this is anti-vacuity, not a requirement that the edge exist for"
+        " its own sake. The assertion above is a statement about the members of `edges`, so an"
+        " empty walk satisfies it perfectly while proving nothing — and the documented edge is a"
+        " real line in cli.py today. If `run --night` was genuinely removed, delete the `loop`"
+        " exemption and this test together rather than leaving a green check over an empty set."
+    )
+
+
+def test_the_one_documented_edge_into_the_loop_is_function_local() -> None:
+    """The half that actually protects the reward: the edge is not in the module graph.
+
+    An exemption reasoned as *"cli.py only calls the loop when the operator asked for a night"*
+    is worth nothing if the import sits at the top of the file: Python executes it on **every**
+    invocation, so ``whetstone verify --task ... --patch ...`` would load ``whetstone.loop``,
+    which loads the bake-off, which is one function-local import away from ``mlx_lm``. The
+    distinction between a sound exemption and a fig leaf is entirely the indentation, so it is
+    asserted rather than described.
+
+    Walked with ``ast`` over the file's own bytes, and looked up by *containment* in a function
+    body rather than by column offset: an import nested inside a ``try`` inside a function is
+    still function-local, and a column check would call it module scope.
+    """
+    module, prefix = _DOCUMENTED_EDGE
+    tree = ast.parse((SRC / module).read_bytes(), filename=str(SRC / module))
+
+    local: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for inner in ast.walk(node):
+                if isinstance(inner, (ast.Import, ast.ImportFrom)):
+                    local.add(inner.lineno)
+
+    edges = [
+        (one, dotted, lineno)
+        for one, dotted, lineno in _edges_into_exempt_packages()
+        if one == module
+    ]
+    assert edges, (
+        f"{module} imports neither exempt package, so this test proves nothing.\n\n"
+        "WHY THIS IS A FAILURE: anti-vacuity. The loop exemption's reason names this edge; if it"
+        " is gone, the reason is stale and must be removed with it."
+    )
+    at_module_scope = sorted(
+        f"{one}:{lineno} imports {dotted!r}" for one, dotted, lineno in edges if lineno not in local
+    )
+    assert not at_module_scope, (
+        "the documented edge into an exempt package is at module scope: "
+        + ", ".join(at_module_scope)
+        + "\n\nWHY THIS IS A FAILURE: a module-scope import executes on every invocation of the"
+        " CLI, including `whetstone verify` — the reward's own entry point. The loop exemption's"
+        f" entire argument is that {prefix!r} is reached only when an operator asked for a night;"
+        " at module scope that argument is false and mlx_lm is transitively on the reward path"
+        " with every guard in this tree still green. Move the import back inside the handler."
     )
