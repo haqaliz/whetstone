@@ -488,7 +488,9 @@ This file orients a coding agent working in this repository. Read it first.
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
 > so "measured once, re-measured never" is unspent. Cheat 6 and cheat 10 remain documented
 > residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did **not** close it. The
-> cuts so far are v0.3.0–v0.6.0, the last tagged 2026-08-14; nothing has been published to PyPI.
+> cuts so far are v0.3.0–v0.7.0, the last tagged 2026-08-20, and each one published `whetstonehq`
+> to PyPI and a GitHub Release by tag push. (This line read "nothing has been published to PyPI"
+> until 2026-08-20; it had been false since v0.3.0, and PyPI's own index is what corrected it.)
 >
 > Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. Describe the
 > state of the tree this file ships in, and never work in flight on a branch — a status that
