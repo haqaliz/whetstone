@@ -121,6 +121,28 @@ Deliberately **not** a `whetstone` subcommand: the CLI is a guarded reward-path 
 subcommand would put an inference library one transitive import away from the reward while every
 guard stayed green.
 
+### 4 · Run a night of the improvement loop
+
+```bash
+uv run whetstone run --night --help
+```
+
+Draws `k` seeded attempts at every task under a frozen generation contract, keeps **only** the
+rollouts the STRICT verifier passed, and LoRA-trains the base on those — so every training example
+is verified by construction and `UNVERIFIED` can never become one. It writes `runs/<id>/` (a ledger
+of the pinned seeds, model revision, task set and tool versions; the selected dataset; the per-draw
+journals and transcripts) and, when the night selected anything and the declared capacity probe
+fits, a hashed candidate under `checkpoints/<id>/`. A night that selected nothing writes no
+candidate, says so, and exits non-zero.
+
+This one **is** a subcommand, because it is the product surface the roadmap names — and it is the
+only place in the CLI that reaches the loop, through a single function-local import inside its own
+handler, so `whetstone verify` never loads a model. That the edge is the only one, and that it is
+function-local, is asserted by the reward-path partition guard.
+
+Both `runs/` and `checkpoints/` are gitignored, and the run's own documents carry hashes and
+verdicts and never file contents: the training set is your code, and it stays on your machine.
+
 ---
 
 ## How it works
@@ -202,9 +224,9 @@ test produced a **PASS with no patch applied at all**.
 
 | | |
 |---|---|
-| ✅ **Built** | The task contract, the STRICT and WEAK verifiers, the Seatbelt sandbox, the adversarial cheat corpus, the reward-path import guard, task ingestion for a private and a public source, the base-model bake-off, the pre-registration, and the measurement instrumentation — a transcript of what a base actually wrote, and an offline attributor that says *why* a rollout never produced an applicable patch |
-| 🔬 **Open question** | **Why the bases produce patches the verifier cannot even read.** The bake-off has been re-run and reproduces exactly, so the harness is not in doubt; two proposed fixes (a different edit format, a larger token budget) were each tested and **falsified**. No fix is currently chosen, deliberately — see `docs/planning/p2-yield-probe/prd.md` |
-| ❌ **Not built** | The nightly loop, rejection sampling, LoRA training, the never-regress promotion gate, the signed morning report, and the dashboard |
+| ✅ **Built** | The task contract, the STRICT and WEAK verifiers, the Seatbelt sandbox, the adversarial cheat corpus, the reward-path import guard, task ingestion for a private and a public source, the base-model bake-off, the pre-registration, the measurement instrumentation (a transcript of what a base actually wrote, and an offline attributor and classifier that say *why* a rollout never produced an applicable patch), and — new — **the nightly loop**: seeded rejection sampling, strict-PASS-only selection, the run ledger, LoRA-SFT behind a declared capacity probe, and the `whetstone run --night` door |
+| 🔬 **Open question** | **What a night actually yields.** The loop's machinery is shipped and tested; it has not been run, so this repository holds no training set, no checkpoint and no yield figure. The response to a low yield is pre-committed — raise the number of draws, never loosen the check — see `docs/planning/p2-rollouts/night-door/runbook.md` |
+| ❌ **Not built** | The never-regress promotion gate, the held-out split, the signed morning report, and the dashboard |
 | 🚫 **Not released** | No tags, no PyPI package, no version. The distribution name will be `whetstonehq`; the import package and the CLI stay `whetstone` |
 
 **Platform:** macOS / Apple Silicon only today. The sandbox is Seatbelt and the runtime is MLX;

@@ -133,16 +133,16 @@ AMENDMENT_EXCEPTION = "may never introduce a success threshold"
 # named the wrong sections. Anchors, not line numbers, are what make the guard survive the
 # next edit — a shifted section fails loudly here instead of misleading a reader silently.
 ROADMAP_CITATIONS = (
-    ("500", "510", "The private source (B) is the headline"),
+    ("508", "518", "The private source (B) is the headline"),
     ("355", "356", "**`PREREGISTRATION.md` is committed**"),
-    ("458", "459", "The headline matches what `PREREGISTRATION.md` committed to"),
+    ("466", "467", "The headline matches what `PREREGISTRATION.md` committed to"),
     ("364", "368", "not one number about a model exists anywhere in this repository"),
     ("62", "72", "reward := exit status, folded with the assertions above"),
     ("106", "117", "N := count(rollouts where WEAK == PASS and STRICT == FAIL)"),
-    ("486", "495", "Measured once, re-measured never"),
-    ("462", "463", "A zero or negative delta is a valid, publishable outcome"),
+    ("494", "503", "Measured once, re-measured never"),
+    ("470", "471", "A zero or negative delta is a valid, publishable outcome"),
     ("187", "190", "confines what the run can write, **not** what it can read"),
-    ("591", "596", "The held-out split size and stratification"),
+    ("599", "604", "The held-out split size and stratification"),
 )
 
 

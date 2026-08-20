@@ -405,6 +405,14 @@ LoRA-SFT on those. Every training example is verified by construction.
 **Pivot signal:** if strict-PASS yield is ~0 across the corpus there is no training data.
 Stratify by difficulty or raise *k* — do not weaken the check to manufacture wins.
 
+> **Slice 1 landed 2026-08-20** (`docs/planning/p2-rollouts/`). `src/whetstone/loop/` holds the
+> seeded sampled draw (`K = 8`, a declared constant and never a flag), the strict-PASS selection
+> reading `report.tally`'s own `Outcome.SOLVED` by identity, the run ledger, the LoRA-SFT behind a
+> declared capacity probe, and the `whetstone run --night` door. All four exit criteria above are
+> asserted as tests. **The night has not been run**: the machinery is shipped and the operator's
+> sheet is `docs/planning/p2-rollouts/night-door/runbook.md`, held by its own guard. Nothing is
+> published — a night's counts live only in its gitignored `runs/<id>/`.
+
 ---
 
 ### P3 — Never-regress promotion gate · est. 2 weeks · target 2026-10-04
