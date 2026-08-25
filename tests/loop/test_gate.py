@@ -381,7 +381,7 @@ def _private_corpus(
     return directory, built
 
 
-def _run_gate(
+def _gate_fixtures(
     tmp_path: Path,
     *,
     candidate_answers: Mapping[str, str] | None = None,
@@ -392,15 +392,13 @@ def _run_gate(
     members: Sequence[str] = _MEMBERS,
     bulk: Mapping[str, int] | None = None,
     runs: Path | None = None,
-    **overrides: Any,
-) -> tuple[gate.GateOutcome, dict[str, Any]]:
-    """One full gate run: fixture checkpoints, fixture document, stub engine — nothing real.
+) -> dict[str, Any]:
+    """Everything a gate invocation needs on disk — checkpoints, document, corpus, weights —
+    plus the stub engine keyed on the checkpoints' digests.
 
-    The candidate answers the reference patch for every held-out member unless narrowed by
-    `candidate_solve`; the incumbent answers `incumbent_solve` of them. Either table can be
-    replaced wholesale via `candidate_answers` / `incumbent_answers`. The returned fixtures
-    dict carries the checkpoints, the document, and every posed prompt, so a test can assert
-    on the evidence rather than on the code's own claims.
+    The shared shape behind both `_run_gate` (direct calls) and the CLI tests (invocations
+    of `whetstone gate` with `gate.gate_engine` monkeypatched to `fixtures["engine"]`), so
+    the three exits are asserted through the full harness at both boundaries.
     """
     private, private_built = _private_corpus(tmp_path / "corpus", private_ids, bulk=bulk)
     public, public_built = corpus(tmp_path / "corpus", "public", ("pallets__flask-4045",))
@@ -424,7 +422,6 @@ def _run_gate(
         tmp_path / "incumbent", repo_id=_BASE, revision=base.revision, label="incumbent"
     )
 
-    posed_prompts: list[str] = []
     used_checkpoints: list[str] = []
 
     def engine(weights: Weights, checkpoint: sft.Checkpoint, max_tokens: int) -> Answers:
@@ -436,7 +433,7 @@ def _run_gate(
         assert checkpoint.digest == incumbent_checkpoint.digest, checkpoint.digest
         return Answers(incumbent_answers)
 
-    arguments: dict[str, Any] = {
+    return {
         "candidate": candidate_checkpoint.directory,
         "incumbent": incumbent_checkpoint.directory,
         "heldout": doc,
@@ -450,21 +447,65 @@ def _run_gate(
         "recorded_on": RECORDED_ON,
         "run_id": "gate-001",
         "engine": engine,
-    }
-    arguments.update(overrides)
-    outcome = gate.run_gate(**arguments)
-
-    answers_generators = [candidate_answers, incumbent_answers]
-    fixtures = {
         "candidate_checkpoint": candidate_checkpoint,
         "incumbent_checkpoint": incumbent_checkpoint,
         "doc": doc,
         "private_built": private_built,
         "public_built": public_built,
         "used_checkpoints": used_checkpoints,
-        "posed_prompts": posed_prompts,
-        "answers_generators": answers_generators,
+        "answers_generators": [candidate_answers, incumbent_answers],
     }
+
+
+def _run_gate(
+    tmp_path: Path,
+    *,
+    candidate_answers: Mapping[str, str] | None = None,
+    incumbent_answers: Mapping[str, str] | None = None,
+    candidate_solve: int | None = None,
+    incumbent_solve: int = _INCUMBENT_SOLVES,
+    private_ids: Sequence[str] = _PRIVATE_IDS,
+    members: Sequence[str] = _MEMBERS,
+    bulk: Mapping[str, int] | None = None,
+    runs: Path | None = None,
+    **overrides: Any,
+) -> tuple[gate.GateOutcome, dict[str, Any]]:
+    """One full gate run over the shared fixtures — see `_gate_fixtures`.
+
+    The candidate answers the reference patch for every held-out member unless narrowed by
+    `candidate_solve`; the incumbent answers `incumbent_solve` of them. Either table can be
+    replaced wholesale via `candidate_answers` / `incumbent_answers`. The returned fixtures
+    dict carries the checkpoints, the document, and every posed prompt, so a test can assert
+    on the evidence rather than on the code's own claims.
+    """
+    fixtures = _gate_fixtures(
+        tmp_path,
+        candidate_answers=candidate_answers,
+        incumbent_answers=incumbent_answers,
+        candidate_solve=candidate_solve,
+        incumbent_solve=incumbent_solve,
+        private_ids=private_ids,
+        members=members,
+        bulk=bulk,
+        runs=runs,
+    )
+    arguments: dict[str, Any] = {
+        "candidate": fixtures["candidate"],
+        "incumbent": fixtures["incumbent"],
+        "heldout": fixtures["heldout"],
+        "tasks": fixtures["tasks"],
+        "public": fixtures["public"],
+        "pool": fixtures["pool"],
+        "weights": fixtures["weights"],
+        "runs": fixtures["runs"],
+        "workspace": fixtures["workspace"],
+        "timeout": fixtures["timeout"],
+        "recorded_on": fixtures["recorded_on"],
+        "run_id": fixtures["run_id"],
+        "engine": fixtures["engine"],
+    }
+    arguments.update(overrides)
+    outcome = gate.run_gate(**arguments)
     return outcome, fixtures
 
 

@@ -1,24 +1,27 @@
 """The `whetstone` command line entry point.
 
 The failure this module prevents: a ``--help`` that advertises work the code cannot do.
-Commands appear here only when something stands behind them, and three now do. ``verify`` runs
+Commands appear here only when something stands behind them, and four now do. ``verify`` runs
 the execution-grounded reward in `whetstone.verify.strict`: it applies a patch to a task's
 known-broken commit inside a sandbox, restores the operator-held tests from golden, and
 compares what pytest actually executed against what the task declared. ``mine`` is the other
 end — it turns a local repository into tasks the first command can run, proving each one live
 before it enters the corpus. ``run --night`` is the loop between them: it draws K seeded
 attempts per task, keeps only the rollouts that reward passed, and trains a candidate on them.
-There is still no gate and no report, so there are still no stubs for those.
+``gate`` is the never-regress promotion gate: it scores a candidate checkpoint against the
+incumbent on the held-out source-B membership and returns exactly one of three exits. There
+is still no report, so there is still no stub for it.
 
-**``run --night`` is the one command here whose body is not in this file, and deliberately.**
-This module is a guarded root — it calls ``verify_strict``, and nothing it imports may reach an
-inference library. The loop reaches ``mlx_lm`` legitimately, so it lives in the EXEMPT
-``whetstone.loop`` package and ``run_night`` below holds a single **function-local** import into
-it: running ``whetstone verify`` never executes that line and never loads a model.
-``tests/test_reward_path_scope_is_partitioned.py`` asserts it is the only such edge and that it
-is function-local.
+**``run --night`` and ``gate`` are the two commands here whose bodies are not in this file,
+and deliberately.** This module is a guarded root — it calls ``verify_strict``, and nothing it
+imports may reach an inference library. The loop and the gate reach ``mlx_lm`` legitimately,
+so they live in the EXEMPT ``whetstone.loop`` package, and ``run_night`` below holds a single
+**function-local** import into it, as does ``run_gate_cli``: running ``whetstone verify``
+never executes those lines and never loads a model.
+``tests/test_reward_path_scope_is_partitioned.py`` asserts they are the only such edges and
+that they are function-local.
 
-**All three subcommands share the same four exit codes and add no fifth.** A mint that produced
+**All four subcommands share the same four exit codes and add no fifth.** A mint that produced
 no task exits ``FAIL_EXIT``, never 0: "nothing could be mined here" is a finding about a donor,
 and a caller checking ``rc == 0`` must never read it as a corpus. A night that produced no
 candidate is the same shape and is floored the same way.
@@ -124,6 +127,15 @@ _MINE_DESCRIPTION = (
     "corpus. The manifests are the user's own code and stay local; the liveness ledger and the "
     "recipe under --tasks-root are the committed evidence. Nothing here reaches the network. "
     "Exits 0 when at least one task was minted, 1 when none could be, and 2 on a usage error."
+)
+
+_GATE_DESCRIPTION = (
+    "Score a candidate checkpoint against the incumbent on the held-out source-B membership "
+    "(plus source A in full) through the STRICT verifier, and decide by the roadmap's rule: "
+    "promote iff solved_new > solved_old AND regressed == 0 AND unverified == 0. Exits 0 on "
+    "promoted, 1 on rejected, 2 on a refusal (a checkpoint that cannot be re-hashed, a "
+    "held-out document that cannot be read, a held-out set of zero), and 3 when the eval is "
+    "UNVERIFIED — an incomplete eval is never promoted."
 )
 
 
@@ -390,6 +402,126 @@ def build_parser() -> argparse.ArgumentParser:
             "the evidence for this candidate was produced under; the ledger records which ran"
         ),
     )
+
+    gate = commands.add_parser(
+        "gate",
+        help="score a candidate against the incumbent on the held-out set and decide",
+        description=_GATE_DESCRIPTION,
+    )
+    gate.add_argument(
+        "--candidate",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help="the candidate checkpoint directory, as a night wrote it under checkpoints/<id>/",
+    )
+    gate.add_argument(
+        "--incumbent",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help="the incumbent checkpoint directory — the checkpoint the candidate must provably beat",
+    )
+    gate.add_argument(
+        "--heldout",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help=(
+            "the committed held-out source-B document (schema whetstone-heldout/1, "
+            "tasks/heldout/source-b.json) whose membership is what the gate decides over. "
+            "Consumed through aspect 1's fail-closed loader; a held-out set of zero is refused"
+        ),
+    )
+    gate.add_argument(
+        "--tasks",
+        type=Path,
+        required=True,
+        action="append",
+        metavar="<path>",
+        help=(
+            "source B: a private corpus directory, repeatable — the same roots the night drew "
+            "against. The gate scores exactly the held-out document's membership of them"
+        ),
+    )
+    gate.add_argument(
+        "--public",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help=(
+            "source A: the eligible public instance(s), scored in full and reported beside "
+            "source B"
+        ),
+    )
+    gate.add_argument(
+        "--pool",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help="source A's committed pool, passed through to the oracle derivation",
+    )
+    gate.add_argument(
+        "--weights",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help=(
+            "the weights root holding provenance.json. Each checkpoint's own provenance names "
+            "the base it was trained on; the gate resolves it here and stacks the checkpoint's "
+            "LoRA adapter on it. Every recorded sha256 is re-checked before anything is loaded"
+        ),
+    )
+    gate.add_argument(
+        "--runs",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help=(
+            "the gitignored root the promotion record is written under (`runs/`), at "
+            "runs/promotions/<run-id>.json. A path inside a reports/ directory is refused"
+        ),
+    )
+    gate.add_argument(
+        "--workspace",
+        type=Path,
+        required=True,
+        metavar="<path>",
+        help=(
+            "where sandboxes and provisioned environments are built, exactly as --workspace "
+            "does for a night"
+        ),
+    )
+    gate.add_argument(
+        "--timeout",
+        type=float,
+        required=True,
+        metavar="<seconds>",
+        help=(
+            "seconds allowed per verification. No default, matching the verifiers: a limit "
+            "inherited from elsewhere turns every slow task into an UNVERIFIED nobody can explain"
+        ),
+    )
+    gate.add_argument(
+        "--recorded-on",
+        required=True,
+        metavar="<date>",
+        help=(
+            "the date the operator declares for this comparison. An input, never the clock — "
+            "a promotion record that dated itself would differ from itself between two renders "
+            "of the same command"
+        ),
+    )
+    gate.add_argument(
+        "--run-id",
+        required=True,
+        metavar="<id>",
+        help=(
+            "the comparison's name, and the file it gets under runs/promotions/. An input for "
+            "the reason --recorded-on is: a generated id makes two invocations of the same "
+            "documented command produce two records nobody chose"
+        ),
+    )
     return parser
 
 
@@ -592,6 +724,58 @@ def run_night(args: argparse.Namespace) -> int:
     return max(FAIL_EXIT, _verdict_exit_code(night.status))
 
 
+def run_gate_cli(args: argparse.Namespace) -> int:
+    """Dispatch one gate comparison into `whetstone.loop.gate`, and return one of three codes.
+
+    **The import is function-local, and that is the whole design of this function — the
+    second documented edge from a guarded root into an exempt package, in the `run_night`
+    shape.** The gate loads a checkpoint (base + LoRA adapter) through `mlx_lm`; this file is
+    the reward's entry point; the import sits inside the handler so `whetstone verify` never
+    executes it and never imports `mlx_lm` even transitively. That it is one of exactly two
+    such edges, and that both are function-local, is asserted by
+    `tests/test_reward_path_scope_is_partitioned.py`; a third such import, or either one
+    moved to module scope, fails the build.
+
+    **The exit codes are the roadmap's three, mapped onto the existing four-code contract**
+    (`cli.py:64-84`, no fifth): `promoted` → 0, `rejected` → 1, `UNVERIFIED` → 3. UNVERIFIED
+    is deliberately not 0 — a caller that checks only `rc == 0` must never read an eval that
+    verified nothing as a promotion. A refusal an operator can fix by retyping the command —
+    a checkpoint that cannot be re-hashed, a held-out document that cannot be read, a
+    held-out set of zero, weights whose provenance does not match the disk — is 2, never a
+    traceback.
+    """
+    from whetstone.loop.gate import REFUSALS, Exit, disclosure, gate_engine, run_gate
+
+    exit_codes = {
+        Exit.PROMOTED: PASS_EXIT,
+        Exit.REJECTED: FAIL_EXIT,
+        Exit.UNVERIFIED: UNVERIFIED_EXIT,
+    }
+    try:
+        outcome = run_gate(
+            candidate=args.candidate,
+            incumbent=args.incumbent,
+            heldout=args.heldout,
+            tasks=args.tasks,
+            public=args.public,
+            pool=args.pool,
+            weights=args.weights,
+            runs=args.runs,
+            workspace=args.workspace,
+            timeout=args.timeout,
+            recorded_on=args.recorded_on,
+            run_id=args.run_id,
+            engine=gate_engine,
+        )
+    except REFUSALS as refusal:
+        print(f"whetstone gate: {refusal}", file=sys.stderr)
+        return USAGE_ERROR
+
+    for line in disclosure(outcome):
+        print(line)
+    return exit_codes[outcome.decision.exit]
+
+
 def _task_verdict(task: Task, status: Status) -> Verdict:
     """One task's reduced status, as a Verdict, so a set of tasks folds the way sub-checks do."""
     return Verdict(
@@ -659,6 +843,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if namespace.command == "run":
         return run_night(namespace)
+
+    if namespace.command == "gate":
+        return run_gate_cli(namespace)
 
     # Every input the CLI accepts is handled above. Falling through means a flag or a
     # subcommand was added without a behaviour behind it: report usage and fail rather than
