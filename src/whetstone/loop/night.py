@@ -162,6 +162,11 @@ class Night:
     #: The night's reduced verdict over its task set. Never rendered as a score about a base.
     status: Status
 
+    #: The held-out exclusion this night applied (`--heldout`), or `None` for a plain night.
+    #: The digest and the membership count, never the membership — the ledger's discipline —
+    #: so the disclosure can name the document without reopening the file that is its home.
+    heldout: run_ledger.HeldoutRecord | None = None
+
 
 def run_night(
     *,
@@ -337,6 +342,7 @@ def run_night(
         checkpoint=checkpoint,
         checkpoint_absent=absent,
         status=_status(drawn),
+        heldout=heldout_record,
     )
 
 
@@ -347,6 +353,12 @@ def disclosure(night: Night) -> tuple[str, ...]:
     task set was actually graded, so a bare example count is the flattering half of a measurement
     — `docs/ROADMAP.md:430-435` requires coverage and the unverified rate to be reported from the
     first run onward, and this is that requirement at the smallest surface it has.
+
+    A held-out night adds its own line: the document (by its digest) and the size of the
+    membership it excluded. The ledger is the record `check-leakage` reads; the terminal is what
+    the operator sees at the end of a night, and a run that excluded ten tasks must say so to the
+    person who ran it — absent the line, an unflagged night's output is today's output, byte for
+    byte.
     """
     lines = [
         f"run {night.run_id}: {len(night.dataset.examples)} strict-PASS training examples "
@@ -354,6 +366,11 @@ def disclosure(night: Night) -> tuple[str, ...]:
         f"(coverage {night.dataset.coverage}, unverified {night.dataset.unverified})",
         f"dataset digest {night.dataset.digest}",
     ]
+    if night.heldout is not None:
+        lines.append(
+            f"held out {night.heldout.membership_count} source-B tasks under document digest "
+            f"{night.heldout.document_digest}"
+        )
     if night.valid_split:
         lines.append(f"validation: {night.valid_split}")
     if night.checkpoint is None:

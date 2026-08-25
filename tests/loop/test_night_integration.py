@@ -36,8 +36,9 @@ import pytest
 from loop.test_night import _night
 from whetstone import cli
 from whetstone.loop import heldout
+from whetstone.loop import ledger as run_ledger
 from whetstone.loop import night as night_module
-from whetstone.loop.night import EmptyTaskSet
+from whetstone.loop.night import EmptyTaskSet, disclosure
 
 #: The loaded private corpus the fixture documents are defined over. Eleven tasks: ten held
 #: out by the fixture document, one ("t-11") left to draw — the shape every night here runs.
@@ -214,6 +215,82 @@ def test_the_door_forwards_the_heldout_flag_to_the_loop(
         f"WHY THIS IS A FAILURE: the door passed heldout={calls[0].get('heldout')!r}. A flag "
         "that dies at the door is a flag the runbook advertises and the loop never sees"
     )
+
+
+def test_the_ledger_records_the_document_digest_and_its_membership_count(
+    tmp_path: Path,
+) -> None:
+    """Spec AC 1: the exclusion is recorded — counts and digests only, never membership.
+
+    The ledger's `task_set.heldout` record is what `check-leakage` reads to prove the night
+    excluded the committed document's membership. The digest is the one the document's own
+    payload seals, so a reader can match the ledger against the committed file.
+    """
+    doc = _heldout_document(tmp_path / "doc", _MEMBERS)
+    night = _night(tmp_path, private_ids=_IDS, heldout=doc)
+
+    recorded = run_ledger.read(night.ledger)
+    assert recorded["task_set"]["heldout"] == {
+        "document_digest": heldout.document_digest_of(
+            json.loads(doc.read_text(encoding="utf-8"))
+        ),
+        "membership_count": len(_MEMBERS),
+    }, (
+        f"WHY THIS IS A FAILURE: the ledger's task_set carries "
+        f"{recorded['task_set']['heldout']!r}. The exclusion is unprovable without a record "
+        "that names the document and the size of the membership it excluded"
+    )
+
+
+def test_the_disclosure_names_the_document_and_its_membership_count(
+    tmp_path: Path,
+) -> None:
+    """The operator's terminal names the held-out document and the count — the sentence.
+
+    The ledger is under a gitignored root; the disclosure is what the operator sees at the
+    end of a night, and it must say the exclusion happened and against which document.
+    """
+    doc = _heldout_document(tmp_path / "doc", _MEMBERS)
+    night = _night(tmp_path, private_ids=_IDS, heldout=doc)
+
+    sentence = next(
+        (line for line in disclosure(night) if "held out" in line), None
+    )
+    assert sentence is not None, (
+        f"WHY THIS IS A FAILURE: the disclosure does not name the held-out exclusion: "
+        f"{disclosure(night)!r}"
+    )
+    assert f"held out {len(_MEMBERS)} source-B tasks" in sentence, (
+        f"WHY THIS IS A FAILURE: the sentence does not carry the membership count: "
+        f"{sentence!r}"
+    )
+    assert heldout.document_digest_of(json.loads(doc.read_text(encoding="utf-8"))) in sentence, (
+        f"WHY THIS IS A FAILURE: the sentence does not name the document (by its digest): "
+        f"{sentence!r}"
+    )
+
+
+def test_an_older_ledger_without_the_heldout_record_still_reads(tmp_path: Path) -> None:
+    """The record's absence from older ledgers is tolerated, never assumed.
+
+    No real night has run, so every ledger in existence was written by the current code —
+    but a ledger written before this aspect landed, or by a tool that omits the record,
+    must still read: `read` answers the schema question and nothing else.
+    """
+    from loop.test_run_ledger import _ledger
+
+    document = json.loads(run_ledger.document(_ledger()))
+    assert "heldout" in document["task_set"], (
+        "the fixture ledger carries no heldout record, so removing it below would be a "
+        "no-op and this test would prove nothing"
+    )
+    del document["task_set"]["heldout"]
+    path = tmp_path / "old-ledger.json"
+    path.write_text(json.dumps(document))
+
+    recorded = run_ledger.read(path)
+    assert recorded["schema"] == run_ledger.LEDGER_SCHEMA
+    assert "heldout" not in recorded["task_set"]
 
 
 def test_an_empty_scored_private_set_after_the_overlays_is_refused_before_freeze(
