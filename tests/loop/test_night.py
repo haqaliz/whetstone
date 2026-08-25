@@ -72,8 +72,14 @@ def _trainer(request: sft.TrainingRequest) -> sft.TrainingResult:
 
 
 def _night(tmp_path: Path, **overrides: Any) -> Night:
-    """One night over one private task and one public task, with a stubbed engine and trainer."""
-    private, private_built = corpus(tmp_path / "corpus", "private", ("alpha",))
+    """One night over one private task and one public task, with a stubbed engine and trainer.
+
+    `private_ids` (a test-only override, popped here rather than passed to the loop) replaces
+    the single private task with a corpus of the given ids — the shape the held-out
+    integration tests need, where a document holds out most of the corpus.
+    """
+    private_ids = overrides.pop("private_ids", ("alpha",))
+    private, private_built = corpus(tmp_path / "corpus", "private", private_ids)
     public, public_built = corpus(tmp_path / "corpus", "public", ("pallets__flask-4045",))
     answers = overrides.pop("answers", None)
     if answers is None:

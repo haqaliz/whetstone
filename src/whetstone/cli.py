@@ -345,6 +345,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     night.add_argument(
+        "--heldout",
+        type=Path,
+        metavar="<path>",
+        help=(
+            "the committed held-out source-B document (schema whetstone-heldout/1, "
+            "tasks/heldout/source-b.json) whose membership this night excludes from rollouts "
+            "and training, before the contract is frozen. The document is a pinned input — "
+            "consumed, never recomputed — and the loader refuses by name: an unknown schema, "
+            "an unknown field, a rule or document digest that no longer matches, a membership "
+            "id matching no loaded private task, or a degenerate membership (empty, whole "
+            "corpus, below the floors, or empty after the dev-subset overlay). Source A is "
+            "still drawn in full. Off by default: without the flag the night is today's "
+            "night, byte for byte"
+        ),
+    )
+    night.add_argument(
         "--only",
         action="append",
         default=[],
@@ -553,6 +569,7 @@ def run_night(args: argparse.Namespace) -> int:
             run_id=args.run_id,
             run_seed=args.run_seed,
             dev_subset=args.dev_subset,
+            heldout=args.heldout,
             only=args.only,
             probe=args.probe,
             retries=not args.no_retries,

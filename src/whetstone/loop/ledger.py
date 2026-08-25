@@ -61,6 +61,25 @@ class LedgerUnreadable(ValueError):
 
 
 @dataclass(frozen=True)
+class HeldoutRecord:
+    """The held-out exclusion a run applied: the document's digest and its membership count.
+
+    Counts and digests only, never membership — the ledger's discipline is hashes and verdicts
+    (`ledger.py:9-15`), and a reader holding the digest can open the committed document to see
+    the ids. The digest is recomputed from the document's own payload rather than trusted from
+    the file, but only after the loader has accepted it — the loader's checks are the gate, and
+    this record is evidence about the run, never a second gate.
+    """
+
+    #: The digest the document's payload seals (`heldout.document_digest_of`).
+    document_digest: str
+
+    #: How many tasks the document holds out. Not the post-overlay count: the exclusion's
+    #: size as the document declares it, so a reader can check the night against the document.
+    membership_count: int
+
+
+@dataclass(frozen=True)
 class TaskSet:
     """Which tasks the night actually drew against — the pinned input, as counts and ids.
 
@@ -85,6 +104,11 @@ class TaskSet:
 
     #: `None` for a full night; the declared sample size when `--probe N` limited it.
     probe: int | None
+
+    #: The held-out exclusion (`--heldout`), or `None` when none was applied. Older ledgers
+    #: carry no such record; `read` tolerates the absence, and the default keeps every
+    #: construction written before the field existed compiling.
+    heldout: HeldoutRecord | None = None
 
 
 @dataclass(frozen=True)
@@ -239,6 +263,12 @@ def _payload(ledger: Ledger) -> dict[str, Any]:
             "roots": ledger.task_set.roots,
             "dev_subset": list(ledger.task_set.dev_subset),
             "probe": ledger.task_set.probe,
+            "heldout": None
+            if ledger.task_set.heldout is None
+            else {
+                "document_digest": ledger.task_set.heldout.document_digest,
+                "membership_count": ledger.task_set.heldout.membership_count,
+            },
         },
         "environment_pins": ENVIRONMENT_PINS,
         "tool_versions": dict(sorted(ledger.tool_versions.items())),
@@ -301,6 +331,7 @@ __all__ = [
     "LEDGER_FILE",
     "LEDGER_SCHEMA",
     "DrawRecord",
+    "HeldoutRecord",
     "Ledger",
     "LedgerUnreadable",
     "Model",

@@ -71,6 +71,7 @@ class _Night:
     valid_split: str = ""
     status: Status = Status.FAIL
     dataset: Any = None
+    heldout: Any = None
 
 
 @dataclass(frozen=True)

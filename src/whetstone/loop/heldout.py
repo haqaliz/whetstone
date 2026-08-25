@@ -226,6 +226,16 @@ class HeldoutDigestMismatch(ValueError):
     """The document's digest does not match its payload, or the rule's has moved on."""
 
 
+class UnknownHeldoutId(ValueError):
+    """The document's membership names a task that matches no loaded private task.
+
+    The failure is silent by construction: the exclusion matches nothing, the night draws
+    the member anyway, and the ledger still records the document as applied — a disclosure
+    false in the one direction nobody checks. Refusing costs one set comparison and closes
+    it (the `UnknownDevSubset` posture, `run.py:1041-1046`).
+    """
+
+
 @dataclass(frozen=True)
 class Rule:
     """The rule's declared parameters as the document carries them. The module constants are
@@ -584,6 +594,32 @@ def read_document(path: Path) -> Heldout:
     )
 
 
+def exclude_heldout(membership: Sequence[str], tasks: Sequence[Task]) -> tuple[Task, ...]:
+    """The run-side exclusion: a held-out membership applied to a loaded private corpus.
+
+    The loader validates the document against itself (`read_document`); this is the half of
+    the membership check only the night can perform — every membership id must resolve
+    against the **loaded private** tasks, refused by name with the loaded ids (spec AC 2,
+    the `UnknownDevSubset` posture, `stratum.include_stratum`'s mirror). A mistyped or
+    public id would exclude nothing while the night recorded the document as applied.
+
+    The surviving tasks come back in the corpus's **load order**, never in membership
+    order: the contract SHA is a property of the corpus as loaded, and the exclusion must
+    not reorder what remains.
+    """
+    excluded = set(membership)
+    loaded = {task.task_id for task in tasks}
+    unmatched = sorted(excluded - loaded)
+    if unmatched:
+        raise UnknownHeldoutId(
+            f"the held-out document's membership names {unmatched}, which match no loaded "
+            "private task. A held-out split is defined over the loaded private corpus, and "
+            "an id that resolves nowhere would exclude nothing while the night recorded it "
+            f"had. Fix the ids or the loading. Loaded task ids: {sorted(loaded)}"
+        )
+    return tuple(task for task in tasks if task.task_id not in excluded)
+
+
 def _require(raw: dict[str, Any], key: str, kind: type[Any], location: Path) -> None:
     """One field, one type: a missing or wrong-typed field is a schema error, never a default."""
     if key not in raw:
@@ -734,10 +770,12 @@ __all__ = [
     "HeldoutDigestMismatch",
     "HeldoutSchemaError",
     "Rule",
+    "UnknownHeldoutId",
     "band_of",
     "compose_document",
     "difficulty_key",
     "document_digest_of",
+    "exclude_heldout",
     "main",
     "read_document",
     "read_stratum_document",

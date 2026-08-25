@@ -4,9 +4,11 @@ This is the door `docs/ROADMAP.md:399-400` names — *"`uv run whetstone run --n
 `runs/<id>/` with a ledger and a candidate under `checkpoints/<id>/`"* — and it is composition
 only. Every honesty control it relies on was built and tested somewhere else and is used here by
 identity: the frozen contract and its seal (`run.freeze`, `run.Sealed`), the dev-subset partition
-(`run._partition`), the weights re-hash (`weights.load_weights`), the control arm
-(`sweep.rankable`), the single definition of *solved* (`dataset.TRAINABLE`, which is
-`report.tally`'s `Outcome.SOLVED`), and the capacity probe that may stop the training.
+(`run._partition`), the held-out exclusion and its loader (`heldout.exclude_heldout`,
+`heldout.read_document` — aspect 1 of the promotion gate, consumed by identity), the weights
+re-hash (`weights.load_weights`), the control arm (`sweep.rankable`), the single definition of
+*solved* (`dataset.TRAINABLE`, which is `report.tally`'s `Outcome.SOLVED`), and the capacity
+probe that may stop the training.
 
 **One candidate per night, refused rather than resolved.** A night produces *a* checkpoint; two
 candidates would produce two, or one trained on a dataset drawn from both, and neither has a
@@ -28,6 +30,7 @@ success. An unproven harness is 3 — nothing could be concluded.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -63,6 +66,16 @@ from whetstone.loop import dataset as training
 from whetstone.loop import ledger as run_ledger
 from whetstone.loop import sft
 from whetstone.loop.draws import Drawn, sample
+from whetstone.loop.heldout import (
+    EmptyHeldout,
+    Heldout,
+    HeldoutDigestMismatch,
+    HeldoutSchemaError,
+    UnknownHeldoutId,
+    document_digest_of,
+    exclude_heldout,
+    read_document,
+)
 from whetstone.loop.sampling import (
     SAMPLER,
     Applied,
@@ -106,7 +119,7 @@ class ManyCandidates(ValueError):
 
 
 class EmptyTaskSet(ValueError):
-    """The dev-subset overlay (or a probe of zero) left no source-B task to draw against.
+    """The overlays (dev-subset, held-out) left no source-B task to draw against.
 
     Named rather than a bare `ValueError`, and refused **before** the contract is frozen. Left
     alone the night would draw against source A alone, spend hours doing it, and produce a dataset
@@ -164,6 +177,7 @@ def run_night(
     run_id: str,
     run_seed: int,
     dev_subset: Sequence[str] = (),
+    heldout: Path | None = None,
     draws: int = K,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     only: Sequence[str] = (),
@@ -189,19 +203,53 @@ def run_night(
     `probe` narrows the private source to its first `N` tasks and writes **no checkpoint**: it
     exists so the whole chain can be validated cheaply before a real night, and a probe that
     trained would produce a candidate from a self-chosen sample.
+
+    `heldout` is the promotion gate's pinned input: aspect 1's committed
+    `whetstone-heldout/1` document at `tasks/heldout/source-b.json`. Its membership is
+    excluded at the partition seam, before the contract is frozen, so both audit trails cover
+    the exclusion automatically — `freeze` digests the prompts of the tasks it is handed, and
+    the dataset is selected from the draws over the filtered set. The document is **consumed,
+    never recomputed**, and the loader is aspect 1's, by identity. The dev overlay applies on
+    top: a declared dev id inside the held-out band is exclusion, never a refusal, so the
+    membership resolves against the full loaded corpus while the exclusion itself applies to
+    the post-overlay set. Absent, the night is today's night, byte for byte.
     """
     _refuse_published_root(runs, "--runs")
     _refuse_published_root(checkpoints, "--checkpoints")
     os.environ[HF_HUB_OFFLINE] = "1"
 
+    private_root_tasks = load_task_roots(tasks)
+    heldout_record: run_ledger.HeldoutRecord | None = None
+    heldout_membership: frozenset[str] = frozenset()
+    if heldout is not None:
+        heldout_document, document_digest = _read_heldout(heldout)
+        heldout_record = run_ledger.HeldoutRecord(
+            document_digest=document_digest,
+            membership_count=len(heldout_document.membership),
+        )
+        # Resolve the membership against the FULL loaded corpus, never the post-overlay set:
+        # a declared dev id inside the held-out band is removed by the overlay first, and
+        # dev ∩ held-out is exclusion, never refusal. The exclusion itself then applies to
+        # the post-overlay set below, keeping the overlay on top.
+        exclude_heldout(heldout_document.membership, private_root_tasks)
+        heldout_membership = frozenset(heldout_document.membership)
     private_tasks, public_tasks, declared = _partition(
-        load_task_roots(tasks), load_tasks(public), dev_subset
+        private_root_tasks, load_tasks(public), dev_subset
     )
+    if heldout_membership:
+        private_tasks = tuple(
+            task for task in private_tasks if task.task_id not in heldout_membership
+        )
     if probe is not None:
         private_tasks = private_tasks[:probe]
     if not private_tasks:
+        overlays = (
+            "the dev-subset overlay and the held-out exclusion"
+            if heldout_record is not None
+            else "the dev-subset overlay"
+        )
         raise EmptyTaskSet(
-            "no source-B task survived the dev-subset overlay, so this night would draw against "
+            f"no source-B task survived {overlays}, so this night would draw against "
             "source A alone. Both sources always publish together; refused here, before the "
             "contract is frozen or anything is generated"
         )
@@ -265,6 +313,7 @@ def run_night(
             roots=len(tasks),
             dev_subset=declared,
             probe=probe,
+            heldout=heldout_record,
         ),
         tool_versions=run_ledger.tool_versions(),
         seeds=_seeds(drawn),
@@ -315,6 +364,35 @@ def disclosure(night: Night) -> tuple[str, ...]:
         )
     lines.append(f"ledger {night.ledger}")
     return tuple(lines)
+
+
+def _read_heldout(path: Path) -> tuple[Heldout, str]:
+    """Load the held-out document by identity and return it with the digest its payload seals.
+
+    The loader validates and deliberately does not carry the digest (`heldout.py:243-247`):
+    a consumer that re-checked it would be a second answer to "is this document trustworthy".
+    Recording it is different — the ledger carries it so `check-leakage` can name the document
+    the night excluded — so the digest is read back from the file the loader just accepted and
+    recomputed through the module's own function rather than trusted from the file.
+
+    A plain `ValueError` (an unreadable file) is wrapped as the loader's own schema error, the
+    `run.py:563-576` shape: a document that half-parses names a membership the night cannot
+    attribute, and a pinned input that cannot be read is refused rather than defaulted.
+    """
+    location = Path(path)
+    try:
+        loaded = read_document(location)
+    except ValueError as exc:
+        if isinstance(exc, (HeldoutSchemaError, HeldoutDigestMismatch, EmptyHeldout)):
+            raise
+        raise HeldoutSchemaError(
+            f"the held-out document {str(location)!r} could not be read as a run input: "
+            f"{exc}. A document that half-parses names a membership the night cannot "
+            "attribute, and a pinned input that cannot be read is refused rather than "
+            "defaulted"
+        ) from exc
+    raw = json.loads(location.read_text(encoding="utf-8"))
+    return loaded, document_digest_of(raw)
 
 
 def _select(
@@ -546,8 +624,9 @@ def _refuse_published_root(root: Path, flag: str) -> None:
 
 #: Every refusal a night raises that is an **operator's error** rather than a finding: a private
 #: root pointed at a published directory, a weights provenance that does not match the disk, a
-#: `--only` that matches nothing or several, a dev-subset id that excludes nothing, an empty task
-#: set. Collected here so `cli.py` — a guarded root, which may hold exactly one function-local
+#: `--only` that matches nothing or several, a dev-subset id that excludes nothing, a held-out
+#: document that cannot be read or whose membership resolves nowhere, an empty task set.
+#: Collected here so `cli.py` — a guarded root, which may hold exactly one function-local
 #: import into this package — can map them to the documented usage code without importing five
 #: modules of the bake-off to name them.
 REFUSALS: tuple[type[Exception], ...] = (
@@ -555,6 +634,10 @@ REFUSALS: tuple[type[Exception], ...] = (
     ManyCandidates,
     UnknownCandidate,
     UnknownDevSubset,
+    UnknownHeldoutId,
+    HeldoutSchemaError,
+    HeldoutDigestMismatch,
+    EmptyHeldout,
     EmptyTaskSet,
     ProvenanceUnreadable,
     WeightsUnverified,
