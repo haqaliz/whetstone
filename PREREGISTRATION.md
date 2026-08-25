@@ -313,12 +313,13 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-08-09 | The format-hardening contract is a second, non-comparable generation contract; its report has its own home (§ 10.4) | 2 — adds a disclosure | No |
 | 2026-08-14 | The easier-stratum probe scores a changed task set under the hardened contract; its report has its own non-comparable home (§ 10.5) | 2 — adds a disclosure | No |
 | 2026-08-15 | The larger-base arm scores a new candidate under the hardened contract; its report has its own non-comparable home (§ 10.6) | 2 — adds a disclosure | No |
+| 2026-08-24 | The held-out source-B split is fixed and committed; § 7.1 is closed by the amendment below (§ 10.7) | 1 — closes an open item | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
-none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. §§ 7.1, 7.2 and 7.3
-are all still **open** — in particular the P1 bake-off selected no base, so it does **not** close
+none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. §§ 7.2 and 7.3 are
+still **open** — in particular the P1 bake-off selected no base, so it does **not** close
 § 7.3, and an amendment that tried to close it after the fact would document only that the item
-was never closed (§ 8.1).
+was never closed (§ 8.1). § 7.1 is closed by the dated amendment below (§ 10.7).
 
 ## 10. Amendments
 
@@ -493,3 +494,27 @@ the held-out split of § 7.1, which remains open until P3; and it is not a
 base-selection closure — it produces evidence only, and § 7.3 closes by a Type 1
 amendment committed before the measurement it governs runs (§ 8.1). At the time of this
 amendment no count has been measured under the arm, and none is claimed here.
+
+### 10.7 The held-out source-B split is fixed and committed — 2026-08-24
+
+**Type 1 (§ 8.1): closes § 7.1, committed before the split is used to score anything.** It
+introduces no success threshold and rewords nothing in § 1, § 4, or § 6.
+
+**The split.** § 7.1 is closed by this amendment: 12 of the 66 declared source-B tasks are
+held out, fixed by the rule that follows and committed at `tasks/heldout/source-b.json`
+(schema `whetstone-heldout/1`) — the document the promotion gate and the night consume,
+sealed by a digest its loader refuses a hand-edit of, in the same commit as this amendment.
+
+**The rule that fixed it.** The 66 tasks are ordered into three terciles by the stratum
+document's per-task difficulty measurement (`tasks/stratum/easier.json`: files / hunks /
+added+deleted); per band, the members sort by `sha256(split_seed, task_id)` and the first
+`max(MIN_PER_BAND, ceil(MIN_HELDOUT / HELDOUT_BANDS))` are held out, under the pre-committed
+floors of at least 10 held-out tasks and at least 2 from each band. The rule lives in code
+(`src/whetstone/loop/heldout.py`) and its digest is sealed into the document, so any rule
+edit invalidates the document by design. The membership is 4 tasks per band, 12 in total; a
+split that could not meet the floors would have been the published finding § 7.1 names,
+never a loosened floor.
+
+**What is not claimed.** No measurement has been run on the split, and none is claimed
+here: this amendment precedes any scoring, which is the whole of its value, and the pinned
+baseline measurement of § 3 remains unspent.
