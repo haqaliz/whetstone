@@ -114,6 +114,22 @@ released version until it exists in the code.
   edges (`night`, `gate`, `check_leakage`), proven able to fail against a planted fourth and a
   planted module-scope import.
 
+- **The gate runbook — P3's sixth aspect, completing the unit's machinery**
+  (`docs/planning/p3-promotion-gate/gate-runbook/`). The operator's sheet for the first gated
+  evaluation, held by `tests/test_gate_runbook_guards.py`: flags checked against the shipped
+  parser, every path absolute, one worktree and no stale one, the retry budget compared with
+  `gate.RETRY_COUNT` **by identity**, the promotion record's home by identity, the machinery
+  verified on the fixture suites before the real pair, the liveness sentence stated as a count
+  over its denominator, and the `UNVERIFIED` exit stated as a published outcome — with the sheet
+  forbidden from telling the operator to rerun until an evaluation verifies. Watched failing
+  against a deliberately wrong stub first. The sheet also records what the machinery leaves to
+  the operator: the first gated evaluation needs two nights, the § 3 baseline measurement is not
+  performed here, and a killed run resumes nothing (the record writer overwrites at its
+  `--run-id`, so a re-run uses a fresh one). **The gate has not been run on real checkpoints** —
+  the three exits, the retry discipline and the refusals are proven against fixture checkpoints
+  and the stub engine, and whether the gate can fire on a real machine is unmeasured.
+  `docs/ROADMAP.md` § 10 marks the held-out split and `R` closed, each pointing at its amendment.
+
 ## [0.7.0] - 2026-08-20
 
 ### Added

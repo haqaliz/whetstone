@@ -612,9 +612,42 @@ This file orients a coding agent working in this repository. Read it first.
 > is about the module graph of `whetstone verify`, and `check_leakage` imports the night for the
 > two source names.
 >
+> **P3's sixth aspect — the `gate-runbook` — is done, and P3's machinery is complete**
+> (`docs/planning/p3-promotion-gate/gate-runbook/`; spec at `spec.md`, plan at
+> `plan_20260824.md`, sheet at `runbook.md`). The operator's sheet for the first evaluation that
+> decides whether a night's candidate may replace the incumbent, held by
+> `tests/test_gate_runbook_guards.py` on the night-door precedent: nine pinned properties (flags
+> against the shipped parser, every path absolute, one worktree and no stale one, the promotion
+> record's home by identity, the machinery verified before the real pair, the liveness sentence,
+> and the `UNVERIFIED` exit as a published outcome), watched failing against a deliberately wrong
+> stub — relative paths, a `--retries` flag the gate does not define, a renamed record home, a
+> stale worktree, `R = 7`, no fixture verification, and a "rerun until it promotes" instruction —
+> where ten of the eleven tests refused it. **Two pins are the ones worth reading.** The retry
+> budget the sheet states is compared with `gate.RETRY_COUNT` **by identity** rather than with a
+> number written into the guard, so a later amendment that moves `R` fails on the sheet that
+> still quotes the old one. And the sheet may not tell the operator to rerun until an evaluation
+> verifies — re-running until it fires is selecting on the outcome, and would turn the honest
+> third exit into a slower way of promoting; the guard checks for the phrasing and for the
+> roadmap's own response instead (*a more reliable sandbox, never a looser gate*). The sheet
+> states three things the machinery does not decide for anyone: the first gated evaluation needs
+> **two** nights (the night writes one checkpoint per night that selected something, and the gate
+> compares two); the § 3 baseline measurement is **not** performed here (P4's, spent once, and it
+> needs a checkpoint the night deliberately does not write); and a killed run resumes nothing —
+> the record writer overwrites the file at its `--run-id`, so the sheet says to use a fresh one,
+> which is the writer's actual behaviour stated rather than wished into idempotence.
+> `docs/ROADMAP.md` § 10 now marks the held-out split and `R` closed, each pointing at the
+> amendment that closed it.
+>
 > **What is not built.** The nightly loop has never been *run*, so no training set, checkpoint or
-> yield figure exists yet. P3's remaining aspect — the gate runbook — and P4 are untouched: no
-> operator's sheet for the first gated evaluation, no nightly report, no dashboard. **The gate has never been
+> yield figure exists yet — and **the gate has therefore never been run on real checkpoints**.
+> Its three exits, its retry discipline and its refusals are proven against fixture checkpoints,
+> the stub engine and a simulated wobble; whether the gate can *fire* on a real machine is
+> unmeasured, and the roadmap's response if it cannot is a more reliable sandbox, never a looser
+> gate. `R = 3` is declared a priori for the same reason: there is no observed unverified rate to
+> set it from. P4 is untouched: no nightly report, no dashboard. The `PREREGISTRATION.md` § 3
+> baseline — the untrained base on the held-out split, "measured once, re-measured never" — is
+> unspent, and § 7.3 (which open base) stays open, so the 32B remains *the first candidate with
+> evidence* rather than a pinned base. **The gate has never been
 > run on real checkpoints**, so the retry discipline's liveness is proven against fixtures and
 > a simulated wobble, never yet against a real machine. The bake-off is base *selection*, not
 > the pinned baseline of
