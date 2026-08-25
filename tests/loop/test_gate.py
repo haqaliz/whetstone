@@ -890,16 +890,41 @@ def test_the_gate_composes_the_bakeoff_and_verifier_by_identity() -> None:
 def test_gate_engine_is_the_callable_factory_smoke_test() -> None:
     """The one new machine seam exists and is callable; it is never invoked without `mlx`.
 
-    `mlx_lm` is an optional extra CI does not install, so the factory's real body is
-    exercised only by the operator's runbook. This smoke test pins that the seam exists and
-    is a factory — and that merely importing the gate module loads no inference library.
+    `mlx` is an optional extra and every test here injects a stub engine, so the factory's
+    real body is exercised only by the operator's runbook. This smoke test pins that the seam
+    exists and is a factory — and that merely importing the gate module loads no inference
+    library.
+
+    **Measured in a fresh interpreter, not against this process's `sys.modules`.** The
+    original spelling asserted `"mlx_lm" not in sys.modules` here, which is a statement about
+    everything the whole test session had imported by this point rather than about the gate.
+    It passed only because the extra is absent under a plain `uv sync`; with the extra
+    installed — which is exactly what the runbooks tell an operator to do — an earlier
+    bake-off test imports `mlx_lm` and this assertion fails while the property it names is
+    still perfectly true. A subprocess importing the gate and nothing else measures the claim
+    in both configurations.
     """
+    import subprocess
     import sys
 
     assert callable(gate.gate_engine)
-    assert "mlx_lm" not in sys.modules, (
-        "WHY THIS IS A FAILURE: importing the gate loaded mlx_lm. The exempt package's rule "
-        "is that every mlx import is function-local inside the factory"
+
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import importlib, sys; importlib.import_module('whetstone.loop.gate'); "
+            "print('mlx_lm' in sys.modules)",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert probe.stdout.strip() == "False", (
+        f"WHY THIS IS A FAILURE: importing the gate loaded mlx_lm (probe said "
+        f"{probe.stdout.strip()!r}). The exempt package's rule is that every mlx import is "
+        "function-local inside the factory"
     )
 
 

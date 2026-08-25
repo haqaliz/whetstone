@@ -451,17 +451,30 @@ def gate_engine(
     experiment.
 
     Every `mlx` import is function-local, on the loop package's own rule. The factory is
-    never invoked by the test suite (`mlx` is an optional extra CI does not install), so its
-    correctness is pinned by the smoke test and by the operator's runbook, not by CI.
+    never *invoked* by the test suite — `mlx` is an optional extra, and every test injects a
+    stub engine — so its behaviour is pinned by the smoke test and by the operator's runbook.
+    It is nonetheless **type-checked**: `.github/workflows/ci.yml` runs `mypy src/` a second
+    time with the extra installed, which is what caught the unpack below.
     """
     from mlx_lm.generate import generate
     from mlx_lm.utils import load as load_model
 
-    model, tokenizer = load_model(
+    # Indexed rather than unpacked, for the reason `mlx_runtime._load` records at its own call
+    # site: `load` is typed as returning EITHER `(model, tokenizer)` OR `(model, tokenizer,
+    # config)`, selected by a `return_config` argument that defaults to `False`. mypy cannot
+    # narrow that union from a default, so `model, tokenizer = load(...)` is an error even
+    # though the two-tuple is what arrives here; indexing is total over both arms.
+    #
+    # This function repeated the mistake that module had already made and documented, and it
+    # survived review here for the reason named there: under plain `uv sync` every symbol in
+    # `mlx_lm` resolves to `Any` and no call into it is checked at all. The second mypy run is
+    # what stops this class of error depending on who happens to have the extra installed.
+    loaded = load_model(
         str(weights.local_dir),
         revision=weights.revision,
         adapter_path=str(checkpoint.directory),
     )
+    model, tokenizer = loaded[0], loaded[1]
     return _CheckpointGenerator(
         model,
         tokenizer,
