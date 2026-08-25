@@ -666,13 +666,32 @@ def disclosure(outcome: GateOutcome) -> tuple[str, ...]:
     (`PREREGISTRATION.md:142-147`). The digests are abbreviated to twelve characters —
     enough to match the record and the checkpoints on disk, and the record itself carries
     the full values.
+
+    **The retry line is unconditional**, spend or none — liveness item 4: the unverified rate
+    is reported from the first eval onward (`docs/ROADMAP.md:441-442`). A line that appeared
+    only when something went wrong would make its absence ambiguous, and a clean machine and
+    an unmeasured one would read identically. It carries `R` and what was actually spent for
+    the same reason: an operator reading an `UNVERIFIED` exit needs to tell "the budget was
+    spent and the machine is unreliable" from "the budget was never spent" — and the
+    roadmap's answer to the first is a more reliable sandbox, never a looser gate.
     """
     return (
         f"decision: {outcome.decision.exit.value} — {outcome.decision.detail}",
         _side_line("candidate", outcome.candidate_digest, outcome.candidate),
         _side_line("incumbent", outcome.incumbent_digest, outcome.incumbent),
+        _retry_line(outcome),
         f"held-out document: {outcome.heldout_digest[:12]}",
         f"record: {outcome.record}",
+    )
+
+
+def _retry_line(outcome: GateOutcome) -> str:
+    """The liveness line: the declared budget, what it spent, and what it could not fix."""
+    spent = sum(one.retries_used for one in outcome.retries)
+    return (
+        f"retries: R={RETRY_COUNT}, {spent} spent over {len(outcome.retries)} "
+        f"(side, task) pair(s); {outcome.decision.unverified} of "
+        f"{outcome.decision.denominator} held-out tasks still without a verdict"
     )
 
 
