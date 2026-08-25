@@ -9,6 +9,127 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Added
+
+- **The held-out source-B split — P3's first aspect**
+  (`docs/planning/p3-promotion-gate/heldout/`). The artifact `PREREGISTRATION.md` § 7.1 named
+  open until P3 exists, fixed before it scores anything: `src/whetstone/loop/heldout.py` holds
+  the pre-committed rule — three terciles over the 66 source-B tasks ordered by the stratum
+  document's per-task difficulty (files / hunks / added+deleted, reused as the ordering key,
+  never a new axis), a floor of 10 held-out tasks and 2 per band, and per-band selection by
+  `sha256(split_seed, task_id)` with the seed a declared constant — and
+  `tasks/heldout/source-b.json` (schema `whetstone-heldout/1`) declares the membership — 12 of
+  66, four from each band — sealed by a rule digest and a document digest the loader refuses a
+  hand-edit of. The loader is fail-closed by name (unknown fields, duplicated memberships,
+  members the document refused rather than measured, digest mismatches, and
+  empty/whole-corpus/floor-unmet splits), the door is
+  `python -m whetstone.loop.heldout --corpus ... --out ...` with a gitignored `--out` refused
+  by name, the membership recomputation test re-derives the document from the machine corpus
+  field by field (skipping in CI with the reason named), and the locality canary holds — the
+  document carries counts, bands and ids, never task contents. `PREREGISTRATION.md` § 10.7
+  (Type 1, dated 2026-08-24) closes § 7.1 with the split size, the stratification rule and the
+  document location, committed before the split is used to score anything; §§ 7.2 and 7.3
+  remain open.
+
+- **The never-regress promotion gate — `whetstone gate`, P3's third aspect**
+  (`docs/planning/p3-promotion-gate/gate-core/`). The core-loop element ③ now exists:
+  `whetstone gate --candidate X --incumbent Y --heldout <doc>` scores both checkpoints on the
+  held-out source-B membership (plus source A in full) through the STRICT verifier and returns
+  exactly one of the three exits the roadmap fixes (`docs/ROADMAP.md:420-427`): `promoted` → 0,
+  `rejected` → 1, `UNVERIFIED` → 3, refusals → 2 — no fifth code. The body lives in
+  `src/whetstone/loop/gate.py` (EXEMPT on the `loop` precedent), the decision core is a pure
+  function over two per-task outcome maps (`promote iff solved_new > solved_old AND regressed
+  == 0 AND unverified == 0`), and everything it relies on is composed by identity: both
+  checkpoints re-hashed through `sft.verify_checkpoint` (`CheckpointUnverified` refuses naming
+  the checkpoint), the held-out document through aspect 1's fail-closed loader, scoring through
+  `bakeoff.scoring.score` with `sampler_for(1)`'s greedy sampler (a single-draw gate eval and
+  the bake-off are one experiment), per-task verdicts through `verify.verdict.reduce`
+  (UNVERIFIED above PASS), and the single definitions of solved and unverified
+  (`Outcome.SOLVED`, `report._UNCOVERED`). The decision table is asserted, not described:
+  known-better → promoted; known-worse → rejected; equal solves → rejected by the `>` term;
+  candidate == incumbent → rejected; one still-unverified task → the whole eval is `UNVERIFIED`;
+  a regression rejects even with a solved gain. Source A is reported beside source B with both
+  denominators disclosed, coverage is the sibling rule (unverified stays in the denominator),
+  and the unverified rate appears as a count over its denominator. The promotion record is the
+  gitignored `runs/promotions/<id>.json` (schema `whetstone-promotion/1`): both re-hashed
+  digests, the held-out document digest, per-side verdict counts over both denominators, the
+  decision with its counts, the retry discipline's fields (see the entry below), tool versions,
+  `recorded_on` (an input, never the clock); a runs root inside `reports/` is refused by
+  `_refuse_published_root` imported by identity. The partition guard grew test-first from one
+  documented function-local edge into the exempt package to exactly two — `whetstone.loop.night`
+  and `whetstone.loop.gate` — each watched failing against a planted module-scope import, a
+  third failing the build. `gate_engine` (base + LoRA adapter via `mlx_lm`) is the one new
+  machine seam, smoke-tested only — every test runs the stub engine against fixture
+  checkpoints. **The gate has not been run on real checkpoints** — the fixture pair proves the
+  three-exit differential, and the operator's sheet (a later aspect) scripts the first real
+  evaluation.
+
+- **The gate's retry discipline — P3's fourth aspect**
+  (`docs/planning/p3-promotion-gate/retry-discipline/`). `unverified == 0` is the honest term
+  in the gate rule, and a gate demanding exactly zero of a real machine would never fire, so a
+  held-out task that reached **no verdict** is scored again up to `R` times — `RETRY_COUNT = 3`
+  in `src/whetstone/loop/gate.py`, a declared module constant and never a flag — and a task
+  that verifies on retry is verified. What makes it safe is what it cannot do. It never retries
+  a **verdict**: the predicate is `report._UNCOVERED` by identity, so `NO_DIFF`, `NOT_APPLIED`,
+  `NOT_SOLVED` and `OUT_OF_SCOPE` are final, and a deliberately credulous predicate
+  ("anything not SOLVED") is proven to promote a candidate that is not better than its
+  incumbent, watched failing first. It never re-generates: `_Replay` answers exactly the
+  recorded completion of the first attempt and raises `RetryInputsChanged` on any other prompt,
+  and the base is measured as being asked each prompt exactly once however many times a task is
+  scored — so *identical inputs* is a check the code performs rather than a property argued
+  from greedy sampling. A task with no recorded completion (`UNPROVISIONED`, `NO_ORACLE` —
+  neither reaches the generator) is never retried at all: there is nothing to replay, and it
+  keeps the eval `UNVERIFIED`, which is the honest direction. The budget is per task, not per
+  run; a task still without a verdict after `R` retries keeps the **whole evaluation**
+  `UNVERIFIED` — not promoted, not rejected; and the retry sequence is asserted deterministic
+  down to the recorded evidence on disk. The promotion record now carries all three retry facts
+  (the declared `R`, every task the retry fired on with what it took, and the set that outlasted
+  the budget — hashes and verdicts only, never contents), and `whetstone gate`'s output carries
+  an **unconditional** liveness line: `R`, what was spent, and the unverified count over its
+  denominator, from the first evaluation onward. `PREREGISTRATION.md` § 10.8 (Type 1, dated
+  2026-08-25) closes § 7.2, stating that `R = 3` is declared a priori rather than derived — no
+  unverified rate has been observed, because no gated evaluation has run — and that its revision
+  path is a further dated amendment grounded in a measured rate, never a code edit alone; § 7.3
+  remains open.
+
+- **`whetstone check-leakage` — P3's fifth aspect**
+  (`docs/planning/p3-promotion-gate/check-leakage/`). The roadmap's own exit criterion
+  (`docs/ROADMAP.md:449-450`), kept separate from the exclusion it proves: the night drops the
+  held-out ids at its partition seam, and a behaviour nobody checks is a claim.
+  `whetstone check-leakage --run <runs/id> --heldout <doc>` exits 0 when a night's training set
+  and the held-out membership are disjoint, 1 with the leaked task **named**, and 2 on a refusal
+  — no fifth code, and no `UNVERIFIED` exit, because the command reads documents rather than
+  running anything. A leak is a named violation and the disclosure says what it is evidence of —
+  a regression in the partition seam, not something to fix by dropping the examples after the
+  fact. Ids and examples are counted in their own units, both sources are reported over their own
+  denominators with source A's overlap measured rather than assumed, and a night that trained on
+  nothing is "disjoint by truth" in those words. The subject is `runs/<id>/dataset.json` — what
+  was actually trained on — and the ledger is read only to identify the directory as a night's
+  run. An unreadable dataset is refused rather than treated as empty, a third source name is
+  refused rather than filed under one of the two, and the held-out document goes through its
+  fail-closed loader before any comparison: a membership edited without regenerating the digest
+  is refused. The reward-path partition guard grew to exactly three documented function-local
+  edges (`night`, `gate`, `check_leakage`), proven able to fail against a planted fourth and a
+  planted module-scope import.
+
+- **The gate runbook — P3's sixth aspect, completing the unit's machinery**
+  (`docs/planning/p3-promotion-gate/gate-runbook/`). The operator's sheet for the first gated
+  evaluation, held by `tests/test_gate_runbook_guards.py`: flags checked against the shipped
+  parser, every path absolute, one worktree and no stale one, the retry budget compared with
+  `gate.RETRY_COUNT` **by identity**, the promotion record's home by identity, the machinery
+  verified on the fixture suites before the real pair, the liveness sentence stated as a count
+  over its denominator, and the `UNVERIFIED` exit stated as a published outcome — with the sheet
+  forbidden from telling the operator to rerun until an evaluation verifies. Watched failing
+  against a deliberately wrong stub first. The sheet also records what the machinery leaves to
+  the operator: the first gated evaluation needs two nights, the § 3 baseline measurement is not
+  performed here, and a killed run resumes nothing (the record writer overwrites at its
+  `--run-id`, so a re-run uses a fresh one). **The gate has not been run on real checkpoints** —
+  the three exits, the retry discipline and the refusals are proven against fixture checkpoints
+  and the stub engine, and whether the gate can fire on a real machine is unmeasured.
+  `docs/ROADMAP.md` § 10 marks the held-out split and `R` closed, each pointing at its amendment.
+
 ## [0.7.0] - 2026-08-20
 
 ### Added

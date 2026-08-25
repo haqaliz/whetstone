@@ -482,15 +482,182 @@ This file orients a coding agent working in this repository. Read it first.
 > the zero-yield rule stated as a result rather than a halt — watched failing against a deliberately
 > wrong stub sheet). The GPU pass is operator-executed, as every arm in this repository has been.
 >
+> **P3's first aspect — the held-out split — is done** (`docs/planning/p3-promotion-gate/heldout/`;
+> spec at `spec.md`, plan at `plan_20260824.md`). The artifact `PREREGISTRATION.md` § 7.1 named
+> open until P3 exists, fixed before it scores anything: `src/whetstone/loop/heldout.py` holds the
+> pre-committed rule — `HELDOUT_BANDS = 3` terciles over the 66 source-B tasks ordered by the
+> stratum document's per-task difficulty (files / hunks / added+deleted, reused as the ordering
+> key by identity, never a new axis), `MIN_HELDOUT = 10`, `MIN_PER_BAND = 2`, and per-band
+> selection by `sha256(split_seed, task_id)` with the seed a declared constant — and
+> `tasks/heldout/source-b.json` (schema `whetstone-heldout/1`) declares the membership: 12 of 66,
+> four from each band, sealed by a rule digest (rule source + declared constants) and a document
+> digest the loader refuses a hand-edit of. The loader is fail-closed by name
+> (`HeldoutSchemaError`, `EmptyHeldout`, `HeldoutDigestMismatch`): unknown fields, duplicated
+> memberships, members the document refused rather than measured, digest mismatches, and
+> empty/whole-corpus/floor-unmet splits are each refused in the writer and the loader alike — a
+> corpus that cannot meet the floors is the § 7.1 published finding, never a loosened floor. The
+> door is `python -m whetstone.loop.heldout --corpus ... --out ...` (refusing a gitignored `--out`
+> by name, the stratum roots imported by identity), the membership recomputation test re-derives
+> the document from the machine corpus field by field (skipping in CI with the reason named), and
+> the locality canary holds: the document carries counts, bands and ids, never task contents.
+> `PREREGISTRATION.md` § 10.7 (Type 1, § 8.1, 2026-08-24) closes § 7.1 with the split size, the
+> stratification rule and the document location, committed before the split is used to score
+> anything; §§ 7.2 and 7.3 remain open.
+>
+> **P3's third aspect — `gate-core`, the gate itself — is done** (`docs/planning/p3-promotion-gate/gate-core/`;
+> spec at `spec.md`, plan at `plan_20260824.md`). `whetstone gate --candidate X --incumbent Y
+> --heldout <doc>` now exists and returns exactly one of the three exits the roadmap fixes
+> (`docs/ROADMAP.md:420-427`): `promoted` → 0, `rejected` → 1, `UNVERIFIED` → 3, refusals → 2 —
+> no fifth code. The body lives in `src/whetstone/loop/gate.py` (EXEMPT on the `loop` precedent),
+> and `tests/test_reward_path_scope_is_partitioned.py` grew from one documented, function-local
+> edge into the exempt package to **exactly two** — `whetstone.loop.night` and
+> `whetstone.loop.gate`, each proven able to fail against a planted module-scope import, a third
+> failing the build. The gate composes, never re-decides: both checkpoints are re-hashed through
+> `sft.verify_checkpoint` by identity before anything compares (`CheckpointUnverified` refuses
+> naming the checkpoint); the held-out document is consumed through aspect 1's fail-closed loader
+> by identity (a held-out set of zero refused by name, a membership id matching no loaded task
+> refused with the loaded ids); scoring is the bake-off's own `scoring.score` with the greedy
+> sampler `sampler_for(1)` by identity, so a single-draw gate eval and the bake-off are one
+> experiment; per-task verdicts fold through `verify.verdict.reduce` by identity (UNVERIFIED
+> above PASS); and the single definitions of solved and unverified are `Outcome.SOLVED` and
+> `report._UNCOVERED` by identity. The decision core (`decide`) is a pure function over two
+> outcome maps — `promote iff solved_new > solved_old AND regressed == 0 AND unverified == 0` —
+> tested on the full decision table: known-better → promoted, known-worse → rejected, equal
+> solves → rejected by the `>` term (never a tie-break), candidate == incumbent → rejected
+> (asserted, not accidental), one still-unverified task → the WHOLE eval is `UNVERIFIED`, and a
+> regressed task rejects even with a solved gain. Source A is scored in full and reported beside
+> source B, both denominators disclosed; coverage is the sibling rule (unverified stays in the
+> denominator); the unverified rate appears in the output as a count over its denominator. The
+> promotion record is written to the gitignored `runs/promotions/<id>.json` (schema
+> `whetstone-promotion/1`), whose home is asserted gitignored and which is refused inside a
+> `reports/` directory by `_refuse_published_root` imported by identity: both digests (re-hashed),
+> the held-out document digest, per-side verdict counts over both denominators, the decision with
+> every count it was read from, the retry discipline's own fields (aspect 4), tool versions, and
+> `recorded_on` — an input, never the clock. The one new machine seam is `gate_engine` (base +
+> LoRA adapter via `mlx_lm`, smoke-tested only — every test injects the stub engine), and the
+> per-task scoring seam the retry discipline wraps is exposed: the no-verdict tasks are
+> carried out of the run with their first-attempt completion hashes, and a FAIL stays FAIL —
+> the seam is not credulous. **The gate has not been run on real checkpoints** — fixture
+> checkpoints and the stub engine prove the three-exit differential; the operator's sheet (aspect
+> 6) scripts the first real evaluation.
+>
+> **P3's fourth aspect — the `retry-discipline`, the gate's liveness — is done**
+> (`docs/planning/p3-promotion-gate/retry-discipline/`; spec at `spec.md`, plan at
+> `plan_20260824.md`). `unverified == 0` is the honest term in the gate rule, and a gate
+> demanding exactly zero of a real machine would never fire (`docs/ROADMAP.md:429-443`), so a
+> held-out task that reached **no verdict** is scored again up to `R` times and a task that
+> verifies on retry is verified. `RETRY_COUNT = 3` is a declared module constant, never a flag —
+> a run that could choose its own budget would make the § 7.2 amendment a formality, and a test
+> asserts the door offers no retry knob. **What makes the retry safe is what it cannot do.** It
+> never retries a **verdict**: `_is_retryable` is `report._UNCOVERED` by identity, so `NO_DIFF`,
+> `NOT_APPLIED`, `NOT_SOLVED` and `OUT_OF_SCOPE` are final — and the differential is proven, not
+> argued, on a machine whose verifier comes up SOLVED the second time it is asked, where a
+> deliberately credulous predicate ("anything not SOLVED") promotes a candidate that is **not
+> better than its incumbent** while the shipped one rejects, watched failing first. It never
+> re-generates: `_Replay` answers exactly the recorded completion of the first attempt and
+> raises `RetryInputsChanged` on any other prompt, and the base is *measured* as being asked
+> each prompt exactly once however many times a task is scored — so "identical inputs" is a
+> check the code performs rather than a property argued from greedy sampling. A task with no
+> recorded completion (`UNPROVISIONED`, `NO_ORACLE`, neither of which reaches the generator) is
+> never retried at all — there is nothing to replay, a "retry" of one would be a fresh
+> generation wearing the name of a retry, and it keeps the eval `UNVERIFIED`, which is the
+> honest direction because the gate's default is don't promote. The budget is **per task**, not
+> per run (a run-wide budget would make liveness a property of how many tasks wobbled), a task
+> still without a verdict after `R` retries keeps the **whole evaluation** `UNVERIFIED` — not
+> promoted and not rejected — and the retry sequence is asserted deterministic down to the
+> recorded evidence on disk. The promotion record carries all three retry facts (the declared
+> `R`, every task the retry fired on with what it took, and the set that outlasted the budget;
+> hashes and verdicts only, never contents), and `disclosure` carries an **unconditional**
+> liveness line — `R`, what was spent, and the unverified count over its denominator, from the
+> first evaluation onward — because a line that appeared only on trouble would make a clean
+> machine and an unmeasured one read identically. `PREREGISTRATION.md` § 10.8 (Type 1, § 8.1,
+> 2026-08-25) closes § 7.2 and says plainly that `R = 3` is **declared, not derived**: § 7.2
+> asks for it to be set from the observed unverified rate, no such rate has been observed
+> because no gated evaluation has run, and the revision path is a further dated amendment
+> grounded in a measured rate — never a code edit alone. Flakiness is simulated at exactly one
+> seam (`gate._score_one`); everything in front of and behind it is the real path — real
+> prompts, real extraction, real `git apply`, real STRICT. § 7.3 remains open.
+>
+> **P3's fifth aspect — `check-leakage`, the exclusion proven — is done**
+> (`docs/planning/p3-promotion-gate/check-leakage/`; spec at `spec.md`, plan at
+> `plan_20260824.md`). The roadmap makes this its own exit criterion (`docs/ROADMAP.md:449-450`)
+> separately from the exclusion that prevents the overlap, and the separation is the point: the
+> night drops the held-out ids at its partition seam, that is a behaviour, and a behaviour nobody
+> checks is a claim — the one claim this project cannot make on trust being that its headline was
+> not measured on its own training data. `whetstone check-leakage --run <runs/id> --heldout <doc>`
+> exits 0 when the two sets are disjoint, **1 with the leaked task named**, and 2 on a refusal
+> (the existing four-code contract, no fifth; there is no `UNVERIFIED` here, because the command
+> reads documents rather than running anything). `src/whetstone/loop/check_leakage.py` names an
+> overlap rather than counting it — the fix for a leak lives in the night that produced it, and
+> the id is how that night is found — and the disclosure says what a nonzero exit is *evidence
+> of*: a regression in the partition seam, because the wrong response (dropping the leaked
+> examples after the fact and re-running) would leave the defect in place and print a clean
+> result. Ids and examples are counted in their own units (a task drawn `K` times is one id and
+> several examples), both sources are reported over their own denominators with source A's
+> overlap **measured** empty rather than assumed, and a night that trained on nothing is
+> *disjoint by truth* in those words — a zero-strict-PASS night and a night checked and found
+> clean are different facts. The subject is `runs/<id>/dataset.json` (what was actually trained
+> on), never the ledger's task set (what was considered); the ledger is read only to identify the
+> directory as a night's run. The refusals are the rest of it: an unreadable dataset is refused
+> rather than treated as empty (the two exit identically and are opposite facts), a schema-valid
+> document with no examples list is refused rather than defaulted, a third source name is refused
+> rather than filed under one of the two, and the held-out document goes through aspect 1's
+> fail-closed loader **by identity** before any comparison — the adversarial fixture swaps the
+> leaked id out of the membership without regenerating the digest, the edit someone would make
+> to turn a failing check green, and is refused by the digest rather than by the floor. **The
+> partition guard grew to exactly three documented function-local edges** — `night`, `gate`,
+> `check_leakage` — watched failing in both halves before the constant was extended and proven
+> able to fail again afterwards against a planted fourth edge and a planted module-scope import.
+> The third needs no inference library and never will, and is function-local anyway: the argument
+> is about the module graph of `whetstone verify`, and `check_leakage` imports the night for the
+> two source names.
+>
+> **P3's sixth aspect — the `gate-runbook` — is done, and P3's machinery is complete**
+> (`docs/planning/p3-promotion-gate/gate-runbook/`; spec at `spec.md`, plan at
+> `plan_20260824.md`, sheet at `runbook.md`). The operator's sheet for the first evaluation that
+> decides whether a night's candidate may replace the incumbent, held by
+> `tests/test_gate_runbook_guards.py` on the night-door precedent: nine pinned properties (flags
+> against the shipped parser, every path absolute, one worktree and no stale one, the promotion
+> record's home by identity, the machinery verified before the real pair, the liveness sentence,
+> and the `UNVERIFIED` exit as a published outcome), watched failing against a deliberately wrong
+> stub — relative paths, a `--retries` flag the gate does not define, a renamed record home, a
+> stale worktree, `R = 7`, no fixture verification, and a "rerun until it promotes" instruction —
+> where ten of the eleven tests refused it. **Two pins are the ones worth reading.** The retry
+> budget the sheet states is compared with `gate.RETRY_COUNT` **by identity** rather than with a
+> number written into the guard, so a later amendment that moves `R` fails on the sheet that
+> still quotes the old one. And the sheet may not tell the operator to rerun until an evaluation
+> verifies — re-running until it fires is selecting on the outcome, and would turn the honest
+> third exit into a slower way of promoting; the guard checks for the phrasing and for the
+> roadmap's own response instead (*a more reliable sandbox, never a looser gate*). The sheet
+> states three things the machinery does not decide for anyone: the first gated evaluation needs
+> **two** nights (the night writes one checkpoint per night that selected something, and the gate
+> compares two); the § 3 baseline measurement is **not** performed here (P4's, spent once, and it
+> needs a checkpoint the night deliberately does not write); and a killed run resumes nothing —
+> the record writer overwrites the file at its `--run-id`, so the sheet says to use a fresh one,
+> which is the writer's actual behaviour stated rather than wished into idempotence.
+> `docs/ROADMAP.md` § 10 now marks the held-out split and `R` closed, each pointing at the
+> amendment that closed it.
+>
 > **What is not built.** The nightly loop has never been *run*, so no training set, checkpoint or
-> yield figure exists yet. P3 and P4 are untouched: no promotion gate, no held-out split, no nightly
-> report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
-> `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
-> so "measured once, re-measured never" is unspent. Cheat 6 and cheat 10 remain documented
-> residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did **not** close it. The
-> cuts so far are v0.3.0–v0.7.0, the last tagged 2026-08-20, and each one published `whetstonehq`
-> to PyPI and a GitHub Release by tag push. (This line read "nothing has been published to PyPI"
-> until 2026-08-20; it had been false since v0.3.0, and PyPI's own index is what corrected it.)
+> yield figure exists yet — and **the gate has therefore never been run on real checkpoints**.
+> Its three exits, its retry discipline and its refusals are proven against fixture checkpoints,
+> the stub engine and a simulated wobble; whether the gate can *fire* on a real machine is
+> unmeasured, and the roadmap's response if it cannot is a more reliable sandbox, never a looser
+> gate. `R = 3` is declared a priori for the same reason: there is no observed unverified rate to
+> set it from. P4 is untouched: no nightly report, no dashboard. The `PREREGISTRATION.md` § 3
+> baseline — the untrained base on the held-out split, "measured once, re-measured never" — is
+> unspent, and § 7.3 (which open base) stays open, so the 32B remains *the first candidate with
+> evidence* rather than a pinned base. **The gate has never been
+> run on real checkpoints**, so the retry discipline's liveness is proven against fixtures and
+> a simulated wobble, never yet against a real machine. The bake-off is base *selection*, not
+> the pinned baseline of
+> `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which now exists but has not
+> scored anything, so "measured once, re-measured never" is unspent. Cheat 6 and cheat 10 remain
+> documented residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did **not**
+> close it. The cuts so far are v0.3.0–v0.7.0, the last tagged 2026-08-20, and each one published
+> `whetstonehq` to PyPI and a GitHub Release by tag push. (This line read "nothing has been
+> published to PyPI" until 2026-08-20; it had been false since v0.3.0, and PyPI's own index is
+> what corrected it.)
 >
 > Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. Describe the
 > state of the tree this file ships in, and never work in flight on a branch — a status that

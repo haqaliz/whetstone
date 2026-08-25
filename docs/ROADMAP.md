@@ -598,8 +598,15 @@ testing · Linux portability.
 
 - ~~The PyPI package name.~~ **Closed 2026-08-05 by checking, not recalling:** `whetstone` is
   taken; `whetstonehq` (the declared distribution) and `whetstone-ai` are free, as of today.
-- The held-out split size and stratification.
-- The retry count *R* in P3, to be set from the observed unverified rate rather than guessed.
+- ~~The held-out split size and stratification.~~ **Closed 2026-08-24 by
+  `PREREGISTRATION.md` § 10.7 (Type 1):** 12 of the 66 declared source-B tasks, stratified into
+  three terciles by the stratum document's per-task difficulty, committed at
+  `tasks/heldout/source-b.json` before the split scored anything.
+- ~~The retry count *R* in P3, to be set from the observed unverified rate rather than
+  guessed.~~ **Closed 2026-08-25 by `PREREGISTRATION.md` § 10.8 (Type 1):** `R = 3`, declared
+  a priori and stated as declared rather than derived — no gated evaluation has run, so there
+  is no observed rate to set it from, and the revision path is a further dated amendment
+  grounded in a measured one.
 - Apple Silicon capacity: whether the base eventually chosen sustains *k* rollouts per task in a
   night. The P1 bake-off measured its own wall-clock but selected no base, so this stays open.
 

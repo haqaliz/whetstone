@@ -77,7 +77,12 @@ def _ledger() -> run_ledger.Ledger:
             retrieval="oracle",
         ),
         task_set=run_ledger.TaskSet(
-            private=61, public=1, roots=2, dev_subset=("dev-1",), probe=None
+            private=61,
+            public=1,
+            roots=2,
+            dev_subset=("dev-1",),
+            probe=None,
+            heldout=run_ledger.HeldoutRecord(document_digest="d" * 64, membership_count=12),
         ),
         tool_versions={"python": "3.12.0", "mlx-lm": "0.31.3"},
         seeds=(Applied(task_id="alpha", attempt=1, seed=1234),),
@@ -180,6 +185,14 @@ def test_the_written_document_round_trips(tmp_path: Path) -> None:
     assert recorded["draws_recorded"][0]["counts"]["private"]["unverified"] == 7
     assert recorded["dataset"]["valid_split"] == training.NO_VALID_SPLIT
     assert recorded["generation_contract"]["retry_budget"] == 2
+    assert recorded["task_set"]["heldout"] == {
+        "document_digest": "d" * 64,
+        "membership_count": 12,
+    }, (
+        f"WHY THIS IS A FAILURE: the held-out record did not round-trip: "
+        f"{recorded['task_set']['heldout']!r}. The night's exclusion is unprovable without "
+        "it"
+    )
     assert run_ledger.document(_ledger()) == path.read_text(encoding="utf-8"), (
         "WHY THIS IS A FAILURE: the bytes on disk are not the bytes the document function "
         "produces, so nothing that digests or compares two ledgers is comparing what was written"
