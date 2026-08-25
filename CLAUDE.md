@@ -532,19 +532,58 @@ This file orients a coding agent working in this repository. Read it first.
 > `whetstone-promotion/1`), whose home is asserted gitignored and which is refused inside a
 > `reports/` directory by `_refuse_published_root` imported by identity: both digests (re-hashed),
 > the held-out document digest, per-side verdict counts over both denominators, the decision with
-> every count it was read from, retries used and `R` (both 0 until aspect 4), tool versions, and
+> every count it was read from, the retry discipline's own fields (aspect 4), tool versions, and
 > `recorded_on` — an input, never the clock. The one new machine seam is `gate_engine` (base +
 > LoRA adapter via `mlx_lm`, smoke-tested only — every test injects the stub engine), and the
-> per-task scoring seam aspect 4's retry discipline wraps is exposed: the no-verdict tasks are
+> per-task scoring seam the retry discipline wraps is exposed: the no-verdict tasks are
 > carried out of the run with their first-attempt completion hashes, and a FAIL stays FAIL —
 > the seam is not credulous. **The gate has not been run on real checkpoints** — fixture
 > checkpoints and the stub engine prove the three-exit differential; the operator's sheet (aspect
 > 6) scripts the first real evaluation.
 >
+> **P3's fourth aspect — the `retry-discipline`, the gate's liveness — is done**
+> (`docs/planning/p3-promotion-gate/retry-discipline/`; spec at `spec.md`, plan at
+> `plan_20260824.md`). `unverified == 0` is the honest term in the gate rule, and a gate
+> demanding exactly zero of a real machine would never fire (`docs/ROADMAP.md:429-443`), so a
+> held-out task that reached **no verdict** is scored again up to `R` times and a task that
+> verifies on retry is verified. `RETRY_COUNT = 3` is a declared module constant, never a flag —
+> a run that could choose its own budget would make the § 7.2 amendment a formality, and a test
+> asserts the door offers no retry knob. **What makes the retry safe is what it cannot do.** It
+> never retries a **verdict**: `_is_retryable` is `report._UNCOVERED` by identity, so `NO_DIFF`,
+> `NOT_APPLIED`, `NOT_SOLVED` and `OUT_OF_SCOPE` are final — and the differential is proven, not
+> argued, on a machine whose verifier comes up SOLVED the second time it is asked, where a
+> deliberately credulous predicate ("anything not SOLVED") promotes a candidate that is **not
+> better than its incumbent** while the shipped one rejects, watched failing first. It never
+> re-generates: `_Replay` answers exactly the recorded completion of the first attempt and
+> raises `RetryInputsChanged` on any other prompt, and the base is *measured* as being asked
+> each prompt exactly once however many times a task is scored — so "identical inputs" is a
+> check the code performs rather than a property argued from greedy sampling. A task with no
+> recorded completion (`UNPROVISIONED`, `NO_ORACLE`, neither of which reaches the generator) is
+> never retried at all — there is nothing to replay, a "retry" of one would be a fresh
+> generation wearing the name of a retry, and it keeps the eval `UNVERIFIED`, which is the
+> honest direction because the gate's default is don't promote. The budget is **per task**, not
+> per run (a run-wide budget would make liveness a property of how many tasks wobbled), a task
+> still without a verdict after `R` retries keeps the **whole evaluation** `UNVERIFIED` — not
+> promoted and not rejected — and the retry sequence is asserted deterministic down to the
+> recorded evidence on disk. The promotion record carries all three retry facts (the declared
+> `R`, every task the retry fired on with what it took, and the set that outlasted the budget;
+> hashes and verdicts only, never contents), and `disclosure` carries an **unconditional**
+> liveness line — `R`, what was spent, and the unverified count over its denominator, from the
+> first evaluation onward — because a line that appeared only on trouble would make a clean
+> machine and an unmeasured one read identically. `PREREGISTRATION.md` § 10.8 (Type 1, § 8.1,
+> 2026-08-25) closes § 7.2 and says plainly that `R = 3` is **declared, not derived**: § 7.2
+> asks for it to be set from the observed unverified rate, no such rate has been observed
+> because no gated evaluation has run, and the revision path is a further dated amendment
+> grounded in a measured rate — never a code edit alone. Flakiness is simulated at exactly one
+> seam (`gate._score_one`); everything in front of and behind it is the real path — real
+> prompts, real extraction, real `git apply`, real STRICT. § 7.3 remains open.
+>
 > **What is not built.** The nightly loop has never been *run*, so no training set, checkpoint or
-> yield figure exists yet. P3's remaining aspects — the retry discipline (`R`), `check-leakage`,
-> the gate runbook — and P4 are untouched: no retry mechanism, no overlap check, no nightly
-> report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
+> yield figure exists yet. P3's remaining aspects — `check-leakage` and the gate runbook — and P4
+> are untouched: no overlap check, no nightly report, no dashboard. **The gate has never been
+> run on real checkpoints**, so the retry discipline's liveness is proven against fixtures and
+> a simulated wobble, never yet against a real machine. The bake-off is base *selection*, not
+> the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which now exists but has not
 > scored anything, so "measured once, re-measured never" is unspent. Cheat 6 and cheat 10 remain
 > documented residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did **not**

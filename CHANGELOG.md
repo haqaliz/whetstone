@@ -55,7 +55,7 @@ released version until it exists in the code.
   and the unverified rate appears as a count over its denominator. The promotion record is the
   gitignored `runs/promotions/<id>.json` (schema `whetstone-promotion/1`): both re-hashed
   digests, the held-out document digest, per-side verdict counts over both denominators, the
-  decision with its counts, retries used and `R` (both 0 until the retry aspect), tool versions,
+  decision with its counts, the retry discipline's fields (see the entry below), tool versions,
   `recorded_on` (an input, never the clock); a runs root inside `reports/` is refused by
   `_refuse_published_root` imported by identity. The partition guard grew test-first from one
   documented function-local edge into the exempt package to exactly two — `whetstone.loop.night`
@@ -65,6 +65,34 @@ released version until it exists in the code.
   checkpoints. **The gate has not been run on real checkpoints** — the fixture pair proves the
   three-exit differential, and the operator's sheet (a later aspect) scripts the first real
   evaluation.
+
+- **The gate's retry discipline — P3's fourth aspect**
+  (`docs/planning/p3-promotion-gate/retry-discipline/`). `unverified == 0` is the honest term
+  in the gate rule, and a gate demanding exactly zero of a real machine would never fire, so a
+  held-out task that reached **no verdict** is scored again up to `R` times — `RETRY_COUNT = 3`
+  in `src/whetstone/loop/gate.py`, a declared module constant and never a flag — and a task
+  that verifies on retry is verified. What makes it safe is what it cannot do. It never retries
+  a **verdict**: the predicate is `report._UNCOVERED` by identity, so `NO_DIFF`, `NOT_APPLIED`,
+  `NOT_SOLVED` and `OUT_OF_SCOPE` are final, and a deliberately credulous predicate
+  ("anything not SOLVED") is proven to promote a candidate that is not better than its
+  incumbent, watched failing first. It never re-generates: `_Replay` answers exactly the
+  recorded completion of the first attempt and raises `RetryInputsChanged` on any other prompt,
+  and the base is measured as being asked each prompt exactly once however many times a task is
+  scored — so *identical inputs* is a check the code performs rather than a property argued
+  from greedy sampling. A task with no recorded completion (`UNPROVISIONED`, `NO_ORACLE` —
+  neither reaches the generator) is never retried at all: there is nothing to replay, and it
+  keeps the eval `UNVERIFIED`, which is the honest direction. The budget is per task, not per
+  run; a task still without a verdict after `R` retries keeps the **whole evaluation**
+  `UNVERIFIED` — not promoted, not rejected; and the retry sequence is asserted deterministic
+  down to the recorded evidence on disk. The promotion record now carries all three retry facts
+  (the declared `R`, every task the retry fired on with what it took, and the set that outlasted
+  the budget — hashes and verdicts only, never contents), and `whetstone gate`'s output carries
+  an **unconditional** liveness line: `R`, what was spent, and the unverified count over its
+  denominator, from the first evaluation onward. `PREREGISTRATION.md` § 10.8 (Type 1, dated
+  2026-08-25) closes § 7.2, stating that `R = 3` is declared a priori rather than derived — no
+  unverified rate has been observed, because no gated evaluation has run — and that its revision
+  path is a further dated amendment grounded in a measured rate, never a code edit alone; § 7.3
+  remains open.
 
 ## [0.7.0] - 2026-08-20
 
