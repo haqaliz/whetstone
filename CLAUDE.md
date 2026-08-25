@@ -482,15 +482,38 @@ This file orients a coding agent working in this repository. Read it first.
 > the zero-yield rule stated as a result rather than a halt — watched failing against a deliberately
 > wrong stub sheet). The GPU pass is operator-executed, as every arm in this repository has been.
 >
+> **P3's first aspect — the held-out split — is done** (`docs/planning/p3-promotion-gate/heldout/`;
+> spec at `spec.md`, plan at `plan_20260824.md`). The artifact `PREREGISTRATION.md` § 7.1 named
+> open until P3 exists, fixed before it scores anything: `src/whetstone/loop/heldout.py` holds the
+> pre-committed rule — `HELDOUT_BANDS = 3` terciles over the 66 source-B tasks ordered by the
+> stratum document's per-task difficulty (files / hunks / added+deleted, reused as the ordering
+> key by identity, never a new axis), `MIN_HELDOUT = 10`, `MIN_PER_BAND = 2`, and per-band
+> selection by `sha256(split_seed, task_id)` with the seed a declared constant — and
+> `tasks/heldout/source-b.json` (schema `whetstone-heldout/1`) declares the membership: 12 of 66,
+> four from each band, sealed by a rule digest (rule source + declared constants) and a document
+> digest the loader refuses a hand-edit of. The loader is fail-closed by name
+> (`HeldoutSchemaError`, `EmptyHeldout`, `HeldoutDigestMismatch`): unknown fields, duplicated
+> memberships, members the document refused rather than measured, digest mismatches, and
+> empty/whole-corpus/floor-unmet splits are each refused in the writer and the loader alike — a
+> corpus that cannot meet the floors is the § 7.1 published finding, never a loosened floor. The
+> door is `python -m whetstone.loop.heldout --corpus ... --out ...` (refusing a gitignored `--out`
+> by name, the stratum roots imported by identity), the membership recomputation test re-derives
+> the document from the machine corpus field by field (skipping in CI with the reason named), and
+> the locality canary holds: the document carries counts, bands and ids, never task contents.
+> `PREREGISTRATION.md` § 10.7 (Type 1, § 8.1, 2026-08-24) closes § 7.1 with the split size, the
+> stratification rule and the document location, committed before the split is used to score
+> anything; §§ 7.2 and 7.3 remain open.
+>
 > **What is not built.** The nightly loop has never been *run*, so no training set, checkpoint or
-> yield figure exists yet. P3 and P4 are untouched: no promotion gate, no held-out split, no nightly
-> report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
-> `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which does not exist until P3,
-> so "measured once, re-measured never" is unspent. Cheat 6 and cheat 10 remain documented
-> residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did **not** close it. The
-> cuts so far are v0.3.0–v0.7.0, the last tagged 2026-08-20, and each one published `whetstonehq`
-> to PyPI and a GitHub Release by tag push. (This line read "nothing has been published to PyPI"
-> until 2026-08-20; it had been false since v0.3.0, and PyPI's own index is what corrected it.)
+> yield figure exists yet. P3's remaining aspects and P4 are untouched: no promotion gate, no
+> nightly report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
+> `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which now exists but has not
+> scored anything, so "measured once, re-measured never" is unspent. Cheat 6 and cheat 10 remain
+> documented residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did **not**
+> close it. The cuts so far are v0.3.0–v0.7.0, the last tagged 2026-08-20, and each one published
+> `whetstonehq` to PyPI and a GitHub Release by tag push. (This line read "nothing has been
+> published to PyPI" until 2026-08-20; it had been false since v0.3.0, and PyPI's own index is
+> what corrected it.)
 >
 > Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. Describe the
 > state of the tree this file ships in, and never work in flight on a branch — a status that

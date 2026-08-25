@@ -9,6 +9,30 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Added
+
+- **The held-out source-B split — P3's first aspect**
+  (`docs/planning/p3-promotion-gate/heldout/`). The artifact `PREREGISTRATION.md` § 7.1 named
+  open until P3 exists, fixed before it scores anything: `src/whetstone/loop/heldout.py` holds
+  the pre-committed rule — three terciles over the 66 source-B tasks ordered by the stratum
+  document's per-task difficulty (files / hunks / added+deleted, reused as the ordering key,
+  never a new axis), a floor of 10 held-out tasks and 2 per band, and per-band selection by
+  `sha256(split_seed, task_id)` with the seed a declared constant — and
+  `tasks/heldout/source-b.json` (schema `whetstone-heldout/1`) declares the membership — 12 of
+  66, four from each band — sealed by a rule digest and a document digest the loader refuses a
+  hand-edit of. The loader is fail-closed by name (unknown fields, duplicated memberships,
+  members the document refused rather than measured, digest mismatches, and
+  empty/whole-corpus/floor-unmet splits), the door is
+  `python -m whetstone.loop.heldout --corpus ... --out ...` with a gitignored `--out` refused
+  by name, the membership recomputation test re-derives the document from the machine corpus
+  field by field (skipping in CI with the reason named), and the locality canary holds — the
+  document carries counts, bands and ids, never task contents. `PREREGISTRATION.md` § 10.7
+  (Type 1, dated 2026-08-24) closes § 7.1 with the split size, the stratification rule and the
+  document location, committed before the split is used to score anything; §§ 7.2 and 7.3
+  remain open.
+
 ## [0.7.0] - 2026-08-20
 
 ### Added
