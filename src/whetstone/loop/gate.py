@@ -45,6 +45,7 @@ FAIL into anything else — a FAIL is a verdict, and only a task with no verdict
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Callable, Mapping, Sequence
@@ -56,6 +57,7 @@ from typing import Any
 from whetstone.bakeoff import report as bakeoff_report
 from whetstone.bakeoff.generator import Generator
 from whetstone.bakeoff.mlx_runtime import DEFAULT_MAX_TOKENS
+from whetstone.bakeoff.rendering import prompt_hash
 from whetstone.bakeoff.run import HF_HUB_OFFLINE, TranscriptNotPrivate, load_task_roots
 from whetstone.bakeoff.scoring import Interpreters, Outcome, Rollout, score
 from whetstone.bakeoff.weights import (
@@ -319,6 +321,34 @@ class Side:
 
 
 @dataclass(frozen=True)
+class Retryable:
+    """A task no verdict was reached on, with the evidence the first attempt ran.
+
+    The seam aspect 4's deterministic retry wraps: each of these is re-posed `R` times with
+    identical seed and inputs, and a task that verifies on retry is verified. `outcome`
+    names which kind of no-verdict it is; `prompt_sha256` and `completion_sha256` are empty
+    for a task no prompt was ever rendered for (`UNPROVISIONED`, `NO_ORACLE`) — there is
+    nothing to re-pose, and only a task that has a prompt (a bare `UNVERIFIED` from the
+    verifier) can be retried into a verdict.
+    """
+
+    #: Which side this was scored on ("candidate" or "incumbent").
+    side: str
+
+    #: The task's own id.
+    task_id: str
+
+    #: Which no-verdict outcome it was.
+    outcome: Outcome
+
+    #: SHA-256 of the exact prompt the first attempt was shown, or empty if none was rendered.
+    prompt_sha256: str
+
+    #: SHA-256 of the first attempt's completion, or empty if none was generated.
+    completion_sha256: str
+
+
+@dataclass(frozen=True)
 class GateOutcome:
     """What one gate run decided, and the evidence it decided on — never a bare exit."""
 
@@ -342,6 +372,9 @@ class GateOutcome:
 
     #: The written promotion record.
     record: Path
+
+    #: Every (side, task) that reached no verdict — the set aspect 4's retry discipline wraps.
+    retryable: tuple[Retryable, ...]
 
 
 def gate_engine(
@@ -468,8 +501,12 @@ def run_gate(
     candidate_base = _base_for(candidate_checkpoint, fetched, "candidate")
     incumbent_base = _base_for(incumbent_checkpoint, fetched, "incumbent")
 
-    candidate_generator = engine(candidate_base, candidate_checkpoint, max_tokens)
-    incumbent_generator = engine(incumbent_base, incumbent_checkpoint, max_tokens)
+    candidate_recorder = _CompletionRecorder(
+        engine(candidate_base, candidate_checkpoint, max_tokens)
+    )
+    incumbent_recorder = _CompletionRecorder(
+        engine(incumbent_base, incumbent_checkpoint, max_tokens)
+    )
 
     interpreters = Interpreters(workspace=workspace / "environments")
     sandbox_root = workspace / "sandbox"
@@ -477,7 +514,7 @@ def run_gate(
     candidate_rollouts = _score_side(
         label=f"candidate:{candidate_checkpoint.digest[:12]}",
         tasks=(*heldout_tasks, *public_tasks),
-        generator=candidate_generator,
+        generator=candidate_recorder,
         sandbox_root=sandbox_root,
         timeout=timeout,
         interpreters=interpreters,
@@ -486,7 +523,7 @@ def run_gate(
     incumbent_rollouts = _score_side(
         label=f"incumbent:{incumbent_checkpoint.digest[:12]}",
         tasks=(*heldout_tasks, *public_tasks),
-        generator=incumbent_generator,
+        generator=incumbent_recorder,
         sandbox_root=sandbox_root,
         timeout=timeout,
         interpreters=interpreters,
@@ -504,6 +541,10 @@ def run_gate(
     incumbent_side = Side(
         private=_counts(incumbent_rollouts, heldout_tasks),
         public=_counts(incumbent_rollouts, public_tasks),
+    )
+    retryable = (
+        *_retryable("candidate", candidate_recorder, candidate_rollouts, heldout_tasks),
+        *_retryable("incumbent", incumbent_recorder, incumbent_rollouts, heldout_tasks),
     )
 
     record = write_promotion_record(
@@ -528,6 +569,7 @@ def run_gate(
         candidate=candidate_side,
         incumbent=incumbent_side,
         record=record,
+        retryable=retryable,
     )
 
 
@@ -598,6 +640,62 @@ def write_promotion_record(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
+
+
+class _CompletionRecorder:
+    """Wraps a side's generator and keeps the first-attempt completion hash per prompt.
+
+    The retry discipline (aspect 4) re-poses with identical seed and inputs; the recorded
+    hash is the evidence that the first attempt ran and what it produced. Keyed by the
+    rendered prompt's own hash — the same value `scoring.score` records on the rollout — so
+    a rollout and its completion can be matched without a second definition of "which
+    question this was".
+    """
+
+    def __init__(self, inner: Generator) -> None:
+        self._inner = inner
+        self._completions: dict[str, str] = {}
+
+    def generate(self, prompt: str) -> str:
+        completion = self._inner.generate(prompt)
+        self._completions[prompt_hash(prompt)] = hashlib.sha256(
+            completion.encode("utf-8")
+        ).hexdigest()
+        return completion
+
+    def completion_sha256(self, prompt_sha256: str) -> str:
+        """The recorded first-attempt hash for a rendered prompt, or empty if none was rendered."""
+        return self._completions.get(prompt_sha256, "")
+
+
+def _retryable(
+    side: str,
+    recorder: _CompletionRecorder,
+    rollouts: Sequence[Rollout],
+    tasks: Sequence[Task],
+) -> tuple[Retryable, ...]:
+    """Every (side, task) that reached no verdict, with the first attempt's evidence.
+
+    A FAIL is a verdict and is never here — only outcomes in the sibling's `_UNCOVERED` set
+    are retryable, and aspect 4 wraps exactly this tuple. A task no prompt was rendered for
+    (`UNPROVISIONED`, `NO_ORACLE`) carries empty hashes: there is nothing to re-pose.
+    """
+    by_task = {record.task_id: record for record in rollouts}
+    markers: list[Retryable] = []
+    for task in tasks:
+        record = by_task[task.task_id]
+        if record.outcome not in _UNCOVERED:
+            continue
+        markers.append(
+            Retryable(
+                side=side,
+                task_id=task.task_id,
+                outcome=record.outcome,
+                prompt_sha256=record.prompt_sha256,
+                completion_sha256=recorder.completion_sha256(record.prompt_sha256),
+            )
+        )
+    return tuple(markers)
 
 
 def _heldout_tasks(membership: Sequence[str], tasks: Sequence[Task]) -> tuple[Task, ...]:
@@ -751,5 +849,6 @@ def _side_line(label: str, digest: str, side: Side) -> str:
 __all__ = [
     "Exit",
     "GateDecision",
+    "Retryable",
     "decide",
 ]
