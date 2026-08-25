@@ -18,15 +18,16 @@ model's opinion of itself. The two facts are kept apart by where the code lives,
 this package is a **sibling** of `verify/` and `tasks/` and never nested under either: the AST
 ban walks its guarded roots with `rglob`.
 
-**The dependency runs ONE WAY, with exactly one documented edge in the other direction.**
+**The dependency runs ONE WAY, with exactly two documented edges in the other direction.**
 `whetstone.loop` imports `whetstone.bakeoff` and `whetstone.verify`; nothing under `verify/` or
-`tasks/` may import this package by any spelling. The single exception is `whetstone.cli`, which
-is a guarded root and which owns the `run --night` door the roadmap names
-(`docs/ROADMAP.md:399-400`): it holds one **function-local** import of `whetstone.loop.night`
-inside the night handler, so `whetstone verify` — the reward's own entry point — never executes
-it and never imports `mlx_lm`. That edge is not a hole with a comment on it: it is asserted to be
-the only one, and asserted to be function-local, by
-`tests/test_reward_path_scope_is_partitioned.py`, and a second such import or a module-scope one
+`tasks/` may import this package by any spelling. The two exceptions are both `whetstone.cli`,
+a guarded root which owns the two doors that reach this package: the `run --night` door the
+roadmap names (`docs/ROADMAP.md:399-400`) and the `gate` door the p3-promotion-gate unit names.
+Each holds one **function-local** import — `whetstone.loop.night` in the night handler,
+`whetstone.loop.gate` in the gate handler — so `whetstone verify` — the reward's own entry
+point — never executes either and never imports `mlx_lm`. Those edges are not holes with
+comments on them: they are asserted to be the only ones, and asserted to be function-local, by
+`tests/test_reward_path_scope_is_partitioned.py`, and a third such import or a module-scope one
 fails the build.
 
 **Nothing is re-exported here.** Callers import from the module that owns the thing. A
