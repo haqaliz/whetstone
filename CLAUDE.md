@@ -504,9 +504,47 @@ This file orients a coding agent working in this repository. Read it first.
 > stratification rule and the document location, committed before the split is used to score
 > anything; §§ 7.2 and 7.3 remain open.
 >
+> **P3's third aspect — `gate-core`, the gate itself — is done** (`docs/planning/p3-promotion-gate/gate-core/`;
+> spec at `spec.md`, plan at `plan_20260824.md`). `whetstone gate --candidate X --incumbent Y
+> --heldout <doc>` now exists and returns exactly one of the three exits the roadmap fixes
+> (`docs/ROADMAP.md:420-427`): `promoted` → 0, `rejected` → 1, `UNVERIFIED` → 3, refusals → 2 —
+> no fifth code. The body lives in `src/whetstone/loop/gate.py` (EXEMPT on the `loop` precedent),
+> and `tests/test_reward_path_scope_is_partitioned.py` grew from one documented, function-local
+> edge into the exempt package to **exactly two** — `whetstone.loop.night` and
+> `whetstone.loop.gate`, each proven able to fail against a planted module-scope import, a third
+> failing the build. The gate composes, never re-decides: both checkpoints are re-hashed through
+> `sft.verify_checkpoint` by identity before anything compares (`CheckpointUnverified` refuses
+> naming the checkpoint); the held-out document is consumed through aspect 1's fail-closed loader
+> by identity (a held-out set of zero refused by name, a membership id matching no loaded task
+> refused with the loaded ids); scoring is the bake-off's own `scoring.score` with the greedy
+> sampler `sampler_for(1)` by identity, so a single-draw gate eval and the bake-off are one
+> experiment; per-task verdicts fold through `verify.verdict.reduce` by identity (UNVERIFIED
+> above PASS); and the single definitions of solved and unverified are `Outcome.SOLVED` and
+> `report._UNCOVERED` by identity. The decision core (`decide`) is a pure function over two
+> outcome maps — `promote iff solved_new > solved_old AND regressed == 0 AND unverified == 0` —
+> tested on the full decision table: known-better → promoted, known-worse → rejected, equal
+> solves → rejected by the `>` term (never a tie-break), candidate == incumbent → rejected
+> (asserted, not accidental), one still-unverified task → the WHOLE eval is `UNVERIFIED`, and a
+> regressed task rejects even with a solved gain. Source A is scored in full and reported beside
+> source B, both denominators disclosed; coverage is the sibling rule (unverified stays in the
+> denominator); the unverified rate appears in the output as a count over its denominator. The
+> promotion record is written to the gitignored `runs/promotions/<id>.json` (schema
+> `whetstone-promotion/1`), whose home is asserted gitignored and which is refused inside a
+> `reports/` directory by `_refuse_published_root` imported by identity: both digests (re-hashed),
+> the held-out document digest, per-side verdict counts over both denominators, the decision with
+> every count it was read from, retries used and `R` (both 0 until aspect 4), tool versions, and
+> `recorded_on` — an input, never the clock. The one new machine seam is `gate_engine` (base +
+> LoRA adapter via `mlx_lm`, smoke-tested only — every test injects the stub engine), and the
+> per-task scoring seam aspect 4's retry discipline wraps is exposed: the no-verdict tasks are
+> carried out of the run with their first-attempt completion hashes, and a FAIL stays FAIL —
+> the seam is not credulous. **The gate has not been run on real checkpoints** — fixture
+> checkpoints and the stub engine prove the three-exit differential; the operator's sheet (aspect
+> 6) scripts the first real evaluation.
+>
 > **What is not built.** The nightly loop has never been *run*, so no training set, checkpoint or
-> yield figure exists yet. P3's remaining aspects and P4 are untouched: no promotion gate, no
-> nightly report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
+> yield figure exists yet. P3's remaining aspects — the retry discipline (`R`), `check-leakage`,
+> the gate runbook — and P4 are untouched: no retry mechanism, no overlap check, no nightly
+> report, no dashboard. The bake-off is base *selection*, not the pinned baseline of
 > `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which now exists but has not
 > scored anything, so "measured once, re-measured never" is unspent. Cheat 6 and cheat 10 remain
 > documented residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did **not**

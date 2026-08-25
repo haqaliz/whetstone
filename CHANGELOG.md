@@ -33,6 +33,39 @@ released version until it exists in the code.
   document location, committed before the split is used to score anything; §§ 7.2 and 7.3
   remain open.
 
+- **The never-regress promotion gate — `whetstone gate`, P3's third aspect**
+  (`docs/planning/p3-promotion-gate/gate-core/`). The core-loop element ③ now exists:
+  `whetstone gate --candidate X --incumbent Y --heldout <doc>` scores both checkpoints on the
+  held-out source-B membership (plus source A in full) through the STRICT verifier and returns
+  exactly one of the three exits the roadmap fixes (`docs/ROADMAP.md:420-427`): `promoted` → 0,
+  `rejected` → 1, `UNVERIFIED` → 3, refusals → 2 — no fifth code. The body lives in
+  `src/whetstone/loop/gate.py` (EXEMPT on the `loop` precedent), the decision core is a pure
+  function over two per-task outcome maps (`promote iff solved_new > solved_old AND regressed
+  == 0 AND unverified == 0`), and everything it relies on is composed by identity: both
+  checkpoints re-hashed through `sft.verify_checkpoint` (`CheckpointUnverified` refuses naming
+  the checkpoint), the held-out document through aspect 1's fail-closed loader, scoring through
+  `bakeoff.scoring.score` with `sampler_for(1)`'s greedy sampler (a single-draw gate eval and
+  the bake-off are one experiment), per-task verdicts through `verify.verdict.reduce`
+  (UNVERIFIED above PASS), and the single definitions of solved and unverified
+  (`Outcome.SOLVED`, `report._UNCOVERED`). The decision table is asserted, not described:
+  known-better → promoted; known-worse → rejected; equal solves → rejected by the `>` term;
+  candidate == incumbent → rejected; one still-unverified task → the whole eval is `UNVERIFIED`;
+  a regression rejects even with a solved gain. Source A is reported beside source B with both
+  denominators disclosed, coverage is the sibling rule (unverified stays in the denominator),
+  and the unverified rate appears as a count over its denominator. The promotion record is the
+  gitignored `runs/promotions/<id>.json` (schema `whetstone-promotion/1`): both re-hashed
+  digests, the held-out document digest, per-side verdict counts over both denominators, the
+  decision with its counts, retries used and `R` (both 0 until the retry aspect), tool versions,
+  `recorded_on` (an input, never the clock); a runs root inside `reports/` is refused by
+  `_refuse_published_root` imported by identity. The partition guard grew test-first from one
+  documented function-local edge into the exempt package to exactly two — `whetstone.loop.night`
+  and `whetstone.loop.gate` — each watched failing against a planted module-scope import, a
+  third failing the build. `gate_engine` (base + LoRA adapter via `mlx_lm`) is the one new
+  machine seam, smoke-tested only — every test runs the stub engine against fixture
+  checkpoints. **The gate has not been run on real checkpoints** — the fixture pair proves the
+  three-exit differential, and the operator's sheet (a later aspect) scripts the first real
+  evaluation.
+
 ## [0.7.0] - 2026-08-20
 
 ### Added
