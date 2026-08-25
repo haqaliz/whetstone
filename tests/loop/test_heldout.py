@@ -458,3 +458,230 @@ def test_main_refuses_a_degenerate_split_by_name(
 
     assert rc == 2
     assert not out.exists()
+
+
+# --------------------------------------------------------------------------------------------
+# The loader: fail-closed by name, so the gate and the night can consume the document.
+# --------------------------------------------------------------------------------------------
+
+
+def _written(tmp_path: Path) -> Path:
+    """A written held-out document over the standard corpus, for the loader tests."""
+    tasks, document = _corpus(tmp_path, _STANDARD_MEASURED, _STANDARD_REFUSED)
+    out = tmp_path / "heldout" / "source-b.json"
+    heldout.write_document(out, tasks, document)
+    return out
+
+
+def _resealed(path: Path, **edits: object) -> Path:
+    """The document with `edits` applied and its digest re-sealed with the module's own
+    `document_digest_of`, so the refusal that fires is about the edit, not the tampering —
+    each loader check must be reachable on its own (the stratum precedent)."""
+    raw = json.loads(path.read_text())
+    raw.update(edits)
+    raw["document_digest"] = heldout.document_digest_of(raw)
+    path.write_text(json.dumps(raw))
+    return path
+
+
+def test_a_written_document_round_trips_through_the_loader(tmp_path: Path) -> None:
+    """The document is meant to be consumed, not only written: read must equal write."""
+    out = _written(tmp_path)
+
+    loaded = heldout.read_document(out)
+
+    assert loaded.schema == heldout.HELDOUT_SCHEMA
+    assert loaded.rule_digest == heldout.rule_digest()
+    assert (loaded.rule.bands, loaded.rule.min_heldout, loaded.rule.min_per_band) == (3, 10, 2)
+    assert loaded.rule.split_seed == heldout.SPLIT_SEED
+    assert loaded.corpus == tuple(sorted([*_STANDARD_MEASURED, *_STANDARD_REFUSED]))
+    assert loaded.membership == tuple(json.loads(out.read_text())["membership"])
+    assert set(loaded.difficulty) == set(_STANDARD_MEASURED)
+    assert set(loaded.bands) == set(_STANDARD_MEASURED)
+    assert set(loaded.refusals) == set(_STANDARD_REFUSED)
+    assert all(
+        loaded.bands[task_id] == band
+        for task_id, band in json.loads(out.read_text())["bands"].items()
+    )
+
+
+def test_an_unknown_schema_is_refused_by_name(tmp_path: Path) -> None:
+    """An old-schema document fails decode rather than defaulting."""
+    out = _written(tmp_path)
+    raw = json.loads(out.read_text())
+    raw["schema"] = "whetstone-heldout/0"
+    out.write_text(json.dumps(raw))
+
+    with pytest.raises(heldout.HeldoutSchemaError) as caught:
+        heldout.read_document(out)
+    assert "whetstone-heldout/0" in str(caught.value), caught.value
+
+
+def test_a_rule_digest_drift_is_refused_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Any rule-source or constant edit invalidates the committed document.
+
+    The drift is simulated by making the module's own digest answer differently from the
+    digest the document was sealed with — exactly what a rule edit does to a document that
+    was not regenerated in the same commit.
+    """
+    out = _written(tmp_path)
+
+    monkeypatch.setattr(heldout, "rule_digest", lambda: "f" * 64)
+
+    with pytest.raises(heldout.HeldoutDigestMismatch) as caught:
+        heldout.read_document(out)
+    assert "rule" in str(caught.value).lower(), (
+        f"the refusal must name the drift, not hide behind a generic message: {caught.value}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("edit", "name"),
+    [
+        (
+            {"bands": {"t-00": 2}},
+            "a hand-edited band",
+        ),
+        (
+            {"difficulty": {"t-00": _difficulty(99, 1, 1, 0)}},
+            "a doctored difficulty value",
+        ),
+    ],
+)
+def test_a_hand_edit_breaks_the_document_digest_and_is_refused(
+    tmp_path: Path, edit: dict[str, object], name: str
+) -> None:
+    """The `document_digest` is the mechanically-required check: edits break it.
+
+    A hand-edited band or value is refused rather than trusted — the loader re-derives the
+    digest over the canonical payload and refuses a mismatch, naming it. (A membership edit
+    is its own test below: it must stay floors-valid for the digest check to be the one that
+    fires, and that shape is clearer spelled out than parametrized.)
+    """
+    out = _written(tmp_path)
+    raw = json.loads(out.read_text())
+    for key, value in edit.items():
+        if isinstance(value, dict) and isinstance(raw.get(key), dict):
+            raw[key].update(value)
+        else:
+            raw[key] = value
+    out.write_text(json.dumps(raw))
+
+    with pytest.raises(heldout.HeldoutDigestMismatch) as caught:
+        heldout.read_document(out)
+    assert "document" in str(caught.value).lower(), (
+        f"the refusal must name the document digest, not a generic message: {caught.value}"
+    )
+
+
+def test_a_hand_edited_membership_breaks_the_document_digest_and_is_refused(
+    tmp_path: Path,
+) -> None:
+    """A floors-valid but doctored membership is refused by the digest, not by the floors.
+
+    Every member of the standard corpus's bands is selected (band size equals the take), so
+    the only doctored membership that keeps every check green but the digest is a
+    reordering — the digest covers order, and the reorder is exactly the hand-edit the
+    `document_digest` exists to catch.
+    """
+    out = _written(tmp_path)
+    raw = json.loads(out.read_text())
+    raw["membership"] = list(reversed(raw["membership"]))
+    out.write_text(json.dumps(raw))
+
+    with pytest.raises(heldout.HeldoutDigestMismatch) as caught:
+        heldout.read_document(out)
+    assert "document" in str(caught.value).lower(), (
+        f"the refusal must name the document digest, not a generic message: {caught.value}"
+    )
+
+
+def test_the_loader_refuses_an_unknown_field_by_name(tmp_path: Path) -> None:
+    """A field this module does not read would be trusted by nobody and read by no one."""
+    out = _resealed(_written(tmp_path), donor_heads={"belay": "0" * 40})
+
+    with pytest.raises(heldout.HeldoutSchemaError) as caught:
+        heldout.read_document(out)
+    assert "donor_heads" in str(caught.value), caught.value
+
+
+def test_the_loader_refuses_a_duplicated_membership_by_name(tmp_path: Path) -> None:
+    """A membership that cannot be read as a set is not the set the rule selected."""
+    raw = json.loads(_written(tmp_path).read_text())
+    membership = raw["membership"]
+    out = _resealed(_written(tmp_path), membership=[*membership, membership[0]])
+
+    with pytest.raises(heldout.HeldoutSchemaError) as caught:
+        heldout.read_document(out)
+    assert "repeat" in str(caught.value).lower() or "duplicate" in str(caught.value).lower(), (
+        caught.value
+    )
+
+
+def test_the_loader_refuses_a_membership_id_unknown_to_the_corpus(tmp_path: Path) -> None:
+    """A membership naming a task the document never measured is refused by name."""
+    raw = json.loads(_written(tmp_path).read_text())
+    out = _resealed(_written(tmp_path), membership=[*raw["membership"], "synthetic-ghost"])
+
+    with pytest.raises(heldout.HeldoutSchemaError) as caught:
+        heldout.read_document(out)
+    assert "synthetic-ghost" in str(caught.value), caught.value
+
+
+def test_the_loader_refuses_a_member_the_document_refused_rather_than_measured(
+    tmp_path: Path,
+) -> None:
+    """A refused task is not held out: the membership must name measured tasks exactly."""
+    out = _resealed(_written(tmp_path), membership=[*_STANDARD_MEASURED, "t-12"])
+
+    with pytest.raises(heldout.HeldoutSchemaError) as caught:
+        heldout.read_document(out)
+    assert "t-12" in str(caught.value), caught.value
+    assert "refusal" in str(caught.value).lower(), (
+        f"the refusal must say the member was refused rather than measured: {caught.value}"
+    )
+
+
+def test_the_loader_refuses_empty_membership_by_name(tmp_path: Path) -> None:
+    """The loader refuses too: a degenerate document can never be the gate's pinned input."""
+    out = _written(tmp_path)
+    raw = json.loads(out.read_text())
+    raw["membership"] = []
+    out.write_text(json.dumps(raw))
+
+    with pytest.raises(heldout.EmptyHeldout) as caught:
+        heldout.read_document(out)
+    assert "empty" in str(caught.value).lower(), caught.value
+
+
+def test_the_loader_refuses_whole_corpus_membership_by_name(tmp_path: Path) -> None:
+    """Both degenerate shapes, and in the loader as well as the writer.
+
+    The written document's corpus carries refused tasks, so the degenerate shape is built by
+    hand: a corpus that is exactly the measured set, refused by nothing, all of it selected.
+    """
+    out = _written(tmp_path)
+    raw = json.loads(out.read_text())
+    raw["corpus"] = sorted(_STANDARD_MEASURED)
+    raw["refusals"] = {}
+    raw["membership"] = raw["corpus"]
+    out.write_text(json.dumps(raw))
+
+    with pytest.raises(heldout.EmptyHeldout) as caught:
+        heldout.read_document(out)
+    assert "whole" in str(caught.value).lower(), caught.value
+
+
+def test_the_loader_refuses_unmet_floors_by_name(tmp_path: Path) -> None:
+    """A membership below the pre-committed floors is refused, even re-sealed: the gate must
+    never consume a split the rule would not have written."""
+    raw = json.loads(_written(tmp_path).read_text())
+    out = _resealed(_written(tmp_path), membership=raw["membership"][:6])
+
+    with pytest.raises(heldout.EmptyHeldout) as caught:
+        heldout.read_document(out)
+    assert "floor" in str(caught.value).lower(), (
+        f"the refusal must name the unmet floor: {caught.value}"
+    )
