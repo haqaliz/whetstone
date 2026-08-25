@@ -522,6 +522,42 @@ def build_parser() -> argparse.ArgumentParser:
             "documented command produce two records nobody chose"
         ),
     )
+    check = commands.add_parser(
+        "check-leakage",
+        help="prove a night's training set does not touch the held-out set",
+        description=(
+            "Compare a night's training set with the held-out membership and exit 0 iff they "
+            "are disjoint (docs/ROADMAP.md:449-450). The night already excludes the held-out "
+            "ids at its partition seam; this proves it, because an exclusion nobody checks is "
+            "a claim — and the one claim this project cannot make on trust is that its "
+            "headline was not measured on its own training data. A leak exits 1 and names the "
+            "task; a run that cannot be identified or a document that cannot be trusted exits "
+            "2. There is no flag that narrows either set: a leakage proof that could be turned "
+            "green at the command line would prove nothing."
+        ),
+    )
+    check.add_argument(
+        "--run",
+        required=True,
+        type=Path,
+        metavar="<runs/id>",
+        help=(
+            "a night's run directory. Its ledger identifies it as a night's run and its "
+            "dataset.json is the training set — what was actually trained on, which is the "
+            "only thing that can reach an adapter's weights"
+        ),
+    )
+    check.add_argument(
+        "--heldout",
+        required=True,
+        type=Path,
+        metavar="<path>",
+        help=(
+            "the committed held-out document (tasks/heldout/source-b.json) whose membership "
+            "the training set must not touch. Read through its own fail-closed loader: a "
+            "hand-edited membership refuses before anything is compared"
+        ),
+    )
     return parser
 
 
@@ -776,6 +812,38 @@ def run_gate_cli(args: argparse.Namespace) -> int:
     return exit_codes[outcome.decision.exit]
 
 
+def run_check_leakage_cli(args: argparse.Namespace) -> int:
+    """Prove a night's training set disjoint from the held-out membership, and say so.
+
+    **The import is function-local, and it is the third documented edge from a guarded root
+    into an exempt package** — the `run_night` / `run_gate_cli` shape. This one does not need
+    `mlx_lm` and never will: the check reads two JSON documents and compares two id sets. It
+    is still function-local, because the edge's soundness argument is about the module graph
+    of `whetstone verify` and not about what any one handler happens to need today —
+    `whetstone.loop.check_leakage` imports `whetstone.loop.night` for the two source names,
+    and a module-scope import here would put the night, the bake-off and `mlx_lm` on the
+    reward's own entry path. `tests/test_reward_path_scope_is_partitioned.py` asserts these
+    are the only three edges and that all three are function-local.
+
+    **The exits are the existing contract, no fifth code**: disjoint → 0, a named overlap →
+    1 (a leak is a failure, not a mistyped command), and a refusal an operator can fix — a
+    directory that is not a night's run, an unreadable dataset, a held-out document whose
+    digest does not match its contents — → 2. There is no `UNVERIFIED` exit here: this
+    command reads documents rather than running anything, so it either answers or refuses.
+    """
+    from whetstone.loop.check_leakage import REFUSALS, disclosure, run_check
+
+    try:
+        report = run_check(args.run, args.heldout)
+    except REFUSALS as refusal:
+        print(f"whetstone check-leakage: {refusal}", file=sys.stderr)
+        return USAGE_ERROR
+
+    for line in disclosure(report):
+        print(line)
+    return PASS_EXIT if report.clean else FAIL_EXIT
+
+
 def _task_verdict(task: Task, status: Status) -> Verdict:
     """One task's reduced status, as a Verdict, so a set of tasks folds the way sub-checks do."""
     return Verdict(
@@ -846,6 +914,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if namespace.command == "gate":
         return run_gate_cli(namespace)
+
+    if namespace.command == "check-leakage":
+        return run_check_leakage_cli(namespace)
 
     # Every input the CLI accepts is handled above. Falling through means a flag or a
     # subcommand was added without a behaviour behind it: report usage and fail rather than

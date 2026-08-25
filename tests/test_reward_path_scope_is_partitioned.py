@@ -125,18 +125,25 @@ EXEMPT: Mapping[str, str] = {
         " held-out task. The same library is correct here and fatal under verify/, and the only"
         " thing keeping those two facts apart is where the code lives — so the loop is a SIBLING"
         " of verify/ and tasks/, never nested under either. The dependency runs one way"
-        " (loop -> bakeoff -> verify) with exactly TWO documented edges in the other direction:"
+        " (loop -> bakeoff -> verify) with exactly THREE documented edges in the other direction:"
         " cli.py holds a FUNCTION-LOCAL import of whetstone.loop.night inside the `run --night`"
-        " handler, because the roadmap names that command as the loop's door, and a FUNCTION-"
-        " LOCAL import of whetstone.loop.gate inside the `gate` handler, the p3-promotion-gate"
-        " unit's door — a subcommand needs a call. Those edges are not holes with comments on"
+        " handler, because the roadmap names that command as the loop's door, a FUNCTION-LOCAL"
+        " import of whetstone.loop.gate inside the `gate` handler, the p3-promotion-gate unit's"
+        " door, and a FUNCTION-LOCAL import of whetstone.loop.check_leakage inside the"
+        " `check-leakage` handler, the roadmap's own leakage exit criterion — a subcommand needs"
+        " a call. The third handler needs no inference library and never will (it reads two JSON"
+        " documents and compares two id sets), and it is function-local anyway: the argument is"
+        " about the module graph of `whetstone verify`, not about what one handler happens to"
+        " need, and check_leakage imports night for the two source names — so a module-scope"
+        " import there would put the night, the bake-off and mlx_lm on the reward's own entry"
+        " path. Those edges are not holes with comments on"
         " them: test_the_reward_path_reaches_the_exempt_packages_by_exactly_the_documented_edges"
         " at the foot of this file asserts they are the only ones and that they are function-"
         " local, so `whetstone verify` — the reward's own entry point — never executes them and"
         " never imports mlx_lm even transitively. A third such import, or either one moved to"
         " module scope, fails the build. As with bakeoff, the AST ban would not notice any of"
         " this: it flags first-party imports whose dotted name carries an inference-shaped"
-        " component, and neither 'loop', 'night' nor 'gate' is one."
+        " component, and none of 'loop', 'night', 'gate' or 'check_leakage' is one."
     ),
 }
 
@@ -147,6 +154,7 @@ EXEMPT: Mapping[str, str] = {
 _DOCUMENTED_EDGES: tuple[tuple[Path, str], ...] = (
     (Path("whetstone/cli.py"), "whetstone.loop.night"),
     (Path("whetstone/cli.py"), "whetstone.loop.gate"),
+    (Path("whetstone/cli.py"), "whetstone.loop.check_leakage"),
 )
 
 
@@ -500,6 +508,11 @@ def test_the_documented_edges_into_the_exempt_packages_are_function_local() -> N
     ``mlx_lm``. The distinction between a sound exemption and a fig leaf is entirely the
     indentation, so it is asserted rather than described.
 
+    It holds for the leakage check too, which needs no inference library of its own: it
+    imports the night for the two source names, and the night is one function-local import
+    away from ``mlx_lm``. An edge is function-local because of what it can reach, not because
+    of what its own handler happens to need today.
+
     Walked with ``ast`` over the file's own bytes, and looked up by *containment* in a function
     body rather than by column offset: an import nested inside a ``try`` inside a function is
     still function-local, and a column check would call it module scope.
@@ -532,8 +545,9 @@ def test_the_documented_edges_into_the_exempt_packages_are_function_local() -> N
         + ", ".join(at_module_scope)
         + "\n\nWHY THIS IS A FAILURE: a module-scope import executes on every invocation of the"
         " CLI, including `whetstone verify` — the reward's own entry point. The loop exemption's"
-        " entire argument is that `whetstone.loop.night` and `whetstone.loop.gate` are reached"
-        " only when an operator asked for a night or a gate; at module scope that argument is"
+        " entire argument is that `whetstone.loop.night`, `whetstone.loop.gate` and"
+        " `whetstone.loop.check_leakage` are reached only when an operator asked for a night, a"
+        " gate or a leakage proof; at module scope that argument is"
         " false and mlx_lm is transitively on the reward path with every guard in this tree"
         " still green. Move the imports back inside the handlers."
     )
