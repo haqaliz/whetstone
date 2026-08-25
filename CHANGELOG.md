@@ -9,7 +9,7 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
-## [Unreleased]
+## [0.8.0] - 2026-08-25
 
 ### Added
 
