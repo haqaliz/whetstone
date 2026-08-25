@@ -38,9 +38,13 @@ asserts the factory exists and is callable without importing `mlx`.
 is refused inside a `reports/` directory. `recorded_on` is an input, never the clock, like
 every other dated field in this repository.
 
-**No retry mechanism lives here** (aspect 4 wraps the per-task scoring seam); but the
-decision core's `unverified` term is that seam, and the gate already refuses to convert a
-FAIL into anything else — a FAIL is a verdict, and only a task with no verdict is retryable.
+**The retry discipline is the gate's liveness**, and it is deliberately the smallest thing
+that could work: a held-out task that reached no verdict is scored again — up to
+`RETRY_COUNT` times, on the **recorded bytes of its first attempt**, through a replay
+generator that refuses any other prompt — and a task that verifies on retry is verified. A
+verdict is never retried, because a FAIL is the candidate having been scored and failed, and
+a task still without a verdict after `R` keeps the whole evaluation `UNVERIFIED`: not
+promoted, and not rejected either, because no comparison was made on it.
 """
 
 from __future__ import annotations
@@ -98,10 +102,13 @@ PROMOTION_SCHEMA = "whetstone-promotion/1"
 #: The directory under `--runs` the promotion records live in.
 PROMOTIONS_DIR = "promotions"
 
-#: The declared retry budget `R` (aspect 4's constant). Recorded as 0 until that aspect
-#: lands: nothing retries yet, and a number must not appear before the mechanism that
-#: grounds it exists. The value is revisable only by a § 7.2 amendment, never a CLI knob.
-RETRY_COUNT = 0
+#: The declared retry budget `R` — a module constant, never a flag and never a parameter.
+#: `PREREGISTRATION.md` § 7.2 pins the value: a CLI override would make that amendment a
+#: formality, since any run could then quietly choose its own liveness. Declared a priori at
+#: 3 because no observed unverified rate exists yet (no night has run; the larger-base
+#: finding reported the 32B's rate qualitatively), and revisable only by a further dated
+#: amendment grounded in a measured rate — never by a code edit alone.
+RETRY_COUNT = 3
 
 
 class Exit(str, Enum):
@@ -324,12 +331,11 @@ class Side:
 class Retryable:
     """A task no verdict was reached on, with the evidence the first attempt ran.
 
-    The seam aspect 4's deterministic retry wraps: each of these is re-posed `R` times with
-    identical seed and inputs, and a task that verifies on retry is verified. `outcome`
+    What the retry discipline could not fix, reported rather than smoothed over. `outcome`
     names which kind of no-verdict it is; `prompt_sha256` and `completion_sha256` are empty
     for a task no prompt was ever rendered for (`UNPROVISIONED`, `NO_ORACLE`) — there is
-    nothing to re-pose, and only a task that has a prompt (a bare `UNVERIFIED` from the
-    verifier) can be retried into a verdict.
+    nothing to re-pose, so those are never retried at all, and only a task that has a prompt
+    (a bare `UNVERIFIED` from the verifier) can be retried into a verdict.
     """
 
     #: Which side this was scored on ("candidate" or "incumbent").
@@ -346,6 +352,54 @@ class Retryable:
 
     #: SHA-256 of the first attempt's completion, or empty if none was generated.
     completion_sha256: str
+
+
+class RetryInputsChanged(ValueError):
+    """A retry was posed a prompt that is not the one the first attempt was shown.
+
+    The retry's whole claim is *identical inputs*: it replays the recorded bytes of the first
+    attempt so the second run is pure verification re-execution. A different prompt is a
+    different experiment, and a mechanism that quietly ran it would be re-generating under the
+    name of retrying — so the replay refuses rather than answers.
+    """
+
+
+@dataclass(frozen=True)
+class RetryOutcome:
+    """What the retry discipline did to one (side, task), and what came of it.
+
+    Recorded per task rather than summed, because the two ways a budget can be spent look
+    identical in a total: `R` tasks that each wobbled once and one task that wobbled `R` times
+    are very different facts about the machine.
+    """
+
+    #: Which side this task was scored on ("candidate" or "incumbent").
+    side: str
+
+    #: The task's own id.
+    task_id: str
+
+    #: The outcome the first attempt reached — always one of the no-verdict set.
+    before: Outcome
+
+    #: The outcome that stands after the retries: a verdict if one was reached, else `before`.
+    after: Outcome
+
+    #: How many retries were actually spent (1..`RETRY_COUNT`), never counting the first attempt.
+    retries_used: int
+
+    #: SHA-256 of the prompt the first attempt was shown — the bytes every retry replayed.
+    prompt_sha256: str
+
+    #: SHA-256 of the first attempt's completion — the patch every retry re-verified.
+    completion_sha256: str
+
+    @property
+    def verified(self) -> bool:
+        """Whether the retries converted this task into a verdict. A task that verifies on
+        retry is verified (`docs/ROADMAP.md:431-433`); one that does not keeps the eval
+        `UNVERIFIED`."""
+        return not _is_retryable(self.after)
 
 
 @dataclass(frozen=True)
@@ -373,8 +427,13 @@ class GateOutcome:
     #: The written promotion record.
     record: Path
 
-    #: Every (side, task) that reached no verdict — the set aspect 4's retry discipline wraps.
+    #: Every (side, task) still without a verdict **after** the retry discipline ran — what
+    #: the gate could not decide on, and therefore what reduced the eval if it reduced.
     retryable: tuple[Retryable, ...]
+
+    #: What the retry discipline did, per (side, task) it fired on. Empty when nothing
+    #: wobbled — which is the common case, and is itself worth being able to read.
+    retries: tuple[RetryOutcome, ...]
 
 
 def gate_engine(
@@ -530,6 +589,30 @@ def run_gate(
         pool=pool,
     )
 
+    candidate_rollouts, candidate_retries = _retry_side(
+        side="candidate",
+        label=f"candidate:{candidate_checkpoint.digest[:12]}",
+        rollouts=candidate_rollouts,
+        tasks=heldout_tasks,
+        recorder=candidate_recorder,
+        sandbox_root=sandbox_root,
+        timeout=timeout,
+        interpreters=interpreters,
+        pool=pool,
+    )
+    incumbent_rollouts, incumbent_retries = _retry_side(
+        side="incumbent",
+        label=f"incumbent:{incumbent_checkpoint.digest[:12]}",
+        rollouts=incumbent_rollouts,
+        tasks=heldout_tasks,
+        recorder=incumbent_recorder,
+        sandbox_root=sandbox_root,
+        timeout=timeout,
+        interpreters=interpreters,
+        pool=pool,
+    )
+    retries = (*candidate_retries, *incumbent_retries)
+
     decision = decide(
         _outcome_map(candidate_rollouts, heldout_tasks),
         _outcome_map(incumbent_rollouts, heldout_tasks),
@@ -557,7 +640,8 @@ def run_gate(
         candidate=candidate_side,
         incumbent=incumbent_side,
         decision=decision,
-        retries_used=0,
+        retries=retries,
+        retryable=retryable,
         retry_count=RETRY_COUNT,
         tool_versions=tool_versions(),
     )
@@ -570,6 +654,7 @@ def run_gate(
         incumbent=incumbent_side,
         record=record,
         retryable=retryable,
+        retries=retries,
     )
 
 
@@ -602,7 +687,8 @@ def write_promotion_record(
     candidate: Side,
     incumbent: Side,
     decision: GateDecision,
-    retries_used: int,
+    retries: Sequence[RetryOutcome],
+    retryable: Sequence[Retryable],
     retry_count: int,
     tool_versions: Mapping[str, str],
 ) -> Path:
@@ -610,8 +696,15 @@ def write_promotion_record(
 
     The record is local evidence, never published: the digests (re-hashed), the held-out
     document's digest, both sides' counts over both denominators, the decision with every
-    count it was read from, the retry fields (0 until aspect 4 lands), the tool versions,
-    and `recorded_on` — an input, never the clock.
+    count it was read from, the retry discipline's own three facts, the tool versions, and
+    `recorded_on` — an input, never the clock.
+
+    The retry is recorded as all three of what governed it, what it spent, and what it could
+    not fix: `retry_count` is the declared `R`, `retries` names every task it fired on with
+    the retries that task took, and `unverified_after_retries` is the set that outlasted the
+    budget — the set that reduced the eval, if it reduced. A total alone would hide the
+    difference between many tasks wobbling once and one task wobbling every time, and a
+    promotion record that cannot be read against the machine is not evidence.
     """
     document = {
         "schema": PROMOTION_SCHEMA,
@@ -633,8 +726,25 @@ def write_promotion_record(
             "unverified": decision.unverified,
             "detail": decision.detail,
         },
-        "retries_used": retries_used,
         "retry_count": retry_count,
+        "retries_used": sum(one.retries_used for one in retries),
+        "retries": [
+            {
+                "side": one.side,
+                "task_id": one.task_id,
+                "before": one.before.value,
+                "after": one.after.value,
+                "retries_used": one.retries_used,
+                "verified": one.verified,
+                "prompt_sha256": one.prompt_sha256,
+                "completion_sha256": one.completion_sha256,
+            }
+            for one in sorted(retries, key=lambda one: (one.side, one.task_id))
+        ],
+        "unverified_after_retries": [
+            {"side": one.side, "task_id": one.task_id, "outcome": one.outcome.value}
+            for one in sorted(retryable, key=lambda one: (one.side, one.task_id))
+        ],
         "tool_versions": dict(sorted(tool_versions.items())),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -658,14 +768,65 @@ class _CompletionRecorder:
 
     def generate(self, prompt: str) -> str:
         completion = self._inner.generate(prompt)
-        self._completions[prompt_hash(prompt)] = hashlib.sha256(
-            completion.encode("utf-8")
-        ).hexdigest()
+        self._completions.setdefault(prompt_hash(prompt), completion)
         return completion
+
+    def completion(self, prompt_sha256: str) -> str | None:
+        """The recorded first-attempt completion, or `None` if no prompt was ever posed.
+
+        `None` is the retry's own boundary, not an inconvenience: a task with no recorded
+        completion (`UNPROVISIONED`, `NO_ORACLE` — neither reaches the generator) has nothing
+        to replay, and re-running it would generate afresh. `setdefault` above is what makes
+        this the *first* attempt's bytes: a later retry never overwrites the evidence the
+        retries are being measured against.
+        """
+        return self._completions.get(prompt_sha256)
 
     def completion_sha256(self, prompt_sha256: str) -> str:
         """The recorded first-attempt hash for a rendered prompt, or empty if none was rendered."""
-        return self._completions.get(prompt_sha256, "")
+        completion = self._completions.get(prompt_sha256)
+        if completion is None:
+            return ""
+        return hashlib.sha256(completion.encode("utf-8")).hexdigest()
+
+
+class _Replay:
+    """A generator that answers exactly one recorded completion, and refuses every other question.
+
+    This is what makes a retry a *verification* re-execution rather than a second roll of the
+    dice. The gate generates greedily (`sampling.sampler_for(1)`, by identity), so re-asking a
+    real base would produce the same bytes anyway — but "would" is an argument, and the hash
+    check below is a measurement. A prompt that does not match is
+    `RetryInputsChanged`, never quietly answered.
+    """
+
+    def __init__(self, *, task_id: str, prompt_sha256: str, completion: str) -> None:
+        self._task_id = task_id
+        self._prompt_sha256 = prompt_sha256
+        self._completion = completion
+
+    def generate(self, prompt: str) -> str:
+        asked = prompt_hash(prompt)
+        if asked != self._prompt_sha256:
+            raise RetryInputsChanged(
+                f"the retry of task {self._task_id!r} was posed a prompt hashing to "
+                f"{asked[:12]}, and the first attempt was posed {self._prompt_sha256[:12]}. "
+                "A retry replays the first attempt's own bytes with identical inputs; a "
+                "different prompt is a different experiment and must not be scored as a retry"
+            )
+        return self._completion
+
+
+def _is_retryable(outcome: Outcome) -> bool:
+    """Whether an outcome may be retried at all: the no-verdict set, by identity, and only it.
+
+    The one predicate the whole discipline turns on, named so it can be pointed at. A verdict
+    — `NO_DIFF`, `NOT_APPLIED`, `NOT_SOLVED`, `OUT_OF_SCOPE` — is the candidate having been
+    scored and failed, and re-rolling it until one comes up SOLVED is the reward-hacking this
+    project exists to refuse. `report._UNCOVERED` is imported, never restated, so this cannot
+    drift from the set every coverage figure reduces against.
+    """
+    return outcome in _UNCOVERED
 
 
 def _retryable(
@@ -676,8 +837,9 @@ def _retryable(
 ) -> tuple[Retryable, ...]:
     """Every (side, task) that reached no verdict, with the first attempt's evidence.
 
-    A FAIL is a verdict and is never here — only outcomes in the sibling's `_UNCOVERED` set
-    are retryable, and aspect 4 wraps exactly this tuple. A task no prompt was rendered for
+    Built from the **post-retry** rollouts, so this is what the gate could not decide on
+    rather than what wobbled once. A FAIL is a verdict and is never here — only outcomes in
+    the sibling's `_UNCOVERED` set are retryable. A task no prompt was rendered for
     (`UNPROVISIONED`, `NO_ORACLE`) carries empty hashes: there is nothing to re-pose.
     """
     by_task = {record.task_id: record for record in rollouts}
@@ -747,8 +909,8 @@ def _score_side(
 ) -> tuple[Rollout, ...]:
     """Score every task with one generator — the bake-off's own `score`, by identity."""
     return tuple(
-        score(
-            candidate=label,
+        _score_one(
+            label=label,
             task=task,
             generator=generator,
             sandbox_root=sandbox_root,
@@ -758,6 +920,104 @@ def _score_side(
         )
         for task in tasks
     )
+
+
+def _score_one(
+    *,
+    label: str,
+    task: Task,
+    generator: Generator,
+    sandbox_root: Path,
+    timeout: float,
+    interpreters: Interpreters,
+    pool: Path | None,
+) -> Rollout:
+    """One task through the bake-off's own `score` — the seam the retry discipline re-enters.
+
+    Extracted from `_score_side` for one reason: the retry must re-run *exactly* what the
+    first attempt ran, and a second call site spelled out separately would be a second thing
+    to keep true.
+    """
+    return score(
+        candidate=label,
+        task=task,
+        generator=generator,
+        sandbox_root=sandbox_root,
+        timeout=timeout,
+        interpreters=interpreters,
+        pool=pool,
+    )
+
+
+def _retry_side(
+    *,
+    side: str,
+    label: str,
+    rollouts: Sequence[Rollout],
+    tasks: Sequence[Task],
+    recorder: _CompletionRecorder,
+    sandbox_root: Path,
+    timeout: float,
+    interpreters: Interpreters,
+    pool: Path | None,
+) -> tuple[tuple[Rollout, ...], tuple[RetryOutcome, ...]]:
+    """Retry one side's no-verdict held-out tasks up to `RETRY_COUNT` times, on identical bytes.
+
+    The budget is **per task**, not per run: a run-wide budget would make the gate's liveness
+    depend on how many tasks happened to wobble, which is a property of the machine rather
+    than of the checkpoint under test.
+
+    A retried task keeps its **first attempt's** record unless a retry actually reached a
+    verdict. The retry exists to convert a no-verdict into a verdict; when it fails to, there
+    is nothing new to record, and the evidence the retries replayed is the evidence worth
+    keeping.
+
+    Only the held-out membership is retried — `tasks` is that set. Source A is scored in full
+    and reported beside it, and the gate's rule reads the held-out membership alone; its
+    counts disclose their own unverified over their own denominator, unretried and stated.
+    """
+    by_task = {record.task_id: record for record in rollouts}
+    retries: list[RetryOutcome] = []
+    for task in tasks:
+        first = by_task[task.task_id]
+        if not _is_retryable(first.outcome):
+            continue
+        completion = recorder.completion(first.prompt_sha256)
+        if completion is None:
+            continue
+        final = first
+        used = 0
+        while used < RETRY_COUNT:
+            used += 1
+            attempt = _score_one(
+                label=label,
+                task=task,
+                generator=_Replay(
+                    task_id=task.task_id,
+                    prompt_sha256=first.prompt_sha256,
+                    completion=completion,
+                ),
+                sandbox_root=sandbox_root,
+                timeout=timeout,
+                interpreters=interpreters,
+                pool=pool,
+            )
+            if not _is_retryable(attempt.outcome):
+                final = attempt
+                break
+        by_task[task.task_id] = final
+        retries.append(
+            RetryOutcome(
+                side=side,
+                task_id=task.task_id,
+                before=first.outcome,
+                after=final.outcome,
+                retries_used=used,
+                prompt_sha256=first.prompt_sha256,
+                completion_sha256=recorder.completion_sha256(first.prompt_sha256),
+            )
+        )
+    return tuple(by_task[record.task_id] for record in rollouts), tuple(retries)
 
 
 def _outcome_map(rollouts: Sequence[Rollout], tasks: Sequence[Task]) -> dict[str, Outcome]:
@@ -849,6 +1109,8 @@ def _side_line(label: str, digest: str, side: Side) -> str:
 __all__ = [
     "Exit",
     "GateDecision",
+    "RetryInputsChanged",
+    "RetryOutcome",
     "Retryable",
     "decide",
 ]

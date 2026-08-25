@@ -567,7 +567,12 @@ def test_run_gate_scores_the_held_out_membership_and_promotes_the_known_better(
     )
     assert document["decision"]["exit"] == "promoted"
     assert document["decision"]["denominator"] == len(_MEMBERS)
-    assert document["retries_used"] == 0 and document["retry_count"] == 0
+    assert document["retries_used"] == 0 and document["retry_count"] == gate.RETRY_COUNT, (
+        "WHY THIS IS A FAILURE: nothing wobbled in this fixture, so no retry was spent — but "
+        "the declared budget R must still be recorded. A record that reported a budget of "
+        "zero would say the eval was ungoverned, which is a different run"
+    )
+    assert document["retries"] == [] and document["unverified_after_retries"] == []
     assert set(document["tool_versions"]) >= {"python", "whetstonehq", "mlx-lm", "platform"}
 
 
