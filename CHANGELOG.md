@@ -94,6 +94,26 @@ released version until it exists in the code.
   path is a further dated amendment grounded in a measured rate, never a code edit alone; § 7.3
   remains open.
 
+- **`whetstone check-leakage` — P3's fifth aspect**
+  (`docs/planning/p3-promotion-gate/check-leakage/`). The roadmap's own exit criterion
+  (`docs/ROADMAP.md:449-450`), kept separate from the exclusion it proves: the night drops the
+  held-out ids at its partition seam, and a behaviour nobody checks is a claim.
+  `whetstone check-leakage --run <runs/id> --heldout <doc>` exits 0 when a night's training set
+  and the held-out membership are disjoint, 1 with the leaked task **named**, and 2 on a refusal
+  — no fifth code, and no `UNVERIFIED` exit, because the command reads documents rather than
+  running anything. A leak is a named violation and the disclosure says what it is evidence of —
+  a regression in the partition seam, not something to fix by dropping the examples after the
+  fact. Ids and examples are counted in their own units, both sources are reported over their own
+  denominators with source A's overlap measured rather than assumed, and a night that trained on
+  nothing is "disjoint by truth" in those words. The subject is `runs/<id>/dataset.json` — what
+  was actually trained on — and the ledger is read only to identify the directory as a night's
+  run. An unreadable dataset is refused rather than treated as empty, a third source name is
+  refused rather than filed under one of the two, and the held-out document goes through its
+  fail-closed loader before any comparison: a membership edited without regenerating the digest
+  is refused. The reward-path partition guard grew to exactly three documented function-local
+  edges (`night`, `gate`, `check_leakage`), proven able to fail against a planted fourth and a
+  planted module-scope import.
+
 ## [0.7.0] - 2026-08-20
 
 ### Added

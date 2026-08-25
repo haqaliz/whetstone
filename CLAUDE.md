@@ -578,9 +578,43 @@ This file orients a coding agent working in this repository. Read it first.
 > seam (`gate._score_one`); everything in front of and behind it is the real path — real
 > prompts, real extraction, real `git apply`, real STRICT. § 7.3 remains open.
 >
+> **P3's fifth aspect — `check-leakage`, the exclusion proven — is done**
+> (`docs/planning/p3-promotion-gate/check-leakage/`; spec at `spec.md`, plan at
+> `plan_20260824.md`). The roadmap makes this its own exit criterion (`docs/ROADMAP.md:449-450`)
+> separately from the exclusion that prevents the overlap, and the separation is the point: the
+> night drops the held-out ids at its partition seam, that is a behaviour, and a behaviour nobody
+> checks is a claim — the one claim this project cannot make on trust being that its headline was
+> not measured on its own training data. `whetstone check-leakage --run <runs/id> --heldout <doc>`
+> exits 0 when the two sets are disjoint, **1 with the leaked task named**, and 2 on a refusal
+> (the existing four-code contract, no fifth; there is no `UNVERIFIED` here, because the command
+> reads documents rather than running anything). `src/whetstone/loop/check_leakage.py` names an
+> overlap rather than counting it — the fix for a leak lives in the night that produced it, and
+> the id is how that night is found — and the disclosure says what a nonzero exit is *evidence
+> of*: a regression in the partition seam, because the wrong response (dropping the leaked
+> examples after the fact and re-running) would leave the defect in place and print a clean
+> result. Ids and examples are counted in their own units (a task drawn `K` times is one id and
+> several examples), both sources are reported over their own denominators with source A's
+> overlap **measured** empty rather than assumed, and a night that trained on nothing is
+> *disjoint by truth* in those words — a zero-strict-PASS night and a night checked and found
+> clean are different facts. The subject is `runs/<id>/dataset.json` (what was actually trained
+> on), never the ledger's task set (what was considered); the ledger is read only to identify the
+> directory as a night's run. The refusals are the rest of it: an unreadable dataset is refused
+> rather than treated as empty (the two exit identically and are opposite facts), a schema-valid
+> document with no examples list is refused rather than defaulted, a third source name is refused
+> rather than filed under one of the two, and the held-out document goes through aspect 1's
+> fail-closed loader **by identity** before any comparison — the adversarial fixture swaps the
+> leaked id out of the membership without regenerating the digest, the edit someone would make
+> to turn a failing check green, and is refused by the digest rather than by the floor. **The
+> partition guard grew to exactly three documented function-local edges** — `night`, `gate`,
+> `check_leakage` — watched failing in both halves before the constant was extended and proven
+> able to fail again afterwards against a planted fourth edge and a planted module-scope import.
+> The third needs no inference library and never will, and is function-local anyway: the argument
+> is about the module graph of `whetstone verify`, and `check_leakage` imports the night for the
+> two source names.
+>
 > **What is not built.** The nightly loop has never been *run*, so no training set, checkpoint or
-> yield figure exists yet. P3's remaining aspects — `check-leakage` and the gate runbook — and P4
-> are untouched: no overlap check, no nightly report, no dashboard. **The gate has never been
+> yield figure exists yet. P3's remaining aspect — the gate runbook — and P4 are untouched: no
+> operator's sheet for the first gated evaluation, no nightly report, no dashboard. **The gate has never been
 > run on real checkpoints**, so the retry discipline's liveness is proven against fixtures and
 > a simulated wobble, never yet against a real machine. The bake-off is base *selection*, not
 > the pinned baseline of
