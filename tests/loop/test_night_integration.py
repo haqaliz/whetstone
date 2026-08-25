@@ -319,3 +319,209 @@ def test_an_empty_scored_private_set_after_the_overlays_is_refused_before_freeze
         "WHY THIS IS A FAILURE: the refusal happened after the run directory was created, so "
         "it cannot have fired before anything was generated"
     )
+
+
+# --------------------------------------------------------------------------------------------
+# The byte-identity proof (spec AC 3): a run without `--heldout` is today's run, byte for byte.
+# --------------------------------------------------------------------------------------------
+
+
+def test_a_run_without_the_flag_reproduces_the_unflagged_contract_sha(
+    tmp_path: Path,
+) -> None:
+    """AC 3: the no-heldout path is literally untouched — two unflagged nights agree, byte for byte.
+
+    The stratum precedent (`test_stratum_filter.py:358-380`): omitting `--heldout` reproduces
+    the unflagged contract exactly, so a reader recomputing the SHA from the committed manifests
+    gets the value a pre-heldout night would have frozen. The provenance sentence is also
+    asserted to be the pre-heldout sentence — no held-out clause may leak into the unflagged
+    path, and the sentence's literal absence is what the disclosure test pins.
+    """
+    first = _night(tmp_path / "first")
+    second = _night(tmp_path / "second")
+
+    assert first.contract.sha256 == second.contract.sha256, (
+        "WHY THIS IS A FAILURE: two unflagged nights over identical fixtures froze different "
+        "contracts. The no-heldout path is not deterministic, so no reader can recompute the "
+        "pre-heldout SHA from the fixtures"
+    )
+    assert first.contract.posed == second.contract.posed
+    assert all("held out" not in line for line in disclosure(first)), (
+        f"WHY THIS IS A FAILURE: the unflagged night's disclosure names a held-out exclusion: "
+        f"{disclosure(first)!r}. The sentence must be literally the pre-heldout sentence when "
+        "--heldout is absent"
+    )
+
+
+# --------------------------------------------------------------------------------------------
+# The adversarial proof (spec AC 2): doctored documents refused, and the smuggled dev member
+# proven excluded end-to-end. The machinery these pin — aspect 1's loader, the run-side
+# exclusion — was itself built test-first; the shapes here are the night-side consumption of it.
+# --------------------------------------------------------------------------------------------
+
+
+def _credulous(path: Path) -> tuple[str, ...]:
+    """The loader without the checks: parse the JSON, trust the membership as spelled.
+
+    The stratum precedent's stand-in (`test_stratum_filter.py:540-551`): the refusal
+    assertions below are only load-bearing if the *checks* — not the fixtures' shape — are
+    what refuses, and this is the loader that would accept every doctored shape in this
+    section.
+    """
+    raw = json.loads(Path(path).read_text())
+    return tuple(raw["membership"])
+
+
+def test_a_doctored_document_is_refused_where_a_credulous_loader_would_trust_it(
+    tmp_path: Path,
+) -> None:
+    """AC 2: a valid-looking document whose membership gained a declared dev id is refused.
+
+    The doctored shape — membership edited to add `_DEV`, the `document_digest` **not**
+    regenerated — is exactly what a smuggler would produce: every field type is right, the
+    added id is a plausible member, and nothing about the file's shape is off. The credulous
+    stand-in accepts it (proven in-line, so the refusal below is the checks' doing), and the
+    night refuses rather than trusts, naming the document digest.
+    """
+    doc = _heldout_document(tmp_path / "doc", _MEMBERS, corpus_ids=(*_IDS, _DEV))
+    raw = json.loads(doc.read_text(encoding="utf-8"))
+    raw["membership"] = [*_MEMBERS, _DEV]
+    doc.write_text(json.dumps(raw))
+
+    assert set(_credulous(doc)) == {*_MEMBERS, _DEV}, (
+        "the credulous stand-in did not actually accept the doctored membership, so the "
+        "refusal assertions below would be proving something about the fixture instead of "
+        "about the checks"
+    )
+    with pytest.raises(heldout.HeldoutDigestMismatch) as refusal:
+        _night(tmp_path, private_ids=_IDS, heldout=doc)
+    message = str(refusal.value)
+    assert "document" in message.lower(), (
+        f"WHY THIS IS A FAILURE: the refusal does not name the document digest: {message!r}"
+    )
+    assert heldout.document_digest_of(raw) in message, (
+        f"WHY THIS IS A FAILURE: the refusal does not show the expected digest, so the "
+        f"tampering cannot be checked against the payload: {message!r}"
+    )
+
+
+def test_a_hand_edited_membership_is_refused_where_a_credulous_loader_would_trust_it(
+    tmp_path: Path,
+) -> None:
+    """AC 2: a hand-edited membership in an otherwise valid document is refused, not trusted.
+
+    The second doctored shape: the membership replaced with a different legitimate-looking
+    selection (not merely extended — `t-11` swapped in for `t-10`), the digest left stale.
+    The stand-in trusts it; the night refuses, naming the document digest and the expected
+    value.
+    """
+    doc = _heldout_document(tmp_path / "doc", _MEMBERS)
+    raw = json.loads(doc.read_text(encoding="utf-8"))
+    raw["membership"] = list(_IDS[1:])
+    doc.write_text(json.dumps(raw))
+
+    assert tuple(_credulous(doc)) == _IDS[1:], (
+        "the credulous stand-in did not accept the hand-edited membership, so the refusal "
+        "assertion below proves nothing about the checks"
+    )
+    with pytest.raises(heldout.HeldoutDigestMismatch) as refusal:
+        _night(tmp_path, private_ids=_IDS, heldout=doc)
+    message = str(refusal.value)
+    assert "document" in message.lower(), (
+        f"WHY THIS IS A FAILURE: the refusal does not name the document digest: {message!r}"
+    )
+    assert heldout.document_digest_of(raw) in message, (
+        f"WHY THIS IS A FAILURE: the refusal does not show the expected digest: {message!r}"
+    )
+
+
+def test_an_unknown_held_out_id_is_refused_naming_the_id_and_the_loaded_ids(
+    tmp_path: Path,
+) -> None:
+    """AC 2: a membership id that matches no loaded private task is refused, with the ids.
+
+    The document is loader-valid — its own corpus carries the ghost — but the night loads a
+    corpus that does not, and `exclude_heldout` (the run-side half of the membership check,
+    `heldout.py:597-620`) refuses by name, naming the unmatched id **and** the loaded ids (the
+    `UnknownDevSubset` posture). Left alone the exclusion would match nothing while the ledger
+    recorded the document as applied — a disclosure false in the one direction nobody checks.
+    """
+    doc = _heldout_document(
+        tmp_path / "doc", (*_IDS[:-2], _GHOST), corpus_ids=(*_IDS, _GHOST)
+    )
+
+    with pytest.raises(heldout.UnknownHeldoutId) as refusal:
+        _night(tmp_path, private_ids=_IDS, heldout=doc)
+    message = str(refusal.value)
+    assert _GHOST in message, (
+        f"WHY THIS IS A FAILURE: the refusal does not name the unmatched id: {message!r}"
+    )
+    assert all(task_id in message for task_id in _IDS), (
+        f"WHY THIS IS A FAILURE: the refusal does not name every loaded private id, so the "
+        f"operator cannot check the document against the corpus: {message!r}"
+    )
+
+
+def test_the_checks_distinguish_tampering_from_regeneration_and_the_dev_member_is_excluded(
+    tmp_path: Path,
+) -> None:
+    """The negative control + the dev-smuggle end-to-end (AC 2).
+
+    A **fully regenerated** doctored document — the digest recomputed through aspect 1's own
+    `document_digest_of`, so none of the loader's checks can fire — passes the run-side checks
+    by construction; that is the layered defence's stated residual (spec Open question 5: git
+    history + ordering + aspect 1's recomputation test, stated, never reconciled). What the
+    night itself does is then proven end-to-end: a dev id inside the membership never reaches
+    scoring, because the dev overlay applies on top of the held-out exclusion — a dev member is
+    excluded from the scored set and from both denominators, never refused (the real night's
+    declared ids may fall inside the held-out band).
+    """
+    doc = _heldout_document(
+        tmp_path / "doc", (*_MEMBERS, _DEV), corpus_ids=(*_IDS, _DEV)
+    )
+
+    loaded = heldout.read_document(doc)
+    assert _DEV in loaded.membership, (
+        "the regenerated doctored document did not survive the loader, so the negative "
+        "control did not control for anything"
+    )
+
+    night = _night(
+        tmp_path, private_ids=(*_IDS, _DEV), heldout=doc, dev_subset=(_DEV,)
+    )
+
+    assert _DEV not in set(night.contract.posed.values()), (
+        "WHY THIS IS A FAILURE: a dev id smuggled through the held-out document reached the "
+        "frozen prompt set. The overlay must apply on top of the exclusion, so the dev member "
+        "is never even asked"
+    )
+    assert _DEV not in _rollout_ids(night), (
+        "WHY THIS IS A FAILURE: a dev id smuggled through the held-out document reached a "
+        "rollout. Never scored means never drawn"
+    )
+    assert _DEV not in {example.task_id for example in night.dataset.examples}, (
+        "WHY THIS IS A FAILURE: the smuggled dev member reached the trainable partition"
+    )
+
+    recorded = run_ledger.read(night.ledger)
+    private_denominator = sum(
+        draw["counts"]["private"]["denominator"] for draw in recorded["draws_recorded"]
+    )
+    public_denominator = sum(
+        draw["counts"]["public"]["denominator"] for draw in recorded["draws_recorded"]
+    )
+    assert private_denominator == 2, (
+        f"WHY THIS IS A FAILURE: the private denominator is {private_denominator} rather than "
+        f"2 (the survivor's draws). The dev member is excluded from the denominator the ledger "
+        "records, exactly as the overlay declares"
+    )
+    assert public_denominator == 2, (
+        f"WHY THIS IS A FAILURE: the public denominator is {public_denominator} rather than "
+        "2. The dev member must be excluded from both sources' denominators"
+    )
+    assert recorded["task_set"]["private"] == 1, (
+        f"WHY THIS IS A FAILURE: the ledger records {recorded['task_set']['private']} private "
+        "tasks rather than the single survivor. The exclusion moved a count the gate reads"
+    )
+    assert recorded["task_set"]["dev_subset"] == [_DEV]
+    assert recorded["task_set"]["heldout"]["membership_count"] == len(_MEMBERS) + 1
