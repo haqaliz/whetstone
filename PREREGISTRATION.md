@@ -314,12 +314,13 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-08-14 | The easier-stratum probe scores a changed task set under the hardened contract; its report has its own non-comparable home (§ 10.5) | 2 — adds a disclosure | No |
 | 2026-08-15 | The larger-base arm scores a new candidate under the hardened contract; its report has its own non-comparable home (§ 10.6) | 2 — adds a disclosure | No |
 | 2026-08-24 | The held-out source-B split is fixed and committed; § 7.1 is closed by the amendment below (§ 10.7) | 1 — closes an open item | Yes |
+| 2026-08-25 | The promotion gate's retry count `R` is declared; § 7.2 is closed by the amendment below (§ 10.8) | 1 — closes an open item | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
-none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. §§ 7.2 and 7.3 are
-still **open** — in particular the P1 bake-off selected no base, so it does **not** close
-§ 7.3, and an amendment that tried to close it after the fact would document only that the item
-was never closed (§ 8.1). § 7.1 is closed by the dated amendment below (§ 10.7).
+none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is still
+**open** — in particular the P1 bake-off selected no base, so it does **not** close § 7.3, and an
+amendment that tried to close it after the fact would document only that the item was never
+closed (§ 8.1). § 7.1 and § 7.2 are closed by the dated amendments below (§ 10.7, § 10.8).
 
 ## 10. Amendments
 
@@ -518,3 +519,36 @@ never a loosened floor.
 **What is not claimed.** No measurement has been run on the split, and none is claimed
 here: this amendment precedes any scoring, which is the whole of its value, and the pinned
 baseline measurement of § 3 remains unspent.
+
+### 10.8 The promotion gate's retry count `R` is declared — 2026-08-25
+
+**Type 1 (§ 8.1): closes § 7.2, committed before the first gated evaluation.** It introduces
+no success threshold and rewords nothing in § 1, § 4, or § 6.
+
+**The value.** `R = 3`. It is a declared constant in the gate's own module
+(`RETRY_COUNT`, `src/whetstone/loop/gate.py`), landed in the commits this amendment follows,
+and it is deliberately **not** a command-line flag: a run that could choose its own retry
+budget would make this amendment a formality, and no two gated evaluations would be
+comparable.
+
+**It is declared, not derived, and that is stated rather than glossed.** § 7.2 asks for `R`
+to be *"set from the observed unverified rate rather than guessed"*. No such rate has been
+observed: no night has run and no gated evaluation has run, so there is nothing to set it
+from. The larger-base arm reported its unverified rate qualitatively as material, which is
+the reason the mechanism exists at all but is not a rate this value was computed from.
+`R = 3` is therefore an a-priori declaration under § 8.1's deadline — fixed before the
+measurement it governs, which is the whole of its value — and its revision path is a further
+dated amendment grounded in a measured rate, never a code edit alone.
+
+**What the mechanism does, so that what `R` governs is unambiguous.** Only a held-out task
+that reached **no verdict** is retried; a verdict is final, and a task the candidate was
+scored on and failed is never re-run. Each retry replays the first attempt's own recorded
+bytes — identical inputs, checked rather than assumed — so a retry is verification
+re-execution and never a second generation. A task that verifies on retry is verified. A task
+still without a verdict after `R` retries keeps the **whole evaluation** `UNVERIFIED`: not
+promoted, and not rejected either, because no comparison was made on it.
+
+**What is not claimed.** No gated evaluation has run, so no unverified rate is reported here
+and none is implied by this value. The gate's output carries the unverified count over its
+denominator from its first evaluation onward. And § 7.2's own instruction stands unchanged: if
+the gate proves unable to fire, the fix is a more reliable sandbox, never a looser gate.
