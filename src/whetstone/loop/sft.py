@@ -278,6 +278,10 @@ class Checkpoint:
     #: Every file, with its own digest.
     files: tuple[CheckpointFile, ...]
 
+    #: True when this checkpoint is the untrained base rather than a night's adapter. Defaulted so
+    #: the night's and gate's constructors are untouched; only `verify_checkpoint` populates it.
+    untrained: bool = False
+
 
 def probe_capacity(
     request: TrainingRequest,
@@ -477,9 +481,15 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
         CheckpointFile(name=str(one["name"]), bytes=int(one["bytes"]), sha256=str(one["sha256"]))
         for one in raw["files"]
     )
-    if not recorded:
+    untrained = raw.get("untrained") is True
+    if not recorded and not untrained:
         raise CheckpointUnverified(
             f"{str(document)!r} records no files, so verifying it checks nothing and succeeds"
+        )
+    if untrained and recorded:
+        raise CheckpointUnverified(
+            f"{str(document)!r} declares untrained: true and records {len(recorded)} files — "
+            "the label and the bytes disagree"
         )
     for one in recorded:
         path = directory / one.name
@@ -505,7 +515,7 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
             f"to {digest!r}. The document disagrees with itself, which a hand edit produces and a "
             "night does not"
         )
-    return Checkpoint(directory=directory, digest=digest, files=recorded)
+    return Checkpoint(directory=directory, digest=digest, files=recorded, untrained=untrained)
 
 
 def peak_bytes() -> int:
