@@ -23,6 +23,15 @@ home carries hashes and verdicts only, never prompts, completions or patch text.
 Every `mlx` import is function-local, on the loop package's own rule: this module imports,
 type-checks and tests on a machine with no extra, and merely importing it loads no inference
 library.
+
+The measured-once guard (`spec.md` requirement 5) is the write side of this door's reason to
+exist. `read_series_identity` reads the committed artifact's series identity — its schema
+(`BASELINE_SCHEMA`), the checkpoint digest and the held-out document digest, nothing else —
+fail-closed: an artifact that cannot be read is refused by name, never treated as absent.
+`measure()` refuses a second measurement of the same series (`BaselineAlreadyMeasured`),
+keyed on the two digests, never on the clock; a **different** series — a changed pinned
+input, e.g. a new base revision or a new held-out split — is § 3's legitimate new series
+(`PREREGISTRATION.md:133-135`), allowed, with the change recorded in the new evidence.
 """
 
 from __future__ import annotations
@@ -82,6 +91,108 @@ tally = bakeoff_report.tally
 #: The evidence document's own schema string, named so a later reader has one answer to
 #: "what shape is this file".
 EVIDENCE_SCHEMA = "whetstone-baseline-run/1"
+
+#: The committed artifact's schema — aspect 3's `report.json`. One answer to "what shape is
+#: the file that fixes a series", so the measured-once guard and the artifact's writer agree
+#: on it by name rather than by coincidence.
+BASELINE_SCHEMA = "whetstone-baseline/1"
+
+
+@dataclass(frozen=True)
+class SeriesIdentity:
+    """The series a baseline measurement belongs to: exactly the two digests.
+
+    `PREREGISTRATION.md` § 3's baseline is measured once, re-measured never, and the series
+    is what "once" keys on — the checkpoint's re-hashed digest and the held-out document's
+    digest, nothing else. The environment pins and tool versions are part of § 3's pinned
+    inputs and are recorded in the artifact's provenance; they are provenance, never the
+    refusal's key. `recorded_on` is an input to the refusal's message, never part of the
+    identity — the clock is not the series.
+    """
+
+    #: The re-hashed checkpoint's digest.
+    checkpoint_digest: str
+
+    #: The held-out document's digest, recomputed from the payload the loader accepted.
+    heldout_digest: str
+
+
+class BaselineAlreadyMeasured(ValueError):
+    """A second measurement of the same baseline series, refused by name.
+
+    The § 3 baseline is measured once, re-measured never (`PREREGISTRATION.md:129-135`): the
+    same checkpoint and the same held-out split produce the same measurement by
+    construction, so a second one would be the first measurement wearing a second date. A
+    **changed** pinned input is the only legitimate second measurement, and it is a new
+    series, never an extension of the old one. The key is the series — the two digests —
+    never the clock: this refusal fires on what was measured and over what, not on how much
+    time passed.
+    """
+
+
+def read_series_identity(path: Path) -> SeriesIdentity:
+    """Read the committed artifact's series identity, or refuse it by name.
+
+    The fail-closed half of the measured-once guard (`spec.md` requirement 5): an artifact
+    that half-parses could be the same series, and a measurement that read it as absent
+    would be a second measurement wearing the name of a first. The refusals are named — an
+    unreadable file, a non-object document, a wrong or missing `schema`, a missing or
+    non-string `checkpoint.digest` or `heldout.document_digest` — and the returned identity
+    is exactly the two digests: `recorded_on` is the refusal message's input, never the
+    identity's.
+    """
+    location = Path(path)
+    try:
+        raw = json.loads(location.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"baseline artifact {str(location)!r} could not be read: {exc}"
+        ) from exc
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"baseline artifact {str(location)!r} must be a JSON object, "
+            f"got {type(raw).__name__}"
+        )
+    if raw.get("schema") != BASELINE_SCHEMA:
+        raise ValueError(
+            f"baseline artifact {str(location)!r} declares schema {raw.get('schema')!r}, "
+            f"but this module reads {BASELINE_SCHEMA!r}; an old-schema artifact fails decode "
+            "rather than defaulting"
+        )
+    checkpoint = raw.get("checkpoint")
+    if not isinstance(checkpoint, dict) or not isinstance(checkpoint.get("digest"), str):
+        raise ValueError(
+            f"baseline artifact {str(location)!r} has a missing or non-string "
+            "checkpoint.digest"
+        )
+    heldout_raw = raw.get("heldout")
+    if not isinstance(heldout_raw, dict) or not isinstance(
+        heldout_raw.get("document_digest"), str
+    ):
+        raise ValueError(
+            f"baseline artifact {str(location)!r} has a missing or non-string "
+            "heldout.document_digest"
+        )
+    return SeriesIdentity(
+        checkpoint_digest=checkpoint["digest"],
+        heldout_digest=heldout_raw["document_digest"],
+    )
+
+
+def _artifact_recorded_on(path: Path) -> str:
+    """The first artifact's declared date, for the same-series refusal's message.
+
+    An input to the message, never part of the identity: absent or non-string reads as
+    "unknown date". Only ever consulted for an artifact `read_series_identity` has already
+    validated, so the try/except is a guard against a file that vanished between the two
+    reads, not a second validation.
+    """
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "unknown date"
+    recorded = raw.get("recorded_on") if isinstance(raw, dict) else None
+    return recorded if isinstance(recorded, str) else "unknown date"
 
 
 def baseline_engine(
@@ -198,10 +309,18 @@ def measure(
     The evidence document is written only at the end of a successful measurement: a killed
     run leaves the gitignored runs home and no artifact, and a re-run uses a fresh
     `--run-id`. `out` is not written here — the committed artifact is aspect 3's — but the
-    gitignored-root refusal is this door's.
+    gitignored-root refusal is this door's. The measured-once guard reads an artifact
+    already at `--out` fail-closed — an unreadable artifact is refused by name, never
+    treated as absent — and refuses a second measurement of this run's series
+    (`BaselineAlreadyMeasured`) before any token is generated; a **different** series is §
+    3's legitimate new series, allowed, its change recorded in the new evidence.
     """
     _refuse_published_root(runs, "--runs")
     refuse_committed_out(out)
+    artifact_path = Path(out) / "report.json"
+    existing: SeriesIdentity | None = (
+        read_series_identity(artifact_path) if artifact_path.exists() else None
+    )
     os.environ[HF_HUB_OFFLINE] = "1"
 
     heldout_document = read_document(heldout)
@@ -214,6 +333,17 @@ def measure(
     checkpoint_obj = verify_checkpoint(checkpoint)
     fetched = load_weights(weights)
     base = _base_for(checkpoint_obj, fetched, "baseline")
+
+    if existing is not None and existing == SeriesIdentity(
+        checkpoint_digest=checkpoint_obj.digest, heldout_digest=heldout_digest
+    ):
+        raise BaselineAlreadyMeasured(
+            f"baseline series (checkpoint {existing.checkpoint_digest}, held-out document "
+            f"{existing.heldout_digest}) at {str(artifact_path)!r} was already measured on "
+            f"{_artifact_recorded_on(artifact_path)}; the § 3 baseline is measured once, "
+            "re-measured never, and a changed pinned input is a new series, never a second "
+            "measurement"
+        )
 
     recorder = _CompletionRecorder(engine(base, checkpoint_obj, max_tokens))
     interpreters = Interpreters(workspace=workspace / "environments")
@@ -353,10 +483,13 @@ def _counts_payload(tally_obj: Tally) -> dict[str, int]:
 
 
 __all__ = [
-    "EVIDENCE_SCHEMA",
+    "BASELINE_SCHEMA",
+    "BaselineAlreadyMeasured",
     "BaselineMeasurement",
+    "SeriesIdentity",
     "baseline_engine",
     "measure",
+    "read_series_identity",
     "write_evidence",
 ]
 

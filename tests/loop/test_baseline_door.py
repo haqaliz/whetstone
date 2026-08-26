@@ -225,6 +225,32 @@ def _fixtures(
     }
 
 
+def _measure(fixtures: dict[str, Any], **overrides: Any) -> baseline.BaselineMeasurement:
+    """One `measure()` call over a prebuilt fixtures dict — see `_fixtures`.
+
+    The split from `_run_measure` exists for the measured-once tests: planting a first
+    artifact at `--out` requires the run's digests before the call, and asserting "nothing
+    was scored" requires inspecting the very stub the call is about to use.
+    """
+    arguments: dict[str, Any] = {
+        "checkpoint": fixtures["checkpoint"],
+        "heldout": fixtures["heldout"],
+        "tasks": fixtures["tasks"],
+        "public": fixtures["public"],
+        "runs": fixtures["runs"],
+        "workspace": fixtures["workspace"],
+        "timeout": fixtures["timeout"],
+        "recorded_on": fixtures["recorded_on"],
+        "run_id": fixtures["run_id"],
+        "pool": fixtures["pool"],
+        "weights": fixtures["weights"],
+        "out": fixtures["out"],
+        "engine": fixtures["engine"],
+    }
+    arguments.update(overrides)
+    return baseline.measure(**arguments)
+
+
 def _run_measure(
     tmp_path: Path,
     *,
@@ -246,24 +272,7 @@ def _run_measure(
         revision=revision,
         canary=canary,
     )
-    arguments: dict[str, Any] = {
-        "checkpoint": fixtures["checkpoint"],
-        "heldout": fixtures["heldout"],
-        "tasks": fixtures["tasks"],
-        "public": fixtures["public"],
-        "runs": fixtures["runs"],
-        "workspace": fixtures["workspace"],
-        "timeout": fixtures["timeout"],
-        "recorded_on": fixtures["recorded_on"],
-        "run_id": fixtures["run_id"],
-        "pool": fixtures["pool"],
-        "weights": fixtures["weights"],
-        "out": fixtures["out"],
-        "engine": fixtures["engine"],
-    }
-    arguments.update(overrides)
-    measurement = baseline.measure(**arguments)
-    return measurement, fixtures
+    return _measure(fixtures, **overrides), fixtures
 
 
 def _heldout_records(measurement: baseline.BaselineMeasurement) -> list[Rollout]:
@@ -653,6 +662,159 @@ def test_measure_composes_the_gate_and_report_by_identity() -> None:
     assert baseline.load_tasks is manifest_load_tasks
     assert baseline.HF_HUB_OFFLINE == HF_HUB_OFFLINE
     assert baseline.tool_versions is run_ledger.tool_versions
+
+
+# --------------------------------------------------------------------------------------------
+# Task C: the measured-once guard — the series identity, its fail-closed reader, and the
+# write-side refusal wired into `measure()` (spec AC 5).
+# --------------------------------------------------------------------------------------------
+
+
+def _artifact(out: Path, **fields: Any) -> Path:
+    """A minimal `whetstone-baseline/1` artifact at `out/report.json`, `fields` applied.
+
+    The aspect-3 writer does not exist yet — this is the shape it is committed to, planted
+    by hand: the schema, the two digests that fix the series, and the date the refusal's
+    message names.
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    document: dict[str, Any] = {
+        "schema": baseline.BASELINE_SCHEMA,
+        "recorded_on": "2026-08-26",
+        "checkpoint": {"digest": "c" * 64},
+        "heldout": {"document_digest": "h" * 64},
+    }
+    document.update(fields)
+    artifact = out / "report.json"
+    artifact.write_text(json.dumps(document))
+    return artifact
+
+
+def test_a_same_series_artifact_is_refused_by_name(tmp_path: Path) -> None:
+    """AC 5: a same-series artifact already at `--out` is refused by name, and nothing is scored.
+
+    The artifact is the first measurement — the date it records is the date the refusal
+    names — and the current run would be a second measurement of the same series: the same
+    checkpoint and the same held-out document, producing the same measurement by
+    construction. The refusal fires before a token is generated: the stub is never asked and
+    the engine seam is never constructed.
+    """
+    fixtures = _fixtures(tmp_path)
+    artifact = _artifact(
+        tmp_path / "out",
+        checkpoint={"digest": fixtures["checkpoint_obj"].digest},
+        heldout={
+            "document_digest": heldout.document_digest_of(
+                json.loads(fixtures["doc"].read_text(encoding="utf-8"))
+            )
+        },
+    )
+
+    with pytest.raises(baseline.BaselineAlreadyMeasured) as refused:
+        _measure(fixtures, out=artifact.parent)
+
+    assert "2026-08-26" in str(refused.value), refused.value
+    assert fixtures["checkpoint_obj"].digest in str(refused.value), refused.value
+    assert heldout.document_digest_of(
+        json.loads(fixtures["doc"].read_text(encoding="utf-8"))
+    ) in str(refused.value), refused.value
+    assert str(artifact) in str(refused.value), refused.value
+    assert fixtures["stub"].asked == [], (
+        "WHY THIS IS A FAILURE: the same-series refusal fired after a token was generated. "
+        "The guard's ordering rule is the gate's — validated before the bytes it decides "
+        "over — so a refused measurement must never have scored anything"
+    )
+    assert fixtures["used_checkpoints"] == [], (
+        "WHY THIS IS A FAILURE: the engine seam was constructed for a measurement that "
+        "must be refused before the engine exists"
+    )
+
+
+def test_a_different_series_is_a_new_baseline(tmp_path: Path) -> None:
+    """A changed pinned input is § 3's legitimate new series: an artifact naming a different
+    checkpoint digest is allowed, and the evidence records the new digests.
+
+    `PREREGISTRATION.md:133-135` names this the only circumstance in which a second
+    baseline measurement is legitimate — and the change that caused it is recorded, which
+    is exactly what the evidence's own `checkpoint.digest` and
+    `heldout.document_digest` fields are.
+    """
+    artifact = _artifact(tmp_path / "out")
+    measurement, _ = _run_measure(tmp_path, out=artifact.parent)
+
+    assert measurement.checkpoint_digest != "c" * 64
+    evidence = _evidence(measurement)
+    assert evidence["checkpoint"]["digest"] == measurement.checkpoint_digest
+    assert evidence["heldout"]["document_digest"] == measurement.heldout_digest
+    assert len(evidence["checkpoint"]["digest"]) == 64
+    assert len(measurement.rollouts) == len(_MEMBERS) + 1, (
+        "WHY THIS IS A FAILURE: a different-series artifact stalled the measurement. A "
+        "changed pinned input is a new series, and the new series is measured, never refused"
+    )
+
+
+def test_an_unreadable_artifact_is_refused_never_treated_as_absent(tmp_path: Path) -> None:
+    """Garbage at `--out/report.json` is a refusal naming the file — never an absent artifact.
+
+    An artifact that cannot be parsed could be the same series, and a measurement that read
+    it as absent would be a second measurement wearing the name of a first. The refusal is
+    the reader's own — this is not the same-series refusal, and the message names the file.
+    """
+    out = tmp_path / "out"
+    out.mkdir(parents=True)
+    (out / "report.json").write_bytes(b"\x00\x01not json at all")
+
+    with pytest.raises(ValueError) as refused:
+        _run_measure(tmp_path, out=out)
+
+    assert not isinstance(refused.value, baseline.BaselineAlreadyMeasured), refused.value
+    assert "report.json" in str(refused.value), refused.value
+
+
+def test_an_artifact_without_the_required_fields_is_refused(tmp_path: Path) -> None:
+    """Schema-valid JSON missing `heldout.document_digest` is refused by name.
+
+    The identity is the two digests: a document that cannot yield both is not an identity,
+    and a guard that guessed would either refuse the wrong series or admit the right one twice.
+    """
+    out = tmp_path / "out"
+    _artifact(out, heldout={})
+
+    with pytest.raises(ValueError) as refused:
+        _run_measure(tmp_path, out=out)
+
+    assert not isinstance(refused.value, baseline.BaselineAlreadyMeasured), refused.value
+    assert "heldout.document_digest" in str(refused.value), refused.value
+
+
+def test_an_artifact_with_the_wrong_schema_is_refused(tmp_path: Path) -> None:
+    """A wrong or missing `schema` is a refusal, never a default: the artifact's shape is
+    `BASELINE_SCHEMA`, and a document declaring another shape is not read as one at all.
+    """
+    out = tmp_path / "out"
+    _artifact(out, schema="whetstone-baseline/2")
+
+    with pytest.raises(ValueError) as refused:
+        _run_measure(tmp_path, out=out)
+
+    assert not isinstance(refused.value, baseline.BaselineAlreadyMeasured), refused.value
+    assert baseline.BASELINE_SCHEMA in str(refused.value), refused.value
+
+
+def test_series_identity_equality() -> None:
+    """The series identity is exactly the two digests — nothing else is compared.
+
+    The environment pins and tool versions are aspect 3's provenance, recorded in the
+    artifact and part of § 3's pinned inputs, but they are not the refusal's key: the
+    measured-once guard keys on the series, never on the clock and never on the toolchain.
+    """
+    first = baseline.SeriesIdentity(checkpoint_digest="a" * 64, heldout_digest="b" * 64)
+    assert first == baseline.SeriesIdentity(checkpoint_digest="a" * 64, heldout_digest="b" * 64)
+    assert first != baseline.SeriesIdentity(checkpoint_digest="a" * 64, heldout_digest="c" * 64)
+    assert first != baseline.SeriesIdentity(checkpoint_digest="c" * 64, heldout_digest="b" * 64)
+    assert hash(first) == hash(
+        baseline.SeriesIdentity(checkpoint_digest="a" * 64, heldout_digest="b" * 64)
+    )
 
 
 def test_baseline_engine_is_a_smoke_tested_factory() -> None:
