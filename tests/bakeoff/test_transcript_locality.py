@@ -107,6 +107,18 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
     hardened arm's in `reports/format-hardening/`, the probe's in `reports/easier-stratum/`,
     and the arm's in `reports/larger-base/` — each the only home of its own. A silent list
     extension remains refused: the permission is the argument, in this docstring.
+
+    **The guard moved a fifth time when the § 3 baseline's home landed, and only on the
+    changed-series argument.** The baseline is a **new pinned series** — a different task
+    set (the 12 held-out source-B tasks plus source A, versus the declared source-B sets
+    the other homes measured) and a different role (the § 3 anchor of every later delta,
+    not a probe arm) — pre-authorized by `PREREGISTRATION.md` § 3, not a series requiring a
+    § 10 disclosure. So its figures are a new series, declared non-comparable to all four
+    existing homes: the baseline's figures live in `reports/baseline/`, the hardened arm's
+    in `reports/format-hardening/`, the probe's in `reports/easier-stratum/`, the
+    larger-base arm's in `reports/larger-base/`, and the § 3 baseline's in
+    `reports/baseline-measurement/` — each the only home of its own. A silent list
+    extension remains refused: the permission is the argument, in this docstring.
     """
     published = _check_ignore("reports/")
     assert published.returncode == 1, (
@@ -120,6 +132,9 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
     )
     held = sorted(name for name in relative if not name.startswith("reports/local/"))
     assert held == [
+        "reports/baseline-measurement/cost.json",
+        "reports/baseline-measurement/report.json",
+        "reports/baseline-measurement/report.md",
         "reports/baseline/cost.json",
         "reports/baseline/report.json",
         "reports/baseline/report.md",
@@ -137,8 +152,9 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
         "transcripts and a breakdown, both local. Each report directory holds exactly its own "
         "three artifacts — the bake-off's in reports/baseline/, the format-hardening arm's in "
         "reports/format-hardening/, the easier-stratum probe's in "
-        "reports/easier-stratum/ and the larger-base arm's in reports/larger-base/, "
-        "non-comparable by the D6, changed-task-set and changed-candidate-set arguments — "
+        "reports/easier-stratum/, the larger-base arm's in reports/larger-base/ and the § 3 "
+        "baseline's in reports/baseline-measurement/, non-comparable by the D6, "
+        "changed-task-set, changed-candidate-set and changed-series arguments — "
         "and a file appearing elsewhere means a figure about a model was published without "
         "the disclosure PREREGISTRATION.md:356-361 requires beside one"
     )
