@@ -9,6 +9,52 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [0.9.0] - 2026-08-26
+
+### Added
+
+- **The § 3 baseline measurement — P4's first slice** (`docs/planning/baseline-measurement/`,
+  merged as PR #17). `PREREGISTRATION.md` § 3's baseline protocol — pinned baseline
+  checkpoint, measured once, re-measured never, with a baseline `N` — now has machinery, built
+  before the night trains anything (`docs/ROADMAP.md` § 5). Four aspects:
+  - **baseline-checkpoint**: `write_baseline_checkpoint` materializes the untrained open base
+    as a `whetstone-checkpoint/1` directory whose provenance declares `untrained: true` over
+    an empty adapter set (the checkpoint the night deliberately does not write —
+    `gate-runbook/runbook.md:25-28`); `verify_checkpoint` is extended by identity to accept
+    the untrained shape — a trained checkpoint with no files stays refused, and
+    `untrained: true` with files is the contradiction, refused by name — and the trained
+    path is byte-identical.
+  - **measurement-door**: `python -m whetstone.loop.baseline` scores the single checkpoint on
+    the held-out source-B split (12 of 66, `tasks/heldout/source-b.json`, through the
+    fail-closed loader by identity) plus source A in full, through the bake-off's own
+    `scoring.score` — STRICT and WEAK both, so the baseline `N` is measured via
+    `report.tally`'s `weaker_wins` by identity — with the gate's retry discipline by identity
+    (`RETRY_COUNT`, replay-first-attempt, no-verdict-only), the one new machine seam
+    (`baseline_engine`: base-only load, greedy by identity, smoke-tested; every test injects
+    the stub), and the evidence document (hashes and verdicts, never contents — the locality
+    canary holds) in a gitignored runs home. Exits 0 whatever the score, 2 on a refusal.
+  - **baseline-report**: the committed home `reports/baseline-measurement/` (schema
+    `whetstone-baseline/1`) holds the three-artifact shape — declaration-only ("No count is
+    measured here: the baseline has not run.") until the operator spends the measurement —
+    rendered by a deterministic pure writer and read by a fail-closed loader that seals the
+    payload by document digest. The **measured-once guard** keys on the series identity — the
+    base (`repo_id` + `revision`) plus the held-out document digest — because an untrained
+    checkpoint's digest is the constant `sha256("")` and cannot discriminate bases; the
+    defect (a changed base revision refused as "same series") was found at integration and
+    fixed test-first. A changed pinned input is § 3's legitimate new series, with the change
+    recorded. The one-home guard moved a fifth time, on the changed-series argument.
+  - **measurement-run**: the operator's sheet (`runbook.md`) held by
+    `tests/test_baseline_runbook_guards.py` — ten properties (flags against the door's own
+    parser, absolute writable paths, one worktree, the measured-once discipline as a refusal
+    never a rerun, the machinery verified on fixtures first, the 32B resolution with § 7.3
+    open, the publishable zero/coverage outcomes, the killed-run behavior), watched failing
+    against a deliberately wrong stub sheet first.
+- **The number is unspent.** The measurement itself is the operator's single GPU pass, exactly
+  once, per the runbook — no figure about a model appears anywhere this unit produced.
+  `PREREGISTRATION.md` § 7.3 stays open: the 32B is recorded as this series' pinned input,
+  never a closure, and no § 10 amendment is made — the baseline is § 3 pre-authorized, not a
+  new series requiring a disclosure.
+
 ## [0.8.0] - 2026-08-25
 
 ### Added
