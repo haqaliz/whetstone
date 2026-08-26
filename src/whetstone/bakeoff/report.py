@@ -38,6 +38,7 @@ package docstring.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -1105,6 +1106,306 @@ def _larger_base_cost(generation_seconds: float | None) -> str:
     return json.dumps(body, indent=2, sort_keys=True) + "\n"
 
 
+#: The machine-readable schema of the § 3 baseline's committed artifact.
+BASELINE_REPORT_SCHEMA = "whetstone-baseline/1"
+
+#: The evidence document this artifact points at — aspect 2's own schema, by name. The
+#: writer cannot import `whetstone.loop.baseline` (the loop package imports `report`, so
+#: an import here would be a cycle), so the string is declared here and asserted equal to
+#: `baseline.EVIDENCE_SCHEMA` by the suite — two names, one schema, never a second
+#: spelling.
+_BASELINE_EVIDENCE_SCHEMA = "whetstone-baseline-run/1"
+
+#: The § 7.3-open sentence, in the artifact's own words (`spec.md`, open questions). The
+#: base is recorded as this series' pinned input, and `PREREGISTRATION.md` § 7.3 stays
+#: open — the bake-off selected none, so the base this series measured is evidence, not
+#: closure.
+_BASELINE_OPEN_BASE_SENTENCE = (
+    "The base is recorded as this series' pinned input; PREREGISTRATION.md § 7.3 stays open."
+)
+
+#: The non-comparability sentence: what the baseline is — the § 3 anchor, measured once,
+#: re-measured never — and that its figures are a new series beside the four existing
+#: homes. Names the homes; quotes no figure from any of them.
+_BASELINE_NON_COMPARABILITY = (
+    "This document is the § 3 baseline anchor (`PREREGISTRATION.md:126-128`): the "
+    "untrained base's counts over the held-out split and source A, measured once, "
+    "re-measured never. Those figures are a new series, declared non-comparable to the "
+    "four existing homes — `reports/baseline/` remains the only home of the bake-off's "
+    "figures, `reports/format-hardening/` the only home of the hardened arm's, "
+    "`reports/easier-stratum/` the only home of the probe's, `reports/larger-base/` the "
+    "only home of the larger-base arm's, and this directory the only home of the "
+    "baseline's — neither is a competing home for the same figure."
+)
+
+#: The declaration state's one sentence, in the register of the other homes' declarations
+#: (`:773`, `:982`). A module constant so the committed declaration's provenance is the
+#: writer, never a hand edit that could drift from the register.
+_BASELINE_DECLARATION = "**No count is measured here: the baseline has not run.**"
+
+#: The cost sidecar's one sentence: this writer takes no spend inputs, so the cost
+#: sidecar states that no cost is measured, in the declaration's voice.
+_BASELINE_COST_DECLARATION = "no cost is measured here"
+
+#: The fields the `document_digest` seals — the document's whole payload except the
+#: digest itself. Declared once, beside the writer (`heldout.py:201-210` pattern), so
+#: the loader cannot disagree with the writer about what is sealed: a hand edit that
+#: changes a count breaks the digest, and the loader refuses rather than trusts. The
+#: declaration state seals its own smaller payload — the fields it carries from this
+#: set — with the same function.
+_BASELINE_DIGESTED_FIELDS = (
+    "schema",
+    "measured",
+    "recorded_on",
+    "declaration",
+    "series",
+    "base",
+    "sides",
+    "n",
+    "retries",
+    "evidence",
+    "tool_versions",
+    "non_comparable",
+)
+
+#: Every field the document may carry: the digested set plus the digest itself. Anything
+#: else is an unknown field — refused by the loader by name, never read past.
+_BASELINE_KNOWN_FIELDS = frozenset({*_BASELINE_DIGESTED_FIELDS, "document_digest"})
+
+#: The six fields each source's side carries — the shape `_baseline_counts` writes and
+#: the loader checks. One spelling, declared beside the writer.
+_BASELINE_COUNT_FIELDS = (
+    "denominator",
+    "solved",
+    "unverified",
+    "covered",
+    "failed",
+    "weaker_wins",
+)
+
+
+def _baseline_document_digest(document: Mapping[str, Any]) -> str:
+    """The digest over the document's declared payload — the seal the loader verifies.
+
+    Canonical JSON — sorted keys, no whitespace (`heldout.py:270-280` pattern) — over
+    the declared `_BASELINE_DIGESTED_FIELDS` the document carries: the measured document
+    seals its whole payload, the declaration state seals its own smaller payload with
+    the same function. The loader recomputes this **by identity**; a hand edit that
+    changes a count without regenerating the digest is refused by name, never trusted.
+    """
+    payload = {key: document[key] for key in _BASELINE_DIGESTED_FIELDS if key in document}
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def build_baseline_report(
+    *,
+    series: Any,
+    heldout_tally: Tally,
+    public_tally: Tally,
+    retries: Sequence[Any],
+    retry_count: int,
+    evidence_digest: str,
+    recorded_on: str,
+    tool_versions: Mapping[str, str],
+    measured: bool = True,
+) -> Mapping[str, Any]:
+    """The § 3 baseline's committed document — the "before" of every later delta.
+
+    `PREREGISTRATION.md` § 3 fixes the baseline protocol: the untrained base scored on
+    the held-out split, measured once, re-measured never, with provenance beside it. The
+    measured document records the series identity (the base identity and the held-out
+    document digest the measured-once guard keys on — never the checkpoint digest, which
+    is the same constant for every untrained base), the § 7.3-open sentence, both sources
+    over their own denominators — never one without the other
+    (`PREREGISTRATION.md:142-143`) — `N` with the pre-registered `_N_SENTENCE` **by
+    identity**, the retry facts, the evidence pointer (a digest, never contents), the
+    tool versions, and the non-comparability sentence naming the four existing homes and
+    what this document is.
+
+    A pure function of its inputs, like the other writers: no clock is read, no ledger is
+    opened, and every mapping is serialised in a fixed order, so the same inputs produce
+    byte-identical output. `recorded_on` and `evidence_digest` are inputs, never read
+    from the environment. With `measured=False` the document is the declaration — the
+    committed state before the operator spends the measurement: the "No count is
+    measured here" sentence, and no count, no series, no base, no evidence in any
+    spelling.
+
+    The document carries a `document_digest` over the declared `_BASELINE_DIGESTED_FIELDS`
+    (`heldout.py:201-210` pattern): the read side of the measured-once discipline seals
+    what it reads, so a hand edit that changes a count without regenerating the digest is
+    refused by name. The declaration state seals its own fields with the same function.
+    """
+    if not measured:
+        document: dict[str, Any] = {
+            "schema": BASELINE_REPORT_SCHEMA,
+            "measured": False,
+            "recorded_on": recorded_on,
+            "declaration": _BASELINE_DECLARATION,
+        }
+    else:
+        document = {
+            "schema": BASELINE_REPORT_SCHEMA,
+            "measured": True,
+            "recorded_on": recorded_on,
+            "series": {
+                "repo_id": series.repo_id,
+                "revision": series.revision,
+                "heldout_digest": series.heldout_digest,
+            },
+            "base": {"sentence": _BASELINE_OPEN_BASE_SENTENCE},
+            "sides": {
+                "source-b": _baseline_counts(heldout_tally),
+                "source-a": _baseline_counts(public_tally),
+            },
+            "n": {
+                "count": heldout_tally.weaker_wins,
+                "denominator": heldout_tally.denominator,
+                "sentence": _N_SENTENCE,
+            },
+            "retries": {
+                "retry_count": retry_count,
+                "spent": sum(one.retries_used for one in retries),
+                "tasks": [
+                    {
+                        "task_id": one.task_id,
+                        "before": one.before.value,
+                        "after": one.after.value,
+                        "retries_used": one.retries_used,
+                    }
+                    for one in sorted(retries, key=lambda one: one.task_id)
+                ],
+            },
+            "evidence": {"schema": _BASELINE_EVIDENCE_SCHEMA, "digest": evidence_digest},
+            "tool_versions": dict(sorted(tool_versions.items())),
+            "non_comparable": True,
+        }
+    document["document_digest"] = _baseline_document_digest(document)
+    return document
+
+
+def _baseline_counts(tally_obj: Tally) -> dict[str, int]:
+    """One source's six fields as plain JSON types — the shape the spec fixes for `sides`.
+
+    The baseline's sides carry exactly these six — `denominator`, `solved`, `unverified`,
+    `covered`, `failed`, `weaker_wins` — read from the `Tally` dataclass by name, over
+    the declared `_BASELINE_COUNT_FIELDS` (the loader reads the same spelling).
+    `_counts` is the other homes' eleven-field per-candidate shape and cannot be reused
+    here: the fields it would add are not part of this document, and a published count
+    that a later reader cannot place is worse than an absent one.
+    """
+    return {field: getattr(tally_obj, field) for field in _BASELINE_COUNT_FIELDS}
+
+
+def write_baseline_report(document: Mapping[str, Any], into: Path) -> tuple[Path, Path, Path]:
+    """Write the § 3 baseline's three artifacts into `into`, and nothing anywhere else.
+
+    The same layout as every other home — report.md, report.json, cost.json — so a
+    reader learns one shape for all of them. `report.json` is the document itself
+    (`indent=2, sort_keys=True`, trailing newline, so the bytes are the artefact);
+    `report.md` is the human render, every count beside the set it was counted on; the
+    cost sidecar carries the declared date and the no-cost sentence — this writer takes
+    no spend inputs, so no cost is measured here. Returns the paths so a caller can
+    assert on what was produced rather than reconstruct the names.
+    """
+    into.mkdir(parents=True, exist_ok=True)
+    markdown = into / "report.md"
+    sidecar = into / "report.json"
+    cost = into / "cost.json"
+    markdown.write_text(_baseline_markdown(document), encoding="utf-8")
+    sidecar.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    cost.write_text(_baseline_cost(document), encoding="utf-8")
+    return (markdown, sidecar, cost)
+
+
+def _baseline_markdown(document: Mapping[str, Any]) -> str:
+    """The human render, derived from the document — every count via `_over` by identity.
+
+    Each count is rendered over the denominator it was counted on (`PREREGISTRATION.md:
+    157` refuses a bare proportion). The declaration state renders the declaration
+    sentence and nothing else; the measured state renders both sources, `N` with the
+    pre-registered sentence, the series — the base identity and the held-out document
+    digest — with the § 7.3-open sentence, the non-comparability
+    sentence, the evidence digest and the retry facts.
+    """
+    lines = [
+        "# The § 3 baseline",
+        "",
+        "This document is the § 3 baseline anchor (`PREREGISTRATION.md:126-128`): the "
+        "untrained base scored on the held-out split, measured once, re-measured never.",
+        "",
+    ]
+    if document.get("measured") is False:
+        lines += [_BASELINE_DECLARATION, ""]
+    else:
+        sides = document["sides"]
+        n = document["n"]
+        base = document["base"]
+        series = document["series"]
+        retries = document["retries"]
+        lines += [
+            _BASELINE_NON_COMPARABILITY,
+            "",
+            "## The counts",
+            "",
+            _baseline_side_line("Source B (held-out)", sides["source-b"]),
+            _baseline_side_line("Source A", sides["source-a"]),
+            "",
+            f"`N := count(rollouts where WEAK == PASS and STRICT == FAIL)` "
+            f"(`PREREGISTRATION.md:96-100`): "
+            f"{_N_SENTENCE.format(count=n['count'])} ({_over(n['count'], n['denominator'])}).",
+            "",
+            f"**The series.** Base `{series['repo_id']}` at `{series['revision']}` on the "
+            f"held-out document `{series['heldout_digest']}`. {base['sentence']}",
+            "",
+            f"**The evidence.** sha256 `{document['evidence']['digest']}` of the "
+            f"`{document['evidence']['schema']}` evidence document — a pointer, never "
+            "contents.",
+            "",
+            f"**The retry discipline.** R = {retries['retry_count']}; "
+            f"{retries['spent']} retries spent over {len(retries['tasks'])} held-out "
+            "task(s).",
+        ]
+        for one in retries["tasks"]:
+            lines.append(
+                f"- `{one['task_id']}`: {one['before']} → {one['after']}, "
+                f"{one['retries_used']} retries spent"
+            )
+        lines.append("")
+    lines.append(
+        f"Recorded on {document['recorded_on']} (declared by the operator, never read "
+        "from a clock)."
+    )
+    return "\n".join(lines)
+
+
+def _baseline_side_line(label: str, counts: Mapping[str, int]) -> str:
+    """One source's line: every count over the denominator it was counted on."""
+    return (
+        f"- **{label}:** solved {_over(counts['solved'], counts['denominator'])}, "
+        f"coverage {_over(counts['covered'], counts['denominator'])}, "
+        f"unverified {_over(counts['unverified'], counts['denominator'])}, "
+        f"failed {_over(counts['failed'], counts['denominator'])}, "
+        f"N {_over(counts['weaker_wins'], counts['denominator'])}."
+    )
+
+
+def _baseline_cost(document: Mapping[str, Any]) -> str:
+    """The cost sidecar: schema, the declared date, and the no-cost sentence.
+
+    This writer takes no spend inputs — the measured document carries none of them — so
+    the sidecar states that no cost is measured, in the declaration's voice; the spend
+    fields belong to a later render that carries them.
+    """
+    body: dict[str, Any] = {
+        "schema": BASELINE_REPORT_SCHEMA,
+        "recorded_on": document["recorded_on"],
+        "cost": _BASELINE_COST_DECLARATION,
+    }
+    return json.dumps(body, indent=2, sort_keys=True) + "\n"
+
+
 def _comparison_payload(
     arms: Sequence[ContractArm], breakdown_home: str, recorded_on: str
 ) -> str:
@@ -1536,6 +1837,7 @@ def _counts(counts: Tally) -> dict[str, Any]:
 
 
 __all__ = [
+    "BASELINE_REPORT_SCHEMA",
     "LARGER_BASE_REPORT_SCHEMA",
     "STRATUM_REPORT_SCHEMA",
     "ContractArm",
@@ -1551,6 +1853,7 @@ __all__ = [
     "ScoredDevSubset",
     "StratumReport",
     "Tally",
+    "build_baseline_report",
     "build_contract_comparison",
     "build_larger_base_report",
     "build_report",
@@ -1558,6 +1861,7 @@ __all__ = [
     "funnel_from_ledger",
     "tally",
     "write",
+    "write_baseline_report",
     "write_comparison",
     "write_larger_base_report",
     "write_stratum_report",

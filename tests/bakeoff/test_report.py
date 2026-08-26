@@ -36,6 +36,7 @@ from pathlib import Path
 
 import pytest
 
+from whetstone.bakeoff import report
 from whetstone.bakeoff.control import Control, Origin, Probe
 from whetstone.bakeoff.diffcheck import Trigger, diagnosis_of, diagnosis_vocabulary_sha256
 from whetstone.bakeoff.journal import Step
@@ -1183,8 +1184,8 @@ def _stratum_document() -> StratumReport:
     """The rendered stratum document for the synthetic probe tallies, and its sidecars.
 
     The synthetic tallies' denominators (37 and 41) are chosen to collide with nothing in
-    the six existing artifacts — their own denominators are 1, 62, 63, 64, 189, 299 and
-    300 — so the disjointness guard holds by construction, exactly like
+    the fifteen committed artifacts — their own denominators are 1, 20, 62, 63, 64, 189,
+    299 and 300 — so the disjointness guard holds by construction, exactly like
     `_comparison_arms`' denominator 11.
     """
     return build_stratum_report(
@@ -1316,14 +1317,34 @@ def test_the_two_contract_report_restates_no_baseline_figure() -> None:
     )
 
 
+#: The four homes whose figures predate the § 3 baseline's — the "existing" side of the
+#: baseline home's disjointness scan.
+_EXISTING_HOMES = ("baseline", "format-hardening", "easier-stratum", "larger-base")
+
+#: Every committed home, the § 3 baseline's included — the "existing" side of every other
+#: scan, so a new home's figures can never restate a figure from any of the fifteen
+#: committed artifacts.
+_ALL_HOMES = (*_EXISTING_HOMES, "baseline-measurement")
+
+
+def _committed_figures(directories: tuple[str, ...]) -> set[tuple[str, str]]:
+    """Every `N of M` figure in the named homes' three committed artifacts."""
+    figures: set[tuple[str, str]] = set()
+    for directory in directories:
+        for name in ("report.md", "report.json", "cost.json"):
+            artifact = (REPO_ROOT / "reports" / directory / name).read_text(encoding="utf-8")
+            figures |= {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", artifact)}
+    return figures
+
+
 def test_the_stratum_report_restates_no_figure_from_an_existing_home() -> None:
-    """*(adversarial)* No rendered stratum figure lives in any of the six existing artifacts.
+    """*(adversarial)* No rendered stratum figure lives in any of the fifteen committed artifacts.
 
     The changed-task-set home joins the guard on the same rule the earlier homes joined it
     on, asserted the strongest way available: every `N of M` figure the synthetic stratum
-    document renders is disjoint from every `N of M` figure the six committed artifacts
-    render (`reports/baseline/` and `reports/format-hardening/`, each report.md,
-    report.json and cost.json). A figure that appears in both is a figure with two homes,
+    document renders is disjoint from every `N of M` figure the fifteen committed artifacts
+    render — the four existing homes and the § 3 baseline's home, each report.md,
+    report.json and cost.json. A figure that appears in both is a figure with two homes,
     which is exactly how two disagreeing numbers come to exist.
     """
     document = _stratum_document()
@@ -1333,20 +1354,17 @@ def test_the_stratum_report_restates_no_figure_from_an_existing_home() -> None:
         "WHY THIS IS A FAILURE: the stratum document renders no figures at all, so this "
         "test's disjointness assertion would pass vacuously over an empty document"
     )
-    existing_figures: set[tuple[str, str]] = set()
-    for directory in ("baseline", "format-hardening"):
-        for name in ("report.md", "report.json", "cost.json"):
-            artifact = (REPO_ROOT / "reports" / directory / name).read_text(encoding="utf-8")
-            existing_figures |= {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", artifact)}
+    existing_figures = _committed_figures(_ALL_HOMES)
     assert existing_figures, (
-        "WHY THIS IS A FAILURE: none of the six committed artifacts renders an `N of M` "
-        "figure, so the disjointness guard has nothing to guard against"
+        "WHY THIS IS A FAILURE: none of the fifteen committed artifacts renders an `N of "
+        "M` figure, so the disjointness guard has nothing to guard against"
     )
     overlap = figures & existing_figures
     assert not overlap, (
         f"WHY THIS IS A FAILURE: the stratum document restates {overlap}, which already "
-        "lives in one of the six existing artifacts. A figure quoted twice is a figure "
-        "that can disagree with itself, and the one-home rule exists so that cannot happen"
+        "lives in one of the fifteen committed artifacts. A figure quoted twice is a "
+        "figure that can disagree with itself, and the one-home rule exists so that "
+        "cannot happen"
     )
 
 
@@ -1384,6 +1402,117 @@ def test_the_stratum_disjointness_guard_catches_a_planted_overlap() -> None:
     )
 
 
+def test_the_baseline_report_restates_no_figure_from_an_existing_home() -> None:
+    """*(adversarial)* No figure in the § 3 baseline's home lives in any existing home's.
+
+    The changed-series home joins the guard on the same rule the earlier homes joined it
+    on, asserted over the committed state: every `N of M` figure the committed
+    `reports/baseline-measurement/` artifacts render is disjoint from every `N of M`
+    figure the four existing homes' twelve artifacts render. The home is declaration-only
+    until the operator spends the measurement, so the subject side renders no figure by
+    design — the scan is proven able to fire by the planted-overlap control next, exactly
+    as a figure that appears in both is a figure with two homes, which is how two
+    disagreeing numbers come to exist.
+    """
+    home = REPO_ROOT / "reports" / "baseline-measurement"
+    written = " ".join(
+        (home / name).read_text(encoding="utf-8")
+        for name in ("report.md", "report.json", "cost.json")
+    )
+    figures = {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", written)}
+    existing_figures = _committed_figures(_EXISTING_HOMES)
+    assert existing_figures, (
+        "WHY THIS IS A FAILURE: none of the four existing homes' twelve committed "
+        "artifacts renders an `N of M` figure, so the disjointness guard has nothing to "
+        "guard against"
+    )
+    overlap = figures & existing_figures
+    assert not overlap, (
+        f"WHY THIS IS A FAILURE: the baseline home restates {overlap}, which already "
+        "lives in one of the existing homes' artifacts. A figure quoted twice is a figure "
+        "that can disagree with itself, and the one-home rule exists so that cannot happen"
+    )
+
+
+def test_the_baseline_disjointness_guard_catches_a_planted_figure(tmp_path: Path) -> None:
+    """*(adversarial)* The guard above can see a planted collision in the new home.
+
+    The committed declaration renders no figure, so the scan's first half reproduces the
+    sanctioned state in a synthetic tree — a planted tree that differs from the real one
+    would prove nothing about the guard's logic — and asserts the overlap is empty. The
+    second half plants `10 of 20`, a figure the easier-stratum home actually renders, into
+    a copy of the new home's report.json and asserts the same scan flags it: a collision
+    the guard cannot see is a figure with two homes.
+    """
+    tree = tmp_path / "reports" / "baseline-measurement"
+    tree.mkdir(parents=True)
+    for name in ("report.md", "report.json", "cost.json"):
+        (tree / name).write_bytes(
+            (REPO_ROOT / "reports" / "baseline-measurement" / name).read_bytes()
+        )
+
+    def figures_in(root: Path) -> set[tuple[str, str]]:
+        written = " ".join(
+            (root / name).read_text(encoding="utf-8")
+            for name in ("report.md", "report.json", "cost.json")
+        )
+        return {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", written)}
+
+    existing = _committed_figures(_EXISTING_HOMES)
+    assert figures_in(tree) & existing == set(), (
+        "WHY THIS IS A FAILURE: the copied declaration already overlaps an existing "
+        "figure, so the planted half of this control is not testing the guard's logic"
+    )
+    planted = tree / "report.json"
+    planted.write_text(
+        planted.read_text(encoding="utf-8") + '"planted": "10 of 20"\n', encoding="utf-8"
+    )
+    overlap = figures_in(tree) & existing
+    assert ("10", "20") in overlap, (
+        "WHY THIS IS A FAILURE: the planted `10 of 20` was absorbed by the guard's scan. "
+        "A collision the guard cannot see is a figure with two homes, and the next reader "
+        "has no way to tell which of two disagreeing numbers is the real one"
+    )
+
+
+def test_the_committed_baseline_measurement_home_holds_no_figure_in_any_spelling() -> None:
+    """The committed state of the new home: declared, not yet measured, holding no figure.
+
+    The § 3 baseline has not run, so the committed artifacts cannot carry a figure —
+    neither the baseline's own (none exists) nor any existing home's (restating one is
+    forbidden). The declaration says exactly that in the writer's own sentence — the
+    provenance: these artifacts were generated by `write_baseline_report`, never
+    hand-typed — and holds no `N of M` figure and no contract field anywhere in the three
+    artifacts.
+    """
+    home = REPO_ROOT / "reports" / "baseline-measurement"
+    markdown = (home / "report.md").read_text(encoding="utf-8")
+    assert report._BASELINE_DECLARATION in markdown, (
+        "WHY THIS IS A FAILURE: the committed report.md does not carry the writer's own "
+        "declaration sentence. A hand-typed sentence could drift from the register, and a "
+        "reader finding counts here later could not tell when they appeared"
+    )
+    for name in ("report.md", "report.json", "cost.json"):
+        text = (home / name).read_text(encoding="utf-8")
+        assert not re.search(r"\d+ of \d+", text), (
+            f"WHY THIS IS A FAILURE: {name} renders a figure, but no measurement exists. "
+            "A count here would be a restated figure from another home or an invented one"
+        )
+        assert "retry budget" not in text, (
+            f"WHY THIS IS A FAILURE: {name} renders contract fields, but no count was "
+            "measured under any contract. The other declarations render none either"
+        )
+    payload = json.loads((home / "report.json").read_text(encoding="utf-8"))
+    assert payload["measured"] is False, payload
+    assert payload["schema"] == report.BASELINE_REPORT_SCHEMA, payload
+    assert payload["declaration"] == report._BASELINE_DECLARATION, payload
+    for name in ("sides", "n", "retries", "evidence", "base", "series", "tool_versions"):
+        assert name not in payload, (
+            f"WHY THIS IS A FAILURE: the declaration carries {name}, but no measurement "
+            "exists"
+        )
+
+
 #: The candidate the larger-base arm scores, named by the runbook's resolution block — a
 #: pointer string, never parsed.
 LARGER_BASE_CANDIDATE = "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit"
@@ -1398,8 +1527,8 @@ LARGER_BASE_RECORDED_ON = "2026-08-15"
 def _larger_base_tallies():
     """Two synthetic candidates over denominators that collide with nothing committed.
 
-    The committed artifacts' figures use denominators 1, 62, 63, 64, 189, 299 and 300,
-    so 37 and 41 keep the disjointness guard honest without arithmetic acrobatics,
+    The committed artifacts' figures use denominators 1, 20, 62, 63, 64, 189, 299 and
+    300, so 37 and 41 keep the disjointness guard honest without arithmetic acrobatics,
     exactly like the stratum fixture's.
     """
     return (
@@ -1785,6 +1914,18 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
     and the arm's in `reports/larger-base/` — each the only home of its own. A silent list
     extension remains refused: the permission is the argument, in this docstring.
 
+    **The guard moved a fifth time when the § 3 baseline's home landed, and only on the
+    changed-series argument.** The baseline is a **new pinned series** — a different task
+    set (the 12 held-out source-B tasks plus source A, versus the declared source-B sets
+    the other homes measured) and a different role (the § 3 anchor of every later delta,
+    not a probe arm) — pre-authorized by `PREREGISTRATION.md` § 3, not a series requiring a
+    § 10 disclosure. So its figures are a new series, declared non-comparable to all four
+    existing homes: the baseline's figures live in `reports/baseline/`, the hardened arm's
+    in `reports/format-hardening/`, the probe's in `reports/easier-stratum/`, the
+    larger-base arm's in `reports/larger-base/`, and the § 3 baseline's in
+    `reports/baseline-measurement/` — each the only home of its own. A silent list
+    extension remains refused: the permission is the argument, in this docstring.
+
     `reports/local/` is excluded because `.gitignore` reserves it for the user's own nightly
     output, which is their data and never ours to assert on.
 
@@ -1798,6 +1939,9 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
     )
     held = sorted(name for name in relative if not name.startswith("reports/local/"))
     assert held == [
+        "reports/baseline-measurement/cost.json",
+        "reports/baseline-measurement/report.json",
+        "reports/baseline-measurement/report.md",
         "reports/baseline/cost.json",
         "reports/baseline/report.json",
         "reports/baseline/report.md",
@@ -1812,12 +1956,14 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
         "reports/larger-base/report.md",
     ], (
         f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts, the "
-        "format-hardening arm's three, the easier-stratum probe's three and the larger-base "
-        "arm's three are the sanctioned homes for a figure — each directory its own, on the "
-        "D6 argument that the two contracts differ, the changed-task-set argument that the "
-        "probe scores a different task set (`PREREGISTRATION.md` § 10.5) and the "
-        "changed-candidate-set argument that the arm scores a new candidate "
-        "(`PREREGISTRATION.md` § 10.6), all declared non-comparable. A "
+        "format-hardening arm's three, the easier-stratum probe's three, the larger-base "
+        "arm's three and the § 3 baseline's three are the sanctioned homes for a figure — "
+        "each directory its own, on the D6 argument that the two contracts differ, the "
+        "changed-task-set argument that the probe scores a different task set "
+        "(`PREREGISTRATION.md` § 10.5), the changed-candidate-set argument that the arm "
+        "scores a new candidate (`PREREGISTRATION.md` § 10.6) and the changed-series "
+        "argument that the § 3 baseline scores a different task set and role "
+        "(`PREREGISTRATION.md` § 3), all declared non-comparable. A "
         "file missing means the report is incomplete; a file extra means there is a second "
         "place a figure can live, and the next reader has no way to tell which of two "
         "disagreeing numbers is the real one"
@@ -1841,16 +1987,19 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
 
 
 def test_the_one_home_guard_catches_a_planted_artifact(tmp_path: Path) -> None:
-    """*(adversarial)* The twelve-artifact list can see a planted file under `reports/`.
+    """*(adversarial)* The fifteen-artifact list can see a planted file under `reports/`.
 
     The guard above asserts the sanctioned list by exact equality. The first half of this
     control reproduces the sanctioned state in a synthetic tree — a planted tree that
     differs from the real one would prove nothing about the guard's logic. The second
-    half plants a fourth artifact in the larger-base home and asserts the same scan flags
-    it: a file the guard cannot see is a second home for a figure, which is exactly how
-    two disagreeing numbers come to exist.
+    half plants a fourth artifact in the § 3 baseline's home and asserts the same scan
+    flags it: a file the guard cannot see is a second home for a figure, which is exactly
+    how two disagreeing numbers come to exist.
     """
     held = [
+        "reports/baseline-measurement/cost.json",
+        "reports/baseline-measurement/report.json",
+        "reports/baseline-measurement/report.md",
         "reports/baseline/cost.json",
         "reports/baseline/report.json",
         "reports/baseline/report.md",
@@ -1879,10 +2028,10 @@ def test_the_one_home_guard_catches_a_planted_artifact(tmp_path: Path) -> None:
 
     assert held_files(tmp_path) == held, (
         "WHY THIS IS A FAILURE: the synthetic tree does not reproduce the sanctioned "
-        "twelve-artifact state, so the planted half of this control is not testing the "
+        "fifteen-artifact state, so the planted half of this control is not testing the "
         "guard's logic"
     )
-    planted = tmp_path / "reports" / "larger-base" / "report.txt"
+    planted = tmp_path / "reports" / "baseline-measurement" / "report.txt"
     planted.write_text("a figure", encoding="utf-8")
     observed = held_files(tmp_path)
     assert observed != held, (

@@ -278,6 +278,10 @@ class Checkpoint:
     #: Every file, with its own digest.
     files: tuple[CheckpointFile, ...]
 
+    #: True when this checkpoint is the untrained base rather than a night's adapter. Defaulted so
+    #: the night's and gate's constructors are untouched; only `verify_checkpoint` populates it.
+    untrained: bool = False
+
 
 def probe_capacity(
     request: TrainingRequest,
@@ -450,6 +454,48 @@ def write_checkpoint(
     return Checkpoint(directory=directory, digest=digest, files=files)
 
 
+def write_baseline_checkpoint(
+    directory: Path,
+    *,
+    repo_id: str,
+    revision: str,
+    tool_versions: Mapping[str, str],
+) -> Checkpoint:
+    """Materialize the untrained open base as a checkpoint: a provenance over no adapter.
+
+    The opposite sign of `write_checkpoint`'s empty-directory refusal. There, a directory with
+    nothing to record would verify nothing and succeed; here, a directory that **already holds**
+    files would record an adapter beside a base that never trained — the contradiction the
+    `untrained` flag exists to exclude. No training-derived fields: this checkpoint never
+    trained, so there is no dataset, seed, argument set, validation or capacity probe to record.
+    """
+    if _hash_directory(directory):
+        raise CheckpointUnverified(
+            f"{str(directory)!r} holds files, so a provenance declaring untrained: true would "
+            "record an adapter beside a base that never trained — the contradiction the flag "
+            "exists to exclude"
+        )
+    digest = _digest_of(())
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / CHECKPOINT_FILE).write_text(
+        json.dumps(
+            {
+                "schema": CHECKPOINT_SCHEMA,
+                "digest": digest,
+                "base": {"repo_id": repo_id, "revision": revision},
+                "untrained": True,
+                "tool_versions": dict(sorted(tool_versions.items())),
+                "files": [],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return Checkpoint(directory=directory, digest=digest, files=(), untrained=True)
+
+
 def verify_checkpoint(directory: Path) -> Checkpoint:
     """Re-hash every file the checkpoint's provenance names, or refuse naming the first that moved.
 
@@ -477,9 +523,15 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
         CheckpointFile(name=str(one["name"]), bytes=int(one["bytes"]), sha256=str(one["sha256"]))
         for one in raw["files"]
     )
-    if not recorded:
+    untrained = raw.get("untrained") is True
+    if not recorded and not untrained:
         raise CheckpointUnverified(
             f"{str(document)!r} records no files, so verifying it checks nothing and succeeds"
+        )
+    if untrained and recorded:
+        raise CheckpointUnverified(
+            f"{str(document)!r} declares untrained: true and records {len(recorded)} files — "
+            "the label and the bytes disagree"
         )
     for one in recorded:
         path = directory / one.name
@@ -505,7 +557,7 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
             f"to {digest!r}. The document disagrees with itself, which a hand edit produces and a "
             "night does not"
         )
-    return Checkpoint(directory=directory, digest=digest, files=recorded)
+    return Checkpoint(directory=directory, digest=digest, files=recorded, untrained=untrained)
 
 
 def peak_bytes() -> int:
@@ -576,5 +628,6 @@ __all__ = [
     "probe_capacity",
     "train",
     "verify_checkpoint",
+    "write_baseline_checkpoint",
     "write_checkpoint",
 ]
