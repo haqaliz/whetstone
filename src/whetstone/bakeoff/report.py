@@ -38,6 +38,7 @@ package docstring.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -1146,6 +1147,57 @@ _BASELINE_DECLARATION = "**No count is measured here: the baseline has not run.*
 #: sidecar states that no cost is measured, in the declaration's voice.
 _BASELINE_COST_DECLARATION = "no cost is measured here"
 
+#: The fields the `document_digest` seals — the document's whole payload except the
+#: digest itself. Declared once, beside the writer (`heldout.py:201-210` pattern), so
+#: the loader cannot disagree with the writer about what is sealed: a hand edit that
+#: changes a count breaks the digest, and the loader refuses rather than trusts. The
+#: declaration state seals its own smaller payload — the fields it carries from this
+#: set — with the same function.
+_BASELINE_DIGESTED_FIELDS = (
+    "schema",
+    "measured",
+    "recorded_on",
+    "declaration",
+    "series",
+    "base",
+    "sides",
+    "n",
+    "retries",
+    "evidence",
+    "tool_versions",
+    "non_comparable",
+)
+
+#: Every field the document may carry: the digested set plus the digest itself. Anything
+#: else is an unknown field — refused by the loader by name, never read past.
+_BASELINE_KNOWN_FIELDS = frozenset({*_BASELINE_DIGESTED_FIELDS, "document_digest"})
+
+#: The six fields each source's side carries — the shape `_baseline_counts` writes and
+#: the loader checks. One spelling, declared beside the writer.
+_BASELINE_COUNT_FIELDS = (
+    "denominator",
+    "solved",
+    "unverified",
+    "covered",
+    "failed",
+    "weaker_wins",
+)
+
+
+def _baseline_document_digest(document: Mapping[str, Any]) -> str:
+    """The digest over the document's declared payload — the seal the loader verifies.
+
+    Canonical JSON — sorted keys, no whitespace (`heldout.py:270-280` pattern) — over
+    the declared `_BASELINE_DIGESTED_FIELDS` the document carries: the measured document
+    seals its whole payload, the declaration state seals its own smaller payload with
+    the same function. The loader recomputes this **by identity**; a hand edit that
+    changes a count without regenerating the digest is refused by name, never trusted.
+    """
+    payload = {key: document[key] for key in _BASELINE_DIGESTED_FIELDS if key in document}
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
 
 def build_baseline_report(
     *,
@@ -1178,72 +1230,74 @@ def build_baseline_report(
     committed state before the operator spends the measurement: the "No count is
     measured here" sentence, and no count, no series, no base, no evidence in any
     spelling.
+
+    The document carries a `document_digest` over the declared `_BASELINE_DIGESTED_FIELDS`
+    (`heldout.py:201-210` pattern): the read side of the measured-once discipline seals
+    what it reads, so a hand edit that changes a count without regenerating the digest is
+    refused by name. The declaration state seals its own fields with the same function.
     """
     if not measured:
-        return {
+        document: dict[str, Any] = {
             "schema": BASELINE_REPORT_SCHEMA,
             "measured": False,
             "recorded_on": recorded_on,
             "declaration": _BASELINE_DECLARATION,
         }
-    return {
-        "schema": BASELINE_REPORT_SCHEMA,
-        "measured": True,
-        "recorded_on": recorded_on,
-        "series": {
-            "checkpoint_digest": series.checkpoint_digest,
-            "heldout_digest": series.heldout_digest,
-        },
-        "base": {
-            "repo_id": base["repo_id"],
-            "revision": base["revision"],
-            "sentence": _BASELINE_OPEN_BASE_SENTENCE,
-        },
-        "sides": {
-            "source-b": _baseline_counts(heldout_tally),
-            "source-a": _baseline_counts(public_tally),
-        },
-        "n": {
-            "count": heldout_tally.weaker_wins,
-            "denominator": heldout_tally.denominator,
-            "sentence": _N_SENTENCE,
-        },
-        "retries": {
-            "retry_count": retry_count,
-            "spent": sum(one.retries_used for one in retries),
-            "tasks": [
-                {
-                    "task_id": one.task_id,
-                    "before": one.before.value,
-                    "after": one.after.value,
-                    "retries_used": one.retries_used,
-                }
-                for one in sorted(retries, key=lambda one: one.task_id)
-            ],
-        },
-        "evidence": {"schema": _BASELINE_EVIDENCE_SCHEMA, "digest": evidence_digest},
-        "tool_versions": dict(sorted(tool_versions.items())),
-        "non_comparable": True,
-    }
+    else:
+        document = {
+            "schema": BASELINE_REPORT_SCHEMA,
+            "measured": True,
+            "recorded_on": recorded_on,
+            "series": {
+                "checkpoint_digest": series.checkpoint_digest,
+                "heldout_digest": series.heldout_digest,
+            },
+            "base": {
+                "repo_id": base["repo_id"],
+                "revision": base["revision"],
+                "sentence": _BASELINE_OPEN_BASE_SENTENCE,
+            },
+            "sides": {
+                "source-b": _baseline_counts(heldout_tally),
+                "source-a": _baseline_counts(public_tally),
+            },
+            "n": {
+                "count": heldout_tally.weaker_wins,
+                "denominator": heldout_tally.denominator,
+                "sentence": _N_SENTENCE,
+            },
+            "retries": {
+                "retry_count": retry_count,
+                "spent": sum(one.retries_used for one in retries),
+                "tasks": [
+                    {
+                        "task_id": one.task_id,
+                        "before": one.before.value,
+                        "after": one.after.value,
+                        "retries_used": one.retries_used,
+                    }
+                    for one in sorted(retries, key=lambda one: one.task_id)
+                ],
+            },
+            "evidence": {"schema": _BASELINE_EVIDENCE_SCHEMA, "digest": evidence_digest},
+            "tool_versions": dict(sorted(tool_versions.items())),
+            "non_comparable": True,
+        }
+    document["document_digest"] = _baseline_document_digest(document)
+    return document
 
 
 def _baseline_counts(tally_obj: Tally) -> dict[str, int]:
     """One source's six fields as plain JSON types — the shape the spec fixes for `sides`.
 
     The baseline's sides carry exactly these six — `denominator`, `solved`, `unverified`,
-    `covered`, `failed`, `weaker_wins` — read from the `Tally` dataclass by name.
+    `covered`, `failed`, `weaker_wins` — read from the `Tally` dataclass by name, over
+    the declared `_BASELINE_COUNT_FIELDS` (the loader reads the same spelling).
     `_counts` is the other homes' eleven-field per-candidate shape and cannot be reused
     here: the fields it would add are not part of this document, and a published count
     that a later reader cannot place is worse than an absent one.
     """
-    return {
-        "denominator": tally_obj.denominator,
-        "solved": tally_obj.solved,
-        "unverified": tally_obj.unverified,
-        "covered": tally_obj.covered,
-        "failed": tally_obj.failed,
-        "weaker_wins": tally_obj.weaker_wins,
-    }
+    return {field: getattr(tally_obj, field) for field in _BASELINE_COUNT_FIELDS}
 
 
 def write_baseline_report(document: Mapping[str, Any], into: Path) -> tuple[Path, Path, Path]:

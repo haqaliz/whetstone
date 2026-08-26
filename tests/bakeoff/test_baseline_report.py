@@ -18,6 +18,7 @@ published figure is defined — and nothing is written outside `tmp_path`.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Mapping
@@ -410,4 +411,54 @@ def test_the_declaration_is_generated_not_hand_typed(tmp_path: Path) -> None:
     )
     assert "no cost is measured here" in Path(written[2]).read_text(encoding="utf-8"), (
         "WHY THIS IS A FAILURE: the cost sidecar states a cost where none was measured"
+    )
+
+
+def test_the_written_document_carries_a_digest_that_seals_its_fields(tmp_path: Path) -> None:
+    """The document carries a `document_digest` over the declared fields — the loader's seal.
+
+    The loader's reason to exist is the read side of the measured-once discipline: a hand
+    edit that changes a count must be refused, and the seal is the digest the writer
+    computes over the declared `_BASELINE_DIGESTED_FIELDS` (`heldout.py:201-210` pattern).
+    The digest is recomputed here from the declared field set, never by calling the
+    writer's own helper — a digest the writer computed on itself would prove nothing. The
+    declaration state seals its own smaller payload with the same function, and the
+    written sidecar carries the seal the document carries.
+    """
+    document = _document()
+    payload = {
+        key: document[key] for key in report._BASELINE_DIGESTED_FIELDS if key in document
+    }
+    expected = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    assert document["document_digest"] == expected, (
+        "WHY THIS IS A FAILURE: the measured document's digest does not seal its declared "
+        "fields — the loader would have nothing to verify"
+    )
+    assert "document_digest" not in report._BASELINE_DIGESTED_FIELDS, (
+        "WHY THIS IS A FAILURE: the digest seals itself — the declared set must cover the "
+        "payload, never the seal"
+    )
+
+    declaration = _declaration()
+    declaration_payload = {
+        key: declaration[key]
+        for key in report._BASELINE_DIGESTED_FIELDS
+        if key in declaration
+    }
+    declaration_expected = hashlib.sha256(
+        json.dumps(declaration_payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    assert declaration["document_digest"] == declaration_expected, (
+        "WHY THIS IS A FAILURE: the declaration state does not seal its own fields"
+    )
+
+    written = report.write_baseline_report(document, tmp_path / "home")
+    payload_round = json.loads(Path(written[1]).read_text(encoding="utf-8"))
+    assert payload_round["document_digest"] == expected, (
+        "WHY THIS IS A FAILURE: the written sidecar does not carry the digest the document "
+        "carries"
     )

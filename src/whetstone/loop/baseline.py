@@ -40,9 +40,10 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from whetstone.bakeoff import report as bakeoff_report
 from whetstone.bakeoff.generator import Generator
@@ -102,6 +103,22 @@ _refuse_published_root = night_module._refuse_published_root
 #: The single place each published count is defined — the bake-off's own tally, by identity.
 tally = bakeoff_report.tally
 
+#: The committed artifact's schema — the writer's own constant, by identity. The loader
+#: reads what the writer writes; a drift between the two constants would let the loader
+#: accept a schema the writer never emits, or refuse the one it does.
+_baseline_schema = bakeoff_report.BASELINE_REPORT_SCHEMA
+
+#: The six fields each source's side carries — the writer's own shape, by identity.
+_baseline_count_fields = bakeoff_report._BASELINE_COUNT_FIELDS
+
+#: Every field the committed artifact may carry — the writer's own set, by identity.
+_baseline_known_fields = bakeoff_report._BASELINE_KNOWN_FIELDS
+
+#: The seal the loader verifies — the writer's own digest function, by identity: the
+#: loader recomputes what the writer computed, with the writer's own code, so the two
+#: cannot disagree about what is sealed.
+_baseline_document_digest = bakeoff_report._baseline_document_digest
+
 #: The evidence document's own schema string, named so a later reader has one answer to
 #: "what shape is this file".
 EVIDENCE_SCHEMA = "whetstone-baseline-run/1"
@@ -145,15 +162,21 @@ class BaselineAlreadyMeasured(ValueError):
 
 
 def read_series_identity(path: Path) -> SeriesIdentity:
-    """Read the committed artifact's series identity, or refuse it by name.
+    """Read a document's series identity, or refuse it by name.
 
     The fail-closed half of the measured-once guard (`spec.md` requirement 5): an artifact
     that half-parses could be the same series, and a measurement that read it as absent
     would be a second measurement wearing the name of a first. The refusals are named — an
     unreadable file, a non-object document, a wrong or missing `schema`, a missing or
-    non-string `checkpoint.digest` or `heldout.document_digest` — and the returned identity
-    is exactly the two digests: `recorded_on` is the refusal message's input, never the
-    identity's.
+    non-string digest — and the returned identity is exactly the two digests: `recorded_on`
+    is the refusal message's input, never the identity's.
+
+    Two spellings of the two digests are read, because the series identity exists in two
+    documents: the evidence's `checkpoint.digest`/`heldout.document_digest` (the aspect-2
+    shape the measured-once guard reads at `--out`) and the committed artifact's
+    `series.checkpoint_digest`/`series.heldout_digest` (aspect 3's writer). The loader of
+    the committed artifact composes this function by identity on the artifact's path, so
+    the artifact spelling must be readable here; the evidence spelling is unchanged.
     """
     location = Path(path)
     try:
@@ -174,22 +197,42 @@ def read_series_identity(path: Path) -> SeriesIdentity:
             "rather than defaulting"
         )
     checkpoint = raw.get("checkpoint")
-    if not isinstance(checkpoint, dict) or not isinstance(checkpoint.get("digest"), str):
-        raise ValueError(
-            f"baseline artifact {str(location)!r} has a missing or non-string "
-            "checkpoint.digest"
-        )
     heldout_raw = raw.get("heldout")
-    if not isinstance(heldout_raw, dict) or not isinstance(
-        heldout_raw.get("document_digest"), str
-    ):
-        raise ValueError(
-            f"baseline artifact {str(location)!r} has a missing or non-string "
-            "heldout.document_digest"
+    if isinstance(checkpoint, dict) and isinstance(heldout_raw, dict):
+        if not isinstance(checkpoint.get("digest"), str):
+            raise ValueError(
+                f"baseline artifact {str(location)!r} has a missing or non-string "
+                "checkpoint.digest"
+            )
+        if not isinstance(heldout_raw.get("document_digest"), str):
+            raise ValueError(
+                f"baseline artifact {str(location)!r} has a missing or non-string "
+                "heldout.document_digest"
+            )
+        return SeriesIdentity(
+            checkpoint_digest=checkpoint["digest"],
+            heldout_digest=heldout_raw["document_digest"],
         )
-    return SeriesIdentity(
-        checkpoint_digest=checkpoint["digest"],
-        heldout_digest=heldout_raw["document_digest"],
+    series_block = raw.get("series")
+    if isinstance(series_block, dict):
+        if not isinstance(series_block.get("checkpoint_digest"), str):
+            raise ValueError(
+                f"baseline artifact {str(location)!r} has a missing or non-string "
+                "series.checkpoint_digest"
+            )
+        if not isinstance(series_block.get("heldout_digest"), str):
+            raise ValueError(
+                f"baseline artifact {str(location)!r} has a missing or non-string "
+                "series.heldout_digest"
+            )
+        return SeriesIdentity(
+            checkpoint_digest=series_block["checkpoint_digest"],
+            heldout_digest=series_block["heldout_digest"],
+        )
+    raise ValueError(
+        f"baseline artifact {str(location)!r} has no readable series identity: neither "
+        "checkpoint.digest/heldout.document_digest nor series.checkpoint_digest/"
+        "series.heldout_digest is present"
     )
 
 
@@ -207,6 +250,195 @@ def _artifact_recorded_on(path: Path) -> str:
         return "unknown date"
     recorded = raw.get("recorded_on") if isinstance(raw, dict) else None
     return recorded if isinstance(recorded, str) else "unknown date"
+
+
+# --------------------------------------------------------------------------------------------
+# The committed document's loader — `read_baseline_document`, the read side of the
+# measured-once discipline. The writer lives in `bakeoff.report` (which must never import
+# this module — the loop imports the report), so the loader lives here beside its own
+# `read_series_identity`, composing it by identity and importing the writer's schema,
+# count-shape, field set and digest function by identity (the loop→bakeoff direction).
+# --------------------------------------------------------------------------------------------
+
+#: The series read — `read_series_identity`'s own function object, by identity. The loader
+#: hands it the artifact's path exactly as the measured-once guard does; a second
+#: implementation of the series validation would be a second answer to "what is this
+#: series" with nothing to say so.
+_baseline_series_reader = read_series_identity
+
+
+@dataclass(frozen=True)
+class BaselineDocument:
+    """A parsed, validated § 3 baseline document — what the P4 report writer will read.
+
+    The loader's checks are the gate: the document is accepted only after every check has
+    passed, and the returned object carries the fields the P4 writer needs, verbatim from
+    the document. A declaration (`measured=False`) carries no series, no sides, no counts —
+    those fields are `None` — and the one field that decides whether a count may be read
+    at all is `measured` itself.
+    """
+
+    #: The declared schema, carried rather than assumed.
+    schema: str
+
+    #: The operator-declared date — an input, never the clock.
+    recorded_on: str
+
+    #: The series identity — the two digests the measured-once guard keys on.
+    series: SeriesIdentity | None
+
+    #: The pinned base input and the § 7.3-open sentence, verbatim.
+    base: Mapping[str, str] | None
+
+    #: Both sources' six-field counts, over their own denominators.
+    sides: Mapping[str, Mapping[str, int]] | None
+
+    #: `N` with its pre-registered sentence, verbatim.
+    n: Mapping[str, Any] | None
+
+    #: The retry facts — the declared `R`, what was spent, per-task records.
+    retries: Mapping[str, Any] | None
+
+    #: The evidence pointer — schema and digest, never contents.
+    evidence: Mapping[str, str] | None
+
+    #: The tool versions, sorted by the writer.
+    tool_versions: Mapping[str, str] | None
+
+    #: Whether the document reports a measurement — False for the declaration state.
+    measured: bool
+
+
+def _refuse_unsealed(raw: Mapping[str, Any], location: Path) -> None:
+    """The seal check, shared by both document states: the digest must match the payload.
+
+    The writer's own digest function, recomputed over the raw document by identity. A
+    missing, non-string or mismatched digest is refused by name: the hand edit that
+    changes a count without regenerating the digest is exactly the edit this seals.
+    """
+    recorded = raw.get("document_digest")
+    if not isinstance(recorded, str) or _baseline_document_digest(raw) != recorded:
+        raise ValueError(
+            f"baseline artifact {str(location)!r} has a document_digest that does not seal "
+            "its payload; a hand edit that changes a count without regenerating the digest "
+            "is refused, never trusted"
+        )
+
+
+def read_baseline_document(path: Path) -> BaselineDocument:
+    """Read the committed § 3 baseline document, or refuse it by name.
+
+    The fail-closed read side of the measured-once discipline: a document an outside
+    reader hand-edited is refused rather than trusted, because the committed baseline is
+    the "before" of every later delta and a silently moved count is the one edit nobody
+    checks. The checks are, in order: the file reads and is an object; the schema is the
+    writer's own (`BASELINE_REPORT_SCHEMA`, by identity); no field is unknown; the state
+    is declared (`measured`); a declaration carries its sentence and is sealed; a measured
+    document's series identity is validated by `read_series_identity` **by identity**, both
+    sources are present, every count is an integer and non-negative, `weaker_wins` never
+    exceeds its own denominator; and the document digest — recomputed with the writer's own
+    function — seals the payload. Each refusal names the file and the offending field.
+    """
+    location = Path(path)
+    try:
+        raw = json.loads(location.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"baseline artifact {str(location)!r} could not be read: {exc}"
+        ) from exc
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"baseline artifact {str(location)!r} must be a JSON object, "
+            f"got {type(raw).__name__}"
+        )
+    if raw.get("schema") != _baseline_schema:
+        raise ValueError(
+            f"baseline artifact {str(location)!r} declares schema {raw.get('schema')!r}, "
+            f"but this module reads {_baseline_schema!r}; an old-schema artifact fails "
+            "decode rather than defaulting"
+        )
+    unexpected = sorted(set(raw) - _baseline_known_fields)
+    if unexpected:
+        raise ValueError(
+            f"baseline artifact {str(location)!r} carries unknown field {unexpected!r}; a "
+            "field this module does not read would be trusted by nobody and read by no one"
+        )
+    recorded_on = raw.get("recorded_on")
+    if not isinstance(recorded_on, str):
+        raise ValueError(
+            f"baseline artifact {str(location)!r} has a missing or non-string recorded_on"
+        )
+    if raw.get("measured") is False:
+        declaration = raw.get("declaration")
+        if not isinstance(declaration, str) or not declaration:
+            raise ValueError(
+                f"baseline artifact {str(location)!r} has a missing or non-string "
+                "declaration"
+            )
+        _refuse_unsealed(raw, location)
+        return BaselineDocument(
+            schema=raw["schema"],
+            recorded_on=recorded_on,
+            series=None,
+            base=None,
+            sides=None,
+            n=None,
+            retries=None,
+            evidence=None,
+            tool_versions=None,
+            measured=False,
+        )
+    if raw.get("measured") is not True:
+        raise ValueError(
+            f"baseline artifact {str(location)!r} has a missing or non-boolean measured"
+        )
+
+    series = _baseline_series_reader(location)
+
+    sides = raw.get("sides")
+    if not isinstance(sides, dict):
+        raise ValueError(
+            f"baseline artifact {str(location)!r} has a missing or non-object sides"
+        )
+    for source in ("source-b", "source-a"):
+        counts = sides.get(source)
+        if not isinstance(counts, dict):
+            raise ValueError(
+                f"baseline artifact {str(location)!r} has a missing or non-object "
+                f"{source} side"
+            )
+        for field in _baseline_count_fields:
+            value = counts.get(field)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(
+                    f"baseline artifact {str(location)!r} has a missing or non-integer "
+                    f"{source}.{field}"
+                )
+            if value < 0:
+                raise ValueError(
+                    f"baseline artifact {str(location)!r} has a negative {source}.{field} "
+                    f"({value})"
+                )
+        if counts["weaker_wins"] > counts["denominator"]:
+            raise ValueError(
+                f"baseline artifact {str(location)!r} counts {source}.weaker_wins "
+                f"({counts['weaker_wins']}) over its own denominator "
+                f"({counts['denominator']})"
+            )
+
+    _refuse_unsealed(raw, location)
+    return BaselineDocument(
+        schema=raw["schema"],
+        recorded_on=recorded_on,
+        series=series,
+        base=raw["base"],
+        sides=sides,
+        n=raw["n"],
+        retries=raw["retries"],
+        evidence=raw["evidence"],
+        tool_versions=raw["tool_versions"],
+        measured=True,
+    )
 
 
 def baseline_engine(
@@ -689,6 +921,7 @@ __all__ = [
     "BASELINE_SCHEMA",
     "REFUSALS",
     "BaselineAlreadyMeasured",
+    "BaselineDocument",
     "BaselineMeasurement",
     "SeriesIdentity",
     "baseline_engine",
@@ -696,6 +929,7 @@ __all__ = [
     "disclosure",
     "main",
     "measure",
+    "read_baseline_document",
     "read_series_identity",
     "write_evidence",
 ]
