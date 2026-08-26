@@ -36,8 +36,10 @@ input, e.g. a new base revision or a new held-out split — is § 3's legitimate
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,15 +48,27 @@ from whetstone.bakeoff import report as bakeoff_report
 from whetstone.bakeoff.generator import Generator
 from whetstone.bakeoff.mlx_runtime import DEFAULT_MAX_TOKENS
 from whetstone.bakeoff.report import Tally
-from whetstone.bakeoff.run import HF_HUB_OFFLINE, load_task_roots
+from whetstone.bakeoff.run import HF_HUB_OFFLINE, TranscriptNotPrivate, load_task_roots
 from whetstone.bakeoff.scoring import Interpreters, Rollout
-from whetstone.bakeoff.weights import Weights, load_weights
+from whetstone.bakeoff.stratum import OutUnderLocalCorpus
+from whetstone.bakeoff.weights import (
+    ProvenanceUnreadable,
+    Weights,
+    WeightsUnverified,
+    load_weights,
+)
 from whetstone.loop import gate as gate_module
 from whetstone.loop import heldout as heldout_module
 from whetstone.loop import night as night_module
+from whetstone.loop.heldout import (
+    EmptyHeldout,
+    HeldoutDigestMismatch,
+    HeldoutSchemaError,
+    UnknownHeldoutId,
+)
 from whetstone.loop.ledger import tool_versions
 from whetstone.loop.sampling import sampler_for
-from whetstone.loop.sft import Checkpoint, verify_checkpoint
+from whetstone.loop.sft import Checkpoint, CheckpointUnverified, verify_checkpoint
 from whetstone.tasks.manifest import load_tasks
 
 # --------------------------------------------------------------------------------------------
@@ -482,12 +496,205 @@ def _counts_payload(tally_obj: Tally) -> dict[str, int]:
     }
 
 
+# --------------------------------------------------------------------------------------------
+# The module door — `python -m whetstone.loop.baseline` (spec.md requirement 6). A completed
+# measurement exits 0 whatever the score: the baseline is the anchor, not a verdict, and
+# coverage is disclosed, never a failure. Refusals exit 2 with the reason named, never a
+# traceback. The parser is a single module-level `build_parser()` so the aspect-4 runbook
+# guard can pin the runbook's flags against it by identity.
+# --------------------------------------------------------------------------------------------
+
+#: Every refusal `measure()` raises that is an **operator's error** rather than a finding:
+#: a runs root pointed at a published directory, an `--out` under a gitignored root, an
+#: artifact already at `--out` for this series, a checkpoint that cannot be re-hashed, a
+#: held-out document that cannot be read or whose membership resolves nowhere, a checkpoint
+#: naming a base the weights root does not hold, weights whose provenance does not match
+#: the disk. Collected here so the door maps them to the usage code without a chain of
+#: per-module excepts; `ValueError` closes the tuple — the named refusals first, and a door
+#: that crashes on an unforeseen `ValueError` with a traceback is worse than a named exit-2.
+REFUSALS: tuple[type[Exception], ...] = (
+    TranscriptNotPrivate,
+    OutUnderLocalCorpus,
+    CheckpointUnverified,
+    HeldoutSchemaError,
+    HeldoutDigestMismatch,
+    EmptyHeldout,
+    UnknownHeldoutId,
+    NoBaseWeights,
+    ProvenanceUnreadable,
+    WeightsUnverified,
+    BaselineAlreadyMeasured,
+    ValueError,
+)
+
+
+def disclosure(measurement: BaselineMeasurement) -> tuple[str, ...]:
+    """The lines the door prints after a completed measurement, in the gate's voice.
+
+    Every count carries its denominator (`PREREGISTRATION.md:157`), source A is reported
+    beside source B, never alone (`PREREGISTRATION.md:142-147`), and `N` is the report's
+    own pre-registered sentence (`report._N_SENTENCE`, by identity) with the count over
+    its denominator (`report._over`). The retry line is unconditional — the declared `R`
+    by identity, and what was actually spent — because a line that appeared only on
+    trouble would make a clean machine and an unmeasured one read identically. The
+    measured-once line states what the guard does: a second measurement of this series is
+    refused by name, because the § 3 baseline is measured once, re-measured never.
+    """
+    heldout_tally = measurement.heldout_tally
+    public_tally = measurement.public_tally
+    spent = sum(one.retries_used for one in measurement.retries)
+    return (
+        f"baseline checkpoint: {measurement.checkpoint_digest[:12]}",
+        f"held-out document: {measurement.heldout_digest[:12]}",
+        f"source B (held-out): {heldout_tally.solved} solved of {heldout_tally.denominator}, "
+        f"{heldout_tally.unverified} unverified of {heldout_tally.denominator}, "
+        f"coverage {heldout_tally.covered} of {heldout_tally.denominator}",
+        bakeoff_report._N_SENTENCE.format(
+            count=heldout_tally.weaker_wins
+        )
+        + f" ({bakeoff_report._over(heldout_tally.weaker_wins, heldout_tally.denominator)})",
+        f"source A (public): {public_tally.solved} solved of {public_tally.denominator}, "
+        f"{public_tally.unverified} unverified of {public_tally.denominator}",
+        f"retries: R={RETRY_COUNT}, {spent} spent over {len(measurement.retries)} held-out "
+        f"task(s); {heldout_tally.unverified} of {heldout_tally.denominator} held-out tasks "
+        "still without a verdict",
+        f"evidence: {measurement.evidence_path}",
+        "the § 3 baseline is measured once, re-measured never: a second measurement of this "
+        "series (this checkpoint and this held-out document) is refused by name",
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The door's argument surface — the one the aspect-4 runbook guard pins by identity.
+
+    The spec's full flag set (`spec.md` requirement 6): every writable path is a `Path`,
+    `--tasks` is repeatable, `--timeout` is a float, `--recorded-on` and `--run-id` are
+    required inputs — never defaults from the clock, never a name the operator did not
+    declare — and `--max-tokens` defaults to the bake-off's own `DEFAULT_MAX_TOKENS` **by
+    identity**, never a second number written beside it. All writable paths are expected
+    absolute; that is the runbook guard's property (aspect 4), not this parser's.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m whetstone.loop.baseline",
+        description=(
+            "Score the § 3 baseline checkpoint on the held-out split, exactly once: the "
+            "untrained base's patches through both verifiers with the gate's retry "
+            "discipline, over the declared held-out membership and source A, with the "
+            "evidence written to the gitignored runs home and a same-series artifact at "
+            "--out refused by name. No model is loaded by this process boundary alone: "
+            "the engine seam is reached only inside the measurement."
+        ),
+    )
+    parser.add_argument(
+        "--weights", required=True, type=Path, help="the weights root holding the base"
+    )
+    parser.add_argument(
+        "--checkpoint",
+        required=True,
+        type=Path,
+        help="the untrained baseline checkpoint to score",
+    )
+    parser.add_argument(
+        "--heldout", required=True, type=Path, help="the committed held-out document"
+    )
+    parser.add_argument(
+        "--tasks",
+        action="append",
+        required=True,
+        type=Path,
+        help="a private task root (repeatable; the roots are unioned)",
+    )
+    parser.add_argument(
+        "--public", required=True, type=Path, help="source A's task root"
+    )
+    parser.add_argument(
+        "--runs", required=True, type=Path, help="the gitignored evidence home"
+    )
+    parser.add_argument(
+        "--workspace", required=True, type=Path, help="the sandboxed work root"
+    )
+    parser.add_argument(
+        "--out", required=True, type=Path, help="where a first artifact would sit"
+    )
+    parser.add_argument(
+        "--timeout",
+        required=True,
+        type=float,
+        help="per-task verification timeout in seconds",
+    )
+    parser.add_argument(
+        "--recorded-on",
+        required=True,
+        help="the date the operator declares — an input, never the clock",
+    )
+    parser.add_argument(
+        "--run-id",
+        required=True,
+        help="the operator-declared run id — the evidence directory's name",
+    )
+    parser.add_argument("--pool", type=Path, default=None, help="the fetch pool")
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=DEFAULT_MAX_TOKENS,
+        help="the generation budget",
+    )
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """The runbook door: `python -m whetstone.loop.baseline`, exit 0 whatever the score.
+
+    Parses, runs the one measurement with the engine seam resolved at call time — so a
+    test can substitute the stub engine exactly as the gate's CLI tests substitute
+    `gate.gate_engine` — prints the disclosure, and exits 0. The baseline is the anchor,
+    not a verdict: coverage is disclosed, never a failure (`spec.md` requirement 6). Every
+    named refusal — a same-series artifact at `--out`, a runs root inside `reports/`, an
+    `--out` under a gitignored root, a checkpoint that cannot be re-hashed, a held-out
+    document that cannot be read, a base the weights root does not hold — is exit 2 with
+    the reason named on stderr, never a traceback; argparse's own error path supplies the
+    usage code for a mistyped or incomplete command line.
+    """
+    args = build_parser().parse_args(argv)
+    try:
+        measurement = measure(
+            checkpoint=args.checkpoint,
+            heldout=args.heldout,
+            tasks=args.tasks,
+            public=args.public,
+            runs=args.runs,
+            workspace=args.workspace,
+            timeout=args.timeout,
+            recorded_on=args.recorded_on,
+            run_id=args.run_id,
+            pool=args.pool,
+            weights=args.weights,
+            out=args.out,
+            max_tokens=args.max_tokens,
+            engine=baseline_engine,
+        )
+    except REFUSALS as refusal:
+        print(f"whetstone baseline: {refusal}", file=sys.stderr)
+        return 2
+    for line in disclosure(measurement):
+        print(line)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
 __all__ = [
     "BASELINE_SCHEMA",
+    "REFUSALS",
     "BaselineAlreadyMeasured",
     "BaselineMeasurement",
     "SeriesIdentity",
     "baseline_engine",
+    "build_parser",
+    "disclosure",
+    "main",
     "measure",
     "read_series_identity",
     "write_evidence",

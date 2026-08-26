@@ -841,6 +841,208 @@ def test_baseline_engine_is_a_smoke_tested_factory() -> None:
     )
 
 
+# --------------------------------------------------------------------------------------------
+# Task D: the module door — `python -m whetstone.loop.baseline`, its parser, exits and pins
+# (spec.md requirement 6, AC 4 and 7; the aspect-4 runbook guard pins the flags against
+# `build_parser` by identity).
+# --------------------------------------------------------------------------------------------
+
+
+def _argv(fixtures: dict[str, Any], *extra: str) -> list[str]:
+    """The command line for `fixtures`: every flag, in the runbook's own order."""
+    return [
+        "--weights",
+        str(fixtures["weights"]),
+        "--checkpoint",
+        str(fixtures["checkpoint"]),
+        "--heldout",
+        str(fixtures["heldout"]),
+        "--tasks",
+        str(fixtures["tasks"][0]),
+        "--public",
+        str(fixtures["public"]),
+        "--runs",
+        str(fixtures["runs"]),
+        "--workspace",
+        str(fixtures["workspace"]),
+        "--out",
+        str(fixtures["out"]),
+        "--timeout",
+        str(fixtures["timeout"]),
+        "--recorded-on",
+        str(fixtures["recorded_on"]),
+        "--run-id",
+        str(fixtures["run_id"]),
+        "--pool",
+        str(fixtures["pool"]),
+        *extra,
+    ]
+
+
+def _without(argv: list[str], flag: str) -> list[str]:
+    """`argv` with `flag` and its value removed — the shape "the operator left it out"."""
+    index = argv.index(flag)
+    return argv[:index] + argv[index + 2 :]
+
+
+def _invoke(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    **fixture_overrides: Any,
+) -> tuple[int, dict[str, Any]]:
+    """Run the door over the shared fixtures, with the stub engine injected.
+
+    `baseline.baseline_engine` is replaced on the module — `main()` resolves the name at
+    call time, exactly as the gate's CLI tests replace `gate.gate_engine` behind the
+    handler's call (`cli.py:804`) — so the real measurement runs under the stub, and the
+    exits are asserted through the actual door rather than through a stand-in for it.
+    """
+    fixtures = _fixtures(tmp_path, **fixture_overrides)
+    monkeypatch.setattr(baseline, "baseline_engine", fixtures["engine"])
+    return baseline.main(_argv(fixtures)), fixtures
+
+
+def test_the_door_exits_zero_and_prints_disclosure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 4: a completed measurement exits 0 **whatever the score**, and the disclosure
+    carries every count over its denominator.
+
+    The held-out set is fully solved through the stub engine, so the printout shows the
+    whole shape: both digests abbreviated to twelve characters, both sources over their
+    own denominators, coverage, `N` in the report's own pre-registered sentence with the
+    count over its denominator, the unconditional retry line with `R` by identity, the
+    evidence path, and the measured-once wording.
+    """
+    code, fixtures = _invoke(tmp_path, monkeypatch)
+
+    assert code == 0, capsys.readouterr().err
+    printed = capsys.readouterr().out
+    checkpoint_digest = fixtures["checkpoint_obj"].digest
+    heldout_digest = heldout.document_digest_of(
+        json.loads(fixtures["doc"].read_text(encoding="utf-8"))
+    )
+    assert f"baseline checkpoint: {checkpoint_digest[:12]}" in printed, printed
+    assert f"held-out document: {heldout_digest[:12]}" in printed, printed
+    assert f"{len(_MEMBERS)} solved of {len(_MEMBERS)}" in printed, printed
+    assert f"0 unverified of {len(_MEMBERS)}" in printed, printed
+    assert f"coverage {len(_MEMBERS)} of {len(_MEMBERS)}" in printed, printed
+    assert "0 rollouts a weaker check would have scored as wins. (0 of 10)" in printed, printed
+    assert "1 solved of 1" in printed, printed
+    assert "0 unverified of 1" in printed, printed
+    assert f"R={baseline.RETRY_COUNT}" in printed, printed
+    evidence_path = fixtures["runs"] / str(fixtures["run_id"]) / "evidence.json"
+    assert f"evidence: {evidence_path}" in printed, printed
+    assert "measured once" in printed, printed
+    assert json.loads(evidence_path.read_text(encoding="utf-8"))["schema"] == (
+        baseline.EVIDENCE_SCHEMA
+    )
+
+
+def test_the_door_exits_two_on_a_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 4: a same-series artifact at `--out` is exit 2 on stderr, naming the first artifact.
+
+    The planted artifact is the first measurement; the door's run is a second measurement
+    of the same series, which the § 3 protocol refuses by name (`PREREGISTRATION.md:
+    129-135`) before a token is generated — the stub is never asked.
+    """
+    fixtures = _fixtures(tmp_path)
+    monkeypatch.setattr(baseline, "baseline_engine", fixtures["engine"])
+    artifact = _artifact(
+        fixtures["out"],
+        checkpoint={"digest": fixtures["checkpoint_obj"].digest},
+        heldout={
+            "document_digest": heldout.document_digest_of(
+                json.loads(fixtures["doc"].read_text(encoding="utf-8"))
+            )
+        },
+    )
+
+    code = baseline.main(_argv(fixtures))
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "already measured" in err, err
+    assert str(artifact) in err, err
+    assert fixtures["stub"].asked == [], (
+        "WHY THIS IS A FAILURE: the same-series refusal fired after a token was generated. "
+        "The guard runs before the engine exists"
+    )
+
+
+def test_the_door_refuses_a_missing_recorded_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC 7: `--recorded-on` and `--run-id` are inputs, never defaults — omitted, exit 2.
+
+    A measurement that dated or named itself would differ between two renders of the same
+    documented command, so both are required flags and argparse's own error path refuses
+    their absence with the usage code.
+    """
+    fixtures = _fixtures(tmp_path)
+    monkeypatch.setattr(baseline, "baseline_engine", fixtures["engine"])
+    argv = _argv(fixtures)
+
+    with pytest.raises(SystemExit) as recorded:
+        baseline.main(_without(argv, "--recorded-on"))
+    assert recorded.value.code == 2
+
+    with pytest.raises(SystemExit) as run_id:
+        baseline.main(_without(argv, "--run-id"))
+    assert run_id.value.code == 2
+
+
+def test_every_flag_is_in_the_parser(tmp_path: Path) -> None:
+    """The spec's flag set, asserted against `build_parser()` — the surface aspect 4 pins.
+
+    Every flag the spec names (spec.md requirement 6) exists on the parser with the type
+    the measurement reads — `--tasks` repeatable, `--timeout` a float, the rest paths and
+    names, `--pool` optional, and `--max-tokens` defaulting to the bake-off's own
+    `DEFAULT_MAX_TOKENS` **by identity**, never a second number beside it — and no flag
+    outside the set does.
+    """
+    from whetstone.bakeoff.mlx_runtime import DEFAULT_MAX_TOKENS
+
+    fixtures = _fixtures(tmp_path)
+    parser = baseline.build_parser()
+    flags = (
+        {name for name in parser._option_string_actions if name.startswith("--")}
+        - {"--help"}
+    )
+    assert flags == {
+        "--weights",
+        "--checkpoint",
+        "--heldout",
+        "--tasks",
+        "--public",
+        "--runs",
+        "--workspace",
+        "--out",
+        "--timeout",
+        "--recorded-on",
+        "--run-id",
+        "--pool",
+        "--max-tokens",
+    }, flags
+
+    parsed = parser.parse_args(_argv(fixtures))
+    assert parsed.weights == fixtures["weights"]
+    assert parsed.checkpoint == fixtures["checkpoint"]
+    assert parsed.heldout == fixtures["heldout"]
+    assert parsed.tasks == [fixtures["tasks"][0]]
+    assert parsed.public == fixtures["public"]
+    assert parsed.runs == fixtures["runs"]
+    assert parsed.workspace == fixtures["workspace"]
+    assert parsed.out == fixtures["out"]
+    assert parsed.timeout == fixtures["timeout"]
+    assert parsed.recorded_on == fixtures["recorded_on"]
+    assert parsed.run_id == fixtures["run_id"]
+    assert parsed.pool == fixtures["pool"]
+    assert parsed.max_tokens is DEFAULT_MAX_TOKENS
+
+
 def test_baseline_module_imports_no_mlx_at_module_scope() -> None:
     """The loop package's own rule, walked over `baseline.py`'s bytes with `ast`.
 
