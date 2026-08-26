@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -172,3 +173,123 @@ def test_an_untrained_checkpoint_without_the_flag_is_refused(tmp_path: Path) -> 
 
     with pytest.raises(sft.CheckpointUnverified, match="records no files"):
         sft.verify_checkpoint(directory)
+
+
+#: The pre-extension key set of a trained provenance — the byte-identity pin for the trained path.
+#: Any key added to `write_checkpoint`'s document fails this test, and `untrained` is exactly the
+#: key this aspect must not add there.
+TRAINED_KEYS = {
+    "schema",
+    "digest",
+    "base",
+    "dataset_digest",
+    "run_seed",
+    "training_args",
+    "tool_versions",
+    "validation",
+    "capacity_probe",
+    "files",
+}
+
+
+def _trained(tmp_path: Path) -> Path:
+    """A trained checkpoint via `write_checkpoint` — the `test_sft._written` shape, minimally.
+
+    The helpers in `tests/loop/test_sft.py` are module-private, so this file does not import
+    them; the part that matters for provenance identity is `write_checkpoint`'s own document,
+    and that is exercised here through the real writer.
+    """
+    directory = tmp_path / "trained"
+    directory.mkdir()
+    (directory / sft.ADAPTER_FILE).write_bytes(b"not a tensor")
+    sft.write_checkpoint(
+        directory,
+        repo_id=BASE["repo_id"],
+        revision=BASE["revision"],
+        dataset_digest="d" * 64,
+        run_seed=20260826,
+        args=sft.TrainingArgs(),
+        tool_versions={"python": "3.12.0"},
+        valid_split="",
+        capacity=sft.CapacityProbe(
+            iters=sft.CAPACITY_PROBE_ITERS,
+            headroom_bytes=sft.CAPACITY_HEADROOM_BYTES,
+            peak_bytes=4 * 1024**3,
+            seconds=0.25,
+        ),
+    )
+    return directory
+
+
+def test_write_baseline_checkpoint_round_trips(tmp_path: Path) -> None:
+    """The writer's output is the untrained shape the verifier accepts — one shape, both ends.
+
+    The provenance declares the flag, no files, the base verbatim, the tool versions sorted,
+    and the empty set's digest; the returned `Checkpoint` and the re-verification agree with
+    the document on every field.
+    """
+    directory = tmp_path / "baseline"
+    tool_versions = {"uv": "0.6.0", "python": "3.12.0"}
+
+    checkpoint = sft.write_baseline_checkpoint(
+        directory,
+        repo_id=BASE["repo_id"],
+        revision=BASE["revision"],
+        tool_versions=tool_versions,
+    )
+
+    assert checkpoint.untrained is True
+    assert checkpoint.digest == EMPTY_DIGEST
+    assert checkpoint.files == ()
+    assert checkpoint.directory == directory
+
+    provenance = json.loads(
+        (directory / sft.CHECKPOINT_FILE).read_text(encoding="utf-8")
+    )
+    assert provenance["untrained"] is True
+    assert provenance["files"] == []
+    assert provenance["base"] == BASE
+    assert provenance["tool_versions"] == {"python": "3.12.0", "uv": "0.6.0"}
+    assert provenance["digest"] == EMPTY_DIGEST
+
+    reverified = sft.verify_checkpoint(directory)
+    assert reverified.untrained is True
+    assert reverified.digest == EMPTY_DIGEST
+
+
+def test_write_baseline_checkpoint_refuses_a_non_empty_directory(tmp_path: Path) -> None:
+    """An adapter beside an untrained provenance is the contradiction the flag exists to exclude.
+
+    The opposite sign of `write_checkpoint`'s empty-directory refusal: a baseline declaring
+    `untrained: true` into a directory that holds bytes would label a night's adapter a base
+    that never trained. The refusal names the directory.
+    """
+    directory = tmp_path / "baseline"
+    directory.mkdir()
+    (directory / sft.ADAPTER_FILE).write_bytes(b"not a tensor")
+
+    with pytest.raises(
+        sft.CheckpointUnverified, match=re.escape(str(directory))
+    ):
+        sft.write_baseline_checkpoint(
+            directory,
+            repo_id=BASE["repo_id"],
+            revision=BASE["revision"],
+            tool_versions={},
+        )
+
+
+def test_trained_provenance_carries_no_untrained_key(tmp_path: Path) -> None:
+    """The trained writer is byte-identical to today: no `untrained` key, and no other drift.
+
+    The key set is asserted exactly rather than by absence alone, so a later edit that adds
+    *any* key to `write_checkpoint`'s document fails this pin — the trained path's identity is
+    the whole pre-extension set, not just the absence of the one new flag.
+    """
+    directory = _trained(tmp_path)
+    provenance = json.loads(
+        (directory / sft.CHECKPOINT_FILE).read_text(encoding="utf-8")
+    )
+
+    assert "untrained" not in provenance
+    assert set(provenance) == TRAINED_KEYS

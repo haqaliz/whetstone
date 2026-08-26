@@ -454,6 +454,48 @@ def write_checkpoint(
     return Checkpoint(directory=directory, digest=digest, files=files)
 
 
+def write_baseline_checkpoint(
+    directory: Path,
+    *,
+    repo_id: str,
+    revision: str,
+    tool_versions: Mapping[str, str],
+) -> Checkpoint:
+    """Materialize the untrained open base as a checkpoint: a provenance over no adapter.
+
+    The opposite sign of `write_checkpoint`'s empty-directory refusal. There, a directory with
+    nothing to record would verify nothing and succeed; here, a directory that **already holds**
+    files would record an adapter beside a base that never trained — the contradiction the
+    `untrained` flag exists to exclude. No training-derived fields: this checkpoint never
+    trained, so there is no dataset, seed, argument set, validation or capacity probe to record.
+    """
+    if _hash_directory(directory):
+        raise CheckpointUnverified(
+            f"{str(directory)!r} holds files, so a provenance declaring untrained: true would "
+            "record an adapter beside a base that never trained — the contradiction the flag "
+            "exists to exclude"
+        )
+    digest = _digest_of(())
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / CHECKPOINT_FILE).write_text(
+        json.dumps(
+            {
+                "schema": CHECKPOINT_SCHEMA,
+                "digest": digest,
+                "base": {"repo_id": repo_id, "revision": revision},
+                "untrained": True,
+                "tool_versions": dict(sorted(tool_versions.items())),
+                "files": [],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return Checkpoint(directory=directory, digest=digest, files=(), untrained=True)
+
+
 def verify_checkpoint(directory: Path) -> Checkpoint:
     """Re-hash every file the checkpoint's provenance names, or refuse naming the first that moved.
 
@@ -586,5 +628,6 @@ __all__ = [
     "probe_capacity",
     "train",
     "verify_checkpoint",
+    "write_baseline_checkpoint",
     "write_checkpoint",
 ]
