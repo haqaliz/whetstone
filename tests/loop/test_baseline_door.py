@@ -1419,7 +1419,8 @@ def test_the_door_rejects_render_and_measure_together(tmp_path: Path) -> None:
     ignoring the other's flags.
     """
     fixtures = _fixtures(tmp_path)
-    argv = _argv(fixtures) + [
+    argv = [
+        *_argv(fixtures),
         "--render",
         str(fixtures["runs"] / str(fixtures["run_id"]) / "evidence.json"),
     ]
@@ -1446,7 +1447,8 @@ def test_render_declaration_writes_the_declaration_state(
     for name in ("report.md", "report.json", "cost.json"):
         assert (out / name).is_file(), name
     text = "\n".join(
-        (out / name).read_text(encoding="utf-8") for name in ("report.md", "report.json", "cost.json")
+        (out / name).read_text(encoding="utf-8")
+        for name in ("report.md", "report.json", "cost.json")
     )
     assert not re.search(r"\d+ of \d+", text), (
         "WHY THIS IS A FAILURE: the declaration renders a figure, but no measurement "
@@ -1470,7 +1472,12 @@ def test_render_declaration_refuses_a_gitignored_out(
     the measure door, exit 2.
     """
     code = baseline.main(
-        ["--render-declaration", str(tmp_path / "runs" / "declaration"), "--recorded-on", RECORDED_ON]
+        [
+            "--render-declaration",
+            str(tmp_path / "runs" / "declaration"),
+            "--recorded-on",
+            RECORDED_ON,
+        ]
     )
     assert code == 2
     assert "runs" in capsys.readouterr().err
