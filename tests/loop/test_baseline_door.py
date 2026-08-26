@@ -19,8 +19,10 @@ Later tasks (C and D) add the measured-once guard and the module door to this sa
 from __future__ import annotations
 
 import ast
+import hashlib
 import inspect
 import json
+import re
 import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -44,6 +46,7 @@ from loop.harness import weights as harness_weights
 from whetstone.bakeoff import report as bakeoff_report
 from whetstone.bakeoff.run import TranscriptNotPrivate
 from whetstone.bakeoff.scoring import Outcome, Rollout
+from whetstone.bakeoff.stratum import OutUnderLocalCorpus
 from whetstone.bakeoff.weights import load_weights
 from whetstone.loop import baseline, gate, heldout, night, sft
 from whetstone.verify.verdict import Status
@@ -1025,6 +1028,8 @@ def test_every_flag_is_in_the_parser(tmp_path: Path) -> None:
         "--run-id",
         "--pool",
         "--max-tokens",
+        "--render",
+        "--render-declaration",
     }, flags
 
     parsed = parser.parse_args(_argv(fixtures))
@@ -1088,3 +1093,294 @@ def test_baseline_module_imports_no_mlx_at_module_scope() -> None:
         " function-local inside the factory, reached only when the operator invokes the"
         " seam"
     )
+
+
+# --------------------------------------------------------------------------------------------
+# Task D extension: the render door — `render_artifact`, `render_declaration`, and the
+# `--render`/`--render-declaration` modes on the module door (spec.md requirement 4, AC 6).
+# The post-run chain renders the committed artifact from a real measurement's evidence;
+# the measured-once discipline holds on the render side too — a rendered baseline is not
+# re-rendered — and the declaration is the committed state *before* any measurement.
+# --------------------------------------------------------------------------------------------
+
+
+def _render_argv(fixtures: dict[str, Any], evidence: Path, out: Path) -> list[str]:
+    """The render-mode command line: evidence, the shared flags, nothing measuring."""
+    return [
+        "--render",
+        str(evidence),
+        "--checkpoint",
+        str(fixtures["checkpoint"]),
+        "--out",
+        str(out),
+        "--recorded-on",
+        str(fixtures["recorded_on"]),
+    ]
+
+
+def test_render_writes_the_three_artifacts_from_evidence(tmp_path: Path) -> None:
+    """AC 6: a genuine evidence document (from `measure()` with the stub engine) renders
+    the three-artifact shape, and the Task-B loader round-trips the rendered report.json.
+
+    The evidence is the real measurement's own document — not a hand-built stand-in — so
+    the render is exercised over the document the operator's post-run chain actually
+    consumes. The artifact's series is the evidence's own two digests, its sides are the
+    evidence's six-field counts verbatim, the evidence pointer is the sha256 of the
+    evidence's bytes (never contents), and the base is the checkpoint's provenance.
+    """
+    measurement, fixtures = _run_measure(tmp_path / "measure")
+    home = tmp_path / "home"
+
+    rendered = baseline.render_artifact(
+        evidence=measurement.evidence_path,
+        out=home,
+        recorded_on=RECORDED_ON,
+        checkpoint=fixtures["checkpoint"],
+    )
+
+    assert [path.name for path in rendered] == ["report.md", "report.json", "cost.json"]
+    assert all(path.exists() for path in rendered)
+
+    evidence_document = _evidence(measurement)
+    payload = json.loads(rendered[1].read_text(encoding="utf-8"))
+    assert payload["schema"] == baseline.BASELINE_SCHEMA
+    assert payload["measured"] is True
+    assert payload["series"]["checkpoint_digest"] == evidence_document["checkpoint"]["digest"]
+    assert payload["series"]["heldout_digest"] == evidence_document["heldout"][
+        "document_digest"
+    ]
+    assert payload["sides"]["source-b"] == evidence_document["counts"]["heldout"]
+    assert payload["sides"]["source-a"] == evidence_document["counts"]["public"]
+    assert payload["evidence"]["digest"] == hashlib.sha256(
+        measurement.evidence_path.read_bytes()
+    ).hexdigest()
+    assert payload["base"]["repo_id"] == _BASE
+    provenance = json.loads(
+        (fixtures["checkpoint"] / "provenance.json").read_text(encoding="utf-8")
+    )
+    assert payload["base"]["revision"] == provenance["base"]["revision"]
+
+    loaded = baseline.read_baseline_document(rendered[1])
+    assert loaded.series == baseline.SeriesIdentity(
+        checkpoint_digest=evidence_document["checkpoint"]["digest"],
+        heldout_digest=evidence_document["heldout"]["document_digest"],
+    )
+    assert loaded.sides == payload["sides"]
+    assert loaded.evidence == payload["evidence"]
+    assert loaded.n == payload["n"]
+    assert loaded.measured is True
+
+
+def test_render_refuses_missing_or_schema_invalid_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 6: evidence that cannot be read is refused by name — never rendered from nothing.
+
+    A missing file, unreadable bytes and a wrong schema are three different refusals, each
+    naming the evidence file; the door maps each to exit 2 on stderr, and no artifact is
+    written anywhere.
+    """
+    fixtures = _fixtures(tmp_path)
+    home = tmp_path / "home"
+
+    missing = tmp_path / "missing" / "evidence.json"
+    with pytest.raises(ValueError) as refused:
+        baseline.render_artifact(
+            evidence=missing,
+            out=home,
+            recorded_on=RECORDED_ON,
+            checkpoint=fixtures["checkpoint"],
+        )
+    assert "evidence.json" in str(refused.value), refused.value
+
+    garbage = tmp_path / "garbage" / "evidence.json"
+    garbage.parent.mkdir(parents=True)
+    garbage.write_bytes(b"\x00\x01not json at all")
+    with pytest.raises(ValueError) as refused:
+        baseline.render_artifact(
+            evidence=garbage,
+            out=home,
+            recorded_on=RECORDED_ON,
+            checkpoint=fixtures["checkpoint"],
+        )
+    assert "evidence.json" in str(refused.value), refused.value
+
+    wrong_schema = tmp_path / "wrong" / "evidence.json"
+    wrong_schema.parent.mkdir(parents=True)
+    wrong_schema.write_text(
+        json.dumps({"schema": "whetstone-baseline-run/2"}), encoding="utf-8"
+    )
+    with pytest.raises(ValueError) as refused:
+        baseline.render_artifact(
+            evidence=wrong_schema,
+            out=home,
+            recorded_on=RECORDED_ON,
+            checkpoint=fixtures["checkpoint"],
+        )
+    assert "whetstone-baseline-run/2" in str(refused.value), refused.value
+    assert not home.exists(), (
+        "WHY THIS IS A FAILURE: a refused render wrote artifacts — nothing may be "
+        "rendered from an evidence the render refused"
+    )
+
+    monkeypatch.setattr(baseline, "baseline_engine", fixtures["engine"])
+    code = baseline.main(_render_argv(fixtures, missing, home))
+    assert code == 2
+    assert "evidence.json" in capsys.readouterr().err
+
+
+def test_render_refuses_a_gitignored_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 6: `--out` under a gitignored root is refused by identity, never rewritten.
+
+    The committed artifact is the "before" of every later delta, and one git cannot see is
+    one git cannot prove predated the measurement — the aspect-2 posture, consumed by
+    identity (`refuse_committed_out`), exit 2 through the door.
+    """
+    measurement, fixtures = _run_measure(tmp_path / "measure")
+    runs_home = tmp_path / "runs" / "published"
+
+    with pytest.raises(OutUnderLocalCorpus) as refused:
+        baseline.render_artifact(
+            evidence=measurement.evidence_path,
+            out=runs_home,
+            recorded_on=RECORDED_ON,
+            checkpoint=fixtures["checkpoint"],
+        )
+    assert "runs" in str(refused.value), refused.value
+    assert baseline.refuse_committed_out is heldout.refuse_committed_out
+
+    monkeypatch.setattr(baseline, "baseline_engine", fixtures["engine"])
+    code = baseline.main(_render_argv(fixtures, measurement.evidence_path, runs_home))
+    assert code == 2
+    assert "runs" in capsys.readouterr().err
+
+
+def test_render_refuses_a_same_series_rerender(tmp_path: Path) -> None:
+    """AC 6: an artifact already rendered for this series is not re-rendered, by name.
+
+    The measured-once discipline holds on the render side: the same evidence and the same
+    checkpoint produce the same artifact by construction, so a second render would be the
+    first render wearing a second date — refused with the same exception type the measure
+    door raises, naming the first artifact and its recorded date.
+    """
+    measurement, fixtures = _run_measure(tmp_path / "measure")
+    home = tmp_path / "home"
+    baseline.render_artifact(
+        evidence=measurement.evidence_path,
+        out=home,
+        recorded_on=RECORDED_ON,
+        checkpoint=fixtures["checkpoint"],
+    )
+
+    with pytest.raises(baseline.BaselineAlreadyMeasured) as refused:
+        baseline.render_artifact(
+            evidence=measurement.evidence_path,
+            out=home,
+            recorded_on=RECORDED_ON,
+            checkpoint=fixtures["checkpoint"],
+        )
+    message = str(refused.value)
+    assert str(home / "report.json") in message, message
+    assert RECORDED_ON in message, message
+    assert "re-rendered" in message or "render" in message, message
+
+
+def test_render_allows_a_different_series(tmp_path: Path) -> None:
+    """A changed pinned input is § 3's legitimate new series on the render side too.
+
+    An evidence naming a different checkpoint digest is a new series, rendered into the
+    same home the way `measure()` permits a different series — never refused by the
+    same-series guard, which keys on the two digests, never on the clock.
+    """
+    measurement, fixtures = _run_measure(tmp_path / "measure")
+    home = tmp_path / "home"
+    baseline.render_artifact(
+        evidence=measurement.evidence_path,
+        out=home,
+        recorded_on=RECORDED_ON,
+        checkpoint=fixtures["checkpoint"],
+    )
+
+    different = tmp_path / "different" / "evidence.json"
+    different.parent.mkdir(parents=True)
+    document = _evidence(measurement)
+    document["checkpoint"]["digest"] = "c" * 64
+    different.write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+    rendered = baseline.render_artifact(
+        evidence=different,
+        out=home,
+        recorded_on=RECORDED_ON,
+        checkpoint=fixtures["checkpoint"],
+    )
+    payload = json.loads(rendered[1].read_text(encoding="utf-8"))
+    assert payload["series"]["checkpoint_digest"] == "c" * 64
+
+
+def test_the_door_rejects_render_and_measure_together(tmp_path: Path) -> None:
+    """AC 6: `--render` and measuring are mutually exclusive — the parser's usage exit.
+
+    A command line that names both modes is a command nobody meant, and it is refused
+    with argparse's own usage code rather than being run in one mode while silently
+    ignoring the other's flags.
+    """
+    fixtures = _fixtures(tmp_path)
+    argv = _argv(fixtures) + [
+        "--render",
+        str(fixtures["runs"] / str(fixtures["run_id"]) / "evidence.json"),
+    ]
+
+    with pytest.raises(SystemExit) as refused:
+        baseline.main(argv)
+    assert refused.value.code == 2
+
+
+def test_render_declaration_writes_the_declaration_state(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 6: `--render-declaration` writes the committed pre-run state — no count anywhere.
+
+    The declaration is the state *before* any measurement: the three-artifact shape
+    carrying the "No count is measured here" sentence and no figure in any spelling, in
+    all three artifacts, generated by the writer with `measured=False` — and the Task-B
+    loader reads it back as a declaration, never as a measurement.
+    """
+    out = tmp_path / "declaration-home"
+    code = baseline.main(["--render-declaration", str(out), "--recorded-on", RECORDED_ON])
+
+    assert code == 0, capsys.readouterr().err
+    for name in ("report.md", "report.json", "cost.json"):
+        assert (out / name).is_file(), name
+    text = "\n".join(
+        (out / name).read_text(encoding="utf-8") for name in ("report.md", "report.json", "cost.json")
+    )
+    assert not re.search(r"\d+ of \d+", text), (
+        "WHY THIS IS A FAILURE: the declaration renders a figure, but no measurement "
+        "exists — a count here would be a restated figure from another home or an "
+        "invented one"
+    )
+    assert "No count is measured here: the baseline has not run." in text, text
+
+    loaded = baseline.read_baseline_document(out / "report.json")
+    assert loaded.measured is False
+    assert loaded.series is None and loaded.sides is None and loaded.n is None
+
+
+def test_render_declaration_refuses_a_gitignored_out(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The declaration is a committed artifact: a gitignored `--out` is refused by identity.
+
+    The declaration is the state git history proves predated the measurement, so one git
+    cannot see is one git cannot vouch for — the same `refuse_committed_out` posture as
+    the measure door, exit 2.
+    """
+    code = baseline.main(
+        ["--render-declaration", str(tmp_path / "runs" / "declaration"), "--recorded-on", RECORDED_ON]
+    )
+    assert code == 2
+    assert "runs" in capsys.readouterr().err

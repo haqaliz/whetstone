@@ -32,11 +32,23 @@ fail-closed: an artifact that cannot be read is refused by name, never treated a
 keyed on the two digests, never on the clock; a **different** series — a changed pinned
 input, e.g. a new base revision or a new held-out split — is § 3's legitimate new series
 (`PREREGISTRATION.md:133-135`), allowed, with the change recorded in the new evidence.
+
+The render door (`spec.md` requirement 4) is the post-run chain's committed step:
+`render_artifact` reads a measurement's evidence document (`whetstone-baseline-run/1`,
+fail-closed by name — never rendered from nothing), re-hashes the checkpoint and reads the
+base identity from its provenance (`_checkpoint_base`, the gate's own read, by identity),
+computes the evidence digest (sha256 of the evidence's bytes — a pointer, never contents),
+and writes the three artifacts through the aspect-3 writer by identity. The measured-once
+discipline holds on the render side too — an artifact already rendered for this series is
+refused by name, never re-rendered — and `render_declaration` writes the declaration-only
+state, the committed artifacts *before* any measurement, on which the refusal is
+deliberately not applied (a declaration is not a measurement).
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -50,7 +62,7 @@ from whetstone.bakeoff.generator import Generator
 from whetstone.bakeoff.mlx_runtime import DEFAULT_MAX_TOKENS
 from whetstone.bakeoff.report import Tally
 from whetstone.bakeoff.run import HF_HUB_OFFLINE, TranscriptNotPrivate, load_task_roots
-from whetstone.bakeoff.scoring import Interpreters, Rollout
+from whetstone.bakeoff.scoring import Interpreters, Outcome, Rollout
 from whetstone.bakeoff.stratum import OutUnderLocalCorpus
 from whetstone.bakeoff.weights import (
     ProvenanceUnreadable,
@@ -92,6 +104,11 @@ RETRY_COUNT = gate_module.RETRY_COUNT
 
 #: The refusal for a checkpoint naming a base the weights root does not hold, by identity.
 NoBaseWeights = gate_module.NoBaseWeights
+
+#: The base a checkpoint's provenance names — the gate's own read, by identity. The render
+#: door re-hashes the checkpoint first and reads the base identity from its provenance
+#: with this function, exactly as `measure()` resolves the base it scores.
+_checkpoint_base = gate_module._checkpoint_base
 
 #: The held-out document's loader and digest, the private-root refusal, and the `--out`
 #: refusal — each by identity.
@@ -729,6 +746,275 @@ def _counts_payload(tally_obj: Tally) -> dict[str, int]:
 
 
 # --------------------------------------------------------------------------------------------
+# The render door — `render_artifact` and `render_declaration`, the post-run chain's step
+# that turns a measurement's evidence into the committed § 3 artifact (`spec.md` requirement
+# 4, AC 6). The measured-once discipline holds here too: an artifact already rendered for
+# this series is not re-rendered; the declaration is the committed state *before* any
+# measurement and re-running it rewrites the same declaration, never a second measurement
+# wearing the name of a first.
+# --------------------------------------------------------------------------------------------
+
+
+def _read_evidence(path: Path) -> dict[str, Any]:
+    """Read the evidence document (`whetstone-baseline-run/1`), fail-closed by name.
+
+    The render never produces an artifact from nothing: a missing, unreadable or
+    wrong-schema evidence document is refused by name, and so is a schema-valid document
+    missing a field the render reads — the series digests, both sources' six-field counts
+    (integers, non-negative, `weaker_wins` within its own denominator), the per-task retry
+    records, the declared `R` and the tool versions. Each refusal is one sentence naming
+    the file; an evidence that half-parses is refused, never rendered past.
+    """
+    location = Path(path)
+    try:
+        raw = json.loads(location.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"baseline evidence {str(location)!r} could not be read: {exc}"
+        ) from exc
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"baseline evidence {str(location)!r} must be a JSON object, "
+            f"got {type(raw).__name__}"
+        )
+    if raw.get("schema") != EVIDENCE_SCHEMA:
+        raise ValueError(
+            f"baseline evidence {str(location)!r} declares schema {raw.get('schema')!r}, "
+            f"but this module reads {EVIDENCE_SCHEMA!r}; an old-schema evidence fails "
+            "decode rather than defaulting"
+        )
+    checkpoint = raw.get("checkpoint")
+    heldout_block = raw.get("heldout")
+    if not isinstance(checkpoint, dict) or not isinstance(checkpoint.get("digest"), str):
+        raise ValueError(
+            f"baseline evidence {str(location)!r} has a missing or non-string "
+            "checkpoint.digest"
+        )
+    if not isinstance(heldout_block, dict) or not isinstance(
+        heldout_block.get("document_digest"), str
+    ):
+        raise ValueError(
+            f"baseline evidence {str(location)!r} has a missing or non-string "
+            "heldout.document_digest"
+        )
+    counts = raw.get("counts")
+    if not isinstance(counts, dict) or not all(
+        isinstance(counts.get(source), dict) for source in ("heldout", "public")
+    ):
+        raise ValueError(
+            f"baseline evidence {str(location)!r} has a missing or non-object "
+            "counts.heldout/counts.public"
+        )
+    for source in ("heldout", "public"):
+        side = counts[source]
+        for field in _baseline_count_fields:
+            value = side.get(field)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(
+                    f"baseline evidence {str(location)!r} has a missing or non-integer "
+                    f"counts.{source}.{field}"
+                )
+            if value < 0:
+                raise ValueError(
+                    f"baseline evidence {str(location)!r} has a negative "
+                    f"counts.{source}.{field} ({value})"
+                )
+        if side["weaker_wins"] > side["denominator"]:
+            raise ValueError(
+                f"baseline evidence {str(location)!r} counts counts.{source}.weaker_wins "
+                f"({side['weaker_wins']}) over its own denominator ({side['denominator']})"
+            )
+    retries = raw.get("retries")
+    if not isinstance(retries, list) or not all(
+        isinstance(one, dict) for one in retries
+    ):
+        raise ValueError(
+            f"baseline evidence {str(location)!r} has a missing or non-list retries"
+        )
+    outcome_values = {member.value for member in Outcome}
+    for one in retries:
+        if not isinstance(one.get("task_id"), str):
+            raise ValueError(
+                f"baseline evidence {str(location)!r} has a retry record with a missing "
+                "or non-string task_id"
+            )
+        if one.get("before") not in outcome_values or one.get("after") not in outcome_values:
+            raise ValueError(
+                f"baseline evidence {str(location)!r} has a retry record with an outcome "
+                "that is not one of the declared outcomes"
+            )
+        if isinstance(one.get("retries_used"), bool) or not isinstance(
+            one.get("retries_used"), int
+        ):
+            raise ValueError(
+                f"baseline evidence {str(location)!r} has a retry record with a missing "
+                "or non-integer retries_used"
+            )
+    retry_count = raw.get("retry_count")
+    if isinstance(retry_count, bool) or not isinstance(retry_count, int):
+        raise ValueError(
+            f"baseline evidence {str(location)!r} has a missing or non-integer retry_count"
+        )
+    tool_versions = raw.get("tool_versions")
+    if not isinstance(tool_versions, dict) or not all(
+        isinstance(value, str) for value in tool_versions.values()
+    ):
+        raise ValueError(
+            f"baseline evidence {str(location)!r} has a missing or non-string-valued "
+            "tool_versions"
+        )
+    return raw
+
+
+def _tally_from_counts(counts: Mapping[str, int]) -> Tally:
+    """The writer-input `Tally` reconstructed from one source's six-field counts.
+
+    The evidence schema carries six of the `Tally`'s eleven fields — the six the baseline
+    document publishes (`_BASELINE_COUNT_FIELDS`, by identity) — so those are carried
+    verbatim; the remaining four (`no_diff`, `not_applied`, `out_of_scope`,
+    `not_solved`) are not part of the evidence schema and are never read from this
+    document, and the transport carries them at zero, stated here rather than hidden.
+    """
+    return Tally(
+        candidate="baseline",
+        denominator=counts["denominator"],
+        solved=counts["solved"],
+        covered=counts["covered"],
+        unverified=counts["unverified"],
+        failed=counts["failed"],
+        weaker_wins=counts["weaker_wins"],
+        no_diff=0,
+        not_applied=0,
+        out_of_scope=0,
+        not_solved=0,
+    )
+
+
+def _retry_outcomes(records: Sequence[Mapping[str, Any]]) -> tuple[gate_module.RetryOutcome, ...]:
+    """The writer-input retry records, reconstructed as the gate's own type, by identity.
+
+    The evidence's per-task retry facts (task id, before/after outcome, retries spent and
+    the two hashes) are carried verbatim into `RetryOutcome` — the gate's own dataclass —
+    so the artifact's retry block is a restatement of the evidence, never a re-derivation.
+    """
+    return tuple(
+        gate_module.RetryOutcome(
+            side="baseline",
+            task_id=one["task_id"],
+            before=Outcome(one["before"]),
+            after=Outcome(one["after"]),
+            retries_used=one["retries_used"],
+            prompt_sha256=one.get("prompt_sha256", ""),
+            completion_sha256=one.get("completion_sha256", ""),
+        )
+        for one in records
+    )
+
+
+def _evidence_digest(path: Path) -> str:
+    """The sha256 of the evidence document's bytes — the artifact's pointer, never contents."""
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+#: The zero-shaped six-field counts the declaration door carries: the writer reads none of
+#: its fields when `measured=False` — the declaration document carries no count in any
+#: spelling — and the shape exists only to satisfy the writer's signature with its own type.
+_EMPTY_COUNTS: dict[str, int] = {
+    "denominator": 0,
+    "solved": 0,
+    "unverified": 0,
+    "covered": 0,
+    "failed": 0,
+    "weaker_wins": 0,
+}
+
+
+def render_artifact(
+    *, evidence: Path, out: Path, recorded_on: str, checkpoint: Path
+) -> tuple[Path, Path, Path]:
+    """Render the committed § 3 baseline artifact from a measurement's evidence document.
+
+    The post-run chain's render step (`spec.md` requirement 4): the evidence
+    (`whetstone-baseline-run/1`, read fail-closed by name — never rendered from nothing)
+    fixes the series identity (its two digests) and the counts (its six-field sides), the
+    checkpoint is re-hashed and its provenance read for the base identity, the evidence
+    digest is the sha256 of the evidence's bytes, and the three artifacts are written via
+    the aspect-3 writer by identity — `build_baseline_report`/`write_baseline_report`
+    imported, never copied.
+
+    The measured-once discipline holds on the render side: an artifact already at
+    `out/report.json` for the same series is refused by name (`BaselineAlreadyMeasured`),
+    naming the first artifact, because a rendered baseline is not re-rendered; a
+    **different** series — a changed pinned input — is § 3's legitimate new series,
+    allowed. `out` under a gitignored root is refused by identity
+    (`refuse_committed_out`), before anything is loaded. `recorded_on` is an input, never
+    the clock.
+    """
+    refuse_committed_out(out)
+    document = _read_evidence(evidence)
+    checkpoint_obj = verify_checkpoint(checkpoint)
+    base = _checkpoint_base(checkpoint_obj)
+    series = SeriesIdentity(
+        checkpoint_digest=document["checkpoint"]["digest"],
+        heldout_digest=document["heldout"]["document_digest"],
+    )
+    artifact_path = Path(out) / "report.json"
+    existing: SeriesIdentity | None = (
+        read_series_identity(artifact_path) if artifact_path.exists() else None
+    )
+    if existing is not None and existing == series:
+        raise BaselineAlreadyMeasured(
+            f"baseline series (checkpoint {existing.checkpoint_digest}, held-out document "
+            f"{existing.heldout_digest}) at {str(artifact_path)!r} was already rendered on "
+            f"{_artifact_recorded_on(artifact_path)}; the § 3 baseline is measured once, "
+            "re-measured never, and a changed pinned input is a new series, never a second "
+            "render"
+        )
+    return bakeoff_report.write_baseline_report(
+        bakeoff_report.build_baseline_report(
+            series=series,
+            heldout_tally=_tally_from_counts(document["counts"]["heldout"]),
+            public_tally=_tally_from_counts(document["counts"]["public"]),
+            retries=_retry_outcomes(document["retries"]),
+            retry_count=document["retry_count"],
+            evidence_digest=_evidence_digest(evidence),
+            base=base,
+            recorded_on=recorded_on,
+            tool_versions=document["tool_versions"],
+        ),
+        out,
+    )
+
+
+def render_declaration(*, out: Path, recorded_on: str) -> tuple[Path, Path, Path]:
+    """Write the declaration-only state — the committed artifacts before any measurement.
+
+    The state *before* the operator spends the § 3 measurement (`spec.md` requirement 4):
+    `measured=False` through the writer, holding the "No count is measured here" sentence
+    and no figure in any spelling. This is the pre-run state, committed once, so the
+    measured-once refusal is deliberately NOT applied — the declaration is not a
+    measurement, and re-running it rewrites the same declaration, never a second
+    measurement wearing the name of a first. `out` under a gitignored root is refused by
+    identity: the declaration is a committed artifact, and one git cannot see is one git
+    cannot prove predated the measurement.
+    """
+    refuse_committed_out(out)
+    document = bakeoff_report.build_baseline_report(
+        series=None,
+        heldout_tally=_tally_from_counts(_EMPTY_COUNTS),
+        public_tally=_tally_from_counts(_EMPTY_COUNTS),
+        retries=(),
+        retry_count=0,
+        evidence_digest="",
+        base={},
+        recorded_on=recorded_on,
+        tool_versions={},
+        measured=False,
+    )
+    return bakeoff_report.write_baseline_report(document, out)
+
+
+# --------------------------------------------------------------------------------------------
 # The module door — `python -m whetstone.loop.baseline` (spec.md requirement 6). A completed
 # measurement exits 0 whatever the score: the baseline is the anchor, not a verdict, and
 # coverage is disclosed, never a failure. Refusals exit 2 with the reason named, never a
@@ -736,14 +1022,15 @@ def _counts_payload(tally_obj: Tally) -> dict[str, int]:
 # guard can pin the runbook's flags against it by identity.
 # --------------------------------------------------------------------------------------------
 
-#: Every refusal `measure()` raises that is an **operator's error** rather than a finding:
+#: Every refusal this module raises that is an **operator's error** rather than a finding:
 #: a runs root pointed at a published directory, an `--out` under a gitignored root, an
 #: artifact already at `--out` for this series, a checkpoint that cannot be re-hashed, a
 #: held-out document that cannot be read or whose membership resolves nowhere, a checkpoint
 #: naming a base the weights root does not hold, weights whose provenance does not match
-#: the disk. Collected here so the door maps them to the usage code without a chain of
-#: per-module excepts; `ValueError` closes the tuple — the named refusals first, and a door
-#: that crashes on an unforeseen `ValueError` with a traceback is worse than a named exit-2.
+#: the disk, or an evidence document the render cannot read. Collected here so the door
+#: maps them to the usage code without a chain of per-module excepts; `ValueError` closes
+#: the tuple — the named refusals first, and a door that crashes on an unforeseen
+#: `ValueError` with a traceback is worse than a named exit-2.
 REFUSALS: tuple[type[Exception], ...] = (
     TranscriptNotPrivate,
     OutUnderLocalCorpus,
@@ -800,11 +1087,16 @@ def build_parser() -> argparse.ArgumentParser:
     """The door's argument surface — the one the aspect-4 runbook guard pins by identity.
 
     The spec's full flag set (`spec.md` requirement 6): every writable path is a `Path`,
-    `--tasks` is repeatable, `--timeout` is a float, `--recorded-on` and `--run-id` are
-    required inputs — never defaults from the clock, never a name the operator did not
+    `--tasks` is repeatable, `--timeout` is a float, `--recorded-on` is a required input
+    in every mode — never a default from the clock, never a name the operator did not
     declare — and `--max-tokens` defaults to the bake-off's own `DEFAULT_MAX_TOKENS` **by
-    identity**, never a second number written beside it. All writable paths are expected
-    absolute; that is the runbook guard's property (aspect 4), not this parser's.
+    identity**, never a second number written beside it. The two render modes share the
+    parser with measuring: `--render EVIDENCE` and `--render-declaration OUT` are mutually
+    exclusive with each other, and the door refuses them beside a measuring flag. The
+    measuring flags are enforced as a group by `main` (`parser.error`, the usage code)
+    rather than by `required=True`, because a render-mode command line must be able to
+    name exactly the flags that mode reads. All writable paths are expected absolute; that
+    is the runbook guard's property (aspect 4), not this parser's.
     """
     parser = argparse.ArgumentParser(
         prog="python -m whetstone.loop.baseline",
@@ -813,44 +1105,43 @@ def build_parser() -> argparse.ArgumentParser:
             "untrained base's patches through both verifiers with the gate's retry "
             "discipline, over the declared held-out membership and source A, with the "
             "evidence written to the gitignored runs home and a same-series artifact at "
-            "--out refused by name. No model is loaded by this process boundary alone: "
-            "the engine seam is reached only inside the measurement."
+            "--out refused by name; or render the committed artifact from a measurement's "
+            "evidence (--render EVIDENCE); or write the declaration-only state "
+            "(--render-declaration OUT). No model is loaded by this process boundary "
+            "alone: the engine seam is reached only inside the measurement."
         ),
     )
     parser.add_argument(
-        "--weights", required=True, type=Path, help="the weights root holding the base"
+        "--weights", type=Path, help="the weights root holding the base"
     )
     parser.add_argument(
         "--checkpoint",
-        required=True,
         type=Path,
-        help="the untrained baseline checkpoint to score",
+        help="the untrained baseline checkpoint to score, or re-hash for a render",
     )
     parser.add_argument(
-        "--heldout", required=True, type=Path, help="the committed held-out document"
+        "--heldout", type=Path, help="the committed held-out document"
     )
     parser.add_argument(
         "--tasks",
         action="append",
-        required=True,
         type=Path,
         help="a private task root (repeatable; the roots are unioned)",
     )
     parser.add_argument(
-        "--public", required=True, type=Path, help="source A's task root"
+        "--public", type=Path, help="source A's task root"
     )
     parser.add_argument(
-        "--runs", required=True, type=Path, help="the gitignored evidence home"
+        "--runs", type=Path, help="the gitignored evidence home"
     )
     parser.add_argument(
-        "--workspace", required=True, type=Path, help="the sandboxed work root"
+        "--workspace", type=Path, help="the sandboxed work root"
     )
     parser.add_argument(
-        "--out", required=True, type=Path, help="where a first artifact would sit"
+        "--out", type=Path, help="where a first artifact would sit, or is rendered"
     )
     parser.add_argument(
         "--timeout",
-        required=True,
         type=float,
         help="per-task verification timeout in seconds",
     )
@@ -861,7 +1152,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--run-id",
-        required=True,
         help="the operator-declared run id — the evidence directory's name",
     )
     parser.add_argument("--pool", type=Path, default=None, help="the fetch pool")
@@ -871,23 +1161,124 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MAX_TOKENS,
         help="the generation budget",
     )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--render",
+        type=Path,
+        metavar="EVIDENCE",
+        help=(
+            "render the committed artifact from this evidence document "
+            "(`whetstone-baseline-run/1`); mutually exclusive with measuring"
+        ),
+    )
+    mode.add_argument(
+        "--render-declaration",
+        dest="render_declaration",
+        type=Path,
+        metavar="OUT",
+        help=(
+            "write the declaration-only state — the committed artifacts before any "
+            "measurement — to OUT; mutually exclusive with measuring"
+        ),
+    )
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """The runbook door: `python -m whetstone.loop.baseline`, exit 0 whatever the score.
+def _measure_flags(args: argparse.Namespace) -> dict[str, object]:
+    """The measuring-only flags by their command-line names — the mutual-exclusion check's
+    subject. `--checkpoint`/`--out`/`--recorded-on` are shared with the render modes and
+    are not here."""
+    return {
+        "--weights": args.weights,
+        "--heldout": args.heldout,
+        "--tasks": args.tasks,
+        "--public": args.public,
+        "--runs": args.runs,
+        "--workspace": args.workspace,
+        "--timeout": args.timeout,
+        "--run-id": args.run_id,
+    }
 
-    Parses, runs the one measurement with the engine seam resolved at call time — so a
-    test can substitute the stub engine exactly as the gate's CLI tests substitute
-    `gate.gate_engine` — prints the disclosure, and exits 0. The baseline is the anchor,
-    not a verdict: coverage is disclosed, never a failure (`spec.md` requirement 6). Every
-    named refusal — a same-series artifact at `--out`, a runs root inside `reports/`, an
-    `--out` under a gitignored root, a checkpoint that cannot be re-hashed, a held-out
-    document that cannot be read, a base the weights root does not hold — is exit 2 with
-    the reason named on stderr, never a traceback; argparse's own error path supplies the
-    usage code for a mistyped or incomplete command line.
+
+def _render_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    """One render-mode command line: refuse measuring flags, then render or declare.
+
+    A render mode beside a measuring flag is a command nobody meant, refused with the
+    usage code. `--render` renders the three artifacts from the evidence and prints the
+    artifact paths plus the measured-once wording; `--render-declaration` writes the
+    pre-run committed state and prints its paths. Every named refusal is exit 2 with the
+    reason on stderr, never a traceback.
     """
-    args = build_parser().parse_args(argv)
+    given = [name for name, value in _measure_flags(args).items() if value is not None]
+    if given:
+        parser.error(
+            "--render/--render-declaration are mutually exclusive with measuring; "
+            f"measuring flag {given[0]} was also given"
+        )
+    if args.render is not None:
+        missing = [
+            name
+            for name, value in (("--checkpoint", args.checkpoint), ("--out", args.out))
+            if value is None
+        ]
+        if missing:
+            parser.error(f"{', '.join(missing)} is required with --render")
+        try:
+            rendered = render_artifact(
+                evidence=args.render,
+                out=args.out,
+                recorded_on=args.recorded_on,
+                checkpoint=args.checkpoint,
+            )
+        except REFUSALS as refusal:
+            print(f"whetstone baseline: {refusal}", file=sys.stderr)
+            return 2
+        for path in rendered:
+            print(path)
+        print(
+            "the § 3 baseline is measured once, re-measured never: a rendered baseline is "
+            "not re-rendered"
+        )
+        return 0
+    try:
+        rendered = render_declaration(
+            out=args.render_declaration, recorded_on=args.recorded_on
+        )
+    except REFUSALS as refusal:
+        print(f"whetstone baseline: {refusal}", file=sys.stderr)
+        return 2
+    for path in rendered:
+        print(path)
+    return 0
+
+
+def _measure_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    """The measuring command line: every measuring flag present, one measurement, exit 0.
+
+    The measuring flags are enforced as a group here (`parser.error`, the usage code)
+    rather than by `required=True`, so a render-mode command line may name exactly the
+    flags that mode reads; a measuring command line missing any of them is refused by
+    name. The engine seam is resolved at call time, so a test can substitute the stub
+    engine exactly as the gate's CLI tests substitute `gate.gate_engine`.
+    """
+    missing = [
+        name
+        for name, value in (
+            ("--weights", args.weights),
+            ("--checkpoint", args.checkpoint),
+            ("--heldout", args.heldout),
+            ("--tasks", args.tasks),
+            ("--public", args.public),
+            ("--runs", args.runs),
+            ("--workspace", args.workspace),
+            ("--timeout", args.timeout),
+            ("--run-id", args.run_id),
+            ("--out", args.out),
+        )
+        if value is None
+    ]
+    if missing:
+        parser.error(f"measuring requires {', '.join(missing)}")
     try:
         measurement = measure(
             checkpoint=args.checkpoint,
@@ -913,6 +1304,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
+def main(argv: Sequence[str] | None = None) -> int:
+    """The runbook door: `python -m whetstone.loop.baseline` — measure, render, or declare.
+
+    Parses and dispatches the three modes the parser admits (`spec.md` requirement 6).
+    Measuring exits 0 whatever the score: the baseline is the anchor, not a verdict, and
+    coverage is disclosed, never a failure. Rendering (`--render EVIDENCE`) is the
+    post-run chain's render step: it prints the artifact paths and the measured-once
+    wording and exits 0. Declaring (`--render-declaration OUT`) writes the committed
+    pre-run state and exits 0. Every named refusal — a same-series artifact at `--out`, a
+    runs root inside `reports/`, an `--out` under a gitignored root, an unreadable
+    evidence, a checkpoint that cannot be re-hashed, a held-out document that cannot be
+    read, a base the weights root does not hold — is exit 2 with the reason named on
+    stderr, never a traceback; argparse's own error path supplies the usage code for a
+    mistyped or incomplete command line, and a render mode beside a measuring flag is
+    refused with the same code.
+    """
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.render is not None or args.render_declaration is not None:
+        return _render_main(parser, args)
+    return _measure_main(parser, args)
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
 
@@ -931,6 +1345,8 @@ __all__ = [
     "measure",
     "read_baseline_document",
     "read_series_identity",
+    "render_artifact",
+    "render_declaration",
     "write_evidence",
 ]
 
