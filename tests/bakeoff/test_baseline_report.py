@@ -43,11 +43,15 @@ VERDICTS: dict[Outcome, tuple[Status | None, Status | None]] = {
 #: 12 of 66, four per band; the synthetic set below mirrors that count, not the ids.
 HELDOUT_DENOMINATOR = 12
 
-#: The fabricated series: two digests, nothing else — the measured-once guard's key.
-SERIES = SeriesIdentity(checkpoint_digest="c" * 64, heldout_digest="h" * 64)
-
 #: The pinned base input: a repo id and a revision, stated with § 7.3 open.
 BASE = {"repo_id": "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit", "revision": "main"}
+
+#: The fabricated series: the base identity and the held-out digest — nothing else. The
+#: checkpoint digest is deliberately not here: an untrained checkpoint's digest is the
+#: same constant for every base, so it cannot tell two series apart.
+SERIES = SeriesIdentity(
+    repo_id=BASE["repo_id"], revision=BASE["revision"], heldout_digest="h" * 64
+)
 
 #: The operator-declared date — an input, never the clock.
 RECORDED_ON = "2026-08-26"
@@ -120,7 +124,6 @@ def _document() -> Mapping[str, object]:
         retries=_retries(),
         retry_count=3,
         evidence_digest=EVIDENCE_DIGEST,
-        base=BASE,
         recorded_on=RECORDED_ON,
         tool_versions=TOOL_VERSIONS,
     )
@@ -135,7 +138,6 @@ def _declaration() -> Mapping[str, object]:
         retries=_retries(),
         retry_count=3,
         evidence_digest=EVIDENCE_DIGEST,
-        base=BASE,
         recorded_on=RECORDED_ON,
         tool_versions=TOOL_VERSIONS,
         measured=False,
@@ -223,12 +225,16 @@ def test_the_measured_document_carries_both_sources_and_n() -> None:
         "a digest — never contents"
     )
     assert document["series"] == {
-        "checkpoint_digest": SERIES.checkpoint_digest,
+        "repo_id": BASE["repo_id"],
+        "revision": BASE["revision"],
         "heldout_digest": SERIES.heldout_digest,
-    }, "WHY THIS IS A FAILURE: the series identity is not the two digests"
-    assert document["base"]["repo_id"] == BASE["repo_id"] and document["base"]["revision"] == BASE[
-        "revision"
-    ], "WHY THIS IS A FAILURE: the pinned base input is not recorded"
+    }, "WHY THIS IS A FAILURE: the series identity is not the base identity and the "
+    "held-out digest"
+    assert document["base"] == {"sentence": report._BASELINE_OPEN_BASE_SENTENCE}, (
+        "WHY THIS IS A FAILURE: the base block carries more than the § 7.3-open sentence — "
+        "the repo id and revision are the series' fields, and carrying them twice in a "
+        "sealed document would give a hand edit two places to diverge"
+    )
     assert document["non_comparable"] is True, (
         "WHY THIS IS A FAILURE: the sidecar does not declare the baseline's figures "
         "non-comparable — the machine-readable half of the changed-series ground"
@@ -323,7 +329,6 @@ def test_the_writer_is_pure_and_deterministic(tmp_path: Path) -> None:
         retries=_retries(),
         retry_count=3,
         evidence_digest=EVIDENCE_DIGEST,
-        base=BASE,
         recorded_on="2026-08-27",
         tool_versions=TOOL_VERSIONS,
     )

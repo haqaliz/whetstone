@@ -116,3 +116,8 @@ and retry pieces **by identity**; `report.tally`. Aspect 3 consumes `measure()`'
   environment pins and tool versions are recorded in the artifact's provenance (aspect 3) and
   are part of § 3's pinned inputs, but the *refusal* keys on the two digests; a change to
   either is the § 3 invalidation trigger in code.
+- **Series identity corrected** (2026-08-27): the checkpoint digest is degenerate for
+  untrained checkpoints — `_digest_of(())`, identical for every untrained base — so the
+  series key is exactly `(repo_id, revision, heldout_digest)`, never the checkpoint digest;
+  the evidence records the base identity from the checkpoint's provenance, and a changed
+  base revision is a new series, never a same-series refusal.

@@ -1207,7 +1207,6 @@ def build_baseline_report(
     retries: Sequence[Any],
     retry_count: int,
     evidence_digest: str,
-    base: Mapping[str, str],
     recorded_on: str,
     tool_versions: Mapping[str, str],
     measured: bool = True,
@@ -1216,12 +1215,14 @@ def build_baseline_report(
 
     `PREREGISTRATION.md` § 3 fixes the baseline protocol: the untrained base scored on
     the held-out split, measured once, re-measured never, with provenance beside it. The
-    measured document records the series identity (the two digests the measured-once
-    guard keys on), the base with the § 7.3-open sentence, both sources over their own
-    denominators — never one without the other (`PREREGISTRATION.md:142-143`) — `N`
-    with the pre-registered `_N_SENTENCE` **by identity**, the retry facts, the evidence
-    pointer (a digest, never contents), the tool versions, and the non-comparability
-    sentence naming the four existing homes and what this document is.
+    measured document records the series identity (the base identity and the held-out
+    document digest the measured-once guard keys on — never the checkpoint digest, which
+    is the same constant for every untrained base), the § 7.3-open sentence, both sources
+    over their own denominators — never one without the other
+    (`PREREGISTRATION.md:142-143`) — `N` with the pre-registered `_N_SENTENCE` **by
+    identity**, the retry facts, the evidence pointer (a digest, never contents), the
+    tool versions, and the non-comparability sentence naming the four existing homes and
+    what this document is.
 
     A pure function of its inputs, like the other writers: no clock is read, no ledger is
     opened, and every mapping is serialised in a fixed order, so the same inputs produce
@@ -1249,14 +1250,11 @@ def build_baseline_report(
             "measured": True,
             "recorded_on": recorded_on,
             "series": {
-                "checkpoint_digest": series.checkpoint_digest,
+                "repo_id": series.repo_id,
+                "revision": series.revision,
                 "heldout_digest": series.heldout_digest,
             },
-            "base": {
-                "repo_id": base["repo_id"],
-                "revision": base["revision"],
-                "sentence": _BASELINE_OPEN_BASE_SENTENCE,
-            },
+            "base": {"sentence": _BASELINE_OPEN_BASE_SENTENCE},
             "sides": {
                 "source-b": _baseline_counts(heldout_tally),
                 "source-a": _baseline_counts(public_tally),
@@ -1327,7 +1325,8 @@ def _baseline_markdown(document: Mapping[str, Any]) -> str:
     Each count is rendered over the denominator it was counted on (`PREREGISTRATION.md:
     157` refuses a bare proportion). The declaration state renders the declaration
     sentence and nothing else; the measured state renders both sources, `N` with the
-    pre-registered sentence, the base with the § 7.3-open sentence, the non-comparability
+    pre-registered sentence, the series — the base identity and the held-out document
+    digest — with the § 7.3-open sentence, the non-comparability
     sentence, the evidence digest and the retry facts.
     """
     lines = [
@@ -1357,10 +1356,8 @@ def _baseline_markdown(document: Mapping[str, Any]) -> str:
             f"(`PREREGISTRATION.md:96-100`): "
             f"{_N_SENTENCE.format(count=n['count'])} ({_over(n['count'], n['denominator'])}).",
             "",
-            f"**The base.** `{base['repo_id']}` at `{base['revision']}`. {base['sentence']}",
-            "",
-            f"**The series.** Checkpoint `{series['checkpoint_digest']}`; held-out "
-            f"document `{series['heldout_digest']}`.",
+            f"**The series.** Base `{series['repo_id']}` at `{series['revision']}` on the "
+            f"held-out document `{series['heldout_digest']}`. {base['sentence']}",
             "",
             f"**The evidence.** sha256 `{document['evidence']['digest']}` of the "
             f"`{document['evidence']['schema']}` evidence document — a pointer, never "

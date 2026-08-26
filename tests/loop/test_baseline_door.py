@@ -677,13 +677,14 @@ def _artifact(out: Path, **fields: Any) -> Path:
     """A minimal `whetstone-baseline/1` artifact at `out/report.json`, `fields` applied.
 
     The aspect-3 writer does not exist yet — this is the shape it is committed to, planted
-    by hand: the schema, the two digests that fix the series, and the date the refusal's
-    message names.
+    by hand: the schema, the base identity and the held-out document digest that fix the
+    series, and the date the refusal's message names.
     """
     out.mkdir(parents=True, exist_ok=True)
     document: dict[str, Any] = {
         "schema": baseline.BASELINE_SCHEMA,
         "recorded_on": "2026-08-26",
+        "base": {"repo_id": _BASE, "revision": "rev-one"},
         "checkpoint": {"digest": "c" * 64},
         "heldout": {"document_digest": "h" * 64},
     }
@@ -698,29 +699,31 @@ def test_a_same_series_artifact_is_refused_by_name(tmp_path: Path) -> None:
 
     The artifact is the first measurement — the date it records is the date the refusal
     names — and the current run would be a second measurement of the same series: the same
-    checkpoint and the same held-out document, producing the same measurement by
+    base and the same held-out document, producing the same measurement by
     construction. The refusal fires before a token is generated: the stub is never asked and
     the engine seam is never constructed.
     """
     fixtures = _fixtures(tmp_path)
+    provenance = json.loads(
+        (fixtures["checkpoint"] / "provenance.json").read_text(encoding="utf-8")
+    )
+    heldout_digest = heldout.document_digest_of(
+        json.loads(fixtures["doc"].read_text(encoding="utf-8"))
+    )
     artifact = _artifact(
         tmp_path / "out",
+        base={"repo_id": _BASE, "revision": provenance["base"]["revision"]},
         checkpoint={"digest": fixtures["checkpoint_obj"].digest},
-        heldout={
-            "document_digest": heldout.document_digest_of(
-                json.loads(fixtures["doc"].read_text(encoding="utf-8"))
-            )
-        },
+        heldout={"document_digest": heldout_digest},
     )
 
     with pytest.raises(baseline.BaselineAlreadyMeasured) as refused:
         _measure(fixtures, out=artifact.parent)
 
     assert "2026-08-26" in str(refused.value), refused.value
-    assert fixtures["checkpoint_obj"].digest in str(refused.value), refused.value
-    assert heldout.document_digest_of(
-        json.loads(fixtures["doc"].read_text(encoding="utf-8"))
-    ) in str(refused.value), refused.value
+    assert _BASE in str(refused.value), refused.value
+    assert provenance["base"]["revision"] in str(refused.value), refused.value
+    assert heldout_digest in str(refused.value), refused.value
     assert str(artifact) in str(refused.value), refused.value
     assert fixtures["stub"].asked == [], (
         "WHY THIS IS A FAILURE: the same-series refusal fired after a token was generated. "
@@ -733,20 +736,75 @@ def test_a_same_series_artifact_is_refused_by_name(tmp_path: Path) -> None:
     )
 
 
+def test_two_untrained_bases_are_different_series(tmp_path: Path) -> None:
+    """Two untrained bases at different revisions are different series, though every
+    untrained checkpoint's digest is the same constant (`sha256(b"")`).
+
+    `write_baseline_checkpoint` records no files, so an untrained checkpoint's digest is
+    `_digest_of(())` — identical for every untrained base, whatever the repo id or
+    revision. The measured-once guard keys on the series, and the series cannot be the
+    checkpoint digest: the changed-base-revision case § 3 names as its legitimate new
+    series (`PREREGISTRATION.md:133-135`) would read as a same-series second measurement
+    and be refused. The key is the base identity + the held-out document digest.
+    """
+    fixtures = _fixtures(tmp_path)
+    untrained_digest = hashlib.sha256(b"").hexdigest()
+    heldout_digest = heldout.document_digest_of(
+        json.loads(fixtures["doc"].read_text(encoding="utf-8"))
+    )
+    artifact = _artifact(
+        tmp_path / "out",
+        base={"repo_id": _BASE, "revision": "rev-one"},
+        checkpoint={"digest": untrained_digest},
+        heldout={"document_digest": heldout_digest},
+    )
+
+    measurement, second = _run_measure(tmp_path / "second", out=artifact.parent)
+
+    assert measurement.checkpoint_digest == untrained_digest, (
+        "WHY THIS IS A FAILURE: the fixture checkpoint is not the degenerate untrained "
+        "digest — this test is about two bases that cannot be told apart by digest"
+    )
+    assert second["checkpoint_obj"].digest == untrained_digest
+    evidence = _evidence(measurement)
+    assert evidence["base"]["repo_id"] == _BASE
+    provenance = json.loads(
+        (second["checkpoint"] / "provenance.json").read_text(encoding="utf-8")
+    )
+    assert evidence["base"]["revision"] == provenance["base"]["revision"]
+    assert provenance["base"]["revision"] != "rev-one", (
+        "WHY THIS IS A FAILURE: the two bases share a revision, so this test is not "
+        "about the changed-base case at all"
+    )
+    assert baseline.SeriesIdentity(
+        repo_id=_BASE, revision="rev-one", heldout_digest=heldout_digest
+    ) != baseline.SeriesIdentity(
+        repo_id=_BASE,
+        revision=provenance["base"]["revision"],
+        heldout_digest=heldout_digest,
+    )
+
+
 def test_a_different_series_is_a_new_baseline(tmp_path: Path) -> None:
     """A changed pinned input is § 3's legitimate new series: an artifact naming a different
-    checkpoint digest is allowed, and the evidence records the new digests.
+    base revision is allowed, and the evidence records the new base identity.
 
     `PREREGISTRATION.md:133-135` names this the only circumstance in which a second
     baseline measurement is legitimate — and the change that caused it is recorded, which
-    is exactly what the evidence's own `checkpoint.digest` and
-    `heldout.document_digest` fields are.
+    is exactly what the evidence's own `base.repo_id`/`base.revision` fields are.
     """
-    artifact = _artifact(tmp_path / "out")
+    artifact = _artifact(
+        tmp_path / "out", base={"repo_id": _BASE, "revision": "rev-one"}
+    )
     measurement, _ = _run_measure(tmp_path, out=artifact.parent)
 
     assert measurement.checkpoint_digest != "c" * 64
     evidence = _evidence(measurement)
+    assert evidence["base"]["repo_id"] == _BASE
+    assert evidence["base"]["revision"] != "rev-one", (
+        "WHY THIS IS A FAILURE: the run's base revision equals the artifact's — the "
+        "different-series allowance was not exercised"
+    )
     assert evidence["checkpoint"]["digest"] == measurement.checkpoint_digest
     assert evidence["heldout"]["document_digest"] == measurement.heldout_digest
     assert len(evidence["checkpoint"]["digest"]) == 64
@@ -775,10 +833,11 @@ def test_an_unreadable_artifact_is_refused_never_treated_as_absent(tmp_path: Pat
 
 
 def test_an_artifact_without_the_required_fields_is_refused(tmp_path: Path) -> None:
-    """Schema-valid JSON missing `heldout.document_digest` is refused by name.
+    """Schema-valid JSON missing an identity field is refused by name.
 
-    The identity is the two digests: a document that cannot yield both is not an identity,
-    and a guard that guessed would either refuse the wrong series or admit the right one twice.
+    The identity is the base identity and the held-out digest: a document that cannot
+    yield both is not an identity, and a guard that guessed would either refuse the
+    wrong series or admit the right one twice.
     """
     out = tmp_path / "out"
     _artifact(out, heldout={})
@@ -788,6 +847,15 @@ def test_an_artifact_without_the_required_fields_is_refused(tmp_path: Path) -> N
 
     assert not isinstance(refused.value, baseline.BaselineAlreadyMeasured), refused.value
     assert "heldout.document_digest" in str(refused.value), refused.value
+
+    without_base = tmp_path / "out2"
+    _artifact(without_base, base={})
+
+    with pytest.raises(ValueError) as refused:
+        _run_measure(tmp_path / "second", out=without_base)
+
+    assert not isinstance(refused.value, baseline.BaselineAlreadyMeasured), refused.value
+    assert "base.repo_id" in str(refused.value), refused.value
 
 
 def test_an_artifact_with_the_wrong_schema_is_refused(tmp_path: Path) -> None:
@@ -805,18 +873,30 @@ def test_an_artifact_with_the_wrong_schema_is_refused(tmp_path: Path) -> None:
 
 
 def test_series_identity_equality() -> None:
-    """The series identity is exactly the two digests — nothing else is compared.
+    """The series identity is exactly the base identity and the held-out digest — nothing
+    else is compared.
 
     The environment pins and tool versions are aspect 3's provenance, recorded in the
     artifact and part of § 3's pinned inputs, but they are not the refusal's key: the
     measured-once guard keys on the series, never on the clock and never on the toolchain.
+    The checkpoint digest is not the key either: an untrained checkpoint's digest is the
+    same constant for every base, so it cannot tell two bases apart.
     """
-    first = baseline.SeriesIdentity(checkpoint_digest="a" * 64, heldout_digest="b" * 64)
-    assert first == baseline.SeriesIdentity(checkpoint_digest="a" * 64, heldout_digest="b" * 64)
-    assert first != baseline.SeriesIdentity(checkpoint_digest="a" * 64, heldout_digest="c" * 64)
-    assert first != baseline.SeriesIdentity(checkpoint_digest="c" * 64, heldout_digest="b" * 64)
+    first = baseline.SeriesIdentity(repo_id="r", revision="v1", heldout_digest="b" * 64)
+    assert first == baseline.SeriesIdentity(
+        repo_id="r", revision="v1", heldout_digest="b" * 64
+    )
+    assert first != baseline.SeriesIdentity(
+        repo_id="r", revision="v1", heldout_digest="c" * 64
+    )
+    assert first != baseline.SeriesIdentity(
+        repo_id="r", revision="v2", heldout_digest="b" * 64
+    )
+    assert first != baseline.SeriesIdentity(
+        repo_id="s", revision="v1", heldout_digest="b" * 64
+    )
     assert hash(first) == hash(
-        baseline.SeriesIdentity(checkpoint_digest="a" * 64, heldout_digest="b" * 64)
+        baseline.SeriesIdentity(repo_id="r", revision="v1", heldout_digest="b" * 64)
     )
 
 
@@ -953,8 +1033,12 @@ def test_the_door_exits_two_on_a_refusal(
     """
     fixtures = _fixtures(tmp_path)
     monkeypatch.setattr(baseline, "baseline_engine", fixtures["engine"])
+    provenance = json.loads(
+        (fixtures["checkpoint"] / "provenance.json").read_text(encoding="utf-8")
+    )
     artifact = _artifact(
         fixtures["out"],
+        base={"repo_id": _BASE, "revision": provenance["base"]["revision"]},
         checkpoint={"digest": fixtures["checkpoint_obj"].digest},
         heldout={
             "document_digest": heldout.document_digest_of(
@@ -1124,9 +1208,10 @@ def test_render_writes_the_three_artifacts_from_evidence(tmp_path: Path) -> None
 
     The evidence is the real measurement's own document — not a hand-built stand-in — so
     the render is exercised over the document the operator's post-run chain actually
-    consumes. The artifact's series is the evidence's own two digests, its sides are the
+    consumes. The artifact's series is the evidence's own recorded base identity and
+    held-out digest, its sides are the
     evidence's six-field counts verbatim, the evidence pointer is the sha256 of the
-    evidence's bytes (never contents), and the base is the checkpoint's provenance.
+    evidence's bytes (never contents), and the base block carries the § 7.3-open sentence.
     """
     measurement, fixtures = _run_measure(tmp_path / "measure")
     home = tmp_path / "home"
@@ -1145,7 +1230,8 @@ def test_render_writes_the_three_artifacts_from_evidence(tmp_path: Path) -> None
     payload = json.loads(rendered[1].read_text(encoding="utf-8"))
     assert payload["schema"] == baseline.BASELINE_SCHEMA
     assert payload["measured"] is True
-    assert payload["series"]["checkpoint_digest"] == evidence_document["checkpoint"]["digest"]
+    assert payload["series"]["repo_id"] == evidence_document["base"]["repo_id"]
+    assert payload["series"]["revision"] == evidence_document["base"]["revision"]
     assert payload["series"]["heldout_digest"] == evidence_document["heldout"][
         "document_digest"
     ]
@@ -1154,17 +1240,20 @@ def test_render_writes_the_three_artifacts_from_evidence(tmp_path: Path) -> None
     assert payload["evidence"]["digest"] == hashlib.sha256(
         measurement.evidence_path.read_bytes()
     ).hexdigest()
-    assert payload["base"]["repo_id"] == _BASE
+    assert payload["series"]["repo_id"] == _BASE
     provenance = json.loads(
         (fixtures["checkpoint"] / "provenance.json").read_text(encoding="utf-8")
     )
-    assert payload["base"]["revision"] == provenance["base"]["revision"]
+    assert payload["series"]["revision"] == provenance["base"]["revision"]
+    assert "§ 7.3" in payload["base"]["sentence"]
 
     loaded = baseline.read_baseline_document(rendered[1])
     assert loaded.series == baseline.SeriesIdentity(
-        checkpoint_digest=evidence_document["checkpoint"]["digest"],
+        repo_id=evidence_document["base"]["repo_id"],
+        revision=evidence_document["base"]["revision"],
         heldout_digest=evidence_document["heldout"]["document_digest"],
     )
+    assert loaded.base == payload["base"]
     assert loaded.sides == payload["sides"]
     assert loaded.evidence == payload["evidence"]
     assert loaded.n == payload["n"]
@@ -1290,9 +1379,10 @@ def test_render_refuses_a_same_series_rerender(tmp_path: Path) -> None:
 def test_render_allows_a_different_series(tmp_path: Path) -> None:
     """A changed pinned input is § 3's legitimate new series on the render side too.
 
-    An evidence naming a different checkpoint digest is a new series, rendered into the
+    An evidence naming a different base revision is a new series, rendered into the
     same home the way `measure()` permits a different series — never refused by the
-    same-series guard, which keys on the two digests, never on the clock.
+    same-series guard, which keys on the base identity and the held-out digest, never on
+    the clock.
     """
     measurement, fixtures = _run_measure(tmp_path / "measure")
     home = tmp_path / "home"
@@ -1306,7 +1396,7 @@ def test_render_allows_a_different_series(tmp_path: Path) -> None:
     different = tmp_path / "different" / "evidence.json"
     different.parent.mkdir(parents=True)
     document = _evidence(measurement)
-    document["checkpoint"]["digest"] = "c" * 64
+    document["base"]["revision"] = "other-rev"
     different.write_text(
         json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -1318,7 +1408,7 @@ def test_render_allows_a_different_series(tmp_path: Path) -> None:
         checkpoint=fixtures["checkpoint"],
     )
     payload = json.loads(rendered[1].read_text(encoding="utf-8"))
-    assert payload["series"]["checkpoint_digest"] == "c" * 64
+    assert payload["series"]["revision"] == "other-rev"
 
 
 def test_the_door_rejects_render_and_measure_together(tmp_path: Path) -> None:

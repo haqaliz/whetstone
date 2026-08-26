@@ -26,17 +26,22 @@ library.
 
 The measured-once guard (`spec.md` requirement 5) is the write side of this door's reason to
 exist. `read_series_identity` reads the committed artifact's series identity — its schema
-(`BASELINE_SCHEMA`), the checkpoint digest and the held-out document digest, nothing else —
+(`BASELINE_SCHEMA`), the base identity and the held-out document digest, nothing else —
 fail-closed: an artifact that cannot be read is refused by name, never treated as absent.
 `measure()` refuses a second measurement of the same series (`BaselineAlreadyMeasured`),
-keyed on the two digests, never on the clock; a **different** series — a changed pinned
+keyed on the series, never on the clock; a **different** series — a changed pinned
 input, e.g. a new base revision or a new held-out split — is § 3's legitimate new series
 (`PREREGISTRATION.md:133-135`), allowed, with the change recorded in the new evidence.
+The series key is the base identity (`repo_id`/`revision`, from the checkpoint's own
+provenance) plus the held-out document digest, never the checkpoint digest: an untrained
+checkpoint records no files, so its digest is `_digest_of(())` — the same constant for
+every untrained base — and a key that cannot tell two bases apart would refuse the
+changed-base revision § 3 names as its legitimate new series.
 
 The render door (`spec.md` requirement 4) is the post-run chain's committed step:
 `render_artifact` reads a measurement's evidence document (`whetstone-baseline-run/1`,
 fail-closed by name — never rendered from nothing), re-hashes the checkpoint and reads the
-base identity from its provenance (`_checkpoint_base`, the gate's own read, by identity),
+series identity from the evidence's recorded base identity and held-out document digest,
 computes the evidence digest (sha256 of the evidence's bytes — a pointer, never contents),
 and writes the three artifacts through the aspect-3 writer by identity. The measured-once
 discipline holds on the render side too — an artifact already rendered for this series is
@@ -105,9 +110,10 @@ RETRY_COUNT = gate_module.RETRY_COUNT
 #: The refusal for a checkpoint naming a base the weights root does not hold, by identity.
 NoBaseWeights = gate_module.NoBaseWeights
 
-#: The base a checkpoint's provenance names — the gate's own read, by identity. The render
-#: door re-hashes the checkpoint first and reads the base identity from its provenance
-#: with this function, exactly as `measure()` resolves the base it scores.
+#: The base a checkpoint's provenance names — the gate's own read, by identity. The
+#: measure door reads the series' base identity from the checkpoint's provenance with
+#: this function, exactly as the gate reads the base it loads; the evidence records the
+#: same identity at write time, and the render door reads it back from the evidence.
 _checkpoint_base = gate_module._checkpoint_base
 
 #: The held-out document's loader and digest, the private-root refusal, and the `--out`
@@ -148,18 +154,26 @@ BASELINE_SCHEMA = "whetstone-baseline/1"
 
 @dataclass(frozen=True)
 class SeriesIdentity:
-    """The series a baseline measurement belongs to: exactly the two digests.
+    """The series a baseline measurement belongs to: exactly the base identity and the
+    held-out document digest.
 
     `PREREGISTRATION.md` § 3's baseline is measured once, re-measured never, and the series
-    is what "once" keys on — the checkpoint's re-hashed digest and the held-out document's
-    digest, nothing else. The environment pins and tool versions are part of § 3's pinned
-    inputs and are recorded in the artifact's provenance; they are provenance, never the
-    refusal's key. `recorded_on` is an input to the refusal's message, never part of the
-    identity — the clock is not the series.
+    is what "once" keys on — the base's repo id and revision and the held-out document's
+    digest, nothing else. The checkpoint digest is deliberately NOT part of the identity:
+    an untrained checkpoint records no files, so its digest is `_digest_of(())` — the same
+    constant for every untrained base, whatever the repo id or revision — and a series
+    keyed on it could not tell two bases apart, refusing the changed-base-revision new
+    series § 3 names (`PREREGISTRATION.md:133-135`). The environment pins and tool
+    versions are part of § 3's pinned inputs and are recorded in the artifact's
+    provenance; they are provenance, never the refusal's key. `recorded_on` is an input to
+    the refusal's message, never part of the identity — the clock is not the series.
     """
 
-    #: The re-hashed checkpoint's digest.
-    checkpoint_digest: str
+    #: The base's repo id — the checkpoint's provenance, read by identity.
+    repo_id: str
+
+    #: The base's revision — the checkpoint's provenance, read by identity.
+    revision: str
 
     #: The held-out document's digest, recomputed from the payload the loader accepted.
     heldout_digest: str
@@ -169,12 +183,12 @@ class BaselineAlreadyMeasured(ValueError):
     """A second measurement of the same baseline series, refused by name.
 
     The § 3 baseline is measured once, re-measured never (`PREREGISTRATION.md:129-135`): the
-    same checkpoint and the same held-out split produce the same measurement by
-    construction, so a second one would be the first measurement wearing a second date. A
-    **changed** pinned input is the only legitimate second measurement, and it is a new
-    series, never an extension of the old one. The key is the series — the two digests —
-    never the clock: this refusal fires on what was measured and over what, not on how much
-    time passed.
+    same base and the same held-out split produce the same measurement by construction, so a
+    second one would be the first measurement wearing a second date. A **changed** pinned
+    input is the only legitimate second measurement, and it is a new series, never an
+    extension of the old one. The key is the series — the base identity and the held-out
+    document digest — never the clock: this refusal fires on what was measured and over
+    what, not on how much time passed.
     """
 
 
@@ -185,15 +199,18 @@ def read_series_identity(path: Path) -> SeriesIdentity:
     that half-parses could be the same series, and a measurement that read it as absent
     would be a second measurement wearing the name of a first. The refusals are named — an
     unreadable file, a non-object document, a wrong or missing `schema`, a missing or
-    non-string digest — and the returned identity is exactly the two digests: `recorded_on`
-    is the refusal message's input, never the identity's.
+    non-string identity field — and the returned identity is exactly the base identity and
+    the held-out document digest: `recorded_on` is the refusal message's input, never the
+    identity's.
 
-    Two spellings of the two digests are read, because the series identity exists in two
-    documents: the evidence's `checkpoint.digest`/`heldout.document_digest` (the aspect-2
-    shape the measured-once guard reads at `--out`) and the committed artifact's
-    `series.checkpoint_digest`/`series.heldout_digest` (aspect 3's writer). The loader of
-    the committed artifact composes this function by identity on the artifact's path, so
-    the artifact spelling must be readable here; the evidence spelling is unchanged.
+    Two spellings of the three identity fields are read, because the series identity exists
+    in two documents: the evidence's `base.repo_id`/`base.revision`/`heldout.document_digest`
+    (the aspect-2 shape the measured-once guard reads at `--out`, the evidence writer
+    recording the base identity from the checkpoint's provenance) and the committed
+    artifact's `series.repo_id`/`series.revision`/`series.heldout_digest` (aspect 3's
+    writer). The loader of the committed artifact composes this function by identity on the
+    artifact's path, so the artifact spelling must be readable here; the evidence spelling
+    is unchanged.
     """
     location = Path(path)
     try:
@@ -213,13 +230,18 @@ def read_series_identity(path: Path) -> SeriesIdentity:
             f"but this module reads {BASELINE_SCHEMA!r}; an old-schema artifact fails decode "
             "rather than defaulting"
         )
-    checkpoint = raw.get("checkpoint")
+    base_block = raw.get("base")
     heldout_raw = raw.get("heldout")
-    if isinstance(checkpoint, dict) and isinstance(heldout_raw, dict):
-        if not isinstance(checkpoint.get("digest"), str):
+    if isinstance(base_block, dict) and isinstance(heldout_raw, dict):
+        if not isinstance(base_block.get("repo_id"), str):
             raise ValueError(
                 f"baseline artifact {str(location)!r} has a missing or non-string "
-                "checkpoint.digest"
+                "base.repo_id"
+            )
+        if not isinstance(base_block.get("revision"), str):
+            raise ValueError(
+                f"baseline artifact {str(location)!r} has a missing or non-string "
+                "base.revision"
             )
         if not isinstance(heldout_raw.get("document_digest"), str):
             raise ValueError(
@@ -227,15 +249,21 @@ def read_series_identity(path: Path) -> SeriesIdentity:
                 "heldout.document_digest"
             )
         return SeriesIdentity(
-            checkpoint_digest=checkpoint["digest"],
+            repo_id=base_block["repo_id"],
+            revision=base_block["revision"],
             heldout_digest=heldout_raw["document_digest"],
         )
     series_block = raw.get("series")
     if isinstance(series_block, dict):
-        if not isinstance(series_block.get("checkpoint_digest"), str):
+        if not isinstance(series_block.get("repo_id"), str):
             raise ValueError(
                 f"baseline artifact {str(location)!r} has a missing or non-string "
-                "series.checkpoint_digest"
+                "series.repo_id"
+            )
+        if not isinstance(series_block.get("revision"), str):
+            raise ValueError(
+                f"baseline artifact {str(location)!r} has a missing or non-string "
+                "series.revision"
             )
         if not isinstance(series_block.get("heldout_digest"), str):
             raise ValueError(
@@ -243,13 +271,14 @@ def read_series_identity(path: Path) -> SeriesIdentity:
                 "series.heldout_digest"
             )
         return SeriesIdentity(
-            checkpoint_digest=series_block["checkpoint_digest"],
+            repo_id=series_block["repo_id"],
+            revision=series_block["revision"],
             heldout_digest=series_block["heldout_digest"],
         )
     raise ValueError(
         f"baseline artifact {str(location)!r} has no readable series identity: neither "
-        "checkpoint.digest/heldout.document_digest nor series.checkpoint_digest/"
-        "series.heldout_digest is present"
+        "base.repo_id/base.revision/heldout.document_digest nor series.repo_id/"
+        "series.revision/series.heldout_digest is present"
     )
 
 
@@ -301,10 +330,10 @@ class BaselineDocument:
     #: The operator-declared date — an input, never the clock.
     recorded_on: str
 
-    #: The series identity — the two digests the measured-once guard keys on.
+    #: The series identity — the base identity and the held-out digest the guard keys on.
     series: SeriesIdentity | None
 
-    #: The pinned base input and the § 7.3-open sentence, verbatim.
+    #: The § 7.3-open sentence about the base, verbatim — the pinned base input is the series.
     base: Mapping[str, str] | None
 
     #: Both sources' six-field counts, over their own denominators.
@@ -596,16 +625,19 @@ def measure(
     checkpoint_obj = verify_checkpoint(checkpoint)
     fetched = load_weights(weights)
     base = _base_for(checkpoint_obj, fetched, "baseline")
+    base_identity = _checkpoint_base(checkpoint_obj)
 
     if existing is not None and existing == SeriesIdentity(
-        checkpoint_digest=checkpoint_obj.digest, heldout_digest=heldout_digest
+        repo_id=base_identity["repo_id"],
+        revision=base_identity["revision"],
+        heldout_digest=heldout_digest,
     ):
         raise BaselineAlreadyMeasured(
-            f"baseline series (checkpoint {existing.checkpoint_digest}, held-out document "
-            f"{existing.heldout_digest}) at {str(artifact_path)!r} was already measured on "
-            f"{_artifact_recorded_on(artifact_path)}; the § 3 baseline is measured once, "
-            "re-measured never, and a changed pinned input is a new series, never a second "
-            "measurement"
+            f"baseline series (base {existing.repo_id} at {existing.revision}, held-out "
+            f"document {existing.heldout_digest}) at {str(artifact_path)!r} was already "
+            f"measured on {_artifact_recorded_on(artifact_path)}; the § 3 baseline is "
+            "measured once, re-measured never, and a changed pinned input is a new series, "
+            "never a second measurement"
         )
 
     recorder = _CompletionRecorder(engine(base, checkpoint_obj, max_tokens))
@@ -643,6 +675,8 @@ def measure(
     evidence = write_evidence(
         path=runs / run_id / "evidence.json",
         recorded_on=recorded_on,
+        repo_id=base_identity["repo_id"],
+        revision=base_identity["revision"],
         checkpoint_digest=checkpoint_obj.digest,
         heldout_digest=heldout_digest,
         rollouts=post_retry,
@@ -668,6 +702,8 @@ def write_evidence(
     *,
     path: Path,
     recorded_on: str,
+    repo_id: str,
+    revision: str,
     checkpoint_digest: str,
     heldout_digest: str,
     rollouts: Sequence[Rollout],
@@ -678,7 +714,8 @@ def write_evidence(
 ) -> Path:
     """Write the evidence document — schema `whetstone-baseline-run/1` — deterministically.
 
-    Local evidence, never published: hashes and verdicts only. Each rollout carries the
+    Local evidence, never published: the base identity (the checkpoint's own provenance,
+    read by identity), hashes and verdicts only. Each rollout carries the
     task id, the outcome, both verifiers' statuses, the prompt's hash, the first attempt's
     completion hash (the recorder's own, by identity) and the three wall-clock fields — a
     prompt, a completion or a patch text is never stored, so a source-B task's contents
@@ -694,6 +731,7 @@ def write_evidence(
     document = {
         "schema": EVIDENCE_SCHEMA,
         "recorded_on": recorded_on,
+        "base": {"repo_id": repo_id, "revision": revision},
         "checkpoint": {"digest": checkpoint_digest},
         "heldout": {"document_digest": heldout_digest},
         "rollouts": [
@@ -760,7 +798,8 @@ def _read_evidence(path: Path) -> dict[str, Any]:
 
     The render never produces an artifact from nothing: a missing, unreadable or
     wrong-schema evidence document is refused by name, and so is a schema-valid document
-    missing a field the render reads — the series digests, both sources' six-field counts
+    missing a field the render reads — the series identity's base block and held-out
+    document digest, both sources' six-field counts
     (integers, non-negative, `weaker_wins` within its own denominator), the per-task retry
     records, the declared `R` and the tool versions. Each refusal is one sentence naming
     the file; an evidence that half-parses is refused, never rendered past.
@@ -785,6 +824,7 @@ def _read_evidence(path: Path) -> dict[str, Any]:
         )
     checkpoint = raw.get("checkpoint")
     heldout_block = raw.get("heldout")
+    base_block = raw.get("base")
     if not isinstance(checkpoint, dict) or not isinstance(checkpoint.get("digest"), str):
         raise ValueError(
             f"baseline evidence {str(location)!r} has a missing or non-string "
@@ -796,6 +836,15 @@ def _read_evidence(path: Path) -> dict[str, Any]:
         raise ValueError(
             f"baseline evidence {str(location)!r} has a missing or non-string "
             "heldout.document_digest"
+        )
+    if not isinstance(base_block, dict) or not isinstance(base_block.get("repo_id"), str):
+        raise ValueError(
+            f"baseline evidence {str(location)!r} has a missing or non-string base.repo_id"
+        )
+    if not isinstance(base_block.get("revision"), str):
+        raise ValueError(
+            f"baseline evidence {str(location)!r} has a missing or non-string "
+            "base.revision"
         )
     counts = raw.get("counts")
     if not isinstance(counts, dict) or not all(
@@ -936,8 +985,9 @@ def render_artifact(
 
     The post-run chain's render step (`spec.md` requirement 4): the evidence
     (`whetstone-baseline-run/1`, read fail-closed by name — never rendered from nothing)
-    fixes the series identity (its two digests) and the counts (its six-field sides), the
-    checkpoint is re-hashed and its provenance read for the base identity, the evidence
+    fixes the series identity (its recorded base identity and held-out document digest)
+    and the counts (its six-field sides), the
+    checkpoint is re-hashed, the evidence
     digest is the sha256 of the evidence's bytes, and the three artifacts are written via
     the aspect-3 writer by identity — `build_baseline_report`/`write_baseline_report`
     imported, never copied.
@@ -952,10 +1002,13 @@ def render_artifact(
     """
     refuse_committed_out(out)
     document = _read_evidence(evidence)
-    checkpoint_obj = verify_checkpoint(checkpoint)
-    base = _checkpoint_base(checkpoint_obj)
+    # The render's `--checkpoint` still names the measured checkpoint, re-hashed like the
+    # measure door re-hashes it: a checkpoint that cannot be verified is refused by name
+    # before anything renders, never rendered past.
+    verify_checkpoint(checkpoint)
     series = SeriesIdentity(
-        checkpoint_digest=document["checkpoint"]["digest"],
+        repo_id=document["base"]["repo_id"],
+        revision=document["base"]["revision"],
         heldout_digest=document["heldout"]["document_digest"],
     )
     artifact_path = Path(out) / "report.json"
@@ -964,11 +1017,11 @@ def render_artifact(
     )
     if existing is not None and existing == series:
         raise BaselineAlreadyMeasured(
-            f"baseline series (checkpoint {existing.checkpoint_digest}, held-out document "
-            f"{existing.heldout_digest}) at {str(artifact_path)!r} was already rendered on "
-            f"{_artifact_recorded_on(artifact_path)}; the § 3 baseline is measured once, "
-            "re-measured never, and a changed pinned input is a new series, never a second "
-            "render"
+            f"baseline series (base {existing.repo_id} at {existing.revision}, held-out "
+            f"document {existing.heldout_digest}) at {str(artifact_path)!r} was already "
+            f"rendered on {_artifact_recorded_on(artifact_path)}; the § 3 baseline is "
+            "measured once, re-measured never, and a changed pinned input is a new series, "
+            "never a second render"
         )
     return bakeoff_report.write_baseline_report(
         bakeoff_report.build_baseline_report(
@@ -978,7 +1031,6 @@ def render_artifact(
             retries=_retry_outcomes(document["retries"]),
             retry_count=document["retry_count"],
             evidence_digest=_evidence_digest(evidence),
-            base=base,
             recorded_on=recorded_on,
             tool_versions=document["tool_versions"],
         ),
@@ -1006,7 +1058,6 @@ def render_declaration(*, out: Path, recorded_on: str) -> tuple[Path, Path, Path
         retries=(),
         retry_count=0,
         evidence_digest="",
-        base={},
         recorded_on=recorded_on,
         tool_versions={},
         measured=False,
@@ -1079,7 +1130,7 @@ def disclosure(measurement: BaselineMeasurement) -> tuple[str, ...]:
         "still without a verdict",
         f"evidence: {measurement.evidence_path}",
         "the § 3 baseline is measured once, re-measured never: a second measurement of this "
-        "series (this checkpoint and this held-out document) is refused by name",
+        "series (this base at this revision and this held-out document) is refused by name",
     )
 
 
