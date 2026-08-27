@@ -9,6 +9,57 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [0.10.0] - 2026-08-27
+
+### Added
+
+- **The honest-number report — P4's second slice** (`docs/planning/honest-number-report/`,
+  merged as PR #18). The pre-registered § 4 shape now has machinery and a home: the document
+  the launch path's "first honest number" lives in, built before the operator chain renders
+  into it (`docs/ROADMAP.md` § 12). Five aspects:
+  - **promotion-record-n**: the gate's promotion record now carries the final side's `N` —
+    `SideCounts.weaker_wins`, recorded at scoring time as `report.tally`'s definition by
+    identity — and gained its long-anticipated fail-closed reader (`read_promotion_record`):
+    wrong schema, unknown fields, counts that don't sum to the denominator,
+    `weaker_wins > denominator`, and a record missing the field are each refused by name,
+    never defaulted.
+  - **report-writer**: `build_honest_number_report`/`write_honest_number_report` (schema
+    `whetstone-honest-number/1`) render the § 4 shape — `+a of b held-out tasks (baseline c
+    of b, final d of b) / coverage e of b / N: f at baseline, g at final` — for both sources,
+    source A per-instance never a rate, every rate carrying its denominator, zero or negative
+    deltas rendered as plainly as positive ones. Whose counts are "final" is the gate
+    decision's function: promoted → candidate, rejected → incumbent (the candidate disclosed
+    as the rejected attempt), UNVERIFIED → no headline, "no comparison was made". The shared
+    helpers are reused by identity, the output is byte-identical across invocations and
+    processes, and the declaration state ("No count is measured here: the report has not
+    run.") is writer-generated.
+  - **report-door**: `python -m whetstone.loop.honest_report` composes the baseline loader,
+    the record reader, `verify_checkpoint` and the writer by identity, and refuses every
+    half-truth render by name — an unmeasured baseline, missing evidence, a failed re-hash,
+    series disagreement (a delta across a changed pinned input is not a delta),
+    candidate/incumbent base disagreement, a same-series artifact already at `--out`, and a
+    gitignored `--out`. The harness-reproduces-the-number check (P4's exit criterion 3) is
+    proven at the count level: the report is a pure function of the two sealed evidence
+    documents, byte-equal to the baseline artifact's own figures.
+  - **amendment-and-home**: `PREREGISTRATION.md` § 10.9 (Type 2, 2026-08-27) discloses the
+    final side's generation contract — the loop's seeded categorical sampler — before any
+    figure existed, and declares `reports/honest-number/` the only home of the delta/final
+    series; the one-home guard moved a sixth time on the changed-series argument, with both
+    disjointness exceptions argued (the loader-by-identity baseline figures and the
+    ledger-derived funnel figures); the home holds the declaration-only artifacts, committed
+    before any count.
+  - **report-runbook**: the operator's sheet for the render step (behind the first gated
+    evaluation, after the baseline spend and the two nights), held by
+    `tests/test_honest_number_runbook_guards.py` — ten properties, flags pinned to the
+    shipped parser by identity, watched failing against a wrong stub where nine of ten
+    refused it.
+
+  **The report is unspent**: `reports/honest-number/` holds the declaration-only state until
+  the operator chain completes (§ 7.3 amendment → baseline spend → night #1 → night #2 →
+  first gated evaluation → render → finding). The reward path (`src/whetstone/verify/`,
+  `patch.py`, `attribution.py`) is byte-untouched and the partition guard still holds exactly
+  three edges.
+
 ## [0.9.0] - 2026-08-26
 
 ### Added
