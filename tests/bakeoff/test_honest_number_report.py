@@ -22,8 +22,12 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
+import subprocess
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+
+import pytest
 
 from whetstone.bakeoff import report
 from whetstone.bakeoff.report import (
@@ -537,5 +541,145 @@ def test_the_writer_is_deterministic_in_process(tmp_path: Path) -> None:
             f"WHY THIS IS A FAILURE: {one.name} ignores the declared date — "
             "`recorded_on` must be an input, never a clock reading, and a changed input "
             "must change the bytes"
+        )
+
+
+def _payload() -> str:
+    """The JSON sidecar for the standard promoted fixture. Called in and out of process."""
+    return build_honest_number_report(_input("promoted")).payload
+
+
+def test_the_same_inputs_produce_a_byte_identical_payload_across_processes() -> None:
+    """Twice in this process, and twice more in fresh ones under different hash seeds.
+
+    A report that differs run to run cannot be the committed evidence for a decision,
+    because a reader who regenerates it and gets different bytes has no way to tell a
+    re-render from a re-measurement. The subprocess half is not ceremony: mapping
+    iteration order and set iteration order are the two things that vary across
+    processes and not within one, and `PYTHONHASHSEED` is what makes that variation
+    actually happen rather than merely be possible.
+    """
+    program = (
+        f"import sys; sys.path.insert(0, {str(REPO_ROOT / 'tests')!r});"
+        "from bakeoff.test_honest_number_report import _payload; sys.stdout.write(_payload())"
+    )
+    outputs = {
+        seed: subprocess.run(
+            [sys.executable, "-c", program],
+            capture_output=True,
+            check=True,
+            text=True,
+            env={"PATH": "/usr/bin:/bin", "PYTHONHASHSEED": seed},
+        ).stdout
+        for seed in ("0", "1")
+    }
+    assert outputs["0"] == outputs["1"] == _payload(), (
+        "WHY THIS IS A FAILURE: the sidecar's bytes depend on the process that produced "
+        "them, so some mapping or set is being serialised in iteration order. Sort it: "
+        "the report is a committed artefact and its diff must mean something"
+    )
+
+
+def test_the_honest_number_writer_reuses_the_shared_helpers_by_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The writer renders through the report module's own helpers — a copy would not feel a patch.
+
+    The by-identity discipline asserted `is`: `build_honest_number_report` calls the
+    report module's own `_row`, `_over`, `_contract_fields` and `_contract_block` by
+    name, so a re-implementation (a copy) could never have been swapped for the module's
+    own objects. The patch is the proof: replacing one helper's binding at the module
+    changes the writer's output, which only holds when the writer resolves the helper
+    from the module rather than carrying a copy of it.
+    """
+    import whetstone.bakeoff.report as report_module
+
+    helpers = {
+        "_row": lambda label, counts, pick: "| patched-row |",
+        "_over": lambda count, denominator: "patched-over",
+        "_contract_fields": lambda contract: "patched-fields",
+        "_contract_block": lambda contract: {"patched": True},
+    }
+    for name, replacement in helpers.items():
+        monkeypatch.setattr(report_module, name, replacement)
+        document = build_honest_number_report(_input("promoted"))
+        assert "patched" in document.markdown or "patched" in document.payload, (
+            f"WHY THIS IS A FAILURE: patching the module's own {name} did not change "
+            "the writer's output, so the writer carries a copy of the helper rather "
+            "than resolving it by identity"
+        )
+        monkeypatch.undo()
+
+
+def test_the_n_counts_are_the_tally_definition_by_identity() -> None:
+    """The `N` figures are `report.tally`'s `weaker_wins`, never a re-implementation.
+
+    `PREREGISTRATION.md:96-100` defines `N` as `count(rollouts where WEAK == PASS and
+    STRICT == FAIL)`, and `tally` is the single place that count is defined — the
+    fixture derives every side's counts through it over the same synthetic records, and
+    the document renders exactly those `weaker_wins` values with the pre-registered
+    sentence, never a re-derived number and never a new spelling.
+    """
+    counted = report.tally(
+        "candidate",
+        [
+            _rollout("candidate", f"n-{index}", outcome)
+            for index, outcome in enumerate(CANDIDATE_HELDOUT, start=1)
+        ],
+    )
+    document = build_honest_number_report(_input("promoted"))
+    assert counted.weaker_wins == 2, (
+        "WHY THIS IS A FAILURE: the fixture's `N` is not what `tally` counts over the "
+        "same records — the test's own definition has drifted from the single one"
+    )
+    assert "N: 1 at baseline, 2 at final" in document.markdown, (
+        "WHY THIS IS A FAILURE: the headline's `N` figures are not the tally definition's "
+        "`weaker_wins` for the baseline and the final side"
+    )
+    assert (
+        "- final: 2 rollouts a weaker check would have scored as wins. (2 of 12)"
+        in document.markdown
+    ), (
+        "WHY THIS IS A FAILURE: the final `N` sentence is not the pre-registered one "
+        "over its denominator"
+    )
+
+
+def test_the_locality_canary_holds_donor_text_out_of_every_artifact(tmp_path: Path) -> None:
+    """Planted donor source text reaches no artifact: counts, verdicts, provenance only.
+
+    The document may carry counts, verdicts and provenance — never task contents, never
+    patch content. The canary plants a distinctive donor source line into the input's
+    three most plausible smuggling vectors — an extra key in a side's counts, an extra
+    key in the provenance, an extra key in a retry fact — and asserts the line reaches
+    none of the three written artifacts.
+    """
+    donor = "def donor_kept_out_of_the_report(): return 0xC0FFEE  # donor-a only"
+    sides = _sides()
+    smuggled_sides = {
+        "baseline": {
+            "source-b": {**sides["baseline"]["source-b"], "task_contents": donor},
+            "source-a": sides["baseline"]["source-a"],
+        },
+        "candidate": sides["candidate"],
+        "incumbent": sides["incumbent"],
+    }
+    smuggled_provenance = {
+        **PROVENANCE,
+        "donor_note": donor,
+        "retries": [{**PROVENANCE["retries"][0], "completion_sha256": donor}],
+    }
+    smuggled = dataclasses.replace(
+        _input("promoted", sides=smuggled_sides), provenance=smuggled_provenance
+    )
+    written = write_honest_number_report(
+        build_honest_number_report(smuggled), tmp_path / "home"
+    )
+
+    for artifact in written:
+        assert donor not in Path(artifact).read_text(encoding="utf-8"), (
+            f"WHY THIS IS A FAILURE: {artifact.name} carries the planted donor source "
+            "line — a document that can hold task contents is a document that will "
+            "eventually publish one"
         )
 
