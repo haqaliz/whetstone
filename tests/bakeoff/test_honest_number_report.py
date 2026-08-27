@@ -847,6 +847,121 @@ def test_the_honest_number_report_restates_no_figure_from_an_existing_home(
     )
 
 
+def _committed_home_figures() -> set[tuple[str, str]]:
+    """Every `N of M` figure in the five committed homes' fifteen artifacts."""
+    figures: set[tuple[str, str]] = set()
+    for directory in (
+        "baseline",
+        "format-hardening",
+        "easier-stratum",
+        "larger-base",
+        "baseline-measurement",
+    ):
+        for name in ("report.md", "report.json", "cost.json"):
+            artifact = (REPO_ROOT / "reports" / directory / name).read_text(
+                encoding="utf-8"
+            )
+            figures |= _figures(artifact)
+    return figures
+
+
+def _ledger_derived_figures(counts: Mapping[str, int]) -> set[tuple[str, str]]:
+    """Every figure the committed rejection ledger's counts carry — the exception's admitted set.
+
+    The ledger's own counts are the denominators the § 4 funnel renders over: the
+    eligibility and the refusals by gate. The exception admits exactly these figures —
+    anything else overlapping a committed home is a figure with two homes.
+    """
+    return {
+        (str(counts["eligible"]), str(counts["input"])),
+        (str(counts["ineligible"]), str(counts["input"])),
+        (str(counts["format"]), str(counts["ineligible"])),
+        (str(counts["environment"]), str(counts["ineligible"])),
+        (str(counts["collectability"]), str(counts["ineligible"])),
+    }
+
+
+def _funnel_rendered_figures(counts: Mapping[str, int]) -> set[tuple[str, str]]:
+    """The funnel figures the § 4 shape renders from the ledger's own counts.
+
+    The writer renders `input.funnel`; this is what those values must be — the ledger's
+    own, so a writer that recomputed them (or a fixture that drifted from the ledger)
+    fails the byte-equality assertion below.
+    """
+    return {
+        (str(counts["eligible"]), str(counts["input"])),
+        (str(counts["ineligible"]), str(counts["input"])),
+        (str(counts["format"]), str(counts["ineligible"])),
+        (str(counts["environment"]), str(counts["ineligible"])),
+        (str(counts["collectability"]), str(counts["ineligible"])),
+    }
+
+
+def test_the_funnel_figures_are_the_corpus_ledgers_own_and_are_admitted_by_name() -> None:
+    """*(adversarial)* Source A's funnel figures are the rejection ledger's own — never recomputed.
+
+    The § 4 shape renders the four-gate funnel beside source A's instance
+    (`PREREGISTRATION.md:140-155`), and the same counts are committed facts in
+    `tasks/public/ineligible.json` — and in `reports/baseline/`'s own funnel line. So
+    the honest-number home admits a second, ledger-derived exception, mirrored on the
+    loader-by-identity baseline exception: the funnel figures the report renders are
+    asserted equal to the corpus ledger's own counts — never recomputed, exactly as the
+    loader exception asserts the baseline figures byte-equal to the sealed artifact —
+    and the only figures the writer may share with a committed home are exactly the two
+    admitted sets: the sealed baseline artifact's and the rejection ledger's, named
+    here and in `PREREGISTRATION.md` § 10.9.
+    """
+    document = build_honest_number_report(_input("promoted"))
+    writer = _figures(" ".join((document.markdown, document.payload, document.cost)))
+    assert writer, (
+        "WHY THIS IS A FAILURE: the report renders no figures at all, so this test's "
+        "disjointness assertion would pass vacuously over an empty document"
+    )
+
+    ledger = json.loads(
+        (REPO_ROOT / "tasks" / "public" / "ineligible.json").read_text(encoding="utf-8")
+    )
+    counts = ledger["counts"]
+    allowed = _ledger_derived_figures(counts)
+    rendered_funnel = _funnel_rendered_figures(counts)
+    assert rendered_funnel <= writer, (
+        "WHY THIS IS A FAILURE: the funnel figures the § 4 shape renders from the "
+        "ledger's own counts are not what the writer renders — the report's funnel was "
+        "recomputed, or the fixture drifted from the ledger. The ledger-derived "
+        "exception admits the ledger's own figures, byte-equal, never a re-derivation"
+    )
+    assert rendered_funnel <= allowed, (
+        "WHY THIS IS A FAILURE: the exception admits figures the ledger does not "
+        "carry — the admitted set must be exactly the ledger-derived one"
+    )
+
+    existing = _committed_home_figures()
+    assert existing, (
+        "WHY THIS IS A FAILURE: none of the committed homes renders an `N of M` "
+        "figure, so the disjointness guard has nothing to guard against"
+    )
+    overlap = writer & existing
+    assert overlap, (
+        "WHY THIS IS A FAILURE: neither exception is exercised — no ledger-derived or "
+        "loader-derived figure collides with a committed home, so nothing proves the "
+        "guard admits them"
+    )
+    baseline_allowed = _artifact_derived_figures(_baseline_artifact())
+    unadmitted = sorted(overlap - (allowed | baseline_allowed))
+    assert overlap <= allowed | baseline_allowed, (
+        f"WHY THIS IS A FAILURE: the report restates {unadmitted}, "
+        "which already lives in one of the committed homes' artifacts and is admitted "
+        "by neither exception. A figure quoted twice is a figure that can disagree "
+        "with itself, and the one-home rule exists so that cannot happen"
+    )
+    assert overlap == {("0", "1")} | allowed, (
+        "WHY THIS IS A FAILURE: the two exceptions are not admitted by name — the only "
+        "overlaps with the committed homes must be the sealed artifact's source-A "
+        "figure (the loader-by-identity exception) and the rejection ledger's funnel "
+        "counts (the ledger-derived exception), and nothing else"
+    )
+
+
 def test_the_honest_number_disjointness_guard_catches_a_planted_figure(
     tmp_path: Path,
 ) -> None:

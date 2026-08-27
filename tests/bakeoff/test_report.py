@@ -1184,7 +1184,7 @@ def _stratum_document() -> StratumReport:
     """The rendered stratum document for the synthetic probe tallies, and its sidecars.
 
     The synthetic tallies' denominators (37 and 41) are chosen to collide with nothing in
-    the fifteen committed artifacts — their own denominators are 1, 20, 62, 63, 64, 189,
+    the eighteen committed artifacts — their own denominators are 1, 20, 62, 63, 64, 189,
     299 and 300 — so the disjointness guard holds by construction, exactly like
     `_comparison_arms`' denominator 11.
     """
@@ -1322,9 +1322,9 @@ def test_the_two_contract_report_restates_no_baseline_figure() -> None:
 _EXISTING_HOMES = ("baseline", "format-hardening", "easier-stratum", "larger-base")
 
 #: Every committed home, the § 3 baseline's included — the "existing" side of every other
-#: scan, so a new home's figures can never restate a figure from any of the fifteen
+#: scan, so a new home's figures can never restate a figure from any of the eighteen
 #: committed artifacts.
-_ALL_HOMES = (*_EXISTING_HOMES, "baseline-measurement")
+_ALL_HOMES = (*_EXISTING_HOMES, "baseline-measurement", "honest-number")
 
 
 def _committed_figures(directories: tuple[str, ...]) -> set[tuple[str, str]]:
@@ -1338,12 +1338,13 @@ def _committed_figures(directories: tuple[str, ...]) -> set[tuple[str, str]]:
 
 
 def test_the_stratum_report_restates_no_figure_from_an_existing_home() -> None:
-    """*(adversarial)* No rendered stratum figure lives in any of the fifteen committed artifacts.
+    """*(adversarial)* No rendered stratum figure lives in any of the eighteen committed artifacts.
 
     The changed-task-set home joins the guard on the same rule the earlier homes joined it
     on, asserted the strongest way available: every `N of M` figure the synthetic stratum
-    document renders is disjoint from every `N of M` figure the fifteen committed artifacts
-    render — the four existing homes and the § 3 baseline's home, each report.md,
+    document renders is disjoint from every `N of M` figure the eighteen committed artifacts
+    render — the four existing homes, the § 3 baseline's home and the honest-number
+    home, each report.md,
     report.json and cost.json. A figure that appears in both is a figure with two homes,
     which is exactly how two disagreeing numbers come to exist.
     """
@@ -1356,13 +1357,13 @@ def test_the_stratum_report_restates_no_figure_from_an_existing_home() -> None:
     )
     existing_figures = _committed_figures(_ALL_HOMES)
     assert existing_figures, (
-        "WHY THIS IS A FAILURE: none of the fifteen committed artifacts renders an `N of "
+        "WHY THIS IS A FAILURE: none of the eighteen committed artifacts renders an `N of "
         "M` figure, so the disjointness guard has nothing to guard against"
     )
     overlap = figures & existing_figures
     assert not overlap, (
         f"WHY THIS IS A FAILURE: the stratum document restates {overlap}, which already "
-        "lives in one of the fifteen committed artifacts. A figure quoted twice is a "
+        "lives in one of the eighteen committed artifacts. A figure quoted twice is a "
         "figure that can disagree with itself, and the one-home rule exists so that "
         "cannot happen"
     )
@@ -1472,6 +1473,56 @@ def test_the_baseline_disjointness_guard_catches_a_planted_figure(tmp_path: Path
         "WHY THIS IS A FAILURE: the planted `10 of 20` was absorbed by the guard's scan. "
         "A collision the guard cannot see is a figure with two homes, and the next reader "
         "has no way to tell which of two disagreeing numbers is the real one"
+    )
+
+
+def test_the_honest_number_disjointness_guard_catches_a_planted_figure(
+    tmp_path: Path,
+) -> None:
+    """*(adversarial)* The new home is inside the committed scan, and the scan sees a plant.
+
+    The committed declaration renders no figure, so the scan's first half reproduces the
+    sanctioned state in a synthetic tree — a planted tree that differs from the real one
+    would prove nothing about the guard's logic — and asserts the overlap is empty. The
+    second half plants `10 of 20`, a figure the easier-stratum home actually renders,
+    into a copy of the new home's report.json and asserts the same scan flags it: a
+    collision the guard cannot see is a figure with two homes. The new home joins
+    `_ALL_HOMES` on the delta/final-series argument, so its own committed artifacts are
+    scanned like every other home's.
+    """
+    assert "honest-number" in _ALL_HOMES, (
+        "WHY THIS IS A FAILURE: _ALL_HOMES does not include the honest-number home, so "
+        "the new home's committed artifacts are not scanned like every other home's — "
+        "a figure that lands there would be invisible to the disjointness guard"
+    )
+    tree = tmp_path / "reports" / "honest-number"
+    tree.mkdir(parents=True)
+    for name in ("report.md", "report.json", "cost.json"):
+        (tree / name).write_bytes(
+            (REPO_ROOT / "reports" / "honest-number" / name).read_bytes()
+        )
+
+    def figures_in(root: Path) -> set[tuple[str, str]]:
+        written = " ".join(
+            (root / name).read_text(encoding="utf-8")
+            for name in ("report.md", "report.json", "cost.json")
+        )
+        return {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", written)}
+
+    existing = _committed_figures(_ALL_HOMES)
+    assert figures_in(tree) & existing == set(), (
+        "WHY THIS IS A FAILURE: the copied declaration already overlaps an existing "
+        "figure, so the planted half of this control is not testing the guard's logic"
+    )
+    planted = tree / "report.json"
+    planted.write_text(
+        planted.read_text(encoding="utf-8") + '"planted": "10 of 20"\n', encoding="utf-8"
+    )
+    overlap = figures_in(tree) & existing
+    assert ("10", "20") in overlap, (
+        "WHY THIS IS A FAILURE: the planted `10 of 20` was absorbed by the guard's "
+        "scan. A collision the guard cannot see is a figure with two homes, and the "
+        "next reader has no way to tell which of two disagreeing numbers is the real one"
     )
 
 
