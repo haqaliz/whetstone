@@ -27,7 +27,7 @@ import pytest
 
 from whetstone.bakeoff import report as bakeoff_report
 from whetstone.bakeoff.report import build_baseline_report, write_baseline_report
-from whetstone.loop import baseline, gate, sft
+from whetstone.loop import baseline, gate, heldout, ledger, sft
 from whetstone.verify.verdict import Status
 
 #: The repository root — the committed funnel ledger and the subprocess half live here.
@@ -549,3 +549,184 @@ def test_honest_report_module_imports_no_inference_library_at_module_scope() -> 
         "module-scope import would put an inference library on the loop's import graph "
         "unconditionally, and any import at all would mean the door touches the machine"
     )
+
+
+# --------------------------------------------------------------------------------------------
+# Phase 3: composition by identity, and the series / incumbent / measured-once refusals.
+# --------------------------------------------------------------------------------------------
+
+
+def test_the_door_composes_the_readers_and_writer_by_identity() -> None:
+    """AC 4: every composed seam is the owning module's own object, imported, never copied.
+
+    `read_baseline_document`, `read_promotion_record`, `verify_checkpoint`, the writer
+    pair and `refuse_committed_out` are the spec's five; the run-ledger reader and the
+    checkpoint-base read ride the same discipline, on the baseline door's own precedent
+    (`baseline._checkpoint_base = gate_module._checkpoint_base`). A second spelling of
+    any of these would be a second answer to what the same bytes mean.
+    """
+    from whetstone.loop import honest_report
+
+    assert honest_report.read_baseline_document is baseline.read_baseline_document, (
+        "WHY THIS IS A FAILURE: the door does not read the baseline artifact through "
+        "the fail-closed loader by identity"
+    )
+    assert honest_report.read_promotion_record is gate.read_promotion_record, (
+        "WHY THIS IS A FAILURE: the door does not read the promotion record through "
+        "the fail-closed reader by identity"
+    )
+    assert honest_report.verify_checkpoint is sft.verify_checkpoint, (
+        "WHY THIS IS A FAILURE: the door does not re-hash checkpoints through "
+        "`sft.verify_checkpoint` by identity"
+    )
+    assert (
+        honest_report.build_honest_number_report
+        is bakeoff_report.build_honest_number_report
+    ), "WHY THIS IS A FAILURE: the door does not render through the writer by identity"
+    assert (
+        honest_report.write_honest_number_report
+        is bakeoff_report.write_honest_number_report
+    ), "WHY THIS IS A FAILURE: the door does not write through the writer by identity"
+    assert honest_report.refuse_committed_out is heldout.refuse_committed_out, (
+        "WHY THIS IS A FAILURE: the door does not refuse a gitignored --out through "
+        "`refuse_committed_out` by identity"
+    )
+    assert honest_report.read_ledger is ledger.read, (
+        "WHY THIS IS A FAILURE: the door does not read the run ledger through "
+        "`ledger.read` by identity"
+    )
+    assert honest_report._checkpoint_base is gate._checkpoint_base, (
+        "WHY THIS IS A FAILURE: the door does not read a checkpoint's base through "
+        "the gate's own read by identity"
+    )
+
+
+def test_render_refuses_a_heldout_document_digest_disagreement(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 2: the promotion record's held-out digest must equal the baseline series'.
+
+    A delta computed across a change to any pinned input is not a delta
+    (`PREREGISTRATION.md:92-94`): the final side scored over a different held-out
+    document is a different measurement, refused by name with the digest pair.
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path / "one")
+    record = _record(tmp_path / "one", heldout_digest="x" * 64)
+
+    code = honest_report.main(_argv(fixtures, record=record))
+
+    assert code == 2
+    message = capsys.readouterr().err
+    assert _HELDOUT_DIGEST in message and "x" * 64 in message, message
+    assert not fixtures["out"].exists(), (
+        "WHY THIS IS A FAILURE: a refused render wrote artifacts — a non-delta must "
+        "not be published as one"
+    )
+
+
+def test_render_refuses_a_candidate_on_a_different_base(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 2: the candidate checkpoint's base identity must equal the baseline series'.
+
+    The candidate's own provenance names the base it was trained on; a candidate from
+    a different base than the series measured is a delta across a changed pinned
+    input, refused by name with the base pair.
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path)
+    candidate = _checkpoint(tmp_path, "candidate-other", revision="other-rev").directory
+
+    code = honest_report.main(_argv(fixtures, candidate=candidate))
+
+    assert code == 2
+    message = capsys.readouterr().err
+    assert "other-rev" in message and _REVISION in message, message
+    assert not fixtures["out"].exists()
+
+
+def test_render_refuses_an_incumbent_on_a_different_base_than_the_candidate(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 2, PRD gate-resolution 5: the incumbent's base is checked too.
+
+    Two nights on different bases means the gate compared incomparables — the
+    candidate's base and the incumbent's base must be one, or the decision is not a
+    delta and nothing renders.
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path)
+    incumbent = _checkpoint(tmp_path, "incumbent-other", revision="other-rev").directory
+
+    code = honest_report.main(_argv(fixtures, incumbent=incumbent))
+
+    assert code == 2
+    message = capsys.readouterr().err
+    assert "other-rev" in message and _REVISION in message, message
+    assert not fixtures["out"].exists()
+
+
+def test_render_refuses_a_run_id_that_is_not_the_records(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--run-id` pins the record's identity — a record that is not this run's is refused.
+
+    The flag exists so the operator names the run the record belongs to; a record
+    whose `run_id` differs is not the evidence this render was about, refused by name
+    with both ids.
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path)
+
+    code = honest_report.main(_argv(fixtures, run_id="other-run"))
+
+    assert code == 2
+    message = capsys.readouterr().err
+    assert "other-run" in message and _RUN_ID in message, message
+    assert not fixtures["out"].exists()
+
+
+def test_a_same_series_render_at_out_is_refused_but_a_different_series_renders(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 2: the measured-once posture keys on the series, never the clock.
+
+    A second render of the same series is the first render wearing a second date —
+    refused by name, naming the artifact already there. A **changed** pinned input is
+    a legitimate new series, rendered beside it: the series is the key, never the
+    clock (`PREREGISTRATION.md:133-135`).
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path / "one")
+    assert honest_report.main(_argv(fixtures)) == 0
+    first_bytes = (fixtures["out"] / "report.json").read_bytes()
+
+    code = honest_report.main(_argv(fixtures))
+    assert code == 2
+    message = capsys.readouterr().err
+    assert "already" in message and "report.json" in message, message
+    assert (fixtures["out"] / "report.json").read_bytes() == first_bytes, (
+        "WHY THIS IS A FAILURE: the refused second render rewrote the first — the "
+        "measured-once refusal must fire before anything is written"
+    )
+
+    second = tmp_path / "two"
+    second_fixtures = {
+        "baseline": _baseline_artifact(second, revision="other-rev"),
+        "record": _record(second),
+        "candidate": _checkpoint(second, "candidate", revision="other-rev").directory,
+        "incumbent": _checkpoint(second, "incumbent", revision="other-rev").directory,
+        "ledger": _ledger(second),
+        "out": fixtures["out"],
+        "heldout": fixtures["heldout"],
+    }
+    code = honest_report.main(_argv(second_fixtures))
+    assert code == 0, capsys.readouterr().err
+    payload = json.loads((fixtures["out"] / "report.json").read_text(encoding="utf-8"))
+    assert payload["series"]["revision"] == "other-rev", payload
