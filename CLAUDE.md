@@ -666,6 +666,40 @@ This file orients a coding agent working in this repository. Read it first.
 > The **signed morning report (`whetstone report --last-night`) is pulled into the launch
 > path** ahead of the dashboard; the Next.js dashboard and distillation remain post-horizon.
 >
+> **P4 slice 2 — the honest-number report — is done** (`docs/planning/honest-number-report/`,
+> 2026-08-27). The pre-registered § 4 shape now has its only legal home:
+> `reports/honest-number/` (schema `whetstone-honest-number/1`), rendered by
+> `build_honest_number_report`/`write_honest_number_report` in `report.py` — the sixth writer
+> on the shared-helper precedent (`_row`/`_over`/`tally` by identity, monkeypatch-proven) —
+> and by the module door `python -m whetstone.loop.honest_report`, which composes
+> `read_baseline_document`, `read_promotion_record`, `verify_checkpoint` and the writer **by
+> identity** and refuses every half-truth render by name, nothing written: an unmeasured
+> baseline, missing evidence, a failed re-hash, **series disagreement** (the delta is not a
+> delta across a changed pinned input), candidate/incumbent base disagreement, and a
+> same-series artifact already at `--out` (measured-once by analogy). **Whose counts are
+> "final" is the gate decision's function** — promoted → candidate, rejected → incumbent (the
+> candidate disclosed as the rejected attempt), UNVERIFIED → no headline, "no comparison was
+> made"; coverage renders on both sides. The dig found one gap the brief lacked: `N_final`
+> had no on-disk source — the promotion record's `SideCounts` now carries `weaker_wins`
+> (recorded at scoring time, `report.tally`'s definition by identity) and the record gained
+> its long-anticipated fail-closed reader. The **harness-reproduces-the-number check** (P4
+> exit criterion 3) is proven at the count level: the report is a pure function of the two
+> sealed evidence documents, byte-identical across invocations and subprocesses under
+> `PYTHONHASHSEED` 0/1, with the baseline-side figures byte-equal to the sealed artifact's
+> (the loader-by-identity exception) and the funnel figures byte-equal to the corpus ledger's
+> (the ledger-derived exception — both argued in the guard's sixth move and the § 10.9
+> disclosure). `PREREGISTRATION.md` § 10.9 (Type 2, 2026-08-27) discloses the final side's
+> generation contract — the loop's seeded categorical sampler — **before any figure existed**,
+> the amendment CLAUDE.md's own sampler line owed whichever unit published first under the
+> loop's contract. The operator's sheet is
+> `docs/planning/honest-number-report/report-runbook/runbook.md`, held by
+> `tests/test_honest_number_runbook_guards.py` (ten properties, flags pinned to the shipped
+> parser by identity, watched failing against a wrong stub where nine of ten refused it).
+> **The report is unspent**: `reports/honest-number/` holds the declaration-only state —
+> "**No count is measured here: the report has not run.**" — until the operator chain
+> completes. The partition guard still holds exactly three edges (module doors only; the
+> morning report's `whetstone report` subcommand is the next unit's fourth).
+>
 > **What is not built.** The nightly loop has never been *run*, so no training set, checkpoint
 > or yield figure exists yet — and **the gate has therefore never been run on real
 > checkpoints**. Its three exits, its retry discipline and its refusals are proven against

@@ -1,38 +1,50 @@
-# Card — baseline-measurement
+# Card — honest-number-report
 
 ## Brief
 
-P4 slice 1: the `PREREGISTRATION.md` § 3 baseline, built before the night trains anything
-(`docs/ROADMAP.md` § 4 P4, § 5; the gate-runbook names the missing piece: a checkpoint the
-night deliberately does not write). Build a baseline-checkpoint writer that materializes the
-untrained open base (the 32B the night runbook resolves — record its identity as a pinned
-input; do not claim § 7.3 closure) in the `checkpoints/<id>/` format with weights-style
-hashing and `sft.verify_checkpoint` by identity, a measurement door that scores the single
-checkpoint on `tasks/heldout/source-b.json` through the fail-closed loader by identity with
-STRICT and WEAK both run so baseline `N` is measured, and a committed baseline artifact
-(schema `whetstone-baseline/1`, locality discipline: counts, verdicts, provenance — never
-task contents) whose loader refuses a second measurement by name — the measured-once guard,
-watched failing first.
+P4 slice 2 (`docs/ROADMAP.md:647-651`, § 12 — the next unit named by the launch path): the
+honest-number report writer, plus P4 exit criterion 3 (the harness is public and reproduces
+the reported number from the pinned inputs). Build a pure, deterministic report writer and a
+report-door mode rendering, for BOTH sources together: baseline score (read from the
+committed `reports/baseline-measurement/` artifact through its fail-closed loader **by
+identity**), final score, delta, `N_baseline`, `N_final`, coverage, and the full provenance
+block (pinned seeds, model revision, task set, tool versions) — in the `PREREGISTRATION.md`
+§ 4 shape (source A per-instance, never a rate; every rate carries its denominator; zero or
+negative deltas published as plainly as positive ones; both sources always published
+together). Reuse `report.py`'s shared helpers (`_row`, `_over`, `tally`,
+`_contract_fields`, `_contract_block`, `_counts`) by identity, on the four existing writers'
+precedent; the report door follows the `comparison.py` three-mode precedent
+(`--render-report` / `--render-stratum-report` / `--render-larger-base-report`), with the
+same missing-journal / unproven-control / zero-arms refusals by name.
 
 Acceptance criteria, written first (repo is test-first):
 
-1. The door refuses a gitignored `--out` by name.
-2. The checkpoint re-hash verifies (`verify_checkpoint` by identity).
-3. A re-measurement is refused, naming the first artifact.
-4. Both sources and both denominators + coverage appear.
-5. Baseline `N` is the weak==PASS & strict==FAIL count over the held-out set.
-6. The AC2 pins and the reward-path partition guard hold.
-7. A runbook scripts the operator's GPU pass (the measurement is operator-executed, like
-   every arm).
+1. The door renders the three-artifact shape (report.md/report.json/cost.json) only when an
+   arm has run: missing journals, an unproven control, zero arms, or a missing baseline
+   artifact are refused by name — never a half-truth render.
+2. The writer is pure and deterministic: byte-identical output across invocations, and the
+   report's figures re-derive from the pinned inputs (harness-reproduces-the-number check).
+3. Source A appears per-instance (never a rate — one eligible instance of 300), source B over
+   its own denominator, both always together.
+4. Baseline score is read from the committed baseline artifact, never recomputed or restated
+   from another home.
+5. The one-home guard admits the report's home on the argued series basis (a § 10 amendment
+   before any figure, if it is a new series); a silent home-list extension is refused.
+6. The AC2 pins (`src/whetstone/verify/`, `patch.py`, `attribution.py`) and the reward-path
+   partition guard hold; `PREREGISTRATION.md` gains no proportion in any spelling.
+7. A runbook scripts the post-run render (the report door is part of the operator's post-run
+   chain, behind the first gated evaluation).
 
-Caveats the dig must meet: the number itself is spent by the operator, exactly once, and
-the artifact must state the § 7.3-open base identity without closing it. No baseline door,
-checkpoint writer for the untrained base, or baseline artifact exists anywhere in
-`src/whetstone/cli.py` or `src/whetstone/loop/` today — the gate compares two checkpoints
-and the baseline is a single one, so the door is new. The reward path
-(`src/whetstone/verify/`, `tasks/`, `patch.py`, `attribution.py`) must stay byte-untouched.
+Caveats the dig must meet: no real runs exist yet (the night has never run, the gate has
+never run on real checkpoints, the baseline number is unspent) — so the writer and the
+reproducibility check are proven on fixture/recorded evidence first, exactly as the gate's
+three exits were. The report's home must be argued on the one-home guard's series argument
+(same held-out split and base as the baseline series — either the baseline home reads as
+"before" by identity or a new home is declared on the changed-series argument), and the § 7.3
+Type 1 amendment and the operator chain (baseline spend → two nights → first gated eval) stay
+outside this unit. The reward path must stay byte-untouched.
 
 ## Source
 
-Inline brief (no GitHub issue — slug id, `feat baseline-measurement`), handed off from the
-`whetstone-next` session (2026-08-26).
+Inline brief (no GitHub issue — slug id, `feat honest-number-report`), handed off from the
+`whetstone-next` session (2026-08-27).

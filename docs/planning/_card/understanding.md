@@ -1,127 +1,141 @@
-# Understanding — baseline-measurement
+# Understanding — honest-number-report
 
 ## What this work is really asking
 
-P4 slice 1: turn `PREREGISTRATION.md` § 3's baseline protocol from a rule into machinery. The
-pre-registration commits to a **pinned baseline checkpoint** — the untrained open base — scored
-on the held-out set by the STRICT verifier, with provenance committed, **measured once,
-re-measured never**, and a baseline `N` (the untrained base's weak-vs-strict differential) so a
-final `N` later answers "did the loop learn to cheat more?" (`docs/ROADMAP.md:494-503`). Today
-that protocol is **unspent and unbacked by code** — there is no baseline door anywhere in
-`src/whetstone/` (confirmed by the dig: `grep -rn "baseline"` over `src/` hits only prose).
+P4 slice 2 (`docs/ROADMAP.md:647-651`, § 12 — the next unit, decided 2026-08-26): the report
+that turns the pre-registered shape into a published document — for **both sources**,
+baseline score, final score, delta, `N_baseline`, `N_final`, coverage, and the full
+provenance block (`PREREGISTRATION.md` § 4 shape: `+a of b held-out tasks (baseline c of b,
+final d of b) / coverage e of b / N: f at baseline, g at final`; source A per-instance, never
+a rate; both sources always together; zero or negative deltas published as plainly as
+positive ones), **plus P4's exit criterion 3** — the harness is public and reproduces the
+reported number from the pinned inputs. Buildable while the operator chain proceeds (§ 7.3
+amendment → baseline spend → night #1 → night #2 → first gated evaluation → P4 report →
+finding); the report render itself is the last operator step, so the machinery and the
+runbook land now and the figures land later.
 
-Three deliverables:
-1. A **baseline-checkpoint writer** that materializes the untrained open base as a
-   re-verifiable checkpoint (weights-style hashing; `sft.verify_checkpoint` by identity).
-2. A **measurement door** that scores that single checkpoint on `tasks/heldout/source-b.json`
-   through the fail-closed loader by identity, running **STRICT and WEAK both** so baseline `N`
-   is measured (`report.tally`'s `weaker_wins`, the one place N is defined —
-   `src/whetstone/bakeoff/report.py:443-447`).
-3. A **committed baseline artifact** (schema `whetstone-baseline/1`) whose loader refuses a
-   second measurement by name — the measured-once guard.
+## What the dig established (three agents, mapped `report.py` / `comparison.py` / `baseline.py` / `ledger.py` / `gate.py` / `heldout.py` / `PREREGISTRATION.md` / the guards)
 
-The night has not run; this is the "before" that every P4 delta is computed from, and § 5 pins
-it **before anything trains** (`docs/ROADMAP.md:496-498`).
+### The pattern to follow (proven, five writers)
 
-## Core-loop placement
+- All writers live in `src/whetstone/bakeoff/report.py` as `build_<name>_report` /
+  `write_<name>_report` pairs (frozen dataclass with `markdown`/`payload`/`cost`; writer
+  returns `tuple[Path, Path, Path]`; deterministic pure functions — "same records and same
+  pinned inputs → byte-identical output across runs and processes", asserted in-process and
+  across subprocesses under `PYTHONHASHSEED` 0/1). Shared helpers `_row`, `_over`,
+  `_contract_fields`, `_contract_block`, `_counts`, `tally` must be reused **by identity**
+  (monkeypatch test proves resolution from the module).
+- The closest template is the baseline writer (`build_baseline_report`, schema
+  `whetstone-baseline/1`, report.py:1202-1319) — declaration-only state ("**No count is
+  measured here: the baseline has not run.**", written by the writer, never hand-typed),
+  digest-sealed document, locality discipline (counts/verdicts/provenance, never contents).
+- **The P4 writer must be a NEW writer, never an extension of `build_report`** —
+  `test_the_p4_headline_skeleton_is_refused` (test_report.py:323) forbids the bake-off report
+  from instantiating the § 4 shape.
+- Doors are module doors (`python -m ...`), not `cli.py` subcommands: `comparison.py` holds
+  three mutually exclusive `--render-*` modes; refusals happen before anything is written,
+  exit 2, `_assert_refused` also asserts `not out.exists()`. The baseline's own door
+  (`loop/baseline.py`, `main` at 1358) is the runbook-guarded precedent.
+- **No `cli.py` / partition-guard change is needed** for a module door: the writer lives in
+  exempt `bakeoff`, the door lives in exempt `loop`; `test_reward_path_scope_is_partitioned`
+  pins exactly three function-local edges (`night`, `gate`, `check_leakage`) and a fourth
+  (`whetstone report --last-night`) belongs to the morning-report unit, not this one.
 
-Element ③/④ boundary: it does not touch the reward (the verifier stays byte-untouched,
-execution-grounded — this unit only *scores* through it) and does not change the gate's
-promote rule. It is the "before" anchor that makes element ④ (the honest number) and the
-never-regress gate's comparisons provable. `UNVERIFIED` handling is inherited wholesale from
-`tally`/`verdict.reduce` (UNVERIFIED ranks above PASS; unverified stays in the denominator).
+### The "before" is ready; the "after" has one gap
 
-## Affected areas (from the dig, with file:line)
+- **Baseline (ready):** `loop/baseline.py` `read_baseline_document(path) -> BaselineDocument`
+  is the fail-closed loader, docstring verbatim: "what the P4 report writer will read"
+  (baseline.py:316-325). Refuses: unreadable, wrong schema, unknown fields, declaration
+  state (`measured: false` — **the P4 writer must refuse a delta against an unmeasured
+  baseline**), unreadable series, per-count validation, `weaker_wins > denominator`, and the
+  digest seal (hand edits refused). Carries `sides` (source-b/source-a six-field counts:
+  denominator/solved/unverified/covered/failed/weaker_wins), `n` (`count`/`denominator`/
+  `sentence` = `_N_SENTENCE` by identity), `series` (repo_id/revision/heldout_digest),
+  `base` (§ 7.3-open sentence), `retries`, `evidence` (schema + digest pointer), `tool_versions`.
+- **Final score + coverage (ready):** the promotion record (`whetstone-promotion/1`,
+  `runs/promotions/<id>.json`) carries `sides.candidate.<source>` = the six SideCounts
+  (denominator/solved/unverified/covered/failed/status), `decision` (exit/denominator/
+  solved_new/solved_old/regressed/unverified/detail), `heldout.document_digest`, re-hashed
+  candidate/incumbent digests, `retry_count` (R by identity), retries, unverified_after_retries,
+  tool_versions. **BUT the record has no reader today** — gate.py:97 docstring: "checked on
+  read by nobody yet — the record is written, never read back by this module — and named so
+  a later reader has one answer to 'what shape is this file'". The later reader is this unit:
+  a fail-closed `read_promotion_record` must arrive with it.
+- **`N_final` — THE GAP (found by the dig, not in the brief):** nothing on disk records the
+  final side's `weaker_wins`. `SideCounts` has no `weaker_wins` field, the gate writes no
+  journals and no per-rollout evidence. The pre-registered shape `N: f at baseline, g at
+  final` cannot render without it. Resolution: extend the promotion record — `SideCounts`
+  gains `weaker_wins` (the gate's `_counts(rollouts, tasks)` has the Rollout records at hand;
+  `weaker_wins` is `report.tally`'s definition by identity), schema bump documented. The
+  record is written-never-read, so no reader breaks; the schema's own docstring anticipated
+  this reader. This is a small, in-scope gate change (gate.py is not an AC2-pinned path).
+- **Delta semantics:** `PREREGISTRATION.md:92-94` — "a delta computed across a change to any
+  pinned input is not a delta". The report must verify series agreement: the promotion
+  record's `heldout.document_digest` and the candidate checkpoint's base identity (from its
+  provenance, via `sft.verify_checkpoint` by identity — the trained checkpoint carries
+  `base: {repo_id, revision}`) must equal the baseline series. Mismatch → refused by name
+  (the delta is the document; a non-delta renders nothing). The loop's generation contract
+  differs in `sampler` (seeded categorical vs greedy) — recorded in every run ledger, and
+  CLAUDE.md pre-commits: "the amendment belongs to whichever later unit first publishes a
+  figure measured under it" — **that later unit is this one** (the § 10.9 Type 2 amendment,
+  before any figure exists).
 
-- **`src/whetstone/loop/sft.py`**: checkpoint format is **training-shaped** — `write_checkpoint`
-  requires `TrainingArgs`, `CapacityProbe`, `dataset_digest`, `run_seed`, `valid_split`
-  (`sft.py:400-411`); `sft.train` refuses `examples < 1` (`sft.py:328-334`); `verify_checkpoint`
-  refuses an empty `files` list and an empty directory (`sft.py:421-426, 480-483`). **No
-  "untrained base" materialization exists.** The baseline writer is new.
-- **`src/whetstone/loop/gate.py`**: the reuse seam. `gate_engine(weights, checkpoint, ...)`
-  always passes `adapter_path=checkpoint.directory` to `mlx_lm.utils.load` (`gate.py:472-476`);
-  whether `mlx_lm==0.31.3` tolerates an adapter-less checkpoint dir is **unverified in-tree**
-  (fixture checkpoints always carry a stub adapter). `_score_one`/`_score_side` are the
-  per-task scoring seam (`gate.py:932-981`). **`SideCounts` and the promotion record carry no
-  N** (`gate.py:290-317, 1116-1125`) — baseline N needs raw `Rollout`s through `report.tally`,
-  not the gate's counts. `_refuse_published_root` imported by identity (`gate.py:83`) is the
-  published-root refusal to reuse.
-- **`src/whetstone/loop/heldout.py`**: the fail-closed loader (`read_document`, `heldout.py:407-594`),
-  digest discipline (`document_digest_of`), `refuse_committed_out` (`heldout.py:667-689`), the
-  `python -m whetstone.loop.heldout` door precedent. The held-out membership is **source-B only**
-  (12 of 66); source A is scored separately in full (the gate precedent, `gate.py:588, 597`).
-- **`src/whetstone/bakeoff/scoring.py`**: `score(...) -> Rollout` runs STRICT then WEAK with the
-  same interpreter (`scoring.py:452-509`); `Rollout` carries both `strict` and `weak` on every
-  record (`scoring.py:133-200`). This is the existing "both verifiers" path — reuse it.
-- **`src/whetstone/bakeoff/report.py`**: `tally` (`report.py:425-452`, the single place each
-  published figure is defined), `_over`/`_row`/`_counts`, `_UNCOVERED`, `Outcome.SOLVED`,
-  the `_N_SENTENCE` ("N rollouts a weaker check would have scored as wins."), the
-  `_NON_COMPARABILITY` sentence, and the deterministic pure writer pattern.
-- **`src/whetstone/cli.py`**: five subcommands; the exit-code contract (0/1/2/3, no fifth).
-  A `whetstone baseline` subcommand would be a **fourth function-local edge into the EXEMPT
-  `loop` package**, tripping `_DOCUMENTED_EDGES` (`tests/test_reward_path_scope_is_partitioned.py:154-158`)
-  until extended; the `python -m whetstone.loop.<module>` door (the heldout precedent) avoids
-  `cli.py` entirely.
-- **One-home guard**: `reports/baseline/` is **taken by the P1 bake-off** (base selection,
-  explicitly *not* the pinned baseline). A new committed home — e.g. `reports/baseline-measurement/`
-  — trips both guards until they move a **fifth time "on the argument"**: the exact 12-file list in
-  `tests/bakeoff/test_transcript_locality.py:122-135` and the disjointness scans in
-  `tests/bakeoff/test_report.py:1294-1384+`. A `k of 12` baseline figure collides with no
-  existing figure (existing denominators: 1, 20, 62, 63, 64, 189, 299, 300).
-- **Runbook guards**: `tests/test_night_runbook_guards.py` / `tests/test_gate_runbook_guards.py`
-  pin flag surface via `build_parser`, absolute writable paths, one worktree. The baseline's
-  operator sheet follows this pattern.
+### The one-home guard (sixth move) and the disjointness exception
 
-## Ambiguities / open questions for the interview
+- The guard is two lock-step 15-artifact lists (test_report.py:1941-1957;
+  test_transcript_locality.py:134-150) + `_ALL_HOMES` (test_report.py:1322-1327) +
+  figures-level disjointness scans (`\b(\d+) of (\d+)\b` over all homes' artifacts) +
+  planted-overlap controls. A new directory is admitted by: the argument first, in both
+  docstrings; declaration-only artifacts committed first (writer-generated, no `N of M`);
+  both lists grow by three lines; `_ALL_HOMES` gains the name; own disjointness + planted
+  controls.
+- **The exception this home needs:** the pre-registered shape REQUIRES the P4 report to
+  render the baseline's counts (`baseline c of b`) — a figure that also lives in
+  `reports/baseline-measurement/`. The disjointness rule ("a figure quoted twice is a figure
+  that can disagree with itself") must admit figures that arrived **through the fail-closed
+  loader by identity** (the report renders exactly the artifact's counts, asserted byte-equal
+  to the artifact's own figures — it cannot disagree with itself because it IS the artifact's
+  figure), while still refusing figures from the other four homes (`baseline`,
+  `format-hardening`, `easier-stratum`, `larger-base`). This is the "reads as 'before' by
+  identity" argument the card's caveat names.
+- The report home itself: a **new directory** (the delta/final series is a new published
+  series under the loop's contract; `reports/baseline-measurement/` stays the sealed § 3
+  anchor with its measured-once render guard). Proposed name `reports/honest-number/`,
+  schema `whetstone-honest-number/1` (or `whetstone-p4-report/1` — PRD decides), with the
+  § 10.9 Type 2 amendment committed before any figure.
 
-1. **What is an "untrained base checkpoint"?** The checkpoint format is an adapter (LoRA) on a
-   base; an untrained base has no adapter. Options: (a) a `whetstone-checkpoint/1` directory
-   whose `provenance.json` declares `untrained: true` with an explicit empty/absent adapter set
-   and a `verify_checkpoint` extension to permit it (watched failing first); (b) materialize as
-   a directory whose "files" are the base weights themselves, reusing the `Weights` hashing;
-   (c) some other shape. Must keep `verify_checkpoint` by identity and stay honest that the
-   bytes being re-hashed are what will be scored.
-2. **Does the measurement go through `gate_engine` (base + `adapter_path`), or a new base-only
-   engine path?** `mlx_lm` behavior with an adapter-less checkpoint dir is unverified — the PRD
-   must decide and the tests must smoke-test (stub engine, like `gate.py:453-455`).
-3. **Door form**: `whetstone baseline` subcommand (4th documented edge — extend the guard) vs
-   `python -m whetstone.loop.baseline` module door (heldout precedent, no cli edge). The brief
-   says "the door refuses a gitignored `--out` by name", the heldout/stratum pattern.
-4. **Committed home**: a new `reports/baseline-measurement/` (one-home guard moves a fifth time,
-   § 10 amendment declaring the new series) — or another committed location. § 3 says "that
-   score is committed"; figures about a model may only live in a `reports/` home.
-5. **§ 7.3**: the base identity is recorded as a pinned input **without** closing § 7.3 (the
-   brief is explicit). But CHANGELOG notes § 7.3 "closes only by a Type 1 amendment before P3's
-   baseline" — whether a § 10.9 amendment belongs in this unit or a later one must be settled in
-   the interview. Whichever way, the artifact states the base identity (§ 3 pinned input) and
-   the amendment log records the decision.
-6. **Both sources**: § 4 requires both published together. The held-out split is source-B only;
-   source A (`pallets__flask-4045`, the gate precedent scores it in full) is scored beside it,
-   both denominators disclosed, disagreement-as-finding sentence.
-7. **Control discipline**: the gate scores without `control.probe`/`rankable`; the bake-off
-   reports are gated on `rankable`. Does the baseline measurement run a control arm? (The brief
-   does not require one; the honest floor is that the harness "reaches PASS when a correct patch
-   exists" — likely a fixture/self-check rather than a per-task control.)
-8. **`recorded_on`** is an input, never the clock (the gate pattern) — the baseline artifact
-   carries it the same way.
+### The harness-reproduces-the-number check (P4 exit criterion 3)
 
-## Contradictions between brief and code
+- The gate records counts, not rollouts, so reproduction is asserted at the **count level**:
+  the report is a pure, deterministic function of the two sealed evidence documents (baseline
+  artifact via fail-closed loader; promotion record via a new fail-closed reader) + pinned
+  provenance; byte-identical across invocations and processes; the promotion record's
+  `sides.candidate` counts are re-verified consistent (solved + failed + unverified ==
+  denominator; unverified stays in the denominator). Rollout-level re-derivation is the
+  gate's scoring seam, out of scope here — stated, not blurred.
+- A zero/negative delta, or an `UNVERIFIED` promotion-record decision, is a **publishable
+  outcome** — the report renders it plainly (P4 has no pivot signal).
 
-- The brief says "materializes the untrained open base ... in the `checkpoints/<id>/` format with
-  weights-style hashing and `sft.verify_checkpoint` by identity" — but the checkpoint format and
-  `verify_checkpoint` are adapter-shaped and refuse empty file sets. This is the unit's central
-  design tension, not a hard contradiction: the writer is genuinely new.
-- The brief's "measurement door ... with STRICT and WEAK both run so baseline N is measured" is
-  directly supported: `scoring.score` returns both statuses per rollout and `tally.weaker_wins`
-  is the one N definition. No gap there.
-- `reports/baseline/` is taken by the bake-off and is explicitly not the pinned baseline — so the
-  brief's "committed baseline artifact" needs a fresh home; nothing in the brief names one, which
-  is open question 4.
+## Ambiguities / open questions (for the interview)
 
-## Guardrails (verified pass)
+1. **N_final source**: extend the promotion record with `weaker_wins` (recommended — the
+   schema anticipated this reader) vs a separate evidence document.
+2. **The report's home**: new `reports/honest-number/` directory (recommended) + § 10.9 Type
+   2 amendment in this unit (before any figure) vs extending the baseline home.
+3. **Delta-series mismatch**: refuse by name (recommended — the delta is the document) vs
+   render with the non-comparability sentence.
+4. **Reproducibility scope**: count-level purity + consistency assertion (recommended) vs
+   rollout-level re-scoring (out of scope — would re-run the machine).
 
-Reward stays execution-grounded (scores through the existing STRICT verifier; `verify/` untouched).
-No LLM judge. No data egress (local runs; the artifact carries counts/verdicts/provenance, never
-task contents — locality canary pattern). `UNVERIFIED` never counts as a win (inherited from
-`tally`/`verdict.reduce`). Nothing here gets made redundant by a better base — it gets *more*
-meaningful (the baseline is a new pinned series per base revision).
+## Guardrail placement
+
+- Core loop element: ④ signed morning report (the honest number is its substrate; the
+  morning report itself is a separate follow-on unit, per `docs/ROADMAP.md:657-661`).
+- The reward stays execution-grounded: this unit writes documents, never a reward; nothing on
+  the reward path (`src/whetstone/verify/`, `tasks/`, `patch.py`, `attribution.py`) is
+  touched — AC2 pins hold byte-identical.
+- `UNVERIFIED` is never a win: an `UNVERIFIED` gate decision renders as `UNVERIFIED` (never
+  promoted, never a delta that reads as a win), per the promotion record's own `decision`.
+- Nothing leaves the box: the report renders local evidence; no egress.
+- No figure about a model anywhere except the report's own home: declaration-only until the
+  operator chain completes; `PREREGISTRATION.md` gains no proportion in any spelling.
