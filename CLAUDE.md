@@ -638,26 +638,47 @@ This file orients a coding agent working in this repository. Read it first.
 > `docs/ROADMAP.md` § 10 now marks the held-out split and `R` closed, each pointing at the
 > amendment that closed it.
 >
-> **What is not built.** The nightly loop has never been *run*, so no training set, checkpoint or
-> yield figure exists yet — and **the gate has therefore never been run on real checkpoints**.
-> Its three exits, its retry discipline and its refusals are proven against fixture checkpoints,
-> the stub engine and a simulated wobble; whether the gate can *fire* on a real machine is
-> unmeasured, and the roadmap's response if it cannot is a more reliable sandbox, never a looser
-> gate. `R = 3` is declared a priori for the same reason: there is no observed unverified rate to
-> set it from. P4 is untouched: no nightly report, no dashboard. The `PREREGISTRATION.md` § 3
-> baseline — the untrained base on the held-out split, "measured once, re-measured never" — is
-> unspent, and § 7.3 (which open base) stays open, so the 32B remains *the first candidate with
-> evidence* rather than a pinned base. **The gate has never been
-> run on real checkpoints**, so the retry discipline's liveness is proven against fixtures and
-> a simulated wobble, never yet against a real machine. The bake-off is base *selection*, not
-> the pinned baseline of
-> `PREREGISTRATION.md` § 3 — that is scored on the held-out split, which now exists but has not
-> scored anything, so "measured once, re-measured never" is unspent. Cheat 6 and cheat 10 remain
-> documented residuals; ingestion narrowed cheat 10 with a `conftest.py` floor but did **not**
-> close it. The cuts so far are v0.3.0–v0.7.0, the last tagged 2026-08-20, and each one published
-> `whetstonehq` to PyPI and a GitHub Release by tag push. (This line read "nothing has been
-> published to PyPI" until 2026-08-20; it had been false since v0.3.0, and PyPI's own index is
-> what corrected it.)
+> **P4 slice 1 — the § 3 baseline machinery — is done, and P4 has begun** (`docs/planning/baseline-measurement/`,
+> merged 2026-08-26 as PR #17, cut as v0.9.0). `write_baseline_checkpoint` materializes the
+> untrained open base as a `whetstone-checkpoint/1` directory (`untrained: true`, no adapter;
+> `verify_checkpoint` extended by identity, the trained path byte-identical), and
+> `python -m whetstone.loop.baseline` scores it on the held-out source-B split plus source A
+> through `scoring.score` — STRICT and WEAK both, so baseline `N` is measured via
+> `report.tally`'s `weaker_wins` by identity — with the gate's retry discipline by identity,
+> the base-only engine seam, and the **measured-once guard keyed on the series identity**: the
+> base (`repo_id` + `revision`) plus the held-out document digest, because an untrained
+> checkpoint's digest is the constant `sha256("")` and cannot discriminate bases — the defect
+> was found at integration and fixed test-first. The committed home
+> `reports/baseline-measurement/` (schema `whetstone-baseline/1`) holds the three-artifact
+> shape, declaration-only until the operator spends the measurement; the one-home guard moved
+> a fifth time on the changed-series argument; the operator's sheet is
+> `docs/planning/baseline-measurement/measurement-run/runbook.md`, held by
+> `tests/test_baseline_runbook_guards.py`. **The number is unspent** — the measurement is the
+> operator's single GPU pass, exactly once — and **§ 7.3 stays open**: the 32B is recorded as
+> this series' pinned input, never a closure, and no § 10 amendment was made (the baseline is
+> § 3 pre-authorized, not a new series requiring a disclosure).
+>
+> **The launch path is decided** (`docs/ROADMAP.md` § 12, 2026-08-26): P4's first honest number
+> is the launchable milestone; the next unit is P4 slice 2 — the honest-number report writer
+> (both sources, delta, `N_baseline`/`N_final`, coverage, provenance) plus the
+> harness-reproduces-the-number check — buildable while the operator runs proceed (§ 7.3
+> amendment → spend the baseline → two nights → the first gated evaluation → the P4 report).
+> The **signed morning report (`whetstone report --last-night`) is pulled into the launch
+> path** ahead of the dashboard; the Next.js dashboard and distillation remain post-horizon.
+>
+> **What is not built.** The nightly loop has never been *run*, so no training set, checkpoint
+> or yield figure exists yet — and **the gate has therefore never been run on real
+> checkpoints**. Its three exits, its retry discipline and its refusals are proven against
+> fixture checkpoints, the stub engine and a simulated wobble; whether the gate can *fire* on a
+> real machine is unmeasured, and the roadmap's response if it cannot is a more reliable
+> sandbox, never a looser gate. `R = 3` is declared a priori for the same reason: there is no
+> observed unverified rate to set it from. The bake-off is base *selection*, not the pinned
+> baseline of `PREREGISTRATION.md` § 3 — the split has not scored anything, so "measured once,
+> re-measured never" is unspent. Cheat 6 and cheat 10 remain documented residuals; ingestion
+> narrowed cheat 10 with a `conftest.py` floor but did **not** close it. The cuts so far are
+> v0.3.0–v0.9.0, the last tagged 2026-08-26, and each one published `whetstonehq` to PyPI and a
+> GitHub Release by tag push. (This line read "nothing has been published to PyPI" until
+> 2026-08-20; it had been false since v0.3.0, and PyPI's own index is what corrected it.)
 >
 > Keep this file, `VISION.md`, and `docs/ROADMAP.md` in sync as direction firms up. Describe the
 > state of the tree this file ships in, and never work in flight on a branch — a status that
@@ -828,11 +849,12 @@ VISION.md                       # Narrative thesis, moat, non-goals
 CLAUDE.md                       # This file
 CONTRIBUTING.md                 # Dev setup, test-first contract, ground rules
 PREREGISTRATION.md              # What P4 may claim, fixed before any number existed
-RELEASING.md                    # Tag-push release mechanism (nothing released yet)
+RELEASING.md                    # Tag-push release mechanism — proven since v0.3.0
 reports/baseline/               # The P1 bake-off — the only home of the baseline's figures
 reports/format-hardening/       # The hardened arm's report — non-comparable, by the D6 argument
 reports/easier-stratum/         # The probe's home — non-comparable, changed task set (§ 10.5)
 reports/larger-base/            # The arm's home — non-comparable, new candidate (§ 10.6)
+reports/baseline-measurement/   # The § 3 baseline's home — the anchor of every delta (PR #17)
 .claude/skills/                 # The repo's own workflow skills (see below)
 docs/
   ROADMAP.md                    # 2–3 month phased plan + milestones — authoritative today

@@ -1,8 +1,8 @@
 # Whetstone Roadmap
 
 **Horizon:** 2026-07-27 → 2026-10-25 (~13 weeks). **Written:** 2026-07-26.
-**Ends at:** the first honest number. Distillation, the morning report, and the dashboard
-are post-horizon and named as such.
+**Ends at:** the first honest number. Distillation and the dashboard are post-horizon and
+named as such; the morning report is in the launch path (§ 12).
 
 > All durations are **planning estimates**, not commitments or measurements. No performance
 > figure appears anywhere in this document: the bake-off's figures live in `reports/baseline/`,
@@ -587,10 +587,10 @@ draw itself pure and offline. Source B never touches the network at all.
 
 ## 9. Post-horizon (named, so they read as sequenced rather than forgotten)
 
-Distillation into a small local model · the signed morning report and
-`whetstone report --last-night` · the Next.js dashboard · GRPO as a stretch beyond expert
-iteration · a second task family · closing cheat 6 via held-out test variants or mutation
-testing · Linux portability.
+Distillation into a small local model · the Next.js dashboard · GRPO as a stretch beyond
+expert iteration · a second task family · closing cheat 6 via held-out test variants or
+mutation testing · Linux portability. The signed morning report and `whetstone report
+--last-night` are no longer post-horizon — pulled into the launch path 2026-08-26 (§ 12).
 
 ---
 
@@ -631,3 +631,34 @@ use. `VISION.md` restates facts 1 and 2 without attribution and gives the venue 
 
 > `CLAUDE.md:224` — *"If you need a statistic that isn't here, do not invent one; say it's
 > unverified."*
+
+---
+
+## 12. The launch path — decided 2026-08-26
+
+The horizon's end — **the first honest number** (§ header, P4) — is also the product's
+launchable milestone: P4's exit criteria (`§ 4`, P4) *are* a publishable result. The launch
+review fixed the path to it:
+
+- **P4 slice 1 landed 2026-08-26** (`docs/planning/baseline-measurement/`, PR #17, v0.9.0):
+  the § 3 baseline machinery — the untrained base's checkpoint, the measurement door, the
+  committed `reports/baseline-measurement/` home, the operator's runbook. **The measurement
+  itself is unspent**: the number is the operator's single GPU pass, exactly once.
+- **The next unit is P4 slice 2** — the honest-number report writer (`§ 4`, P4's exit
+  criterion 1: for both sources, baseline score, final score, delta, `N_baseline`, `N_final`,
+  coverage, and the full provenance block, in the `PREREGISTRATION.md` § 4 shape), plus P4's
+  exit criterion 3 (the harness is public and reproduces the reported number from the pinned
+  inputs). It can be built while the operator runs proceed.
+- **The operator runs, in dependency order, runbooks ready**: the § 7.3 Type 1 amendment
+  (the base being fine-tuned must be pinned before the night trains) → spend the baseline →
+  night #1 → night #2 (the gate compares two checkpoints) → the first gated evaluation → the
+  P4 report → the finding. The night's yield and the gate's liveness on a real machine are
+  unmeasured until they run.
+- **The signed morning report (`whetstone report --last-night`) is pulled into the launch
+  path**, ahead of the dashboard: it is the demoable surface ("wake up and read the proof"),
+  and the report writers, ledger and gate record it renders already exist. **The Next.js
+  dashboard and distillation remain post-horizon** (§ 9) — neither is needed to publish a
+  real number.
+- **If the number needs help, the levers are raising `K` or a larger base** (P2's pivot
+  response) — never a looser verifier; a zero or negative delta is a valid, publishable
+  outcome (P4 has no pivot signal).
