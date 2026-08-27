@@ -683,3 +683,203 @@ def test_the_locality_canary_holds_donor_text_out_of_every_artifact(tmp_path: Pa
             "eventually publish one"
         )
 
+
+def _figures(text: str) -> set[tuple[str, str]]:
+    """Every `N of M` figure in the text, as the scan of the one-home guard reads it."""
+    return {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", text)}
+
+
+def _baseline_artifact() -> Mapping[str, object]:
+    """The sealed § 3 baseline artifact the door would read — the fixture's own.
+
+    The writer's baseline-side counts must equal this artifact's figures byte-for-byte:
+    the door feeds the writer the artifact's values, never a copy, and the disjointness
+    exception admits exactly those figures.
+    """
+    baseline = _counts("baseline", "heldout", BASELINE_HELDOUT)
+    public = _counts("baseline", "public", BASELINE_PUBLIC)
+    return {
+        "schema": "whetstone-baseline/1",
+        "measured": True,
+        "recorded_on": "2026-08-26",
+        "series": dict(SERIES),
+        "sides": {
+            "source-b": dict(baseline),
+            "source-a": dict(public),
+        },
+        "n": {
+            "count": baseline["weaker_wins"],
+            "denominator": baseline["denominator"],
+            "sentence": report._N_SENTENCE,
+        },
+        "retries": {
+            "retry_count": PROVENANCE["retry_count"],
+            "spent": 2,
+            "tasks": list(PROVENANCE["retries"]),
+        },
+        "evidence": {"schema": "whetstone-baseline-run/1", "digest": "e" * 64},
+        "tool_versions": dict(PROVENANCE["tool_versions"]),
+        "non_comparable": True,
+    }
+
+
+def _artifact_derived_figures(artifact: Mapping[str, object]) -> set[tuple[str, str]]:
+    """Every figure the sealed artifact's sides carry — the exception's admitted set."""
+    figures: set[tuple[str, str]] = set()
+    for source in ("source-b", "source-a"):
+        counts = artifact["sides"][source]
+        for field in ("solved", "covered", "unverified", "failed", "weaker_wins"):
+            figures.add((str(counts[field]), str(counts["denominator"])))
+    return figures
+
+
+def _baseline_rendered_figures(artifact: Mapping[str, object]) -> set[tuple[str, str]]:
+    """The baseline-side figures the writer's markdown renders from the artifact's values.
+
+    Source B renders its five count fields over the held-out denominator; source A
+    renders the named instance's solved count over its own denominator.
+    """
+    rendered: set[tuple[str, str]] = set()
+    source_b = artifact["sides"]["source-b"]
+    for field in ("solved", "covered", "unverified", "failed", "weaker_wins"):
+        rendered.add((str(source_b[field]), str(source_b["denominator"])))
+    source_a = artifact["sides"]["source-a"]
+    rendered.add((str(source_a["solved"]), str(source_a["denominator"])))
+    return rendered
+
+
+def _build_homes(root: Path) -> None:
+    """The four existing homes' artifacts in a synthetic tree, with known figures.
+
+    The figures mirror the committed homes' denominators (63, 20, 62, 64 — the real
+    artifacts' own), minus the funnel figures the honest-number document is pre-registered
+    to render: the eligibility and refusal counts belong to the committed rejection
+    ledger, and the aspect-4 guard decides how the ledger-derived exception is argued.
+    The one figure that deliberately collides with the writer's document is `0 of 1` —
+    the bake-off's own source-A result — because it equals the sealed baseline artifact's
+    source-A figure, the loader-by-identity exception this suite asserts by name.
+    """
+    figures = {
+        "baseline": ["0 of 1", "0 of 63", "42 of 63", "189 of 189"],
+        "format-hardening": ["0 of 20", "4 of 20", "10 of 20"],
+        "easier-stratum": ["0 of 62", "31 of 62", "37 of 62"],
+        "larger-base": ["0 of 64", "43 of 64", "50 of 64"],
+    }
+    for directory, home_figures in figures.items():
+        home = root / "reports" / directory
+        home.mkdir(parents=True)
+        for name in ("report.md", "report.json", "cost.json"):
+            (home / name).write_text(" ".join(home_figures), encoding="utf-8")
+
+
+def _homes_figures(root: Path) -> set[tuple[str, str]]:
+    """Every figure in the four synthetic homes' twelve artifacts."""
+    figures: set[tuple[str, str]] = set()
+    for directory in ("baseline", "format-hardening", "easier-stratum", "larger-base"):
+        for name in ("report.md", "report.json", "cost.json"):
+            figures |= _figures(
+                (root / "reports" / directory / name).read_text(encoding="utf-8")
+            )
+    return figures
+
+
+def test_the_honest_number_report_restates_no_figure_from_an_existing_home(
+    tmp_path: Path,
+) -> None:
+    """*(adversarial)* No rendered figure lives in any of the four existing homes' artifacts.
+
+    The honest-number home joins the guard on the same rule the earlier homes joined it
+    on, asserted the strongest way available: every `N of M` figure the writer renders is
+    disjoint from every `N of M` figure the four existing homes' artifacts render —
+    except the loader-derived baseline figures. The pre-registered shape requires the
+    baseline's counts (`baseline c of b`); those figures are the sealed § 3 artifact's
+    own (the fixture provides the artifact-derived values, asserted byte-equal to what
+    the writer renders); and the exception is exercised and admitted by name — the one
+    overlap, `0 of 1`, is exactly the artifact's source-A figure.
+    """
+    _build_homes(tmp_path)
+    honest = tmp_path / "honest-number"
+    write_honest_number_report(build_honest_number_report(_input("promoted")), honest)
+
+    writer = _figures(
+        " ".join(
+            (honest / name).read_text(encoding="utf-8")
+            for name in ("report.md", "report.json", "cost.json")
+        )
+    )
+    assert writer, (
+        "WHY THIS IS A FAILURE: the report renders no figures at all, so this test's "
+        "disjointness assertion would pass vacuously over an empty document"
+    )
+    existing = _homes_figures(tmp_path)
+    assert existing, (
+        "WHY THIS IS A FAILURE: none of the synthetic homes renders an `N of M` figure, "
+        "so the disjointness guard has nothing to guard against"
+    )
+
+    artifact = _baseline_artifact()
+    allowed = _artifact_derived_figures(artifact)
+    rendered_baseline = _baseline_rendered_figures(artifact)
+    assert rendered_baseline <= writer, (
+        "WHY THIS IS A FAILURE: the baseline-side figures the writer renders are not "
+        "the sealed artifact's own, byte-equal — the loader-by-identity claim is the "
+        "whole ground the exception stands on"
+    )
+    assert rendered_baseline <= allowed, (
+        "WHY THIS IS A FAILURE: the exception admits figures the artifact does not "
+        "carry — the admitted set must be exactly the artifact-derived one"
+    )
+
+    overlap = writer & existing
+    assert overlap, (
+        "WHY THIS IS A FAILURE: the exception is not exercised — no loader-derived "
+        "figure collides with a home, so nothing proves the guard admits it"
+    )
+    assert overlap <= allowed, (
+        f"WHY THIS IS A FAILURE: the report restates {sorted(overlap - allowed)}, which "
+        "already lives in one of the existing homes' artifacts. A figure quoted twice "
+        "is a figure that can disagree with itself, and the one-home rule exists so "
+        "that cannot happen"
+    )
+    assert overlap == {("0", "1")}, (
+        "WHY THIS IS A FAILURE: the loader-by-identity exception is not admitted by "
+        "name — the only overlap must be the artifact's source-A figure, and nothing else"
+    )
+
+
+def test_the_honest_number_disjointness_guard_catches_a_planted_figure(
+    tmp_path: Path,
+) -> None:
+    """*(adversarial)* The scan above can see a planted collision with an existing home.
+
+    The synthetic homes' figures are disjoint from the writer's by construction — the
+    only overlap is the loader-derived baseline figure, admitted by the exception. A
+    planted `10 of 20` — a figure the format-hardening home actually renders — added to
+    a copy of the new home's sidecar must be found by the same scan. A collision the
+    guard cannot see is a figure with two homes.
+    """
+    _build_homes(tmp_path)
+    honest = tmp_path / "honest-number"
+    write_honest_number_report(build_honest_number_report(_input("promoted")), honest)
+
+    artifact = _baseline_artifact()
+    allowed = _artifact_derived_figures(artifact)
+    existing = _homes_figures(tmp_path)
+    clean = _figures((honest / "report.json").read_text(encoding="utf-8")) & existing
+    assert clean <= allowed, (
+        "WHY THIS IS A FAILURE: the clean render already collides with a home beyond "
+        "the loader-derived exception, so the planted half of this control is not "
+        "testing the guard's logic"
+    )
+
+    planted = honest / "report.json"
+    planted.write_text(
+        planted.read_text(encoding="utf-8") + '"planted": "10 of 20"\n', encoding="utf-8"
+    )
+    overlap = _figures(planted.read_text(encoding="utf-8")) & existing
+    assert ("10", "20") in overlap and ("10", "20") not in allowed, (
+        "WHY THIS IS A FAILURE: the planted `10 of 20` was absorbed by the guard's "
+        "scan. A collision the guard cannot see is a figure with two homes, and the "
+        "next reader has no way to tell which of two disagreeing numbers is the real one"
+    )
+
