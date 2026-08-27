@@ -21,6 +21,8 @@ from __future__ import annotations
 import ast
 import json
 import re
+import subprocess
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -953,3 +955,157 @@ def test_render_declaration_writes_the_pre_run_state_and_is_rerunnable(
     assert code == 2
     assert "runs" in capsys.readouterr().err
     assert not runs_out.exists()
+
+
+# --------------------------------------------------------------------------------------------
+# Phase 5: the harness-reproduces-the-number check — P4 exit criterion 3, at the count
+# level, proven end-to-end through the real door.
+# --------------------------------------------------------------------------------------------
+
+
+def test_the_render_is_byte_identical_across_invocations_and_subprocesses(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 7: one fixture pair renders the same bytes every time, in this process and in
+    fresh ones under different hash seeds.
+
+    The report is a pure, deterministic function of the sealed evidence — a reader who
+    regenerates it and gets different bytes cannot tell a re-render from a
+    re-measurement. The subprocess half is not ceremony: mapping and set iteration
+    order are the two things that vary across processes and not within one, and
+    `PYTHONHASHSEED` is what makes that variation actually happen.
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path / "one")
+    assert honest_report.main(_argv(fixtures)) == 0
+    first = {
+        name: (fixtures["out"] / name).read_bytes()
+        for name in ("report.md", "report.json", "cost.json")
+    }
+
+    second = _fixtures(tmp_path / "two")
+    assert honest_report.main(_argv(second)) == 0
+    for name, bytes_before in first.items():
+        assert (second["out"] / name).read_bytes() == bytes_before, (
+            f"WHY THIS IS A FAILURE: {name} differs between two renders of the same "
+            "fixture pair in this process"
+        )
+
+    for seed, out in (("0", tmp_path / "sub-0"), ("1", tmp_path / "sub-1")):
+        program = (
+            f"import sys; sys.path.insert(0, {str(REPO_ROOT)!r});"
+            "from whetstone.loop import honest_report;"
+            f"sys.exit(honest_report.main({_argv(fixtures, out=out)!r}))"
+        )
+        run = subprocess.run(
+            [sys.executable, "-c", program],
+            capture_output=True,
+            text=True,
+            env={"PATH": "/usr/bin:/bin", "PYTHONHASHSEED": seed},
+        )
+        assert run.returncode == 0, run.stderr
+        for name, bytes_before in first.items():
+            assert (out / name).read_bytes() == bytes_before, (
+                f"WHY THIS IS A FAILURE: {name} depends on the process that produced "
+                f"it (hash seed {seed}) — some mapping or set is serialised in "
+                "iteration order"
+            )
+
+
+def test_the_baseline_side_figures_are_the_sealed_artifacts_own_byte_for_byte(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 6: the report's baseline-side figures equal the sealed artifact's figures —
+    the loader-by-identity exception, proven end-to-end through the real door.
+
+    The door feeds the writer the artifact's own counts — never a copy, never a
+    re-derivation — so the rendered figures cannot disagree with the artifact that
+    owns them: the one-home guard admits exactly these figures.
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path)
+    assert honest_report.main(_argv(fixtures)) == 0
+
+    artifact = json.loads(fixtures["baseline"].read_text(encoding="utf-8"))
+    payload = json.loads((fixtures["out"] / "report.json").read_text(encoding="utf-8"))
+    markdown = (fixtures["out"] / "report.md").read_text(encoding="utf-8")
+
+    assert payload["sides"]["baseline"] == artifact["sides"], (
+        "WHY THIS IS A FAILURE: the report's baseline-side counts are not the sealed "
+        "artifact's own — the loader-by-identity exception admits exactly the "
+        "artifact's figures, nothing else"
+    )
+    source_b = artifact["sides"]["source-b"]
+    for field in ("solved", "covered", "unverified", "failed", "weaker_wins"):
+        assert f"{source_b[field]} of {source_b['denominator']}" in markdown, (
+            f"WHY THIS IS A FAILURE: source B's {field} figure does not render as the "
+            "artifact's own, over its own denominator"
+        )
+    source_a = artifact["sides"]["source-a"]
+    assert f"{source_a['solved']} of {source_a['denominator']}" in markdown, (
+        "WHY THIS IS A FAILURE: source A's solved figure does not render as the "
+        "artifact's own"
+    )
+    assert f"baseline {source_b['solved']} of {source_b['denominator']}" in markdown, (
+        "WHY THIS IS A FAILURE: the headline's baseline term is not the artifact's "
+        "solved count"
+    )
+    assert f"N: {source_b['weaker_wins']} at baseline" in markdown, (
+        "WHY THIS IS A FAILURE: the headline's baseline `N` is not the artifact's "
+        "`weaker_wins`"
+    )
+
+
+def test_a_doctored_record_is_refused_on_read_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 2: a record whose counts no longer sum is refused on read — the reader's
+    consistency assertions hold end-to-end through the real door.
+
+    A moved count is the one edit nobody checks: the record's counts are the final
+    side of the delta, and the reader's `solved + failed + unverified == denominator`
+    check refuses it by name, nothing written.
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path / "one")
+    record = _record(tmp_path / "one")
+    raw = json.loads(record.read_text(encoding="utf-8"))
+    raw["sides"]["candidate"]["private"]["solved"] += 1
+    record.write_text(
+        json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+    code = honest_report.main(_argv(fixtures))
+
+    assert code == 2
+    message = capsys.readouterr().err
+    assert "do not sum" in message, message
+    assert not fixtures["out"].exists(), (
+        "WHY THIS IS A FAILURE: a refused render wrote artifacts — a record that "
+        "cannot be trusted is not evidence"
+    )
+
+
+def test_the_heldout_pointer_is_never_read(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--heldout` is a pointer, never parsed — the comparison.py `--stratum-doc`
+    precedent.
+
+    The series check runs on the documents' own digests, so a held-out path that does
+    not even exist cannot refuse the render: the pointer is for the operator's
+    command line, never for the door's reads.
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path)
+
+    code = honest_report.main(
+        _argv(fixtures, heldout=tmp_path / "does-not-exist.json")
+    )
+
+    assert code == 0, capsys.readouterr().err
+    assert (fixtures["out"] / "report.json").is_file()
