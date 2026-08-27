@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -730,3 +731,225 @@ def test_a_same_series_render_at_out_is_refused_but_a_different_series_renders(
     assert code == 0, capsys.readouterr().err
     payload = json.loads((fixtures["out"] / "report.json").read_text(encoding="utf-8"))
     assert payload["series"]["revision"] == "other-rev", payload
+
+
+# --------------------------------------------------------------------------------------------
+# Phase 4: the decision semantics end-to-end — promoted, rejected, UNVERIFIED — and the
+# declaration mode's re-runnability.
+# --------------------------------------------------------------------------------------------
+
+
+def test_a_promoted_decision_renders_the_candidate_as_final(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """PRD gate-resolution 4: promoted → the candidate's counts are final, end-to-end.
+
+    The door passes the record's decision and counts through to the writer; the
+    fixture candidate solves 3 of 12 (the baseline's 2 plus one) with `N = 2`, so the
+    § 4 headline instantiates exactly — `+a of b held-out tasks (baseline c of b,
+    final d of b) / coverage e of b / N: f at baseline, g at final` — with `e` the
+    final side's covered count (gate-resolution 6), and the provenance carries what
+    the door read from the run ledger and the baseline artifact.
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path)
+
+    code = honest_report.main(_argv(fixtures))
+    assert code == 0, capsys.readouterr().err
+    markdown = (fixtures["out"] / "report.md").read_text(encoding="utf-8")
+
+    assert "+1 of 12 held-out tasks (baseline 2 of 12, final 3 of 12)" in markdown, (
+        "WHY THIS IS A FAILURE: the promoted decision does not render the § 4 headline "
+        "with the candidate as the final side — the door must pass the record's "
+        "decision and counts through"
+    )
+    assert "coverage 12 of 12     N: 1 at baseline, 2 at final" in markdown, (
+        "WHY THIS IS A FAILURE: the headline's coverage is not the final side's "
+        "covered count, or the `N` pair is not the baseline's and candidate's "
+        "`weaker_wins`"
+    )
+    assert "candidate (final)" in markdown, (
+        "WHY THIS IS A FAILURE: the comparison table does not label the candidate as "
+        "final"
+    )
+
+    payload = json.loads((fixtures["out"] / "report.json").read_text(encoding="utf-8"))
+    assert payload["decision"] == "promoted", payload
+    assert payload["headline"] == {
+        "delta": 1,
+        "denominator": HELDOUT,
+        "baseline_solved": 2,
+        "final_solved": 3,
+        "coverage": HELDOUT,
+        "final_side": "candidate",
+    }, payload["headline"]
+    assert payload["n"]["baseline"]["count"] == 1, payload["n"]
+    assert payload["n"]["final"]["count"] == 2, payload["n"]
+    ledger_raw = json.loads(fixtures["ledger"].read_text(encoding="utf-8"))
+    assert (
+        payload["provenance"]["generation_contract"]["sampler"]
+        == ledger_raw["generation_contract"]["sampler"]
+    ), payload["provenance"]["generation_contract"]
+    artifact = json.loads(fixtures["baseline"].read_text(encoding="utf-8"))
+    assert (
+        payload["provenance"]["base_sentence"] == artifact["base"]["sentence"]
+    ), payload["provenance"]["base_sentence"]
+
+
+def test_a_rejected_decision_renders_the_incumbent_as_final_with_the_candidate_disclosed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """PRD gate-resolution 4: rejected → the incumbent's counts are final; the candidate
+    is disclosed as the rejected attempt.
+
+    Nothing shipped under a rejection, so the headline's "final" is the incumbent's
+    counts — the delta against the baseline is the honest zero — and the candidate's
+    counts render beside them labelled as the rejected attempt, never "final".
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path / "one")
+    record = _record(
+        tmp_path / "one",
+        decision=gate.Exit.REJECTED,
+        candidate_solved=1,
+        candidate_weaker_wins=0,
+    )
+
+    code = honest_report.main(_argv(fixtures, record=record))
+    assert code == 0, capsys.readouterr().err
+    markdown = (fixtures["out"] / "report.md").read_text(encoding="utf-8")
+
+    assert "+0 of 12 held-out tasks (baseline 2 of 12, final 2 of 12)" in markdown, (
+        "WHY THIS IS A FAILURE: a rejected decision must render the incumbent as "
+        "final — the delta is the incumbent's against the baseline"
+    )
+    assert "candidate (rejected attempt)" in markdown, (
+        "WHY THIS IS A FAILURE: the candidate's counts are not labelled as the "
+        "rejected attempt"
+    )
+    assert "incumbent (final)" in markdown, (
+        "WHY THIS IS A FAILURE: the incumbent's counts are not labelled as final"
+    )
+    payload = json.loads((fixtures["out"] / "report.json").read_text(encoding="utf-8"))
+    assert payload["headline"]["final_side"] == "incumbent", payload["headline"]
+    assert payload["n"]["final"]["count"] == 1, payload["n"]
+
+
+def test_an_unverified_decision_renders_no_headline_and_no_delta(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """PRD gate-resolution 4: UNVERIFIED → no headline, no delta, "no comparison was made".
+
+    No comparison was actually made (`PREREGISTRATION.md:111-114`), so the document
+    holds no `+a of b held-out tasks` line, no coverage line, no `N at
+    baseline/at final` line, and no reading of either side as "final".
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path / "one")
+    record = _record(
+        tmp_path / "one",
+        decision=gate.Exit.UNVERIFIED,
+        decision_unverified=1,
+        candidate_solved=2,
+        incumbent_solved=2,
+        candidate_weaker_wins=1,
+    )
+
+    code = honest_report.main(_argv(fixtures, record=record))
+    assert code == 0, capsys.readouterr().err
+    markdown = (fixtures["out"] / "report.md").read_text(encoding="utf-8")
+
+    assert "UNVERIFIED" in markdown, (
+        "WHY THIS IS A FAILURE: the decision is not stated — a reader could not tell "
+        "this document from one that made a comparison"
+    )
+    assert "no comparison was made" in markdown.lower(), (
+        "WHY THIS IS A FAILURE: the document does not state that no comparison was "
+        "made — the sentence is the whole reason the headline is absent"
+    )
+    assert not re.search(r"\+?\s*-?\d+\s+of\s+\d+\s+held-out tasks", markdown), (
+        "WHY THIS IS A FAILURE: the document renders a headline for an evaluation "
+        "that never compared anything. A delta is a comparison, and none was made"
+    )
+    assert not re.search(r"coverage\s+\d+\s+of\s+\d+", markdown), (
+        "WHY THIS IS A FAILURE: the headline's coverage line renders where the "
+        "headline is forbidden"
+    )
+    assert "at baseline" not in markdown and "at final" not in markdown, (
+        "WHY THIS IS A FAILURE: the headline's `N: f at baseline, g at final` line "
+        "renders — but without a comparison there is no final side and no paired `N`"
+    )
+    for banned in ("final counts", "final side", "(final)", "at final"):
+        assert banned not in markdown, (
+            "WHY THIS IS A FAILURE: "
+            f"{banned!r} appears in a document whose evaluation made no comparison"
+        )
+    assert "candidate" in markdown and "incumbent" in markdown, (
+        "WHY THIS IS A FAILURE: the decision's counts — both sides' — are not rendered"
+    )
+
+
+def test_render_declaration_writes_the_pre_run_state_and_is_rerunnable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 3: the declaration writes the writer's pre-run state and re-running it
+    rewrites the same declaration — a declaration is not a measurement.
+
+    The committed artifacts hold the "No count is measured here" sentence and no
+    figure in any spelling; a second invocation exits 0 and rewrites the same bytes
+    (the measured-once refusal is deliberately not applied), and a gitignored `--out`
+    is refused by name.
+    """
+    from whetstone.loop import honest_report
+
+    out = tmp_path / "declaration"
+    code = honest_report.main(
+        ["--render-declaration", str(out), "--recorded-on", _RECORDED_ON]
+    )
+    assert code == 0, capsys.readouterr().err
+    for name in ("report.md", "report.json", "cost.json"):
+        assert (out / name).is_file(), name
+    text = "\n".join(
+        (out / name).read_text(encoding="utf-8")
+        for name in ("report.md", "report.json", "cost.json")
+    )
+    assert "No count is measured here: the report has not run." in text, text
+    assert not re.search(r"\d+ of \d+", text), (
+        "WHY THIS IS A FAILURE: the declaration renders a figure, but no measurement "
+        "exists — a count here would be a restated figure from another home or an "
+        "invented one"
+    )
+    payload = json.loads((out / "report.json").read_text(encoding="utf-8"))
+    assert payload["measured"] is False, payload
+    for name in ("sides", "headline", "n", "funnel", "series", "provenance"):
+        assert name not in payload, (
+            f"WHY THIS IS A FAILURE: the declaration carries {name}, but no "
+            "measurement exists"
+        )
+
+    first_bytes = {
+        name: (out / name).read_bytes()
+        for name in ("report.md", "report.json", "cost.json")
+    }
+
+    second = honest_report.main(
+        ["--render-declaration", str(out), "--recorded-on", _RECORDED_ON]
+    )
+    assert second == 0
+    for name, bytes_before in first_bytes.items():
+        assert (out / name).read_bytes() == bytes_before, (
+            "WHY THIS IS A FAILURE: re-running the declaration changed its bytes — "
+            "the declaration is not a measurement, and re-running it must rewrite the "
+            "same declaration"
+        )
+
+    runs_out = tmp_path / "runs" / "declaration"
+    code = honest_report.main(
+        ["--render-declaration", str(runs_out), "--recorded-on", _RECORDED_ON]
+    )
+    assert code == 2
+    assert "runs" in capsys.readouterr().err
+    assert not runs_out.exists()
