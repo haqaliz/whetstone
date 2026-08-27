@@ -595,6 +595,7 @@ def test_the_record_reports_both_sources_with_both_denominators_disclosed(
         "unverified": 0,
         "covered": len(_MEMBERS),
         "failed": 0,
+        "weaker_wins": 0,
         "status": "PASS",
     }, candidate_private
 

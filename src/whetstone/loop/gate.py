@@ -94,9 +94,8 @@ from whetstone.verify.verdict import reduce as verdict_reduce
 #: in the denominator; they never vanish from it.
 _UNCOVERED = bakeoff_report._UNCOVERED
 
-#: The promotion record's own schema string, checked on read by nobody yet — the record is
-#: written, never read back by this module — and named so a later reader has one answer to
-#: "what shape is this file".
+#: The promotion record's own schema string — the one answer to "what shape is this file":
+#: the writer emits it and the reader (`read_promotion_record`) refuses anything else.
 PROMOTION_SCHEMA = "whetstone-promotion/1"
 
 #: The directory under `--runs` the promotion records live in.
@@ -310,6 +309,12 @@ class SideCounts:
 
     #: `denominator - unverified - solved` — graded and not solved.
     failed: int
+
+    #: The rollouts a weaker check would have scored as wins — `report.tally`'s
+    #: definition by identity (weak is `Status.PASS` and strict is `Status.FAIL` over the
+    #: same records), never a copied formula, never a rate. This is the final side's `N`
+    #: (`PREREGISTRATION.md:57-72`), recorded at scoring time when the rollouts are at hand.
+    weaker_wins: int
 
     #: The side's reduced status over this source, folded through `verdict.reduce`
     #: (worst-status-wins, UNVERIFIED above PASS — the honesty contract, by identity).
@@ -727,7 +732,9 @@ def write_promotion_record(
     """Write the promotion record — schema `whetstone-promotion/1` — deterministically.
 
     The record is local evidence, never published: the digests (re-hashed), the held-out
-    document's digest, both sides' counts over both denominators, the decision with every
+    document's digest, both sides' counts over both denominators — each source's six counts,
+    including `weaker_wins`, `report.tally`'s definition of `N` by identity, so the final
+    side's `N` (`PREREGISTRATION.md:57-72`) has an on-disk source — the decision with every
     count it was read from, the retry discipline's own three facts, the tool versions, and
     `recorded_on` — an input, never the clock.
 
@@ -782,6 +789,359 @@ def write_promotion_record(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
+
+
+# --------------------------------------------------------------------------------------------
+# The record's read side — `read_promotion_record`, the fail-closed reader the schema
+# docstring anticipated ("the later reader has one answer to what shape is this file").
+# The gate writes the record and never reads it back; the honest-number report does, and a
+# reader that defaulted a missing count would publish a figure no document supports.
+# --------------------------------------------------------------------------------------------
+
+#: Every top-level field a promotion record may carry — the writer's own document shape.
+#: Both halves matter, on the baseline loader's posture: a MISSING field is refused (nothing
+#: loads as a default) and an UNKNOWN field is refused (a doctored record is refused by
+#: name, never trusted).
+_PROMOTION_FIELDS = frozenset(
+    {
+        "schema",
+        "run_id",
+        "recorded_on",
+        "candidate",
+        "incumbent",
+        "heldout",
+        "sides",
+        "decision",
+        "retry_count",
+        "retries_used",
+        "retries",
+        "unverified_after_retries",
+        "tool_versions",
+    }
+)
+
+#: The six count fields each source's side carries — the integers the reader validates,
+#: `weaker_wins` last so a record written before the field existed is refused by name.
+_PROMOTION_COUNTS = (
+    "denominator",
+    "solved",
+    "unverified",
+    "covered",
+    "failed",
+    "weaker_wins",
+)
+
+#: Every field a source's counts block may carry: the six counts plus the reduced status.
+_PROMOTION_COUNT_FIELDS = frozenset((*_PROMOTION_COUNTS, "status"))
+
+#: Every field the decision block may carry.
+_PROMOTION_DECISION_FIELDS = frozenset(
+    {
+        "exit",
+        "denominator",
+        "solved_new",
+        "solved_old",
+        "regressed",
+        "unverified",
+        "detail",
+    }
+)
+
+
+@dataclass(frozen=True)
+class PromotionRecord:
+    """A promotion record read back, after every fail-closed check passed.
+
+    The gate writes the record and never reads it back; this is the reader the schema
+    docstring anticipated, and it returns the record's counts verbatim — validated, never
+    re-derived, never defaulted. `sides` is the gate's own `Side` shape per checkpoint,
+    `decision` is the block as written (every count the rule was read from), and the retry
+    facts and tool versions are carried as the writer rendered them.
+    """
+
+    #: The declared schema, carried rather than assumed.
+    schema: str
+
+    #: The operator-declared run id — an input, never a generated name.
+    run_id: str
+
+    #: The operator-declared date — an input, never the clock.
+    recorded_on: str
+
+    #: The candidate's re-hashed digest, as written.
+    candidate_digest: str
+
+    #: The incumbent's re-hashed digest, as written.
+    incumbent_digest: str
+
+    #: The held-out document's digest, as written.
+    heldout_digest: str
+
+    #: Both checkpoints' counts over both sources, in the gate's own `Side` shape.
+    sides: Mapping[str, Side]
+
+    #: The decision block verbatim — every count the rule was read from.
+    decision: Mapping[str, Any]
+
+    #: The declared retry budget `R`.
+    retry_count: int
+
+    #: The retries actually spent.
+    retries_used: int
+
+    #: What the retry discipline did, per (side, task) it fired on — as written.
+    retries: tuple[Mapping[str, Any], ...]
+
+    #: The (side, task) pairs that outlasted the budget — as written.
+    unverified_after_retries: tuple[Mapping[str, Any], ...]
+
+    #: The tool versions, as written.
+    tool_versions: Mapping[str, str]
+
+
+def read_promotion_record(path: Path) -> PromotionRecord:
+    """Read the promotion record, or refuse it by name.
+
+    The fail-closed read side of the record: a document an outside reader doctored is
+    refused rather than trusted, because the promotion record is the final side of every
+    later delta and a silently moved count is the one edit nobody checks. The checks are,
+    in order: the file reads and is an object; the schema is the writer's own
+    (`PROMOTION_SCHEMA`); no top-level field is unknown; the run identity fields and the
+    digests are strings; both sides over both sources are present; each source's six
+    counts are present, integers (never booleans — `bool` is an `int` subclass), sum to
+    their own denominator (`solved + failed + unverified == denominator`) and keep
+    `weaker_wins` at or below it — a record missing `weaker_wins` (written before the
+    field existed) is refused by name, never defaulted to zero, because zero is a
+    measurement and absence is a fact; the decision block is present with its counts as
+    integers and its strings as strings; and the retry facts and tool versions keep their
+    written shapes. Each refusal names the file and the offending field.
+    """
+    location = Path(path)
+    try:
+        raw = json.loads(location.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"promotion record {str(location)!r} could not be read: {exc}"
+        ) from exc
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"promotion record {str(location)!r} must be a JSON object, "
+            f"got {type(raw).__name__}"
+        )
+    if raw.get("schema") != PROMOTION_SCHEMA:
+        raise ValueError(
+            f"promotion record {str(location)!r} declares schema {raw.get('schema')!r}, "
+            f"but this module reads {PROMOTION_SCHEMA!r}; an old-schema record fails "
+            "decode rather than defaulting"
+        )
+    unexpected = sorted(set(raw) - _PROMOTION_FIELDS)
+    if unexpected:
+        raise ValueError(
+            f"promotion record {str(location)!r} carries unknown field {unexpected!r}; a "
+            "field this module does not read would be trusted by nobody and read by no one"
+        )
+    run_id = _record_string(raw, "run_id", location)
+    recorded_on = _record_string(raw, "recorded_on", location)
+    candidate_digest = _record_digest(raw.get("candidate"), "candidate.digest", location)
+    incumbent_digest = _record_digest(raw.get("incumbent"), "incumbent.digest", location)
+    heldout_digest = _record_digest(raw.get("heldout"), "heldout.document_digest", location)
+
+    sides_raw = raw.get("sides")
+    if not isinstance(sides_raw, dict):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-object sides"
+        )
+    unexpected = sorted(set(sides_raw) - {"candidate", "incumbent"})
+    if unexpected:
+        raise ValueError(
+            f"promotion record {str(location)!r} carries unknown field "
+            f"sides.{unexpected!r}; a field this module does not read would be trusted by "
+            "nobody and read by no one"
+        )
+    sides: dict[str, Side] = {}
+    for side in ("candidate", "incumbent"):
+        side_raw = sides_raw.get(side)
+        if not isinstance(side_raw, dict):
+            raise ValueError(
+                f"promotion record {str(location)!r} has a missing or non-object "
+                f"sides.{side}"
+            )
+        unexpected = sorted(set(side_raw) - {"private", "public"})
+        if unexpected:
+            raise ValueError(
+                f"promotion record {str(location)!r} carries unknown field "
+                f"sides.{side}.{unexpected!r}; a field this module does not read would be "
+                "trusted by nobody and read by no one"
+            )
+        sides[side] = Side(
+            private=_record_counts(side_raw.get("private"), f"sides.{side}.private", location),
+            public=_record_counts(side_raw.get("public"), f"sides.{side}.public", location),
+        )
+
+    decision_raw = raw.get("decision")
+    if not isinstance(decision_raw, dict):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-object decision"
+        )
+    unexpected = sorted(set(decision_raw) - _PROMOTION_DECISION_FIELDS)
+    if unexpected:
+        raise ValueError(
+            f"promotion record {str(location)!r} carries unknown field "
+            f"decision.{unexpected!r}; a field this module does not read would be trusted "
+            "by nobody and read by no one"
+        )
+    for field in ("exit", "detail"):
+        if not isinstance(decision_raw.get(field), str):
+            raise ValueError(
+                f"promotion record {str(location)!r} has a missing or non-string "
+                f"decision.{field}"
+            )
+    for field in ("denominator", "solved_new", "solved_old", "regressed", "unverified"):
+        value = decision_raw.get(field)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(
+                f"promotion record {str(location)!r} has a non-integer decision.{field}"
+            )
+
+    retry_count = raw.get("retry_count")
+    if isinstance(retry_count, bool) or not isinstance(retry_count, int):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-integer retry_count"
+        )
+    retries_used = raw.get("retries_used")
+    if isinstance(retries_used, bool) or not isinstance(retries_used, int):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-integer retries_used"
+        )
+    retries = raw.get("retries")
+    if not isinstance(retries, list):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-list retries"
+        )
+    after = raw.get("unverified_after_retries")
+    if not isinstance(after, list):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-list "
+            "unverified_after_retries"
+        )
+    versions = raw.get("tool_versions")
+    if not isinstance(versions, dict) or not all(
+        isinstance(value, str) for value in versions.values()
+    ):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-string-valued "
+            "tool_versions"
+        )
+
+    return PromotionRecord(
+        schema=raw["schema"],
+        run_id=run_id,
+        recorded_on=recorded_on,
+        candidate_digest=candidate_digest,
+        incumbent_digest=incumbent_digest,
+        heldout_digest=heldout_digest,
+        sides=sides,
+        decision=dict(decision_raw),
+        retry_count=retry_count,
+        retries_used=retries_used,
+        retries=tuple(retries),
+        unverified_after_retries=tuple(after),
+        tool_versions=dict(versions),
+    )
+
+
+def _record_string(raw: Mapping[str, Any], field: str, location: Path) -> str:
+    """One top-level string field — a missing or non-string value is refused by name."""
+    value = raw.get(field)
+    if not isinstance(value, str):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-string {field}"
+        )
+    return value
+
+
+def _record_digest(node: Any, where: str, location: Path) -> str:
+    """One digest block — `candidate.digest`, `incumbent.digest`, `heldout.document_digest`."""
+    if not isinstance(node, dict):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-object "
+            f"{where.split('.')[0]}"
+        )
+    value = node.get(where.split(".")[-1])
+    if not isinstance(value, str):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-string {where}"
+        )
+    return value
+
+
+def _record_counts(node: Any, where: str, location: Path) -> SideCounts:
+    """One source's counts block, validated and carried as the gate's own `SideCounts`.
+
+    The six count fields must all be present — a missing `weaker_wins` (a record written
+    before the field existed) is refused by name, never defaulted to zero, because zero is
+    a measurement and absence is a fact — each an integer and never a boolean (`bool` is
+    an `int` subclass, and summing one would be a different count), the sum
+    `solved + failed + unverified` must equal the denominator, and `weaker_wins` never
+    exceeds it. `status` is the side's reduced status, validated as a member of `Status`.
+    """
+    if not isinstance(node, dict):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-object {where}"
+        )
+    unexpected = sorted(set(node) - _PROMOTION_COUNT_FIELDS)
+    if unexpected:
+        raise ValueError(
+            f"promotion record {str(location)!r} carries unknown field "
+            f"{where}.{unexpected!r}; a field this module does not read would be trusted "
+            "by nobody and read by no one"
+        )
+    values: dict[str, int] = {}
+    for field in _PROMOTION_COUNTS:
+        if field not in node:
+            raise ValueError(
+                f"promotion record {str(location)!r} is missing {where}.{field}; a "
+                "missing count is refused, never defaulted"
+            )
+        value = node[field]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(
+                f"promotion record {str(location)!r} has a non-integer {where}.{field}"
+            )
+        values[field] = value
+    if values["solved"] + values["failed"] + values["unverified"] != values["denominator"]:
+        raise ValueError(
+            f"promotion record {str(location)!r} counts {where} do not sum to their "
+            f"denominator: solved ({values['solved']}) + failed ({values['failed']}) + "
+            f"unverified ({values['unverified']}) != denominator "
+            f"({values['denominator']})"
+        )
+    if values["weaker_wins"] > values["denominator"]:
+        raise ValueError(
+            f"promotion record {str(location)!r} counts {where}.weaker_wins "
+            f"({values['weaker_wins']}) over its own denominator ({values['denominator']})"
+        )
+    status = node.get("status")
+    if not isinstance(status, str):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-string "
+            f"{where}.status"
+        )
+    try:
+        reduced = Status(status)
+    except ValueError as exc:
+        raise ValueError(
+            f"promotion record {str(location)!r} has an unknown {where}.status {status!r}"
+        ) from exc
+    return SideCounts(
+        denominator=values["denominator"],
+        solved=values["solved"],
+        unverified=values["unverified"],
+        covered=values["covered"],
+        failed=values["failed"],
+        weaker_wins=values["weaker_wins"],
+        status=reduced,
+    )
 
 
 class _CompletionRecorder:
@@ -1059,7 +1419,12 @@ def _outcome_map(rollouts: Sequence[Rollout], tasks: Sequence[Task]) -> dict[str
 
 
 def _counts(rollouts: Sequence[Rollout], tasks: Sequence[Task]) -> SideCounts:
-    """One side's counts over one source, using the one definitions of solved and unverified."""
+    """One side's counts over one source, using the one definitions of solved and unverified.
+
+    `weaker_wins` is `bakeoff_report.tally`'s count over the same records — called, never
+    restated — so the final side's `N` is the one definition every published document
+    reduces against.
+    """
     by_task = {record.task_id: record for record in rollouts}
     records = [by_task[task.task_id] for task in tasks]
     denominator = len(records)
@@ -1071,6 +1436,7 @@ def _counts(rollouts: Sequence[Rollout], tasks: Sequence[Task]) -> SideCounts:
         unverified=unverified,
         covered=denominator - unverified,
         failed=denominator - unverified - solved,
+        weaker_wins=bakeoff_report.tally("side", records).weaker_wins,
         status=_status_of(records),
     )
 
@@ -1121,6 +1487,7 @@ def _counts_payload(counts: SideCounts) -> Mapping[str, Any]:
         "unverified": counts.unverified,
         "covered": counts.covered,
         "failed": counts.failed,
+        "weaker_wins": counts.weaker_wins,
         "status": counts.status.value,
     }
 
@@ -1141,8 +1508,10 @@ def _side_line(label: str, digest: str, side: Side) -> str:
 __all__ = [
     "Exit",
     "GateDecision",
+    "PromotionRecord",
     "RetryInputsChanged",
     "RetryOutcome",
     "Retryable",
     "decide",
+    "read_promotion_record",
 ]

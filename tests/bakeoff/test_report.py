@@ -1184,7 +1184,7 @@ def _stratum_document() -> StratumReport:
     """The rendered stratum document for the synthetic probe tallies, and its sidecars.
 
     The synthetic tallies' denominators (37 and 41) are chosen to collide with nothing in
-    the fifteen committed artifacts — their own denominators are 1, 20, 62, 63, 64, 189,
+    the eighteen committed artifacts — their own denominators are 1, 20, 62, 63, 64, 189,
     299 and 300 — so the disjointness guard holds by construction, exactly like
     `_comparison_arms`' denominator 11.
     """
@@ -1322,9 +1322,9 @@ def test_the_two_contract_report_restates_no_baseline_figure() -> None:
 _EXISTING_HOMES = ("baseline", "format-hardening", "easier-stratum", "larger-base")
 
 #: Every committed home, the § 3 baseline's included — the "existing" side of every other
-#: scan, so a new home's figures can never restate a figure from any of the fifteen
+#: scan, so a new home's figures can never restate a figure from any of the eighteen
 #: committed artifacts.
-_ALL_HOMES = (*_EXISTING_HOMES, "baseline-measurement")
+_ALL_HOMES = (*_EXISTING_HOMES, "baseline-measurement", "honest-number")
 
 
 def _committed_figures(directories: tuple[str, ...]) -> set[tuple[str, str]]:
@@ -1338,12 +1338,13 @@ def _committed_figures(directories: tuple[str, ...]) -> set[tuple[str, str]]:
 
 
 def test_the_stratum_report_restates_no_figure_from_an_existing_home() -> None:
-    """*(adversarial)* No rendered stratum figure lives in any of the fifteen committed artifacts.
+    """*(adversarial)* No rendered stratum figure lives in any of the eighteen committed artifacts.
 
     The changed-task-set home joins the guard on the same rule the earlier homes joined it
     on, asserted the strongest way available: every `N of M` figure the synthetic stratum
-    document renders is disjoint from every `N of M` figure the fifteen committed artifacts
-    render — the four existing homes and the § 3 baseline's home, each report.md,
+    document renders is disjoint from every `N of M` figure the eighteen committed artifacts
+    render — the four existing homes, the § 3 baseline's home and the honest-number
+    home, each report.md,
     report.json and cost.json. A figure that appears in both is a figure with two homes,
     which is exactly how two disagreeing numbers come to exist.
     """
@@ -1356,13 +1357,13 @@ def test_the_stratum_report_restates_no_figure_from_an_existing_home() -> None:
     )
     existing_figures = _committed_figures(_ALL_HOMES)
     assert existing_figures, (
-        "WHY THIS IS A FAILURE: none of the fifteen committed artifacts renders an `N of "
+        "WHY THIS IS A FAILURE: none of the eighteen committed artifacts renders an `N of "
         "M` figure, so the disjointness guard has nothing to guard against"
     )
     overlap = figures & existing_figures
     assert not overlap, (
         f"WHY THIS IS A FAILURE: the stratum document restates {overlap}, which already "
-        "lives in one of the fifteen committed artifacts. A figure quoted twice is a "
+        "lives in one of the eighteen committed artifacts. A figure quoted twice is a "
         "figure that can disagree with itself, and the one-home rule exists so that "
         "cannot happen"
     )
@@ -1475,6 +1476,56 @@ def test_the_baseline_disjointness_guard_catches_a_planted_figure(tmp_path: Path
     )
 
 
+def test_the_honest_number_disjointness_guard_catches_a_planted_figure(
+    tmp_path: Path,
+) -> None:
+    """*(adversarial)* The new home is inside the committed scan, and the scan sees a plant.
+
+    The committed declaration renders no figure, so the scan's first half reproduces the
+    sanctioned state in a synthetic tree — a planted tree that differs from the real one
+    would prove nothing about the guard's logic — and asserts the overlap is empty. The
+    second half plants `10 of 20`, a figure the easier-stratum home actually renders,
+    into a copy of the new home's report.json and asserts the same scan flags it: a
+    collision the guard cannot see is a figure with two homes. The new home joins
+    `_ALL_HOMES` on the delta/final-series argument, so its own committed artifacts are
+    scanned like every other home's.
+    """
+    assert "honest-number" in _ALL_HOMES, (
+        "WHY THIS IS A FAILURE: _ALL_HOMES does not include the honest-number home, so "
+        "the new home's committed artifacts are not scanned like every other home's — "
+        "a figure that lands there would be invisible to the disjointness guard"
+    )
+    tree = tmp_path / "reports" / "honest-number"
+    tree.mkdir(parents=True)
+    for name in ("report.md", "report.json", "cost.json"):
+        (tree / name).write_bytes(
+            (REPO_ROOT / "reports" / "honest-number" / name).read_bytes()
+        )
+
+    def figures_in(root: Path) -> set[tuple[str, str]]:
+        written = " ".join(
+            (root / name).read_text(encoding="utf-8")
+            for name in ("report.md", "report.json", "cost.json")
+        )
+        return {pair for pair in re.findall(r"\b(\d+) of (\d+)\b", written)}
+
+    existing = _committed_figures(_ALL_HOMES)
+    assert figures_in(tree) & existing == set(), (
+        "WHY THIS IS A FAILURE: the copied declaration already overlaps an existing "
+        "figure, so the planted half of this control is not testing the guard's logic"
+    )
+    planted = tree / "report.json"
+    planted.write_text(
+        planted.read_text(encoding="utf-8") + '"planted": "10 of 20"\n', encoding="utf-8"
+    )
+    overlap = figures_in(tree) & existing
+    assert ("10", "20") in overlap, (
+        "WHY THIS IS A FAILURE: the planted `10 of 20` was absorbed by the guard's "
+        "scan. A collision the guard cannot see is a figure with two homes, and the "
+        "next reader has no way to tell which of two disagreeing numbers is the real one"
+    )
+
+
 def test_the_committed_baseline_measurement_home_holds_no_figure_in_any_spelling() -> None:
     """The committed state of the new home: declared, not yet measured, holding no figure.
 
@@ -1510,6 +1561,80 @@ def test_the_committed_baseline_measurement_home_holds_no_figure_in_any_spelling
         assert name not in payload, (
             f"WHY THIS IS A FAILURE: the declaration carries {name}, but no measurement "
             "exists"
+        )
+
+
+def test_the_committed_honest_number_home_holds_no_figure_in_any_spelling() -> None:
+    """The committed state of the new home: declared, not yet measured, holding no figure.
+
+    The report has not run, so the committed artifacts cannot carry a figure — neither
+    the report's own (none exists) nor any existing home's (restating one is
+    forbidden, except the loader-derived baseline figures and the ledger-derived funnel
+    figures each admitted by name). The declaration says exactly that in the writer's
+    own sentence — the provenance: these artifacts were generated by
+    `write_honest_number_report`'s declaration state, never hand-typed — and holds no
+    `N of M` figure and no contract field anywhere in the three artifacts.
+    """
+    home = REPO_ROOT / "reports" / "honest-number"
+    markdown = (home / "report.md").read_text(encoding="utf-8")
+    assert report._HONEST_NUMBER_DECLARATION in markdown, (
+        "WHY THIS IS A FAILURE: the committed report.md does not carry the writer's own "
+        "declaration sentence. A hand-typed sentence could drift from the register, and "
+        "a reader finding counts here later could not tell when they appeared"
+    )
+    for name in ("report.md", "report.json", "cost.json"):
+        text = (home / name).read_text(encoding="utf-8")
+        assert not re.search(r"\d+ of \d+", text), (
+            f"WHY THIS IS A FAILURE: {name} renders a figure, but no measurement "
+            "exists. A count here would be a restated figure from another home or an "
+            "invented one"
+        )
+        assert "retry budget" not in text, (
+            f"WHY THIS IS A FAILURE: {name} renders contract fields, but no count was "
+            "measured under any contract. The other declarations render none either"
+        )
+    payload = json.loads((home / "report.json").read_text(encoding="utf-8"))
+    assert payload["measured"] is False, payload
+    assert payload["schema"] == report.HONEST_NUMBER_REPORT_SCHEMA, payload
+    assert payload["declaration"] == report._HONEST_NUMBER_DECLARATION, payload
+    for name in ("sides", "headline", "n", "funnel", "series", "provenance"):
+        assert name not in payload, (
+            f"WHY THIS IS A FAILURE: the declaration carries {name}, but no measurement "
+            "exists"
+        )
+
+
+def test_the_committed_honest_number_home_is_writer_generated_and_regenerable(
+    tmp_path: Path,
+) -> None:
+    """Regeneration of the committed declaration is byte-identical, and its bytes are the writer's.
+
+    The committed declaration's provenance is the writer's declaration state: the same
+    three strings a fresh `build_honest_number_report(..., measured=False)` render are
+    the committed artifacts' bytes, so a hand-typed twin — even byte-equal text — would
+    still be refused by the declaration test above, and a reader who regenerates the
+    home and gets different bytes could not tell a re-render from a re-measurement.
+    """
+    import whetstone.bakeoff.report as report_module
+    from whetstone.bakeoff.report import HonestNumberInput
+
+    input = HonestNumberInput(
+        sides={},
+        decision="promoted",
+        funnel={},
+        series={},
+        provenance={},
+        recorded_on="2026-08-27",
+    )
+    document = report_module.build_honest_number_report(input, measured=False)
+    report_module.write_honest_number_report(document, tmp_path / "regenerated")
+    for name in ("report.md", "report.json", "cost.json"):
+        assert (tmp_path / "regenerated" / name).read_bytes() == (
+            REPO_ROOT / "reports" / "honest-number" / name
+        ).read_bytes(), (
+            f"WHY THIS IS A FAILURE: regenerating the declaration for {name} differs "
+            "from the committed bytes — the committed artifact could not be the "
+            "writer's own output"
         )
 
 
@@ -1926,6 +2051,28 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
     `reports/baseline-measurement/` — each the only home of its own. A silent list
     extension remains refused: the permission is the argument, in this docstring.
 
+    **The guard moved a sixth time when the honest-number home landed, and only on the
+    delta/final-series argument.** The honest-number report publishes the P4 headline —
+    the delta between the § 3 baseline's counts and the promotion gate's final side's,
+    over the held-out split (`PREREGISTRATION.md:57-72`) — measured under the loop's
+    generation contract, whose seeded categorical sampler (`sampling.K = 8`) differs
+    from every published contract's greedy sampler (`PREREGISTRATION.md` § 10.9). The
+    sampler is part of the generation contract § 10.1 obliges a report to state, and
+    the change starts a new series, so the report's figures are declared non-comparable
+    to all five existing homes. The report legitimately renders two existing homes'
+    figures — the § 3 baseline's own counts (the loader-by-identity exception, the door
+    feeding the sealed artifact's values through by byte-equality) and the corpus
+    ledger's funnel counts (the ledger-derived exception, the four-gate funnel over
+    SWE-bench-Lite's 300 asserted equal to `tasks/public/ineligible.json`'s
+    denominators, never recomputed) — each admitted by name, never silently. So the
+    delta/final series' figures live in `reports/honest-number/` and nowhere else:
+    the bake-off's in `reports/baseline/`, the hardened arm's in
+    `reports/format-hardening/`, the probe's in `reports/easier-stratum/`, the
+    larger-base arm's in `reports/larger-base/`, the § 3 baseline's in
+    `reports/baseline-measurement/`, and the honest-number report's in
+    `reports/honest-number/` — each the only home of its own. A silent list extension
+    remains refused: the permission is the argument, in this docstring.
+
     `reports/local/` is excluded because `.gitignore` reserves it for the user's own nightly
     output, which is their data and never ours to assert on.
 
@@ -1951,19 +2098,25 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
         "reports/format-hardening/cost.json",
         "reports/format-hardening/report.json",
         "reports/format-hardening/report.md",
+        "reports/honest-number/cost.json",
+        "reports/honest-number/report.json",
+        "reports/honest-number/report.md",
         "reports/larger-base/cost.json",
         "reports/larger-base/report.json",
         "reports/larger-base/report.md",
     ], (
         f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts, the "
         "format-hardening arm's three, the easier-stratum probe's three, the larger-base "
-        "arm's three and the § 3 baseline's three are the sanctioned homes for a figure — "
+        "arm's three, the § 3 baseline's three and the honest-number report's three are "
+        "the sanctioned homes for a figure — "
         "each directory its own, on the D6 argument that the two contracts differ, the "
         "changed-task-set argument that the probe scores a different task set "
         "(`PREREGISTRATION.md` § 10.5), the changed-candidate-set argument that the arm "
-        "scores a new candidate (`PREREGISTRATION.md` § 10.6) and the changed-series "
+        "scores a new candidate (`PREREGISTRATION.md` § 10.6), the changed-series "
         "argument that the § 3 baseline scores a different task set and role "
-        "(`PREREGISTRATION.md` § 3), all declared non-comparable. A "
+        "(`PREREGISTRATION.md` § 3) and the delta/final-series argument that the "
+        "honest-number report measures the P4 headline under the loop's contract "
+        "(`PREREGISTRATION.md` § 10.9), all declared non-comparable. A "
         "file missing means the report is incomplete; a file extra means there is a second "
         "place a figure can live, and the next reader has no way to tell which of two "
         "disagreeing numbers is the real one"
@@ -1986,8 +2139,76 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
     )
 
 
+def test_the_authoritative_scan_finds_all_six_homes() -> None:
+    """The guard's list holds exactly the six homes' eighteen artifacts — nothing else.
+
+    **The guard moved a sixth time when the honest-number home landed, and only on the
+    delta/final-series argument.** The honest-number report publishes the P4 headline —
+    the delta between the § 3 baseline's counts and the promotion gate's final side's,
+    over the held-out split (`PREREGISTRATION.md:57-72`) — measured under the loop's
+    generation contract, whose seeded categorical sampler (`sampling.K = 8`) differs
+    from every published contract's greedy sampler (`PREREGISTRATION.md` § 10.9). The
+    sampler is part of the generation contract § 10.1 obliges a report to state, and the
+    change starts a new series, so the report's figures are declared non-comparable to
+    all five existing homes. The report legitimately renders two existing homes' figures
+    — the § 3 baseline's own counts (the loader-by-identity exception, the door feeding
+    the sealed artifact's values through by byte-equality) and the corpus ledger's funnel
+    counts (the ledger-derived exception, the four-gate funnel over SWE-bench-Lite's 300
+    asserted equal to `tasks/public/ineligible.json`'s denominators, never recomputed) —
+    each admitted by name, never silently. So the delta/final series' figures live in
+    `reports/honest-number/` and nowhere else: the bake-off's in `reports/baseline/`,
+    the hardened arm's in `reports/format-hardening/`, the probe's in
+    `reports/easier-stratum/`, the larger-base arm's in `reports/larger-base/`, the § 3
+    baseline's in `reports/baseline-measurement/`, and the honest-number report's in
+    `reports/honest-number/` — each the only home of its own. A silent list extension
+    remains refused: the permission is the argument, in this docstring.
+
+    `reports/local/` is excluded for the same reason the authoritative guard excludes
+    it: `.gitignore` reserves it for the user's own nightly output, which is their data
+    and never ours to assert on.
+    """
+    reports = REPO_ROOT / "reports"
+    relative = (
+        path.relative_to(REPO_ROOT).as_posix() for path in reports.rglob("*") if path.is_file()
+    )
+    held = sorted(name for name in relative if not name.startswith("reports/local/"))
+    assert held == [
+        "reports/baseline-measurement/cost.json",
+        "reports/baseline-measurement/report.json",
+        "reports/baseline-measurement/report.md",
+        "reports/baseline/cost.json",
+        "reports/baseline/report.json",
+        "reports/baseline/report.md",
+        "reports/easier-stratum/cost.json",
+        "reports/easier-stratum/report.json",
+        "reports/easier-stratum/report.md",
+        "reports/format-hardening/cost.json",
+        "reports/format-hardening/report.json",
+        "reports/format-hardening/report.md",
+        "reports/honest-number/cost.json",
+        "reports/honest-number/report.json",
+        "reports/honest-number/report.md",
+        "reports/larger-base/cost.json",
+        "reports/larger-base/report.json",
+        "reports/larger-base/report.md",
+    ], (
+        f"WHY THIS IS A FAILURE: reports/ holds {held}. The six homes' eighteen artifacts "
+        "are the sanctioned homes for a figure — each directory its own, on the D6 "
+        "argument that the two contracts differ, the changed-task-set argument that the "
+        "probe scores a different task set (`PREREGISTRATION.md` § 10.5), the "
+        "changed-candidate-set argument that the arm scores a new candidate "
+        "(`PREREGISTRATION.md` § 10.6), the changed-series argument that the § 3 "
+        "baseline scores a different task set and role (`PREREGISTRATION.md` § 3) and "
+        "the delta/final-series argument that the honest-number report measures the P4 "
+        "headline under the loop's contract (`PREREGISTRATION.md` § 10.9), all declared "
+        "non-comparable. A file missing means the report is incomplete; a file extra "
+        "means there is a second place a figure can live, and the next reader has no way "
+        "to tell which of two disagreeing numbers is the real one"
+    )
+
+
 def test_the_one_home_guard_catches_a_planted_artifact(tmp_path: Path) -> None:
-    """*(adversarial)* The fifteen-artifact list can see a planted file under `reports/`.
+    """*(adversarial)* The eighteen-artifact list can see a planted file under `reports/`.
 
     The guard above asserts the sanctioned list by exact equality. The first half of this
     control reproduces the sanctioned state in a synthetic tree — a planted tree that
@@ -2009,6 +2230,9 @@ def test_the_one_home_guard_catches_a_planted_artifact(tmp_path: Path) -> None:
         "reports/format-hardening/cost.json",
         "reports/format-hardening/report.json",
         "reports/format-hardening/report.md",
+        "reports/honest-number/cost.json",
+        "reports/honest-number/report.json",
+        "reports/honest-number/report.md",
         "reports/larger-base/cost.json",
         "reports/larger-base/report.json",
         "reports/larger-base/report.md",
@@ -2028,7 +2252,7 @@ def test_the_one_home_guard_catches_a_planted_artifact(tmp_path: Path) -> None:
 
     assert held_files(tmp_path) == held, (
         "WHY THIS IS A FAILURE: the synthetic tree does not reproduce the sanctioned "
-        "fifteen-artifact state, so the planted half of this control is not testing the "
+        "eighteen-artifact state, so the planted half of this control is not testing the "
         "guard's logic"
     )
     planted = tmp_path / "reports" / "baseline-measurement" / "report.txt"

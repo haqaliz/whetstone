@@ -683,6 +683,44 @@ def test_the_preregistration_names_what_is_open_without_guessing_it() -> None:
     )
 
 
+def test_the_honest_number_amendment_claims_no_count_measured_here() -> None:
+    """§ 10.9 discloses the delta/final series before any figure, in the § 10.6 shape.
+
+    The honest-number report's home is admitted on the changed-series ground — the
+    report measures the P4 headline under the loop's generation contract, whose seeded
+    categorical sampler (`sampling.K = 8`) differs from every published contract's
+    greedy sampler — and the disclosure must precede the first figure measured under it,
+    exactly as § 10.6 preceded the larger-base arm's. The sentence that says no count
+    has been measured yet is the disclosure's whole value: without it, a reader finding
+    counts in the home later could not tell when they appeared. Asserted in the § 10.6
+    shape, sentence by sentence.
+    """
+    flat = _flat(_read(PREREGISTRATION))
+    assert "10.9" in flat, (
+        f"{PREREGISTRATION} no longer carries a § 10.9 amendment. The honest-number "
+        "home was admitted on the changed-series argument; without the disclosure the "
+        "home's figures would be a series nobody was told about."
+    )
+    assert (
+        "seeded categorical sampler" in flat
+        and "sampling.K = 8" in flat
+        and "differs from every published contract's greedy sampler" in flat
+    ), (
+        f"{PREREGISTRATION} § 10.9 no longer discloses the final side's generation "
+        "contract. The sampler is part of the contract § 10.1 obliges a report to "
+        "state, and the difference from every published contract is the ground the "
+        "series is declared non-comparable on."
+    )
+    assert "At the time of this amendment no count has been measured under the report, " in (
+        flat
+    ) and "and none is claimed here" in flat, (
+        f"{PREREGISTRATION} § 10.9 does not state that no count has been measured under "
+        "the report and that none is claimed here. The sentence is the § 10.6 "
+        "disclosure's own shape, and its absence would let the home's first figure "
+        "appear without a record of when the claim began."
+    )
+
+
 def test_a_report_without_its_preregistration_is_reported_as_an_offender(
     tmp_path: Path,
 ) -> None:

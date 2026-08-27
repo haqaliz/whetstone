@@ -315,6 +315,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-08-15 | The larger-base arm scores a new candidate under the hardened contract; its report has its own non-comparable home (§ 10.6) | 2 — adds a disclosure | No |
 | 2026-08-24 | The held-out source-B split is fixed and committed; § 7.1 is closed by the amendment below (§ 10.7) | 1 — closes an open item | Yes |
 | 2026-08-25 | The promotion gate's retry count `R` is declared; § 7.2 is closed by the amendment below (§ 10.8) | 1 — closes an open item | Yes |
+| 2026-08-27 | The honest-number report measures the delta/final series under the loop's contract; its report has its own non-comparable home (§ 10.9) | 2 — adds a disclosure | No |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is still
@@ -552,3 +553,50 @@ promoted, and not rejected either, because no comparison was made on it.
 and none is implied by this value. The gate's output carries the unverified count over its
 denominator from its first evaluation onward. And § 7.2's own instruction stands unchanged: if
 the gate proves unable to fire, the fix is a more reliable sandbox, never a looser gate.
+
+### 10.9 The honest-number report measures the delta/final series under the loop's contract, declared non-comparable — 2026-08-27
+
+**Type 2 (§ 8.2): a disclosure, added.** It closes no open item, sets no threshold, and
+rewords nothing in § 1, § 4, or § 6.
+
+**The disclosure.** The honest-number report publishes the P4 headline — the delta
+between the § 3 baseline's counts and the promotion gate's final side's, over the
+held-out split, with both sources always in the same document (§ 4). Its final-side
+figures are measured under the loop's generation contract, whose **seeded categorical
+sampler** (`sampling.K = 8` draws per task, each seeded from the run's seed, the task
+id and the attempt index) differs from every published contract's greedy sampler. The
+sampler is part of the generation contract § 10.1 obliges a report to state, and the
+difference is recorded in every run ledger. The contract is not a pinned input
+(§ 10.1), so the delta against the same series' baseline remains legitimate: the
+baseline and the final side are measured under the same series, and the sampler
+difference is disclosed here rather than let to read as a disqualification.
+
+**The five reports are declared non-comparable.** A figure from the report may not be
+compared with one from `reports/baseline/` — a different model revision under a
+different contract; with one from `reports/format-hardening/` — a different model
+revision under the same contract; with one from `reports/easier-stratum/` — a
+different task set and a different contract; with one from `reports/larger-base/` — a
+different model revision and a different contract; or with one from
+`reports/baseline-measurement/` — the § 3 baseline's own, which this report renders
+and which keeps its own home. `reports/honest-number/` is therefore the only home of
+the delta/final series' figures, and the existing homes' artifacts are static and are
+not regenerated.
+
+**Two exceptions are argued, never silent.** The § 4 shape requires the baseline's
+counts (`baseline c of b`) and source A's funnel (the eligibility and the refusals by
+gate) in the same document as the delta. The baseline-side figures are the sealed § 3
+artifact's own, rendered through its fail-closed loader by identity and asserted
+byte-equal to the artifact's figures — never restated from another home. The funnel
+figures are committed corpus facts: the four-gate funnel over SWE-bench-Lite's 300,
+as `tasks/public/ineligible.json`'s denominators declare them, asserted equal to the
+ledger, never recomputed. Both are named here so the report's overlaps with the
+existing homes are the two admitted sets and nothing else.
+
+**What the report is not.** The report is the § 4 document itself: it renders the
+operator chain's fruits — the baseline spend, the two nights, the first gated
+evaluation — and measures nothing by itself, the number it publishes being the gate
+decision's function, never a new measurement. It is not the pinned baseline of § 3
+(`:126-128`), which stands unspent until the operator measures it; it is not the
+held-out split's own report; and § 7.3 stays open, closing only by a Type 1 amendment
+committed before the measurement it governs runs (§ 8.1). At the time of this
+amendment no count has been measured under the report, and none is claimed here.

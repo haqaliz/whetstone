@@ -1836,8 +1836,497 @@ def _counts(counts: Tally) -> dict[str, Any]:
     }
 
 
+#: The machine-readable schema of the honest-number report's committed artifact.
+HONEST_NUMBER_REPORT_SCHEMA = "whetstone-honest-number/1"
+
+#: The declaration state's one sentence, in the register of the other homes' declarations
+#: (`:773`, `:982`, `:1144`). A module constant so the committed declaration's provenance
+#: is the writer, never a hand edit that could drift from the register.
+_HONEST_NUMBER_DECLARATION = "**No count is measured here: the report has not run.**"
+
+#: The cost sidecar's one sentence: this writer takes no spend inputs, so the cost
+#: sidecar states that no cost is measured, in the declaration's voice.
+_HONEST_NUMBER_COST_DECLARATION = "no cost is measured here"
+
+#: The six fields each source's side carries — the shape the evidence documents fix
+#: (the baseline artifact's sides and the promotion record's per-side counts) — read by
+#: the writer and never added to.
+_HONEST_NUMBER_COUNT_FIELDS = (
+    "denominator",
+    "solved",
+    "unverified",
+    "covered",
+    "failed",
+    "weaker_wins",
+)
+
+
+@dataclass(frozen=True)
+class HonestNumberInput:
+    """The report's inputs as plain values — the door reads the evidence and feeds these.
+
+    `report.py` cannot import `whetstone.loop.*` (the loop package imports `report`, so
+    an import here would be a cycle), so the evidence documents' fields arrive as plain
+    values: `sides` mirrors the promotion record's per-side counts and the § 3 baseline
+    artifact's sides (six fields per source, `weaker_wins` included), `decision` is the
+    gate's exit value (`"promoted"` / `"rejected"` / `"UNVERIFIED"`), `funnel` is source
+    A's four-gate filter as the committed ledger declares it, and `series`/`provenance`
+    are the pinned inputs the figures are interpretable against. The door supplies what
+    the record lacks (`provenance["contract"]` — the loop's generation contract in
+    `report.py`'s own shape, from the run ledger) — the writer renders what it is given.
+    """
+
+    #: Side name ("baseline" | "candidate" | "incumbent") → source ("source-b" |
+    #: "source-a") → the six counts the evidence documents fix.
+    sides: Mapping[str, Mapping[str, Mapping[str, int]]]
+
+    #: The gate's exit value: `promoted` | `rejected` | `UNVERIFIED`.
+    decision: str
+
+    #: Source A's four-gate funnel: considered / eligible / refused / by_gate.
+    funnel: Mapping[str, Any]
+
+    #: The series identity: repo_id / revision / heldout_digest.
+    series: Mapping[str, str]
+
+    #: The provenance block: seeds, task set, tool versions, the § 7.3-open base
+    #: sentence, the retry facts, and the generation contract.
+    provenance: Mapping[str, Any]
+
+    #: Declared by the operator, never read from a clock.
+    recorded_on: str
+
+
+@dataclass(frozen=True)
+class HonestNumberReport:
+    """The honest-number document and its sidecars, before either touches a disk.
+
+    The same three-string shape as the other writers' documents, so the directory's
+    committed layout — report.md, report.json, cost.json — mirrors the existing homes'
+    and a reader learns one layout for all of them.
+    """
+
+    #: The committed document.
+    markdown: str
+
+    #: The machine-readable sidecar.
+    payload: str
+
+    #: The cost sidecar, as text so the bytes are the artefact.
+    cost: str
+
+
+def _honest_counts(counts: Mapping[str, int]) -> dict[str, int]:
+    """One source's six fields as plain JSON types — the shape the evidence documents fix.
+
+    The honest-number sides carry exactly the six fields the sealed documents carry
+    (`_HONEST_NUMBER_COUNT_FIELDS`), read by name. `_counts` is the other homes'
+    eleven-field per-candidate shape and cannot be reused here: the fields it would add
+    are not part of this document, and a published count that a later reader cannot
+    place is worse than an absent one (`_baseline_counts`'s argument, verbatim).
+    """
+    return {field: counts[field] for field in _HONEST_NUMBER_COUNT_FIELDS}
+
+
+def _honest_tally(side: str, source: str, counts: Mapping[str, int]) -> Tally:
+    """One side's counts as the report's own `Tally`, so the shared `_row` can render it.
+
+    The six measured fields are the document's; the four breakdown fields are not part of
+    it, are never picked by any row this document renders, and exist only because `_row`'s
+    signature is the eleven-field `Tally`. Zeroing them is safe precisely because no row
+    reaches them — and the sidecar never serialises them, because `_honest_counts` is the
+    payload's renderer.
+    """
+    return Tally(
+        candidate=f"{side}:{source}",
+        denominator=counts["denominator"],
+        solved=counts["solved"],
+        covered=counts["covered"],
+        unverified=counts["unverified"],
+        failed=counts["failed"],
+        weaker_wins=counts["weaker_wins"],
+        no_diff=0,
+        not_applied=0,
+        out_of_scope=0,
+        not_solved=0,
+    )
+
+
+def _final_side(
+    decision: str, candidate: Mapping[str, int], incumbent: Mapping[str, int]
+) -> tuple[Mapping[str, int], str]:
+    """Whose counts are "final" — the gate decision's function (gate-resolution 4).
+
+    Promoted → the candidate's counts; rejected → the incumbent's, because nothing
+    shipped. An UNVERIFIED decision has no final side at all — the caller renders no
+    headline for it, and reaching this helper with it is a programming error, refused by
+    name rather than answered with a side no decision named.
+    """
+    if decision == "promoted":
+        return candidate, "candidate"
+    if decision == "rejected":
+        return incumbent, "incumbent"
+    raise ValueError(
+        f"a {decision!r} decision has no final side: only 'promoted' and 'rejected' "
+        "name one, and an UNVERIFIED evaluation made no comparison"
+    )
+
+
+def build_honest_number_report(
+    input: HonestNumberInput, *, measured: bool = True
+) -> HonestNumberReport:
+    """The honest number: the § 4 headline, whose "final" is the gate decision's function.
+
+    `PREREGISTRATION.md:57-72` fixes the headline — `+a of b held-out tasks (baseline c
+    of b, final d of b) / coverage e of b / N: f at baseline, g at final` — and the
+    `test_the_p4_headline_skeleton_is_refused` guard forbids the bake-off report from
+    instantiating it, so this writer is where the shape is allowed to exist: a pure
+    function of the door's plain values, rendering both sources always in the same
+    document (`PREREGISTRATION.md:142-143`), source A per-instance with its funnel and
+    never as a rate, every figure over the denominator it was counted on, and a zero or
+    negative delta as plainly as a positive one. Whose counts are final is the gate
+    decision's function (gate-resolution 4): promoted → the candidate's; rejected → the
+    incumbent's with the candidate disclosed as the rejected attempt; UNVERIFIED → no
+    headline and no delta, the decision and both sides' counts, with "no comparison was
+    made" — never a line that reads as a win.
+
+    The baseline-side counts render the values the door supplies — the door reads the
+    sealed § 3 artifact and feeds its figures through, never a copy — and the disjointness
+    exception that admits them is asserted by the suite. `_N_SENTENCE` is used by
+    identity for both `N` lines, and `_row`/`_over`/`_contract_fields`/`_contract_block`
+    are the report module's own, resolved by name.
+
+    A pure function of its inputs, like the other writers: no clock is read, every
+    mapping is serialised in a fixed order, and `recorded_on` is an input, never read
+    from the environment, so the same inputs produce byte-identical output. With
+    `measured=False` the document is the declaration — the committed state before the
+    first gated evaluation runs: the "No count is measured here" sentence, and no count,
+    no series, no provenance in any spelling.
+    """
+    if not measured:
+        document: dict[str, Any] = {
+            "schema": HONEST_NUMBER_REPORT_SCHEMA,
+            "measured": False,
+            "recorded_on": input.recorded_on,
+            "declaration": _HONEST_NUMBER_DECLARATION,
+        }
+        markdown = _honest_number_declaration_markdown(input.recorded_on)
+    else:
+        document = _honest_number_payload(input)
+        markdown = _honest_number_markdown(input)
+    return HonestNumberReport(
+        markdown=markdown,
+        payload=json.dumps(document, indent=2, sort_keys=True) + "\n",
+        cost=_honest_number_cost(input.recorded_on),
+    )
+
+
+def write_honest_number_report(
+    document: HonestNumberReport, into: Path
+) -> tuple[Path, Path, Path]:
+    """Write the honest number's three artifacts into `into`, and nothing anywhere else.
+
+    The same layout as every other home — report.md, report.json, cost.json — so a reader
+    learns one shape for all of them. Returns the paths so a caller can assert on what
+    was produced rather than reconstruct the names.
+    """
+    into.mkdir(parents=True, exist_ok=True)
+    markdown = into / "report.md"
+    sidecar = into / "report.json"
+    cost = into / "cost.json"
+    markdown.write_text(document.markdown, encoding="utf-8")
+    sidecar.write_text(document.payload, encoding="utf-8")
+    cost.write_text(document.cost, encoding="utf-8")
+    return (markdown, sidecar, cost)
+
+
+def _honest_number_declaration_markdown(recorded_on: str) -> str:
+    """The declaration's human render: the sentence, and nothing else."""
+    return "\n".join(
+        [
+            "# The honest number",
+            "",
+            _HONEST_NUMBER_DECLARATION,
+            "",
+            f"Recorded on {recorded_on} (declared by the operator, never read from a clock).",
+        ]
+    )
+
+
+def _honest_number_payload(input: HonestNumberInput) -> dict[str, Any]:
+    """The machine-readable sidecar. Sorted keys, fixed order, no clock."""
+    retries = sorted(input.provenance["retries"], key=lambda one: one["task_id"])
+    body: dict[str, Any] = {
+        "schema": HONEST_NUMBER_REPORT_SCHEMA,
+        "measured": True,
+        "recorded_on": input.recorded_on,
+        "decision": input.decision,
+        "series": {
+            "repo_id": input.series["repo_id"],
+            "revision": input.series["revision"],
+            "heldout_digest": input.series["heldout_digest"],
+        },
+        "sides": {
+            side: {
+                source: _honest_counts(input.sides[side][source])
+                for source in ("source-b", "source-a")
+            }
+            for side in ("baseline", "candidate", "incumbent")
+        },
+        "funnel": {
+            "considered": input.funnel["considered"],
+            "eligible": list(input.funnel["eligible"]),
+            "refused": input.funnel["refused"],
+            "by_gate": [
+                [gate, count] for gate, count in input.funnel["by_gate"]
+            ],
+        },
+        "provenance": {
+            "seeds": input.provenance["seeds"],
+            "task_set": input.provenance["task_set"],
+            "tool_versions": dict(sorted(input.provenance["tool_versions"].items())),
+            "base_sentence": input.provenance["base_sentence"],
+            "retries": {
+                "retry_count": input.provenance["retry_count"],
+                "spent": sum(one["retries_used"] for one in retries),
+                "tasks": [
+                    {
+                        "task_id": one["task_id"],
+                        "before": one["before"],
+                        "after": one["after"],
+                        "retries_used": one["retries_used"],
+                    }
+                    for one in retries
+                ],
+            },
+            "generation_contract": _contract_block(input.provenance["contract"]),
+        },
+    }
+    if input.decision in ("promoted", "rejected"):
+        baseline = input.sides["baseline"]["source-b"]
+        candidate = input.sides["candidate"]["source-b"]
+        incumbent = input.sides["incumbent"]["source-b"]
+        final, final_side = _final_side(input.decision, candidate, incumbent)
+        body["headline"] = {
+            "delta": final["solved"] - baseline["solved"],
+            "denominator": baseline["denominator"],
+            "baseline_solved": baseline["solved"],
+            "final_solved": final["solved"],
+            "coverage": final["covered"],
+            "final_side": final_side,
+        }
+        body["n"] = {
+            "baseline": {
+                "count": baseline["weaker_wins"],
+                "denominator": baseline["denominator"],
+                "sentence": _N_SENTENCE,
+            },
+            "final": {
+                "count": final["weaker_wins"],
+                "denominator": final["denominator"],
+                "sentence": _N_SENTENCE,
+            },
+        }
+    return body
+
+
+def _honest_number_markdown(input: HonestNumberInput) -> str:
+    """The human render, derived from the inputs — every figure via `_over` by identity.
+
+    The § 4 headline instantiates the registered shape for a decided evaluation, with the
+    headline's coverage the final side's covered count (gate-resolution 6); source B's
+    comparison table renders all three sides through the shared `_row`, labelled by the
+    decision's roles; source A renders the named instance with the four-gate funnel
+    beside it, never as a rate; `N` renders both values with the pre-registered
+    `_N_SENTENCE` by identity; and the provenance block carries the series, the pinned
+    seeds and task set, the tool versions, the § 7.3-open base sentence, the generation
+    contract and the retry facts. An UNVERIFIED decision renders none of the headline —
+    the decision and both sides' counts, with "no comparison was made".
+    """
+    sides = input.sides
+    baseline = sides["baseline"]["source-b"]
+    candidate = sides["candidate"]["source-b"]
+    incumbent = sides["incumbent"]["source-b"]
+    denominator = baseline["denominator"]
+
+    decided = input.decision in ("promoted", "rejected")
+    if decided:
+        final, _ = _final_side(input.decision, candidate, incumbent)
+        headline = (
+            f"{final['solved'] - baseline['solved']:+} of {denominator} held-out tasks "
+            f"(baseline {_over(baseline['solved'], denominator)}, "
+            f"final {_over(final['solved'], denominator)})"
+        )
+        coverage_line = (
+            f"coverage {_over(final['covered'], denominator)}     "
+            f"N: {baseline['weaker_wins']} at baseline, {final['weaker_wins']} at final"
+        )
+
+    if input.decision == "promoted":
+        decision_line = (
+            "**The decision: promoted.** The candidate's counts are the final counts: a "
+            "strict gain was measured on the held-out split, and the gate promoted."
+        )
+        column_labels = ("baseline", "incumbent", "candidate (final)")
+    elif input.decision == "rejected":
+        decision_line = (
+            "**The decision: rejected.** The incumbent's counts are the final counts — "
+            "nothing shipped. The candidate's counts are disclosed beside them as the "
+            "rejected attempt, and are never the final counts."
+        )
+        column_labels = ("baseline", "candidate (rejected attempt)", "incumbent (final)")
+    else:
+        decision_line = (
+            f"**The decision: {input.decision}.** No comparison was made: the evaluation "
+            "did not verify on the held-out split, so it is not promoted and not rejected "
+            "(`docs/ROADMAP.md:438-440`). This document renders the decision and both "
+            "sides' counts, with no headline and no delta."
+        )
+        column_labels = ("baseline", "candidate", "incumbent")
+
+    tallies = (
+        _honest_tally("baseline", "source-b", baseline),
+        _honest_tally("candidate", "source-b", candidate),
+        _honest_tally("incumbent", "source-b", incumbent),
+    )
+
+    funnel = input.funnel
+    eligible = funnel["eligible"]
+    refused = funnel["refused"]
+    considered = funnel["considered"]
+    by_gate = funnel["by_gate"]
+
+    provenance = input.provenance
+    series = input.series
+    retries = sorted(provenance["retries"], key=lambda one: one["task_id"])
+    spent = sum(one["retries_used"] for one in retries)
+
+    lines: list[str] = [
+        "# The honest number",
+        "",
+        "This document reports the gated evaluation's outcome on the held-out source-B "
+        "split (`PREREGISTRATION.md` § 1, § 4): `delta` is defined only as "
+        "`solved_final - solved_baseline` under the same pinned inputs "
+        "(`PREREGISTRATION.md:92-94`), and the series below is the one it is reported "
+        "under.",
+        "",
+    ]
+    if decided:
+        lines += [headline, coverage_line, ""]
+    lines += [
+        "## The decision",
+        "",
+        decision_line,
+        "",
+        "## The comparison — source B (held-out)",
+        "",
+        "| Figure | " + " | ".join(f"`{label}`" for label in column_labels) + " |",
+        "|" + "---|" * 4,
+        _row("solved", tallies, lambda one: one.solved),
+        _row("coverage", tallies, lambda one: one.covered),
+        _row("unverified", tallies, lambda one: one.unverified),
+        _row("failed", tallies, lambda one: one.failed),
+        _row("N", tallies, lambda one: one.weaker_wins),
+        "",
+        "## Source A — SWE-bench-Lite, one instance",
+        "",
+        "**The four-gate funnel comes first, because it is the denominator.** "
+        f"Eligible: {_over(len(eligible), considered)} instances — "
+        + ", ".join(f"`{name}`" for name in eligible)
+        + f". Refused: {_over(refused, considered)}, by gate: "
+        + ", ".join(f"{gate} {_over(count, refused)}" for gate, count in by_gate)
+        + ".",
+        "",
+    ]
+    lines += [
+        f"- **{side} — Result for `{eligible[0]}`:** "
+        f"{'solved' if sides[side]['source-a']['solved'] else 'not solved'} under STRICT "
+        f"({_over(sides[side]['source-a']['solved'], sides[side]['source-a']['denominator'])})."
+        for side in ("baseline", "candidate", "incumbent")
+    ]
+    lines += [
+        "",
+        "One instance is not a public benchmark set and is not quoted as one. A result "
+        "on a single instance is not a measurement, and no claim is made as though it "
+        "were (`PREREGISTRATION.md:149-155`).",
+        "",
+        "## Both sources, together",
+        "",
+        "Both sources are published in this document regardless of which looks better, "
+        "and neither is held back pending the other (`PREREGISTRATION.md:142-143`). A "
+        "disagreement between the two sources is reported as a finding, never resolved "
+        "by choosing the flattering one.",
+        "",
+    ]
+    if decided:
+        lines += [
+            "## N — the reward-hacking count",
+            "",
+            "`N := count(rollouts where WEAK == PASS and STRICT == FAIL)` "
+            "(`PREREGISTRATION.md:96-100`), by `report.tally`'s definition.",
+            "",
+            f"- baseline: {_N_SENTENCE.format(count=baseline['weaker_wins'])} "
+            f"({_over(baseline['weaker_wins'], denominator)})",
+            f"- final: {_N_SENTENCE.format(count=final['weaker_wins'])} "
+            f"({_over(final['weaker_wins'], denominator)})",
+            "",
+        ]
+    lines += [
+        "## The provenance",
+        "",
+        f"**The series.** Base `{series['repo_id']}` at `{series['revision']}` on the "
+        f"held-out document `{series['heldout_digest']}`. {provenance['base_sentence']}",
+        "",
+        f"**Task set:** {provenance['task_set']}.",
+        "",
+        f"**Seeds:** {provenance['seeds']}.",
+        "",
+        "**Tool versions:** "
+        + ", ".join(
+            f"{name} {version}"
+            for name, version in sorted(provenance["tool_versions"].items())
+        )
+        + ".",
+        "",
+        "**The generation contract.** The loop's contract this evaluation was scored "
+        "under (seeded categorical, disclosed by `PREREGISTRATION.md` § 10.9): "
+        + _contract_fields(provenance["contract"])
+        + ".",
+        "",
+        f"**The retry discipline.** R = {provenance['retry_count']}; {spent} retries "
+        f"spent over {len(retries)} held-out task(s).",
+        "",
+    ]
+    for one in retries:
+        lines.append(
+            f"- `{one['task_id']}`: {one['before']} → {one['after']}, "
+            f"{one['retries_used']} retries spent"
+        )
+    lines += [
+        "",
+        f"Recorded on {input.recorded_on} (declared by the operator, never read from a clock).",
+    ]
+    return "\n".join(lines)
+
+
+def _honest_number_cost(recorded_on: str) -> str:
+    """The cost sidecar: schema, the declared date, and the no-cost sentence.
+
+    This writer takes no spend inputs — the evaluation's spend lives in the run's own
+    cost records, not in the evidence documents this report is a pure function of — so
+    the sidecar states that no cost is measured, in the declaration's voice.
+    """
+    body: dict[str, Any] = {
+        "schema": HONEST_NUMBER_REPORT_SCHEMA,
+        "recorded_on": recorded_on,
+        "cost": _HONEST_NUMBER_COST_DECLARATION,
+    }
+    return json.dumps(body, indent=2, sort_keys=True) + "\n"
+
+
 __all__ = [
     "BASELINE_REPORT_SCHEMA",
+    "HONEST_NUMBER_REPORT_SCHEMA",
     "LARGER_BASE_REPORT_SCHEMA",
     "STRATUM_REPORT_SCHEMA",
     "ContractArm",
@@ -1845,6 +2334,8 @@ __all__ = [
     "Entrant",
     "Funnel",
     "GenerationContract",
+    "HonestNumberInput",
+    "HonestNumberReport",
     "IncompleteProvenance",
     "LargerBaseReport",
     "MissingSource",
@@ -1855,6 +2346,7 @@ __all__ = [
     "Tally",
     "build_baseline_report",
     "build_contract_comparison",
+    "build_honest_number_report",
     "build_larger_base_report",
     "build_report",
     "build_stratum_report",
@@ -1863,6 +2355,7 @@ __all__ = [
     "write",
     "write_baseline_report",
     "write_comparison",
+    "write_honest_number_report",
     "write_larger_base_report",
     "write_stratum_report",
 ]

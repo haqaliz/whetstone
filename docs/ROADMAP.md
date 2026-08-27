@@ -644,16 +644,22 @@ review fixed the path to it:
   the § 3 baseline machinery — the untrained base's checkpoint, the measurement door, the
   committed `reports/baseline-measurement/` home, the operator's runbook. **The measurement
   itself is unspent**: the number is the operator's single GPU pass, exactly once.
-- **The next unit is P4 slice 2** — the honest-number report writer (`§ 4`, P4's exit
-  criterion 1: for both sources, baseline score, final score, delta, `N_baseline`, `N_final`,
-  coverage, and the full provenance block, in the `PREREGISTRATION.md` § 4 shape), plus P4's
-  exit criterion 3 (the harness is public and reproduces the reported number from the pinned
-  inputs). It can be built while the operator runs proceed.
+- **P4 slice 2 — the honest-number report — landed 2026-08-27**
+  (`docs/planning/honest-number-report/`): exit criterion 1's document and exit criterion
+  3's check exist as machinery — `build_honest_number_report`/`write_honest_number_report`
+  (schema `whetstone-honest-number/1`, `reports/honest-number/` declared the delta/final
+  series' only home by `PREREGISTRATION.md` § 10.9), the `python -m
+  whetstone.loop.honest_report` door (composition by identity; every half-truth render
+  refused by name — unmeasured baseline, missing evidence, series disagreement,
+  candidate/incumbent base disagreement, measured-once), the decision semantics (promoted →
+  candidate, rejected → incumbent, UNVERIFIED → no headline), `N_final` recorded at gate
+  time (`SideCounts.weaker_wins`), and the operator's sheet held by its own guard. **The
+  report is unspent**: declaration-only until the operator chain completes.
 - **The operator runs, in dependency order, runbooks ready**: the § 7.3 Type 1 amendment
   (the base being fine-tuned must be pinned before the night trains) → spend the baseline →
-  night #1 → night #2 (the gate compares two checkpoints) → the first gated evaluation → the
-  P4 report → the finding. The night's yield and the gate's liveness on a real machine are
-  unmeasured until they run.
+  night #1 → night #2 (the gate compares two checkpoints) → the first gated evaluation →
+  the P4 report (slice 2's door) → the finding. The night's yield and the gate's liveness on
+  a real machine are unmeasured until they run.
 - **The signed morning report (`whetstone report --last-night`) is pulled into the launch
   path**, ahead of the dashboard: it is the demoable surface ("wake up and read the proof"),
   and the report writers, ledger and gate record it renders already exist. **The Next.js

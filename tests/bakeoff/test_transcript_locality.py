@@ -119,6 +119,27 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
     larger-base arm's in `reports/larger-base/`, and the § 3 baseline's in
     `reports/baseline-measurement/` — each the only home of its own. A silent list
     extension remains refused: the permission is the argument, in this docstring.
+    **The guard moved a sixth time when the honest-number home landed, and only on the
+    delta/final-series argument.** The honest-number report publishes the P4 headline —
+    the delta between the § 3 baseline's counts and the promotion gate's final side's,
+    over the held-out split (`PREREGISTRATION.md:57-72`) — measured under the loop's
+    generation contract, whose seeded categorical sampler (`sampling.K = 8`) differs
+    from every published contract's greedy sampler (`PREREGISTRATION.md` § 10.9). The
+    sampler is part of the generation contract § 10.1 obliges a report to state, and
+    the change starts a new series, so the report's figures are declared non-comparable
+    to all five existing homes. The report legitimately renders two existing homes'
+    figures — the § 3 baseline's own counts (the loader-by-identity exception, the door
+    feeding the sealed artifact's values through by byte-equality) and the corpus
+    ledger's funnel counts (the ledger-derived exception, the four-gate funnel over
+    SWE-bench-Lite's 300 asserted equal to `tasks/public/ineligible.json`'s
+    denominators, never recomputed) — each admitted by name, never silently. So the
+    delta/final series' figures live in `reports/honest-number/` and nowhere else:
+    the bake-off's in `reports/baseline/`, the hardened arm's in
+    `reports/format-hardening/`, the probe's in `reports/easier-stratum/`, the
+    larger-base arm's in `reports/larger-base/`, the § 3 baseline's in
+    `reports/baseline-measurement/`, and the honest-number report's in
+    `reports/honest-number/` — each the only home of its own. A silent list
+    extension remains refused: the permission is the argument, in this docstring.
     """
     published = _check_ignore("reports/")
     assert published.returncode == 1, (
@@ -144,6 +165,9 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
         "reports/format-hardening/cost.json",
         "reports/format-hardening/report.json",
         "reports/format-hardening/report.md",
+        "reports/honest-number/cost.json",
+        "reports/honest-number/report.json",
+        "reports/honest-number/report.md",
         "reports/larger-base/cost.json",
         "reports/larger-base/report.json",
         "reports/larger-base/report.md",
@@ -152,9 +176,11 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
         "transcripts and a breakdown, both local. Each report directory holds exactly its own "
         "three artifacts — the bake-off's in reports/baseline/, the format-hardening arm's in "
         "reports/format-hardening/, the easier-stratum probe's in "
-        "reports/easier-stratum/, the larger-base arm's in reports/larger-base/ and the § 3 "
-        "baseline's in reports/baseline-measurement/, non-comparable by the D6, "
-        "changed-task-set, changed-candidate-set and changed-series arguments — "
+        "reports/easier-stratum/, the larger-base arm's in reports/larger-base/, the § 3 "
+        "baseline's in reports/baseline-measurement/ and the honest-number report's in "
+        "reports/honest-number/, non-comparable by the D6, "
+        "changed-task-set, changed-candidate-set, changed-series and delta/final-series "
+        "arguments — "
         "and a file appearing elsewhere means a figure about a model was published without "
         "the disclosure PREREGISTRATION.md:356-361 requires beside one"
     )
