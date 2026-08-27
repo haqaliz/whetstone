@@ -311,6 +311,12 @@ class SideCounts:
     #: `denominator - unverified - solved` — graded and not solved.
     failed: int
 
+    #: The rollouts a weaker check would have scored as wins — `report.tally`'s
+    #: definition by identity (weak is `Status.PASS` and strict is `Status.FAIL` over the
+    #: same records), never a copied formula, never a rate. This is the final side's `N`
+    #: (`PREREGISTRATION.md:57-72`), recorded at scoring time when the rollouts are at hand.
+    weaker_wins: int
+
     #: The side's reduced status over this source, folded through `verdict.reduce`
     #: (worst-status-wins, UNVERIFIED above PASS — the honesty contract, by identity).
     status: Status
@@ -727,7 +733,9 @@ def write_promotion_record(
     """Write the promotion record — schema `whetstone-promotion/1` — deterministically.
 
     The record is local evidence, never published: the digests (re-hashed), the held-out
-    document's digest, both sides' counts over both denominators, the decision with every
+    document's digest, both sides' counts over both denominators — each source's six counts,
+    including `weaker_wins`, `report.tally`'s definition of `N` by identity, so the final
+    side's `N` (`PREREGISTRATION.md:57-72`) has an on-disk source — the decision with every
     count it was read from, the retry discipline's own three facts, the tool versions, and
     `recorded_on` — an input, never the clock.
 
@@ -1059,7 +1067,12 @@ def _outcome_map(rollouts: Sequence[Rollout], tasks: Sequence[Task]) -> dict[str
 
 
 def _counts(rollouts: Sequence[Rollout], tasks: Sequence[Task]) -> SideCounts:
-    """One side's counts over one source, using the one definitions of solved and unverified."""
+    """One side's counts over one source, using the one definitions of solved and unverified.
+
+    `weaker_wins` is `bakeoff_report.tally`'s count over the same records — called, never
+    restated — so the final side's `N` is the one definition every published document
+    reduces against.
+    """
     by_task = {record.task_id: record for record in rollouts}
     records = [by_task[task.task_id] for task in tasks]
     denominator = len(records)
@@ -1071,6 +1084,7 @@ def _counts(rollouts: Sequence[Rollout], tasks: Sequence[Task]) -> SideCounts:
         unverified=unverified,
         covered=denominator - unverified,
         failed=denominator - unverified - solved,
+        weaker_wins=bakeoff_report.tally("side", records).weaker_wins,
         status=_status_of(records),
     )
 
@@ -1121,6 +1135,7 @@ def _counts_payload(counts: SideCounts) -> Mapping[str, Any]:
         "unverified": counts.unverified,
         "covered": counts.covered,
         "failed": counts.failed,
+        "weaker_wins": counts.weaker_wins,
         "status": counts.status.value,
     }
 
