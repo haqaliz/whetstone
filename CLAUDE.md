@@ -658,13 +658,24 @@ This file orients a coding agent working in this repository. Read it first.
 > this series' pinned input, never a closure, and no § 10 amendment was made (the baseline is
 > § 3 pre-authorized, not a new series requiring a disclosure).
 >
-> **The launch path is decided** (`docs/ROADMAP.md` § 12, 2026-08-26): P4's first honest number
-> is the launchable milestone; the next unit is P4 slice 2 — the honest-number report writer
-> (both sources, delta, `N_baseline`/`N_final`, coverage, provenance) plus the
-> harness-reproduces-the-number check — buildable while the operator runs proceed (§ 7.3
-> amendment → spend the baseline → two nights → the first gated evaluation → the P4 report).
-> The **signed morning report (`whetstone report --last-night`) is pulled into the launch
-> path** ahead of the dashboard; the Next.js dashboard and distillation remain post-horizon.
+> **The launch path is decided, and was reordered 2026-08-28** (`docs/ROADMAP.md` § 12). P4's
+> first honest number is the launchable milestone. The operator order is now the § 7.3 Type 1
+> amendment → **night #1** → the first gated evaluation (candidate: night #1's checkpoint;
+> incumbent: **the untrained base**, not a second night) → spend the baseline → the P4 report
+> → the finding. Two changes bought that, and neither loosens anything. The gate's first
+> incumbent is the untrained base: `verify_checkpoint` already accepts one (`sft.py:526-535`)
+> and `baseline_engine` is `gate_engine`'s untrained sibling, so the only obstacle is
+> `gate_engine`'s unconditional `adapter_path=` — the next code unit,
+> `gate-untrained-incumbent`, which also owns the gate runbook's "needs **two** nights"
+> paragraph and may not edit that sheet ahead of the code. And the baseline moves **last**,
+> because nothing before the P4 report reads it and § 3 lets it be spent only once, so a night
+> that forces a yield lever cannot strand it in an abandoned series. A gate scoring an
+> untrained incumbent is **not** a § 3 re-measurement — that clause forbids re-running to
+> confirm or because a result disappointed — and the two figures keep separate homes. Two
+> units are buildable while the GPU is busy and neither reads a number: that dispatch, and the
+> **signed morning report (`whetstone report --last-night`)**, which stays pulled into the
+> launch path ahead of the dashboard. The Next.js dashboard and distillation remain
+> post-horizon.
 >
 > **P4 slice 2 — the honest-number report — is done** (`docs/planning/honest-number-report/`,
 > 2026-08-27). The pre-registered § 4 shape now has its only legal home:
