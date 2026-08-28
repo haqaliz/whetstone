@@ -36,8 +36,10 @@ nothing has proven nothing, so every guard below also asserts the corrected text
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
+import pytest
 from adversarial.corpus import BOTH_ACCEPT, CHEATS
 
 # A concrete working branch, e.g. `feat/p0-scaffold/aliz`. The angle-bracket template
@@ -518,6 +520,44 @@ def test_readme_does_not_claim_the_repo_is_greenfield() -> None:
         "README.md still claims nothing is built. It is the repo's front door and the "
         "first thing a visitor reads; leaving it stale reintroduces exactly the "
         "contradiction with CLAUDE.md that this branch removed."
+    )
+
+
+def test_the_readme_status_table_does_not_deny_what_is_built() -> None:
+    """The front door's status table, checked against the tree rather than proof-read.
+
+    This guard exists because the table was found carrying three live falsehoods at once while
+    the morning-report unit was editing it: the never-regress promotion gate and the held-out
+    split were listed under "Not built" months after P3 merged them, and the release row said
+    *no tags, no PyPI package, no version* with v0.3.0 onward tagged and published.
+
+    That is the same failure `CLAUDE.md` records against itself — *"This line read 'nothing has
+    been published to PyPI' until 2026-08-20; it had been false since v0.3.0"* — and it recurred
+    because nothing was checking. A README is the one file every visitor reads first and the one
+    file nobody re-reads, so the check is mechanical.
+    """
+    text = _read("README.md")
+    built = text.split("❌", 1)[1].split("|", 2)[1] if "❌" in text else ""
+
+    for shipped in ("promotion gate", "held-out split"):
+        assert shipped not in built.lower(), (
+            f"WHY THIS IS A FAILURE: README's 'Not built' row still lists the {shipped}, which "
+            "shipped in P3. A front door that under-reports the project is how a reader forms a "
+            "wrong first impression that nothing later corrects."
+        )
+
+    tags = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "tag"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if tags.returncode != 0 or not tags.stdout.strip():
+        pytest.skip("no tags reachable here (a shallow clone has none); nothing to compare")
+    assert "No tags, no PyPI package, no version" not in text, (
+        "WHY THIS IS A FAILURE: README claims nothing is released, and `git tag` lists "
+        f"{sorted(tags.stdout.split())}. This exact sentence has been false once before and was "
+        "corrected by PyPI's own index rather than by anyone reading it."
     )
 
 

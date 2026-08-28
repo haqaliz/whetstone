@@ -33,8 +33,16 @@ it came from, and where a bad night reads as a bad night.
      this night"*. A fact, never an omission.
    - **Gate returned `UNVERIFIED`** — "no comparison was made", with both sides' counts over
      both denominators. Never rendered as `PASS`, never as a win.
-6. **The record must belong to this night** — a `record` whose `run_id` is not the ledger's is
-   refused by name, nothing rendered (PRD must-have 7).
+6. **The record must belong to this night** — refused by name, nothing rendered (PRD
+   must-have 7).
+
+   > **Corrected during the build, 2026-08-28.** This requirement said *"a `record` whose
+   > `run_id` is not the ledger's"*. That check is meaningless: a promotion record's `run_id` is
+   > the **gate evaluation's** operator-declared name (`gate-001`), not the night's, so it would
+   > have compared two unrelated strings. The match is on the **checkpoint digest** — a record
+   > concerns this night iff the night's checkpoint digest is one of the two the gate compared —
+   > which is stronger, because a digest is evidence and a name is a string somebody typed. See
+   > `plan_20260828.md`.
 7. **Sealed to its evidence.** Every figure names the digest of the document it came from
    (ledger bytes, dataset digest, checkpoint digest, the record's digests). The markdown carries
    a standing sentence stating the boundary: the report is sealed to its evidence, **not

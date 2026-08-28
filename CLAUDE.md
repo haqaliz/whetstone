@@ -700,6 +700,68 @@ This file orients a coding agent working in this repository. Read it first.
 > completes. The partition guard still holds exactly three edges (module doors only; the
 > morning report's `whetstone report` subcommand is the next unit's fourth).
 >
+> **P4 slice 3 — the signed morning report — is done** (`docs/planning/morning-report/`,
+> 2026-08-28). `whetstone report --last-night` exists: core-loop element ④, the first surface
+> that turns a night's sealed evidence into a page a person reads.
+> `src/whetstone/loop/morning.py` holds a fail-closed **typed** ledger reader (`ledger.read`
+> checks the schema and hands back a raw mapping; every field this renders is one an optimistic
+> parse would default, so each missing, mistyped or unknown field is refused by name in the
+> `read_promotion_record` shape), the render, and the door.
+>
+> **Three decisions are the content.** *"Signed" means **sealed to its evidence**, never
+> cryptographic* — `pyproject.toml` declares zero runtime dependencies and no signing library
+> exists in any group, and a signature would prove authorship rather than honesty. The page
+> states its own boundary: re-rendering proves the report matches the evidence, **not** that the
+> evidence matches the run — a hand-edited ledger re-renders consistently, because a ledger is
+> not self-sealing and only the checkpoint's digest is re-derivable from bytes. *"Last night"
+> resolves by the greatest **declared** `recorded_on`*, never mtime and never the clock: the run
+> id is operator-declared and `recorded_on` is an input, so mtime would be a property of the
+> filesystem (a restored backup shares one timestamp across every night). A tie is
+> `AmbiguousNight`, refused by name and pointing at `--run`; a night whose ledger will not parse
+> refuses the **whole scan** rather than being skipped, because skipping makes a killed night
+> invisible to the one command whose job is to notice it. And *the promotion record must belong
+> to this night **by checkpoint digest***, not by run id — the brief said run id and integration
+> proved that wrong, since a record's `run_id` is the *gate evaluation's* operator-declared name.
+>
+> **Nothing is published and the one-home guard does not move.** The home is the gitignored
+> `reports/local/nightly/<run-id>/` — `.gitignore` pre-declared it naming "the morning reports",
+> and `tests/bakeoff/test_report.py:2076-2087` already excludes that prefix from the
+> published-artifact list on the argument that it is the user's data and never ours to assert on.
+> That carve-out is now asserted from this side too, because this unit's home exists only because
+> of it. `night._refuse_published_root` could **not** be reused by identity — it refuses any path
+> with a `reports` component and would refuse this unit's own home — so `refuse_published_out` is
+> its narrower sibling, raising `TranscriptNotPrivate` by identity and checked on the resolved
+> path. No `PREREGISTRATION.md` § 10 amendment: § 10 discloses published *series*, and this
+> publishes none.
+>
+> **Two artifacts, not three** (`report.md`, `report.json`, schema `whetstone-morning/1`): a
+> night produces no cost document, and an empty `cost.json` would assert a measurement nobody
+> made. The render is a pure function of two documents — proven by making every file read raise —
+> so it cannot reach a published home and restate a figure whose only home is elsewhere, and it
+> is byte-identical across processes under `PYTHONHASHSEED` 0/1. Every unflattering state renders
+> as itself: a zero-yield night quotes the ledger's own `checkpoint_absent` reason verbatim, a
+> night with no gate says *"no gated evaluation is recorded for this night"*, and an `UNVERIFIED`
+> evaluation says **no comparison was made** with `PASS` appearing nowhere in that section —
+> each watched failing against a renderer that gets it wrong.
+>
+> **The partition guard grew to exactly four documented function-local edges** — `night`, `gate`,
+> `check_leakage`, `morning` — watched failing in both halves before the constant moved, and
+> proven able to fail again afterwards against a planted fifth edge and against the fourth moved
+> to module scope.
+>
+> **Two corrections landed with it, and both are the recurring kind.** `cli.py`'s module
+> docstring counted four commands, omitted `check-leakage`, and said no report command existed —
+> three false claims in the file's own first paragraph — and it is now asserted against the
+> parser rather than proof-read. And `README.md`'s status table listed the promotion gate and the
+> held-out split as ❌ Not built months after P3 merged them, and claimed *"No tags, no PyPI
+> package, no version"* with v0.3.0–v0.10.0 published: the same failure this file already records
+> against itself, recurring because nothing was checking. A guard now checks it against `git tag`.
+>
+> **The report has not been rendered from a real night**, because no night has been run. Its
+> refusals, its determinism and its three gate renderings are proven against fixture ledgers and
+> fixture promotion records — the gate's own posture. No operator runbook was written for it: it
+> is one invocation, no GPU spend and no ordering hazard, so a sheet would restate `--help`.
+>
 > **What is not built.** The nightly loop has never been *run*, so no training set, checkpoint
 > or yield figure exists yet — and **the gate has therefore never been run on real
 > checkpoints**. Its three exits, its retry discipline and its refusals are proven against
@@ -889,6 +951,8 @@ reports/format-hardening/       # The hardened arm's report — non-comparable, 
 reports/easier-stratum/         # The probe's home — non-comparable, changed task set (§ 10.5)
 reports/larger-base/            # The arm's home — non-comparable, new candidate (§ 10.6)
 reports/baseline-measurement/   # The § 3 baseline's home — the anchor of every delta (PR #17)
+reports/honest-number/          # The P4 delta/final series' only home (§ 10.9)
+reports/local/                  # GITIGNORED: the user's own nightly output — morning reports
 .claude/skills/                 # The repo's own workflow skills (see below)
 docs/
   ROADMAP.md                    # 2–3 month phased plan + milestones — authoritative today

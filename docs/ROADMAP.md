@@ -660,9 +660,13 @@ review fixed the path to it:
   night #1 → night #2 (the gate compares two checkpoints) → the first gated evaluation →
   the P4 report (slice 2's door) → the finding. The night's yield and the gate's liveness on
   a real machine are unmeasured until they run.
-- **The signed morning report (`whetstone report --last-night`) is pulled into the launch
-  path**, ahead of the dashboard: it is the demoable surface ("wake up and read the proof"),
-  and the report writers, ledger and gate record it renders already exist. **The Next.js
+- **The signed morning report (`whetstone report --last-night`) landed 2026-08-28**
+  (`docs/planning/morning-report/`), ahead of the dashboard as this section decided: it is the
+  demoable surface ("wake up and read the proof"). It renders one night's sealed evidence —
+  ledger and, when a gate ran, the promotion record — into `reports/local/nightly/<run-id>/`,
+  which is gitignored and publishes nothing. "Signed" is settled as **sealed to its evidence**,
+  never cryptographic, and the page states that boundary itself. **It has not been rendered from
+  a real night**, because no night has been run. **The Next.js
   dashboard and distillation remain post-horizon** (§ 9) — neither is needed to publish a
   real number.
 - **If the number needs help, the levers are raising `K` or a larger base** (P2's pivot

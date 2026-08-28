@@ -1,7 +1,7 @@
 """The `whetstone` command line entry point.
 
 The failure this module prevents: a ``--help`` that advertises work the code cannot do.
-Commands appear here only when something stands behind them, and four now do. ``verify`` runs
+Commands appear here only when something stands behind them, and six now do. ``verify`` runs
 the execution-grounded reward in `whetstone.verify.strict`: it applies a patch to a task's
 known-broken commit inside a sandbox, restores the operator-held tests from golden, and
 compares what pytest actually executed against what the task declared. ``mine`` is the other
@@ -9,19 +9,34 @@ end — it turns a local repository into tasks the first command can run, provin
 before it enters the corpus. ``run --night`` is the loop between them: it draws K seeded
 attempts per task, keeps only the rollouts that reward passed, and trains a candidate on them.
 ``gate`` is the never-regress promotion gate: it scores a candidate checkpoint against the
-incumbent on the held-out source-B membership and returns exactly one of three exits. There
-is still no report, so there is still no stub for it.
+incumbent on the held-out source-B membership and returns exactly one of three exits.
+``check-leakage`` proves a night's training set disjoint from the held-out membership, because
+an exclusion nobody checks is a claim. And ``report`` is the morning after: it renders one
+night's sealed evidence into a page a person reads, sealed to that evidence and — the claim
+kept the size of what the code checks — not cryptographically signed.
 
-**``run --night`` and ``gate`` are the two commands here whose bodies are not in this file,
-and deliberately.** This module is a guarded root — it calls ``verify_strict``, and nothing it
-imports may reach an inference library. The loop and the gate reach ``mlx_lm`` legitimately,
-so they live in the EXEMPT ``whetstone.loop`` package, and ``run_night`` below holds a single
-**function-local** import into it, as does ``run_gate_cli``: running ``whetstone verify``
-never executes those lines and never loads a model.
+An earlier version of this paragraph counted four commands, enumerated four, omitted
+``check-leakage`` entirely, and closed by saying no report command existed. All three claims
+were false, in the file's own first paragraph. ``tests/loop/test_morning_cli.py`` now asserts
+this docstring names every subcommand the parser defines — proof-reading is what produced those
+three, so the check is against the parser rather than against a careful reader. (The phrasing
+here deliberately describes the old sentence instead of quoting it: the guard cannot tell a
+quotation from a live claim, and a guard that punishes recording a correction would teach people
+to delete their corrections.)
+
+**``run --night``, ``gate``, ``check-leakage`` and ``report`` are the commands here whose bodies
+are not in this file, and deliberately.** This module is a guarded root — it calls
+``verify_strict``, and nothing it imports may reach an inference library. The loop and the gate
+reach ``mlx_lm`` legitimately, so they live in the EXEMPT ``whetstone.loop`` package, and
+``run_night`` below holds a single **function-local** import into it, as do ``run_gate_cli``,
+``run_check_leakage_cli`` and ``run_report_cli``: running ``whetstone verify`` never executes
+those lines and never loads a model. The last two need no inference library themselves and are
+function-local anyway — the argument is about the module graph of ``whetstone verify``, not
+about what one handler happens to need.
 ``tests/test_reward_path_scope_is_partitioned.py`` asserts they are the only such edges and
 that they are function-local.
 
-**All four subcommands share the same four exit codes and add no fifth.** A mint that produced
+**Every subcommand shares the same four exit codes and adds no fifth.** A mint that produced
 no task exits ``FAIL_EXIT``, never 0: "nothing could be mined here" is a finding about a donor,
 and a caller checking ``rc == 0`` must never read it as a corpus. A night that produced no
 candidate is the same shape and is floored the same way.
@@ -558,6 +573,69 @@ def build_parser() -> argparse.ArgumentParser:
             "hand-edited membership refuses before anything is compared"
         ),
     )
+
+    report = commands.add_parser(
+        "report",
+        help="render last night's morning report from its sealed evidence",
+        description=(
+            "Render one night's evidence into a page a person reads (docs/ROADMAP.md:663). "
+            "The night is the one --run names, or the one --last-night resolves to: the "
+            "greatest declared recorded_on across the runs root, never mtime and never the "
+            "clock, because there is no timestamp in this tree. A tie is ambiguity and is "
+            "refused, naming --run. The report is written under reports/local/, which "
+            ".gitignore reserves for the user's own nightly output; anywhere else under "
+            "reports/ is refused. --verify re-renders from the same evidence and exits 1 on "
+            "any mismatch. There is no flag that narrows the evidence: a page meant as proof "
+            "must not be tunable from the command line."
+        ),
+    )
+    report.add_argument(
+        "--last-night",
+        action="store_true",
+        help=(
+            "report on the night with the greatest declared recorded_on under --runs. Two "
+            "nights declaring the same date is ambiguity, refused rather than broken by sort "
+            "order"
+        ),
+    )
+    report.add_argument(
+        "--run",
+        type=Path,
+        metavar="<runs/id>",
+        help="a night's run directory, named explicitly. The escape a refused tie points at",
+    )
+    report.add_argument(
+        "--runs",
+        type=Path,
+        default=Path("runs"),
+        metavar="<dir>",
+        help="where the nights live (default: runs/). Every one is read, not just the newest",
+    )
+    report.add_argument(
+        "--record",
+        type=Path,
+        metavar="<path>",
+        help=(
+            "the gate's promotion record for this night (runs/promotions/<id>.json), if one "
+            "ran. Optional: a night without a gated evaluation renders that as a fact. A "
+            "record for another night is refused by checkpoint digest"
+        ),
+    )
+    report.add_argument(
+        "--out",
+        type=Path,
+        metavar="<dir>",
+        help="where to write report.md and report.json. Must be under reports/local/",
+    )
+    report.add_argument(
+        "--verify",
+        type=Path,
+        metavar="<dir>",
+        help=(
+            "re-render from the same evidence and compare bytes. Exits 1 on a mismatch — a "
+            "report that does not match its evidence is a failure, not a mistyped command"
+        ),
+    )
     return parser
 
 
@@ -844,6 +922,68 @@ def run_check_leakage_cli(args: argparse.Namespace) -> int:
     return PASS_EXIT if report.clean else FAIL_EXIT
 
 
+def run_report_cli(args: argparse.Namespace) -> int:
+    """Render or verify a morning report, and say which artifacts it wrote.
+
+    **The import is function-local, and it is the fourth documented edge from a guarded root
+    into an exempt package** — the `run_night` / `run_gate_cli` / `run_check_leakage_cli`
+    shape. Like the third, this one needs no `mlx_lm` and never will: it reads two JSON
+    documents and renders text. It is still function-local, because the edge's soundness
+    argument is about the module graph of `whetstone verify` and not about what one handler
+    happens to need — `whetstone.loop.morning` imports the gate for a constant and the
+    bake-off for the count-over-denominator helper, so a module-scope import here would put
+    both, and `mlx_runtime` behind them, on the reward's own entry path.
+    `tests/test_reward_path_scope_is_partitioned.py` asserts these are the only four edges
+    and that all four are function-local.
+
+    **The exits are the existing contract, no fifth code**: rendered → 0, a `--verify`
+    mismatch → `FAIL_EXIT` (something on disk disagrees with the evidence, and the operator
+    needs to know which of the two moved — that is not a typo), and a refusal an operator can
+    fix by retyping → `USAGE_ERROR`. There is no `UNVERIFIED` exit: this command reads
+    documents and renders, so it either answers or refuses.
+    """
+    from whetstone.loop.morning import (
+        REFUSALS,
+        MorningReportAltered,
+        render_morning,
+        verify_morning,
+    )
+
+    if args.last_night and args.run is not None:
+        print(
+            "whetstone report: name one night — --last-night or --run, not both",
+            file=sys.stderr,
+        )
+        return USAGE_ERROR
+    if not args.last_night and args.run is None:
+        print(
+            "whetstone report: name a night with --last-night or --run",
+            file=sys.stderr,
+        )
+        return USAGE_ERROR
+
+    runs = None if args.run is not None else args.runs
+    try:
+        if args.verify is not None:
+            verify_morning(args.verify, runs=runs, run=args.run, record=args.record)
+            print(f"{args.verify}: matches its evidence")
+            return PASS_EXIT
+        if args.out is None:
+            print("whetstone report: --out is required when rendering", file=sys.stderr)
+            return USAGE_ERROR
+        for path in render_morning(
+            runs=runs, run=args.run, record=args.record, out=args.out
+        ):
+            print(path)
+    except MorningReportAltered as altered:
+        print(f"whetstone report: {altered}", file=sys.stderr)
+        return FAIL_EXIT
+    except REFUSALS as refusal:
+        print(f"whetstone report: {refusal}", file=sys.stderr)
+        return USAGE_ERROR
+    return PASS_EXIT
+
+
 def _task_verdict(task: Task, status: Status) -> Verdict:
     """One task's reduced status, as a Verdict, so a set of tasks folds the way sub-checks do."""
     return Verdict(
@@ -917,6 +1057,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if namespace.command == "check-leakage":
         return run_check_leakage_cli(namespace)
+
+    if namespace.command == "report":
+        return run_report_cli(namespace)
 
     # Every input the CLI accepts is handled above. Falling through means a flag or a
     # subcommand was added without a behaviour behind it: report usage and fail rather than

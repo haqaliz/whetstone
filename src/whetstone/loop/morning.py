@@ -41,13 +41,15 @@ Nothing here reaches a model, and nothing here renders. It reads JSON and return
 from __future__ import annotations
 
 import datetime as _datetime
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from whetstone.bakeoff import report as bakeoff_report
 from whetstone.bakeoff.run import TranscriptNotPrivate
-from whetstone.loop.gate import PROMOTIONS_DIR
+from whetstone.loop.gate import PROMOTIONS_DIR, Exit
 from whetstone.loop.ledger import LEDGER_FILE, LedgerUnreadable
 from whetstone.loop.ledger import read as _read_ledger_payload
 from whetstone.loop.night import PUBLISHED
@@ -58,6 +60,7 @@ __all__ = [
     "LOCAL",
     "PROMOTIONS_DIR",
     "PUBLISHED",
+    "REFUSALS",
     "REQUIRED_FIELDS",
     "AmbiguousNight",
     "DatasetCounts",
@@ -463,3 +466,352 @@ def refuse_published_out(root: Path, flag: str) -> None:
         f"directory under {PUBLISHED}/ is committed and read by outsiders. Point it at "
         f"{PUBLISHED}/{LOCAL}/ or at a path outside {PUBLISHED}/ entirely"
     )
+
+
+#: The document's own version, checked on read for the reason `LEDGER_SCHEMA` gives.
+MORNING_SCHEMA = "whetstone-morning/1"
+
+#: What the two artifacts are called inside a morning report's directory.
+MARKDOWN_FILE = "report.md"
+PAYLOAD_FILE = "report.json"
+
+#: Exactly the exits the gate defines, by the gate's own enum. A decision string outside this set
+#: is refused rather than printed: a renderer that passed an unknown one through to the page would
+#: be guessing what it means, beside a headline.
+GATE_EXITS: tuple[str, ...] = tuple(one.value for one in Exit)
+
+#: The sentence that keeps the report's claim the size of what the code can actually check.
+#: `VISION.md:12` promises "a signed proof"; there is no signing key in this project and
+#: `pyproject.toml` declares zero runtime dependencies, so the honest claim is narrower — and the
+#: narrowness is the point. Re-rendering proves the report matches the evidence. Nothing here
+#: proves the evidence matches the run: a hand-edited ledger re-renders perfectly consistently,
+#: because a ledger is not self-sealing. A document whose claim to be sealed is larger than what
+#: it can check is the precise failure this project names in everyone else's work.
+SEAL_SENTENCE = (
+    "This report is sealed to its evidence and is not cryptographically signed: re-rendering it "
+    "from the same documents reproduces these bytes, which proves the report matches the "
+    "evidence. It does not prove the evidence matches the run — a ledger is not self-sealing, "
+    "and only the checkpoint's own digest is re-derivable from bytes."
+)
+
+
+class UnknownGateExit(ValueError):
+    """The promotion record declares a decision this renderer does not know."""
+
+
+class RecordNotThisNight(ValueError):
+    """The promotion record does not concern the night being reported.
+
+    Matched on the **checkpoint digest** rather than the run id, and the difference matters: a
+    record's `run_id` is the *gate evaluation's* operator-declared name, so comparing it with the
+    night's would compare two unrelated strings and pass or fail for no reason at all. The link
+    that exists is the checkpoint — the gate compared two of them, and this night produced one.
+    """
+
+
+class MorningReportAltered(ValueError):
+    """A written morning report is not what its evidence renders to."""
+
+
+@dataclass(frozen=True)
+class MorningReport:
+    """One night's report, before it is bytes."""
+
+    markdown: str
+    payload: Mapping[str, Any]
+
+
+def _render_counts(*, examples: int, denominator: int, coverage: int, unverified: int) -> str:
+    """The night's yield, with every count over the set it was counted on.
+
+    Resolves `_over` from the bake-off's module at call time rather than binding a copy at import,
+    so the count-over-denominator idiom has one definition in this tree. A bare proportion is what
+    `PREREGISTRATION.md:157` refuses, and the way one appears is a hand-written line that forgot
+    the second half.
+    """
+    over = bakeoff_report._over
+    return (
+        f"kept {over(examples, denominator)} rollout records "
+        f"(coverage {over(coverage, denominator)}, "
+        f"reached no verdict {over(unverified, denominator)})"
+    )
+
+
+def _gate_section(night: LedgerDocument, record: Any | None) -> list[str]:
+    """What the gate decided about this night's candidate, or that no gate has run.
+
+    The three exits are the gate's own and are rendered as themselves. `UNVERIFIED` says *no
+    comparison was made* — it is not a promotion and not a rejection, and printing either the
+    candidate's solved count or the word PASS beneath it would turn the honest third exit into a
+    quieter way of claiming one.
+    """
+    if record is None:
+        return [
+            "## The gate",
+            "",
+            "No gated evaluation is recorded for this night. That is a fact about the night, not "
+            "a missing section: a candidate is compared with an incumbent only when an operator "
+            "runs `whetstone gate`.",
+        ]
+
+    decision = dict(record.decision)
+    exit_ = str(decision.get("exit", ""))
+    if exit_ not in GATE_EXITS:
+        raise UnknownGateExit(
+            f"the promotion record declares decision {exit_!r}, which is not one of the gate's "
+            f"own exits {list(GATE_EXITS)}. Refused rather than printed: a decision this "
+            "renderer does not understand cannot be put beside a headline"
+        )
+
+    side = "candidate" if record.candidate_digest == night.checkpoint_digest else "incumbent"
+    over = bakeoff_report._over
+    lines = ["## The gate", "", f"This night's checkpoint was the **{side}**."]
+    if exit_ == Exit.UNVERIFIED.value:
+        lines += [
+            "",
+            f"The evaluation returned **{Exit.UNVERIFIED.value}**: no comparison was made. "
+            f"{over(int(decision['unverified']), int(decision['denominator']))} held-out tasks "
+            "reached no verdict, so neither checkpoint was shown to be better than the other. "
+            "This is not a promotion and not a rejection.",
+            "",
+            f"> {decision['detail']}",
+        ]
+    else:
+        lines += [
+            "",
+            f"The evaluation **{exit_}** the candidate. Solved "
+            f"{over(int(decision['solved_new']), int(decision['denominator']))} against the "
+            f"incumbent's {over(int(decision['solved_old']), int(decision['denominator']))}, "
+            f"with {decision['regressed']} regressed.",
+            "",
+            f"> {decision['detail']}",
+        ]
+    lines += [
+        "",
+        f"Retry budget R={record.retry_count}, {record.retries_used} spent.",
+    ]
+    return lines
+
+
+def build_morning_report(*, night: LedgerDocument, record: Any | None = None) -> MorningReport:
+    """Render one night's evidence into a page a person reads, and a payload a machine reads.
+
+    A pure function of its two arguments: it opens no file, so it cannot reach a published home
+    and restate a figure whose only home is elsewhere. `recorded_on` comes from the night rather
+    than the clock, which is what makes byte-identity a property of the design rather than
+    something to be careful about.
+    """
+    if record is not None:
+        if night.checkpoint_digest is None:
+            raise RecordNotThisNight(
+                f"night {night.run_id!r} produced no checkpoint, so no gate can have compared "
+                "one. Refused rather than rendered beside it: the reason the night produced "
+                f"nothing is {night.checkpoint_absent!r}"
+            )
+        if night.checkpoint_digest not in (record.candidate_digest, record.incumbent_digest):
+            raise RecordNotThisNight(
+                f"the promotion record compared {record.candidate_digest[:12]} with "
+                f"{record.incumbent_digest[:12]}, and this night produced "
+                f"{night.checkpoint_digest[:12]}. Refused rather than rendered: a gate decision "
+                "from another night beside this night's ledger is a page that is wrong about the "
+                "one thing it exists to say"
+            )
+
+    data = night.dataset
+    yield_line = _render_counts(
+        examples=data.examples,
+        denominator=data.denominator,
+        coverage=data.coverage,
+        unverified=data.unverified,
+    )
+    candidate = (
+        f"candidate `{night.checkpoint_digest[:12]}` written"
+        if night.checkpoint_digest is not None
+        else "no candidate was produced"
+    )
+
+    lines = [
+        f"# Morning report — {night.run_id}",
+        "",
+        f"`{night.run_id}` ({night.recorded_on}): the reward {yield_line}; {candidate}.",
+        "",
+        "## What the night drew",
+        "",
+        f"- {night.draws} draws per task, from run seed `{night.run_seed}`",
+        f"- {night.task_set.private} source-B tasks and {night.task_set.public} source-A, "
+        f"across {night.task_set.roots} corpus root(s)",
+        f"- base `{night.model.repo_id}` at revision `{night.model.revision}`",
+    ]
+    if night.task_set.heldout_membership:
+        lines.append(
+            f"- {night.task_set.heldout_membership} source-B tasks held out under document "
+            f"`{night.task_set.heldout_digest[:12]}`"
+        )
+    if night.task_set.dev_subset:
+        lines.append(f"- dev subset excluded: {', '.join(night.task_set.dev_subset)}")
+
+    lines += [
+        "",
+        "## What the reward kept",
+        "",
+        f"The reward {yield_line}.",
+        "",
+        f"- training set digest `{data.digest[:12]}`",
+        f"- validation: {data.valid_split or 'a validation split was held back'}",
+    ]
+    if night.checkpoint_digest is None:
+        lines += ["", f"No candidate was produced: {night.checkpoint_absent}"]
+    else:
+        lines += ["", f"Candidate written, digest `{night.checkpoint_digest[:12]}`."]
+
+    lines += ["", *_gate_section(night, record), "", "## How to trust this page", "", SEAL_SENTENCE]
+
+    payload: dict[str, Any] = {
+        "schema": MORNING_SCHEMA,
+        "run_id": night.run_id,
+        "recorded_on": night.recorded_on,
+        "night": {
+            "draws": night.draws,
+            "run_seed": night.run_seed,
+            "model": {"repo_id": night.model.repo_id, "revision": night.model.revision},
+            "task_set": {
+                "private": night.task_set.private,
+                "public": night.task_set.public,
+                "roots": night.task_set.roots,
+                "dev_subset": list(night.task_set.dev_subset),
+                "heldout_membership": night.task_set.heldout_membership,
+            },
+            "kept": data.examples,
+            "denominator": data.denominator,
+            "coverage": data.coverage,
+            "unverified": data.unverified,
+            "valid_split": data.valid_split,
+            "checkpoint_absent": night.checkpoint_absent,
+        },
+        "gate": (
+            None
+            if record is None
+            else {
+                "exit": str(record.decision["exit"]),
+                "side": (
+                    "candidate"
+                    if record.candidate_digest == night.checkpoint_digest
+                    else "incumbent"
+                ),
+                "decision": dict(record.decision),
+                "retry_count": record.retry_count,
+                "retries_used": record.retries_used,
+            }
+        ),
+        "evidence": {
+            "ledger_run_id": night.run_id,
+            "dataset_digest": data.digest,
+            "checkpoint_digest": night.checkpoint_digest,
+            "heldout_digest": (
+                record.heldout_digest if record is not None else night.task_set.heldout_digest
+            ),
+            "tool_versions": dict(night.tool_versions),
+        },
+        "seal": SEAL_SENTENCE,
+    }
+    return MorningReport(markdown="\n".join(lines) + "\n", payload=payload)
+
+
+def _documents(report: MorningReport) -> tuple[str, str]:
+    """The exact bytes of both artifacts. Sorted keys, no clock, no environment."""
+    return (report.markdown, json.dumps(report.payload, indent=2, sort_keys=True) + "\n")
+
+
+def write_morning_report(
+    *, out: Path, night: LedgerDocument, record: Any | None = None
+) -> tuple[Path, Path]:
+    """Write the two artifacts, refusing before anything exists on disk.
+
+    Two artifacts and not three: a night produces no cost document, and an empty `cost.json` would
+    be an artifact asserting a measurement nobody made. The output root is checked first — a
+    half-written morning report is worse than none, because it is a page an operator will read.
+    """
+    home = Path(out)
+    refuse_published_out(home, "--out")
+    report = build_morning_report(night=night, record=record)
+    markdown, payload = _documents(report)
+    home.mkdir(parents=True, exist_ok=True)
+    (home / MARKDOWN_FILE).write_text(markdown, encoding="utf-8")
+    (home / PAYLOAD_FILE).write_text(payload, encoding="utf-8")
+    return (home / MARKDOWN_FILE, home / PAYLOAD_FILE)
+
+
+def verify_morning_report(
+    out: Path, *, night: LedgerDocument, record: Any | None = None
+) -> None:
+    """Re-render from the same evidence and refuse any artifact that is not what it renders to.
+
+    This is the whole of what "sealed" means here, and the boundary is stated on the page itself:
+    it proves the report matches the evidence, never that the evidence matches the run.
+    """
+    home = Path(out)
+    expected = dict(zip((MARKDOWN_FILE, PAYLOAD_FILE), _documents(
+        build_morning_report(night=night, record=record)
+    ), strict=True))
+    for name, wanted in expected.items():
+        artifact = home / name
+        try:
+            found = artifact.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise MorningReportAltered(f"{name} could not be read at {str(home)!r}: {exc}") from exc
+        if found != wanted:
+            raise MorningReportAltered(
+                f"{name} at {str(home)!r} is not what this evidence renders to. The report is "
+                "sealed to its evidence: either the artifact was edited, or the evidence it was "
+                "rendered from has changed since"
+            )
+
+
+#: Everything this module refuses by name, for the door to catch as one. `MorningReportAltered`
+#: is deliberately **not** here: a report that does not match its evidence is a failure, not a
+#: mistyped command, and the two carry different exit codes.
+REFUSALS: tuple[type[Exception], ...] = (
+    LedgerUnreadable,
+    NoRuns,
+    AmbiguousNight,
+    RunIdentityMismatch,
+    RecordNotThisNight,
+    UnknownGateExit,
+    TranscriptNotPrivate,
+)
+
+
+def _selected(runs: Path | None, run: Path | None) -> LedgerDocument:
+    """The night to report on: the one named, or the one the stated rule resolves to."""
+    if run is not None:
+        return load_named_run(run)
+    if runs is None:
+        raise NoRuns("no runs root given; name one with --runs or a night with --run")
+    return resolve_last_night(runs)
+
+
+def _evidence(record: Path | None) -> Any | None:
+    """The promotion record, read through the gate's own fail-closed reader, or `None`.
+
+    Optional because not every night is followed by a gated evaluation, and its absence renders as
+    that fact rather than as a missing section.
+    """
+    if record is None:
+        return None
+    from whetstone.loop.gate import read_promotion_record
+
+    return read_promotion_record(record)
+
+
+def render_morning(
+    *, runs: Path | None, run: Path | None, record: Path | None, out: Path
+) -> tuple[Path, Path]:
+    """Resolve the night, read the evidence, and write the two artifacts."""
+    return write_morning_report(out=out, night=_selected(runs, run), record=_evidence(record))
+
+
+def verify_morning(
+    directory: Path, *, runs: Path | None, run: Path | None, record: Path | None
+) -> None:
+    """Re-render from the same evidence and refuse anything that is not what it renders to."""
+    verify_morning_report(directory, night=_selected(runs, run), record=_evidence(record))

@@ -93,8 +93,9 @@ Today there is nothing to show them between the terminal disclosure and the publ
    - A gate that returned `UNVERIFIED`: rendered as **no comparison was made**, with both sides'
      counts. `UNVERIFIED` is never rendered as `PASS` and never as a win.
 7. **The promotion record must belong to *this* night.** `--record` is optional, but a record
-   that is present is checked: its `run_id` must be the night's, and a mismatch is **refused by
-   name, nothing rendered** — the `RunIdentityMismatch` posture the honest-number door already
+   that is present is checked against the night's **checkpoint digest** (corrected during the
+   build: a record's `run_id` is the *gate evaluation's* name, never the night's — see
+   `report-writer/plan_20260828.md`), and a mismatch is **refused by name, nothing rendered** — the `RunIdentityMismatch` posture the honest-number door already
    takes (`honest_report.py:83`). Rendering a gate decision from a *different* night beside this
    night's ledger is exactly the half-truth the previous unit spent an aspect refusing, and it is
    the most plausible operator error here: the gate's run id and the night's are both
