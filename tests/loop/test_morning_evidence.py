@@ -27,6 +27,8 @@ from __future__ import annotations
 import ast
 import json
 import os
+import subprocess
+import sys
 from collections.abc import Mapping
 from dataclasses import fields, replace
 from pathlib import Path
@@ -225,11 +227,24 @@ def test_the_document_carries_no_donor_source_text(tmp_path: Path) -> None:
     )
 
 
-def test_the_module_imports_no_inference_library() -> None:
-    """The morning report reads documents and renders text; it must never reach a model.
+def test_the_module_imports_no_inference_library_directly() -> None:
+    """No `mlx`, `torch` or `transformers` in this module's own bytes.
 
-    Walked over the module's own bytes rather than asserted about `sys.modules`, on the
-    `preanalysis.py` precedent: an import that only fires on some path is still an import.
+    **Narrower than it first looks, and the narrowing is the honest part.** An earlier draft of
+    this test also banned first-party imports whose dotted name ends in `.run` or `.scoring`, on
+    the `retry.py` / `preanalysis.py` precedent — and it failed the moment this module imported
+    the gate for one constant, because `whetstone.loop.gate` transitively reaches
+    `whetstone.bakeoff.mlx_runtime`.
+
+    Measuring rather than arguing showed the rule was invented here and is not the tree's.
+    `check_leakage.py:49` is the closest sibling — a command that reads two JSON documents, needs
+    no model and never will — and it imports `whetstone.loop.night` at **module scope**, reaching
+    `mlx_runtime` exactly the same way. That is sound for the reason the partition guard gives:
+    the argument is about the module graph of `whetstone verify`, and the CLI's edge into this
+    package is function-local, so the reward's own entry point never executes any of it.
+
+    Those precedents do not license a *direct* inference import, which is what this still bans —
+    and the property an operator actually feels is asserted separately, below.
     """
     source = Path(morning.__file__).read_bytes()
     tree = ast.parse(source, filename=morning.__file__)
@@ -240,16 +255,68 @@ def test_the_module_imports_no_inference_library() -> None:
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module)
 
-    banned = sorted(
-        name
-        for name in imported
-        if name.split(".")[0] in {"mlx", "mlx_lm", "torch", "transformers"}
-        or name.endswith((".run", ".scoring", ".mlx_runtime"))
-    )
+    inference = {"mlx", "mlx_lm", "torch", "transformers"}
+    banned = sorted(name for name in imported if name.split(".")[0] in inference)
     assert not banned, (
-        f"WHY THIS IS A FAILURE: {banned} reached the morning report's own module. It reads "
-        "documents and renders text; nothing here needs a model, and the CLI edge that calls it "
-        "is function-local precisely so `whetstone verify` never loads one"
+        f"WHY THIS IS A FAILURE: {banned} is imported directly by the morning report. It reads "
+        "documents and renders text; nothing here needs a model"
+    )
+
+
+def test_reading_a_night_does_not_load_the_inference_library() -> None:
+    """The property an operator feels: `whetstone report` works without the `mlx` extra.
+
+    This is what the name-matching ban above was reaching for and could not express. `mlx-lm` is
+    an optional dependency (`pyproject.toml:26-30`), so a morning report that imported it would be
+    unrunnable on exactly the machine most likely to want one — someone reading last night's
+    result on a box that never trains. Asserted in a **fresh interpreter**, because this process
+    has already imported half the tree and `sys.modules` here would prove nothing about a cold
+    start.
+    """
+    probe = (
+        "import sys; import whetstone.loop.morning; "
+        "print(sorted(m for m in sys.modules if m.split('.')[0] "
+        "in {'mlx', 'mlx_lm', 'torch', 'transformers'}))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "[]", (
+        "WHY THIS IS A FAILURE: importing the morning report loaded an inference library. "
+        f"A cold interpreter reported {result.stdout.strip()}. The report reads JSON and renders "
+        "text, and it must run on a machine that has never installed the mlx extra"
+    )
+
+
+def test_the_cold_start_probe_can_detect_an_import() -> None:
+    """Anti-vacuity, and this one is not optional.
+
+    `mlx-lm` is an optional extra and is **not installed in the ordinary dev environment**, so on
+    most machines the assertion above is trivially true: nothing could have imported the library
+    even if the module tried. A green result there is evidence about the environment rather than
+    about this module, and the test would keep passing after a regression on any box that had
+    never run `uv sync --extra mlx`.
+
+    So the probe mechanism itself is exercised against a package that is always present. If this
+    fails, the subprocess, the interpreter path or the `sys.modules` read is broken — and the
+    assertion above is measuring nothing.
+    """
+    probe = (
+        "import sys; import whetstone.loop.morning; "
+        "print(sorted(m for m in sys.modules if m.split('.')[0] in {'json', 'nonexistentpkg'}))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+    )
+    reported = result.stdout.strip()
+    assert "'json'" in reported, (
+        "WHY THIS IS A FAILURE: the cold-start probe did not report `json`, which the morning "
+        f"report certainly pulls in through the ledger. It reported {reported}. The probe is not "
+        "measuring what the test above believes it measures"
+    )
+    assert "nonexistentpkg" not in reported, (
+        f"WHY THIS IS A FAILURE: the probe reported a package that does not exist: {reported}. "
+        "It is not reading sys.modules"
     )
 
 

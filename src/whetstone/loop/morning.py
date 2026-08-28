@@ -46,14 +46,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from whetstone.bakeoff.run import TranscriptNotPrivate
 from whetstone.loop.gate import PROMOTIONS_DIR
 from whetstone.loop.ledger import LEDGER_FILE, LedgerUnreadable
 from whetstone.loop.ledger import read as _read_ledger_payload
+from whetstone.loop.night import PUBLISHED
 
 __all__ = [
     "FIELD_SOURCES",
     "LEDGER_FILE",
+    "LOCAL",
     "PROMOTIONS_DIR",
+    "PUBLISHED",
     "REQUIRED_FIELDS",
     "AmbiguousNight",
     "DatasetCounts",
@@ -65,10 +69,20 @@ __all__ = [
     "NoRuns",
     "RunIdentityMismatch",
     "TaskCounts",
+    "TranscriptNotPrivate",
     "load_named_run",
     "read_ledger",
+    "refuse_published_out",
     "resolve_last_night",
 ]
+
+
+#: The one directory under `reports/` a morning report may be written to. `.gitignore` reserves
+#: `/reports/local/` for the user's own nightly output, and the one-home guard filters it out of
+#: the published-artifact list by name with that same argument
+#: (`tests/bakeoff/test_report.py:2076-2077`). A named constant rather than a string inside the
+#: predicate, so widening the carve-out costs a diff someone has to defend.
+LOCAL = "local"
 
 
 class LedgerFieldMissing(LedgerUnreadable):
@@ -410,3 +424,42 @@ def resolve_last_night(runs_root: Path) -> LedgerDocument:
             "run. Name the one you meant with --run"
         )
     return next(one for one in documents if one.run_id == tied[0])
+
+
+def refuse_published_out(root: Path, flag: str) -> None:
+    """Refuse an output root inside a committed report directory, before anything is written.
+
+    The night's own `_refuse_published_root` cannot be reused here, and the reason is worth
+    stating rather than working around: it refuses **any** path with a `reports` component, and
+    this unit's documented home is `reports/local/`. Borrowing it by identity would refuse the one
+    place a morning report is supposed to go.
+
+    So this is its narrower sibling, and the carve-out is not invented here. `.gitignore` reserves
+    `/reports/local/` for the user's own nightly output — its comment names "the morning reports"
+    — and the one-home guard already filters that prefix out of the published-artifact list on the
+    argument that it is *"their data and never ours to assert on"*. Everything else under
+    `reports/` is the one part of this tree an outside reader is expected to read, and a morning
+    report holds counts and digests derived from private donor code.
+
+    Resolved rather than compared as written, for the reason `night.py:620-622` gives:
+    `reports/local/../baseline` and a symlinked scratch directory each name a published path while
+    comparing unequal to one, and the check has to hold against the path that gets written.
+    `strict=False` throughout — the directory does not exist before the first morning, and a check
+    that required it to would refuse every honest invocation.
+
+    Raises the bake-off's own `TranscriptNotPrivate`, imported by identity, so this repository has
+    one name for "private evidence was pointed at a published path" rather than two.
+    """
+    parts = Path(root).resolve().parts
+    if PUBLISHED not in parts:
+        return
+    published_at = parts.index(PUBLISHED)
+    if parts[published_at + 1 : published_at + 2] == (LOCAL,):
+        return
+    raise TranscriptNotPrivate(
+        f"{flag} points at {str(root)!r}, which is inside a {PUBLISHED}/ directory but outside "
+        f"{PUBLISHED}/{LOCAL}/ — the one carve-out reserved for the user's own nightly output. A "
+        "morning report holds counts and digests derived from private donor code, and every other "
+        f"directory under {PUBLISHED}/ is committed and read by outsiders. Point it at "
+        f"{PUBLISHED}/{LOCAL}/ or at a path outside {PUBLISHED}/ entirely"
+    )
