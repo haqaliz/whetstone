@@ -686,12 +686,16 @@ review fixed the path to it:
   first gated evaluation (candidate: night #1's checkpoint; incumbent: the untrained base) →
   spend the baseline → the P4 report (slice 2's door) → the finding. The night's yield and
   the gate's liveness on a real machine are unmeasured until they run.
-- **Two units are buildable while the GPU is busy, and neither reads a number**: the
-  `gate-untrained-incumbent` dispatch above — which the *gated evaluation* waits on, never
-  the night — and the signed morning report below.
-- **The signed morning report (`whetstone report --last-night`) is pulled into the launch
-  path**, ahead of the dashboard: it is the demoable surface ("wake up and read the proof"),
-  and the report writers, ledger and gate record it renders already exist. **The Next.js
+- **One unit is still buildable while the GPU is busy, and it reads no number**: the
+  `gate-untrained-incumbent` dispatch above, which the *gated evaluation* waits on, never the
+  night. The second — the signed morning report — landed 2026-08-28 (below).
+- **The signed morning report (`whetstone report --last-night`) landed 2026-08-28**
+  (`docs/planning/morning-report/`), ahead of the dashboard as this section decided: it is the
+  demoable surface ("wake up and read the proof"). It renders one night's sealed evidence —
+  ledger and, when a gate ran, the promotion record — into `reports/local/nightly/<run-id>/`,
+  which is gitignored and publishes nothing. "Signed" is settled as **sealed to its evidence**,
+  never cryptographic, and the page states that boundary itself. **It has not been rendered from
+  a real night**, because no night has been run. **The Next.js
   dashboard and distillation remain post-horizon** (§ 9) — neither is needed to publish a
   real number.
 - **If the number needs help, the levers are raising `K` or a larger base** (P2's pivot

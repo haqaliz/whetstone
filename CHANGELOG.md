@@ -9,6 +9,63 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Added
+
+- **The signed morning report — P4's third slice** (`docs/planning/morning-report/`, merged as
+  PR #19). `whetstone report --last-night` renders one night's sealed evidence into a page a
+  person reads: core-loop element ④, and the first surface between a terminal disclosure that
+  scrolls away and the published P4 report. Pulled ahead of the dashboard, as `docs/ROADMAP.md`
+  § 12 decided. Four aspects:
+  - **night-evidence**: a fail-closed **typed** reader for the run ledger — `ledger.read` checks
+    the schema and hands back a raw mapping, and every field a report renders is one an
+    optimistic parse would default — plus the rule that decides which night "last night" was.
+  - **report-writer**: the render itself, two artifacts (`report.md`, `report.json`, schema
+    `whetstone-morning/1`) and not three, because a night produces no cost document.
+  - **local-home**: the `reports/local/` carve-out predicate, the gitignored-home assertion and
+    the locality canary.
+  - **cli-door**: the `report` subcommand, the partition guard's fourth documented edge, and two
+    stale-claim corrections in the repository's own front door.
+
+### Decided
+
+- **"Signed" means sealed to its evidence, never cryptographic.** `pyproject.toml` declares zero
+  runtime dependencies and no signing library exists in any group, and a signature would prove
+  authorship rather than honesty. The page states its own boundary: re-rendering proves the
+  report matches the evidence, **not** that the evidence matches the run — a hand-edited ledger
+  re-renders consistently, because a ledger is not self-sealing and only the checkpoint's digest
+  is re-derivable from bytes.
+- **"Last night" resolves by the greatest *declared* `recorded_on`**, never mtime and never the
+  clock: the run id is operator-declared and `recorded_on` is an input, so mtime would be a
+  property of the filesystem rather than of the run. A tie is refused by name, pointing at
+  `--run`; a night whose ledger will not parse refuses the whole scan rather than being skipped.
+
+### Fixed
+
+- **`cli.py`'s module docstring** counted four subcommands, omitted `check-leakage` entirely, and
+  said no report command existed — three false claims in the file's own first paragraph. It is
+  now asserted against the parser rather than proof-read.
+- **`README.md`'s status table** listed the never-regress promotion gate and the held-out split
+  as ❌ Not built months after P3 merged them, and claimed *"No tags, no PyPI package, no
+  version"* with v0.3.0–v0.10.0 tagged and published. This is the same failure `CLAUDE.md`
+  already records against itself; a guard now checks the table against `git tag`.
+- **A no-inference guard that had been passing vacuously since it landed**, earlier in this same
+  unit: it banned first-party imports by name suffix — a rule invented rather than this tree's,
+  since `check_leakage.py` does the same thing soundly — and never noticed the module already
+  reached `mlx_runtime` through a gate import. Replaced with a direct ban plus a cold-start
+  measurement in a fresh interpreter, itself given an anti-vacuity control.
+
+### Not claimed
+
+- **Nothing is published.** The report's home is the gitignored `reports/local/nightly/<run-id>/`,
+  which `.gitignore` pre-declared naming "the morning reports". The one-home guard does **not**
+  move — it already excludes that prefix by name — and no `PREREGISTRATION.md` § 10 amendment is
+  owed, because § 10 discloses published *series* and this publishes none.
+- **The report has never rendered a real night**, because no night has been run. Its refusals,
+  its determinism and its three gate renderings are proven against fixture ledgers and fixture
+  promotion records.
+
 ## [0.10.0] - 2026-08-27
 
 ### Added

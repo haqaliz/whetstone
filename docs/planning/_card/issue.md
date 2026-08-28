@@ -1,50 +1,53 @@
-# Card — honest-number-report
+# Card — feat/morning-report/aliz
+
+**Source:** no GitHub issue. `gh issue list --state all` returns nothing for this repo
+(Issues carry no cards; the tracker in practice is `docs/planning/` + the roadmap). The
+source below is the inline brief handed off by `whetstone-next` on 2026-08-28.
 
 ## Brief
 
-P4 slice 2 (`docs/ROADMAP.md:647-651`, § 12 — the next unit named by the launch path): the
-honest-number report writer, plus P4 exit criterion 3 (the harness is public and reproduces
-the reported number from the pinned inputs). Build a pure, deterministic report writer and a
-report-door mode rendering, for BOTH sources together: baseline score (read from the
-committed `reports/baseline-measurement/` artifact through its fail-closed loader **by
-identity**), final score, delta, `N_baseline`, `N_final`, coverage, and the full provenance
-block (pinned seeds, model revision, task set, tool versions) — in the `PREREGISTRATION.md`
-§ 4 shape (source A per-instance, never a rate; every rate carries its denominator; zero or
-negative deltas published as plainly as positive ones; both sources always published
-together). Reuse `report.py`'s shared helpers (`_row`, `_over`, `tally`,
-`_contract_fields`, `_contract_block`, `_counts`) by identity, on the four existing writers'
-precedent; the report door follows the `comparison.py` three-mode precedent
-(`--render-report` / `--render-stratum-report` / `--render-larger-base-report`), with the
-same missing-journal / unproven-control / zero-arms refusals by name.
+Build the signed morning report: `whetstone report --last-night`, the launch path's next
+unit (`docs/ROADMAP.md` § 12; declared out of scope and named as the follow-on by
+`docs/planning/honest-number-report/prd.md:80,222`). It composes already-sealed local
+evidence by identity — `ledger.read`, `gate.read_promotion_record`,
+`baseline.read_baseline_document`, and the `bakeoff/report.py` writers — and renders one
+plain-English note per night into the gitignored `/reports/local/` (pre-declared at
+`.gitignore:23`; note `arm-a/` and `budget-2048/` already live there). It publishes
+nothing, so the one-home guard does not move and no § 10 amendment is owed.
 
-Acceptance criteria, written first (repo is test-first):
+### Caveats carried into the dig
 
-1. The door renders the three-artifact shape (report.md/report.json/cost.json) only when an
-   arm has run: missing journals, an unproven control, zero arms, or a missing baseline
-   artifact are refused by name — never a half-truth render.
-2. The writer is pure and deterministic: byte-identical output across invocations, and the
-   report's figures re-derive from the pinned inputs (harness-reproduces-the-number check).
-3. Source A appears per-instance (never a rate — one eligible instance of 300), source B over
-   its own denominator, both always together.
-4. Baseline score is read from the committed baseline artifact, never recomputed or restated
-   from another home.
-5. The one-home guard admits the report's home on the argued series basis (a § 10 amendment
-   before any figure, if it is a new series); a silent home-list extension is refused.
-6. The AC2 pins (`src/whetstone/verify/`, `patch.py`, `attribution.py`) and the reward-path
-   partition guard hold; `PREREGISTRATION.md` gains no proportion in any spelling.
-7. A runbook scripts the post-run render (the report door is part of the operator's post-run
-   chain, behind the first gated evaluation).
+- **"Signed" is undefined in this tree.** No cryptographic signing exists anywhere; the
+  only grounded reading is *hashed provenance* (checkpoint digests, ledger and
+  promotion-record digests, tool versions). Decide it explicitly and never imply a
+  signature the code does not produce.
+- **No night and no real gated evaluation has ever run** (`CLAUDE.md` status block), so
+  this is provable only against fixture ledgers and fixture promotion records — the gate's
+  own posture. The finding must say so.
+- **This is the partition guard's fourth documented function-local edge** into `loop/`
+  (`tests/test_reward_path_scope_is_partitioned.py` pins exactly three today). Move the
+  constant test-first, watched failing in both halves.
+- **`reports/local/` already holds `arm-a/` and `budget-2048/`** from the yield probe —
+  resolve the layout collision before choosing a subdirectory.
 
-Caveats the dig must meet: no real runs exist yet (the night has never run, the gate has
-never run on real checkpoints, the baseline number is unspent) — so the writer and the
-reproducibility check are proven on fixture/recorded evidence first, exactly as the gate's
-three exits were. The report's home must be argued on the one-home guard's series argument
-(same held-out split and base as the baseline series — either the baseline home reads as
-"before" by identity or a new home is declared on the changed-series argument), and the § 7.3
-Type 1 amendment and the operator chain (baseline spend → two nights → first gated eval) stay
-outside this unit. The reward path must stay byte-untouched.
+### Acceptance criteria (from the handoff, test-first)
 
-## Source
+1. The door exists and resolves "last night" by a **stated rule**, refusing ambiguity
+   rather than guessing.
+2. Every half-truth render is refused **by name** with nothing written: unreadable/absent
+   ledger, missing promotion record, failed checkpoint re-hash, series disagreement.
+3. A zero-strict-PASS night and a gate that returned `UNVERIFIED` each render as exactly
+   those facts — never blank, never a win.
+4. `UNVERIFIED` is never rendered as `PASS`.
+5. The note carries hashes and verdicts and never task contents (locality canary).
+6. The render is deterministic and byte-identical across invocations and under
+   `PYTHONHASHSEED` 0/1.
+7. The output home is asserted gitignored, and a published root is refused via
+   `_refuse_published_root` by identity.
+8. The partition guard proves exactly four edges, able to fail against a planted fifth and
+   against a planted module-scope import.
 
-Inline brief (no GitHub issue — slug id, `feat honest-number-report`), handed off from the
-`whetstone-next` session (2026-08-27).
+## Placement on the core loop
+
+Element ④ — the signed morning report. It reads sealed evidence; it decides nothing,
+re-scores nothing, and publishes nothing. The reward path is untouched.
