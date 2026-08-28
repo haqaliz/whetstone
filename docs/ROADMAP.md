@@ -655,11 +655,40 @@ review fixed the path to it:
   candidate, rejected → incumbent, UNVERIFIED → no headline), `N_final` recorded at gate
   time (`SideCounts.weaker_wins`), and the operator's sheet held by its own guard. **The
   report is unspent**: declaration-only until the operator chain completes.
+- **The path was reordered 2026-08-28 — one night, not two, and the baseline last.** The
+  order this section fixed on 2026-08-26 (amendment → baseline → night #1 → night #2 → gate
+  → report) put the project's one-shot measurement in front of its longest and least certain
+  step, and spent a second GPU night manufacturing an incumbent. Both are avoidable, and
+  neither loosens anything:
+  - **The gate's first incumbent is the untrained base, not a second night.**
+    `sft.verify_checkpoint` already accepts an untrained checkpoint (`untrained: true`, no
+    adapter — `sft.py:526-535`), and `baseline.baseline_engine` is `gate.gate_engine`'s
+    untrained sibling, differing in the one line that stacks an adapter. The only thing
+    standing between `gate --incumbent <the untrained base>` and a decision is
+    `gate_engine`'s unconditional `adapter_path=`. Dispatching the per-side engine on
+    `Checkpoint.untrained` takes a whole night off the critical path **and** makes the first
+    gated evaluation the comparison the product actually claims: did the night beat the base
+    it started from? This is the next code unit (`gate-untrained-incumbent`), and it also
+    owns the gate runbook's "needs **two** nights" paragraph, which may not be edited ahead
+    of the code it would then disagree with.
+  - **The baseline moves behind the night.** Nothing before the P4 report reads it, and it is
+    the one number that may be spent exactly once (§ 3). Measuring it last costs nothing and
+    means a night that forces the roadmap's own yield levers — raise `K`, or a larger base —
+    cannot strand a spent measurement in a series that was then abandoned.
+  - **A gate scoring an untrained incumbent is not a baseline re-measurement.** § 3 forbids
+    re-running the baseline *to confirm it* and *because a later result disappointed*; a gate
+    scores an incumbent because that is what a gate is. The § 3 figure keeps its one home
+    (`reports/baseline-measurement/`); the gate's incumbent counts stay in the gitignored
+    promotion record. The two are the same base on the same split under greedy decoding, so
+    they should agree — and a disagreement is published as a finding, never reconciled.
 - **The operator runs, in dependency order, runbooks ready**: the § 7.3 Type 1 amendment
-  (the base being fine-tuned must be pinned before the night trains) → spend the baseline →
-  night #1 → night #2 (the gate compares two checkpoints) → the first gated evaluation →
-  the P4 report (slice 2's door) → the finding. The night's yield and the gate's liveness on
-  a real machine are unmeasured until they run.
+  (the base being fine-tuned must be pinned before the night trains) → **night #1** → the
+  first gated evaluation (candidate: night #1's checkpoint; incumbent: the untrained base) →
+  spend the baseline → the P4 report (slice 2's door) → the finding. The night's yield and
+  the gate's liveness on a real machine are unmeasured until they run.
+- **One unit is still buildable while the GPU is busy, and it reads no number**: the
+  `gate-untrained-incumbent` dispatch above, which the *gated evaluation* waits on, never the
+  night. The second — the signed morning report — landed 2026-08-28 (below).
 - **The signed morning report (`whetstone report --last-night`) landed 2026-08-28**
   (`docs/planning/morning-report/`), ahead of the dashboard as this section decided: it is the
   demoable surface ("wake up and read the proof"). It renders one night's sealed evidence —
