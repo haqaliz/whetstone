@@ -483,8 +483,10 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="<path>",
         help=(
             "the weights root holding provenance.json. Each checkpoint's own provenance names "
-            "the base it was trained on; the gate resolves it here and stacks the checkpoint's "
-            "LoRA adapter on it. Every recorded sha256 is re-checked before anything is loaded"
+            "the base it was trained on; the gate resolves it here and stacks a trained "
+            "checkpoint's LoRA adapter on it, while an untrained checkpoint (the base "
+            "itself — the launch path's first incumbent) is loaded without an adapter. "
+            "Every recorded sha256 is re-checked before anything is loaded"
         ),
     )
     gate.add_argument(
