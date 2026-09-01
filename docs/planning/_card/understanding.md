@@ -1,138 +1,83 @@
-# Understanding — morning-report
+# Understanding — gate-untrained-incumbent
 
-## What this work is really asking
+**Branch:** `feat/gate-untrained-incumbent/aliz` · **Date:** 2026-09-01
 
-The launch path's next unit (`docs/ROADMAP.md:663-666`, § 12, decided 2026-08-26): the
-**signed morning report**, `whetstone report --last-night` — pulled out of post-horizon
-(`docs/ROADMAP.md:592-593`) and placed ahead of the dashboard because it is the demoable
-surface, *"wake up and read the proof"*. It is core-loop element ④ and nothing else: it reads
-sealed evidence a night (and, if one ran, a gate) already wrote, and renders it. It scores
-nothing, decides nothing, and publishes nothing. The previous unit named it explicitly as its
-own successor and put it out of scope
-(`docs/planning/honest-number-report/prd.md:80`, `:222`).
+## What the work is really asking
 
-## What the dig established (read directly — the four dispatched agents went idle without returning reports, so this was read first-hand)
+`docs/ROADMAP.md:663-671` names this unit: dispatch the gate's per-side engine on
+`Checkpoint.untrained` so `whetstone gate --candidate X --incumbent <untrained base>` reaches a
+decision. Today the only obstacle is `gate_engine`'s unconditional
+`adapter_path=str(checkpoint.directory)` (`src/whetstone/loop/gate.py:480`). Removing it takes a
+whole GPU night off the launch path (`docs/ROADMAP.md:663-671, 684-688`): the first gated
+evaluation becomes candidate = night #1's checkpoint, incumbent = the untrained base — the
+comparison the product actually claims (did the night beat the base it started from?). The unit
+also owns the gate runbook's "needs **two** nights" paragraph
+(`docs/planning/p3-promotion-gate/gate-runbook/runbook.md:45-47`), which may not be edited ahead
+of the code it would then disagree with.
 
-### The evidence exists and is rich enough
+## What the code actually shows (all verified on this branch)
 
-- **`Ledger`** (`src/whetstone/loop/ledger.py:146-197`) carries everything a morning note
-  needs: `run_id`, `recorded_on`, `run_seed`, `draws`, `model` (repo_id + revision),
-  `contract` (the full frozen `GenerationContract`), `task_set` (private/public counts, roots
-  count, dev subset, probe, held-out record), `tool_versions`, `seeds`, `draws_recorded`
-  (per-draw harness status + `(denominator, unverified, solved)` per source), `dataset`,
-  `valid_split`, `checkpoint_digest | None`, `checkpoint_absent`, `capacity`.
-- **`ledger.read`** (`ledger.py:211-224`) is fail-closed on the schema string and returns the
-  raw `Mapping`, not a `Ledger` — **there is no typed reader today.** A morning report that
-  wants fields needs one, and building it fail-closed is this unit's work.
-- **`Dataset`** (`dataset.py:167-192`) carries `examples`, `digest`, `denominator`,
-  `unverified`, and `coverage` as the honest complement — the training-set size never travels
-  alone.
-- **`PromotionRecord`** + **`read_promotion_record`** (`gate.py:852-917`) are already
-  fail-closed and complete: both digests, the held-out digest, both `Side`s over both sources
-  with six counts each (including `weaker_wins` = `N`), the `decision` block verbatim, and all
-  three retry facts. Its home is `runs/promotions/<run-id>.json`.
-- **`night.disclosure`** (`night.py:349-382`) and **`gate.disclosure`** (`gate.py:679-703`)
-  are the prose-from-data prior art. The morning report is, in substance, a **durable, written,
-  re-derivable** version of those two disclosures joined — which is the honest way to describe
-  it and keeps it from inventing a vocabulary.
-
-### The one genuinely undecided mechanism: how "last night" resolves
-
-**The run id is operator-declared** (`cli.py:328`, `--run-id`), not generated, and
-`recorded_on` is *"an input, never the clock"* (`ledger.py:151`). So there is **no timestamp
-in the tree** and no ordering signal except the operator's own declared date. mtime is a
-filesystem property, not evidence, and a copied directory re-dates it.
-
-The rule that fits this repository: scan the runs root, read each ledger through the
-fail-closed reader, and take the greatest `recorded_on` — **refusing a tie by name** and
-telling the operator to say which with an explicit `--run`. That satisfies the acceptance
-criterion ("resolves last night by a **stated rule**, refusing ambiguity rather than
-guessing") without ever consulting the clock or the filesystem.
-
-### The home is already decided, and the one-home guard already carved it out
-
-- `.gitignore:16-23` pre-declares `/reports/local/` with the comment naming **"the morning
-  reports"** as the user's own data.
-- The one-home guard **already excludes it by name**: `tests/bakeoff/test_report.py:2087` and
-  its twin at `:2174`, `:2251` filter `reports/local/`, with the argument at `:2076-2077` —
-  *"`.gitignore` reserves it for the user's own nightly output, which is their data and never
-  ours to assert on."* **So the one-home guard does NOT move a sixth time.** That is a real
-  finding: the brief assumed it stayed put; the guard proves it.
-- `reports/local/` already holds `arm-a/` and `budget-2048/`, each a three-artifact
-  report.md/report.json/cost.json from the yield probe. A morning report needs its own
-  namespace under it (e.g. `reports/local/nightly/<run-id>/`) — the collision is real.
-
-### The locality guard cannot be reused as-is, and that is the sharp edge
-
-`night._refuse_published_root` (`night.py:617-635`) refuses **any** path with a `reports`
-component (`PUBLISHED = "reports"`, `night.py:96-98`). `reports/local/` is inside `reports/`,
-so importing that predicate by identity would **refuse this unit's own documented home.**
-
-The coherent rule is its narrower sibling: refuse a published root *except* the
-`reports/local/` carve-out that `.gitignore:23` and the one-home guard already recognise by
-name — reusing `PUBLISHED` by identity and raising `TranscriptNotPrivate` by identity, so this
-repository keeps one name for "private evidence was pointed at a published path". It must be
-watched failing: `reports/nightly/` refused, `reports/local/night-001/` accepted,
-`reports/local/../baseline/` refused **on the resolved path** (the `night.py:620-622`
-argument).
-
-### "Signed" is narrative, and the repo settles it
-
-The word appears exactly twice about this feature — `VISION.md:12` (*"a signed proof that the
-gains are real and the model didn't cheat"*) and `docs/ROADMAP.md:592`, `:663`. There is **no
-crypto anywhere**: `pyproject.toml:21` is `dependencies = []`, *"Zero runtime dependencies"*,
-and no signing library exists in any group. A cryptographic signature would also prove the
-wrong thing — authorship, not honesty.
-
-The grounded reading, and the one this project's idiom already supports: **sealed to its
-evidence.** Every figure carries the digest of the document it came from, and the report is a
-pure function of those documents, re-derivable byte-for-byte. That is the same
-"harness-reproduces-the-number" property P4 exit criterion 3 demanded of the honest-number
-report, at the local surface. The PRD must state this in words and the report must never use
-wording implying a signature the code does not produce.
-
-### The CLI edge, and the template for it
-
-`whetstone report` becomes the **fourth** documented function-local edge. The constant is
-`_DOCUMENTED_EDGES` (`tests/test_reward_path_scope_is_partitioned.py:152-158`), asserted in
-two halves — *"exactly the documented edges"* (`:450-498`) and *"…are function-local"*
-(`:501-545`) — and the `loop` exemption's prose says **"exactly THREE documented edges"**
-(`:128`), so the reason text moves with the constant. `run_check_leakage_cli`
-(`cli.py:815-844`) is the exact template: a function-local import of `REFUSALS`, `disclosure`
-and a `run_*` entry point, refusals to `USAGE_ERROR`, no fifth exit code.
-
-### Two stale claims the dig turned up (in files this unit edits anyway)
-
-1. **`cli.py:1-13`** says *"four now do"* and *"All four subcommands"*, enumerating verify /
-   mine / run --night / gate — **`check-leakage` is missing**, and the docstring ends *"There
-   is still no report, so there is still no stub for it"*, which this unit falsifies.
-2. **`README.md:229`** lists as ❌ Not built: *"The never-regress promotion gate, the held-out
-   split, the signed morning report, and the dashboard"* — the gate and the split **shipped in
-   P3**. The next row is worse: *"🚫 Not released: No tags, no PyPI package, no version"*, with
-   **v0.3.0–v0.10.0 tagged and published**. This is exactly the failure `CLAUDE.md` records
-   about itself ("This line read 'nothing has been published to PyPI' until 2026-08-20; it had
-   been false since v0.3.0"), live again in the repository's front door.
-
-## Placement on the core loop, and the guardrails
-
-Element ④, the signed morning report. The reward path is untouched: the report reads JSON and
-renders text. `UNVERIFIED` is never a win — a gate that returned `UNVERIFIED` renders as *no
-comparison was made*, and a zero-strict-PASS night renders as the published outcome it already
-is (`night.py` writes a ledger, no checkpoint, and exits non-zero). Nothing leaves the box:
-the home is gitignored and the note carries hashes and verdicts, never task contents.
+1. **The one-line obstacle.** `gate_engine` (gate.py:444-489) passes `adapter_path=` at gate.py:480
+   with no regard for checkpoint shape. `baseline_engine` (baseline.py:490-527) is its sibling
+   differing in exactly that one line, and `mlx_lm.utils.load`'s `adapter_path` is optional
+   (`None` = base only), so a conditional is all the code change needs.
+2. **Nothing else blocks an untrained incumbent.** `verify_checkpoint` already accepts the
+   untrained shape (sft.py:526-535); base resolution is provenance-only (`_base_for`,
+   gate.py:1269-1289); `decide`, the retry seam, the counts and the promotion record never see
+   the checkpoint. `gate.py` currently contains zero occurrences of "untrained". An untrained
+   checkpoint's digest is the constant `sha256("")` — already understood by the baseline series
+   identity (baseline.py:36-39, 163-166); the promotion record carries digests only and needs no
+   `untrained` field.
+3. **The import direction constrains the design.** `baseline.py:78` imports gate; gate must not
+   import baseline (cycle). So the untrained arm must live in gate.py — either the dispatch
+   folds into `gate_engine` itself (the roadmap's phrasing points at this), with `baseline.py`
+   importing the base-only arm from gate **by identity** (asserted `is`, never copied), or the
+   dispatch happens at the per-side construction site (gate.py:581-586) with the untrained
+   engine living in gate.py.
+4. **The runbook's two-nights paragraph is currently UNGUARDED.** `tests/test_gate_runbook_guards.py`
+   pins nine properties (flags ⊆ parser, absolute paths, one worktree, `R` by identity, record
+   home, fixture-before-real ordering, liveness sentence, no-rerun phrasing, check-leakage block)
+   — none references "two nights", so the rewrite is unopposed. The sheet also names the
+   incumbent path `/…/checkpoints/night-001` in the candidate-resolution block and the gate
+   command (runbook.md:36-39, 88-89) — both must become the untrained base checkpoint. The unit
+   should add a *new* pin holding the replacement sentence, watched failing first.
+5. **Test seams.** The gate's suites inject a stub engine (`engine=` param of `run_gate`;
+   monkeypatch of `gate.gate_engine` in CLI tests). `gate_engine` itself is smoke-tested only
+   (test_gate.py:891). A dispatch test can monkeypatch `mlx_lm.utils.load` (imported
+   function-locally, so the module attribute is read at call time) to capture `adapter_path`
+   without loading a model. The untrained-checkpoint fixture builder already exists in
+   `tests/loop/test_baseline_checkpoint.py:43-59` (`_untrained`).
+6. **Prose drift to correct alongside the code:** `gate_engine`'s docstring (gate.py:447-456),
+   the `NoBaseWeights` docstring/refusal (gate.py:253-260, 1278), the module docstring
+   (gate.py:31-32), and `cli.py:484-488` `--weights` help all assert "base + LoRA adapter"
+   unconditionally.
+7. **Non-goals verified:** the reward path (`src/whetstone/verify/`, `patch.py`,
+   `attribution.py`) is untouched by any of this; the partition guard needs no new edge (the
+   dispatch lives inside `gate.py`, already an exempt package); `decide()` must not move.
 
 ## Open questions for the PRD
 
-1. **"Signed" = sealed-to-evidence** (digests + a re-derivation check), never cryptographic.
-   Recommend adopting and saying so in the report's own text.
-2. **The "last night" rule** — greatest declared `recorded_on`, ties refused by name, explicit
-   `--run` as the escape. Recommend adopting; never mtime, never the clock.
-3. **Layout under `reports/local/`** — a `nightly/<run-id>/` namespace, and whether the shape
-   is report.md + report.json (there is no cost document a night produces).
-4. **The gate side is optional evidence.** A night is not always followed by a gated
-   evaluation. Recommend an optional `--record` pointer whose absence renders as *"no gated
-   evaluation is recorded for this night"* — a fact, never a blank.
-5. **Are the two stale claims in scope?** Recommend yes for both: `cli.py`'s docstring is in a
-   file this unit edits, and `README.md:229` must change for the morning-report row regardless
-   — leaving the neighbouring falsehoods in place while editing the same table would be the
-   one thing this project does not do.
+- **Dispatch site**: inside `gate_engine` (one conditional on `checkpoint.untrained`) vs. at the
+  per-side construction site. Recommendation: fold into `gate_engine` — it is the single seam
+  the roadmap names, and the tests inject the whole engine per side, so the dispatch is tested
+  exactly where the real machine would hit it.
+- **`baseline_engine`'s fate**: with the arm in gate.py, baseline.py should import it by
+  identity (`assert baseline.baseline_engine is gate.<arm>`), removing the sibling duplication —
+  or keep the name `baseline_engine` in gate.py and have baseline.py re-export. Either way the
+  "differing in one line" pair becomes one shape-aware engine.
+- **Runbook wording**: what the replacement paragraph says ("one night + the untrained base"),
+  what the incumbent path becomes, and what new guard pin holds it.
+- **Does the gate need to *refuse* anything new?** An untrained *candidate* would be nonsense
+  (a night's candidate always trained). Decide: refuse `candidate.untrained` by name, or leave
+  it (an untrained candidate vs untrained incumbent would both be sha256("") digests and equal
+  solves → rejected by the `>` term anyway)? Refusing by name is the house style.
+
+## Guardrail placement
+
+- Core-loop element changed: **③ never-regress promotion gate** — its first real incumbent.
+- Reward stays execution-grounded: the reward path is pinned byte-identical; this unit changes
+  only which weights an engine loads, never what grades a rollout.
+- `UNVERIFIED` still never a win: `decide()` and the three exits are untouched.
+- Local/private: pure local machinery; nothing leaves the box. Not redundant with a better
+  base: the gate and its comparison are the durable moat; a better base only strengthens the
+  incumbent.
