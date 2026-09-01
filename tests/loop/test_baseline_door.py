@@ -1135,11 +1135,12 @@ def test_every_flag_is_in_the_parser(tmp_path: Path) -> None:
 def test_baseline_module_imports_no_mlx_at_module_scope() -> None:
     """The loop package's own rule, walked over `baseline.py`'s bytes with `ast`.
 
-    `baseline_engine` imports `mlx_lm` inside its body — the factory is the seam, and the
-    seam is reached only when an operator's GPU pass invokes it. A module-scope
-    `mlx`/`mlx_lm` import would execute on every `import whetstone.loop.baseline` and put
-    an inference library on the loop's import graph unconditionally, so the walk forbids
-    it: an import whose root is `mlx` or `mlx_lm` may appear only inside a function body.
+    `baseline_engine` is the gate's own factory, imported **by identity** — the seam, whose
+    `mlx_lm` imports live inside gate.py's function bodies, reached only when an operator's
+    GPU pass invokes it. A module-scope `mlx`/`mlx_lm` import in this module would execute
+    on every `import whetstone.loop.baseline` and put an inference library on the loop's
+    import graph unconditionally, so the walk forbids it: an import whose root is `mlx` or
+    `mlx_lm` may appear only inside a function body.
 
     Anti-vacuity: the walk also demands that the module define `baseline_engine` at module
     scope, so an empty module fails this test rather than passing it by containing no
@@ -1148,8 +1149,19 @@ def test_baseline_module_imports_no_mlx_at_module_scope() -> None:
     tree = ast.parse(MODULE.read_bytes(), filename=str(MODULE))
 
     assert any(
-        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == "baseline_engine"
+        (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "baseline_engine"
+        )
+        or (
+            isinstance(node, (ast.Assign, ast.AnnAssign))
+            and any(
+                isinstance(target, ast.Name) and target.id == "baseline_engine"
+                for target in (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
+            )
+        )
         for node in tree.body
     ), "baseline.py defines no baseline_engine — this walk has nothing to guard"
 
