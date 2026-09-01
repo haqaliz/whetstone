@@ -12,7 +12,7 @@ seen by every runbook guard in this tree. The flag and value parses are keyed on
 own doors and are this file's own, rather than mutating a constant another guard reads: a guard
 that reaches into another guard's globals can silently repoint the sheet it was watching.
 
-Nine properties, and the last four are this sheet's own:
+Ten properties, and the last five are this sheet's own:
 
 1. the parse really reads the sheet (anti-vacuity);
 2. every flag either command passes exists in the shipped parser;
@@ -26,14 +26,22 @@ Nine properties, and the last four are this sheet's own:
 8. the liveness measurement is stated — the unverified count over its denominator, from the
    first evaluation onward (`docs/ROADMAP.md:441-442`);
 9. the `UNVERIFIED` exit is stated as a published outcome with the roadmap's own response, and
-   the sheet nowhere tells the operator to rerun until it passes.
+   the sheet nowhere tells the operator to rerun until it passes;
+10. the sheet names the **untrained base as the first incumbent** — a bash block that
+    materializes it with `write_baseline_checkpoint` at an absolute checkpoint path, a gate
+    command whose `--incumbent` is that same path and never a night checkpoint, the § 3
+    boundary wording ("not the § 3 baseline measurement"), and no "two nights" anywhere.
 
 **Watched failing first** (`CONTRIBUTING.md`): every assertion was run against a deliberately
 wrong stub sheet — relative writable paths, a flag the parser does not define, a renamed
 promotion-record home, a stale worktree, a retry budget that disagreed with the constant, no
 fixture verification at all, and a "rerun until it promotes" instruction — and each refused it
 before the real sheet existed. Ten of the eleven tests here failed against that stub; the
-eleventh is about this guard's own shared helpers rather than about the sheet.
+eleventh is about this guard's own shared helpers rather than about the sheet. The tenth
+property was watched failing the same way against the current sheet (still "two nights",
+still a night-001 incumbent, no materialization step, no § 3 boundary wording) and against a
+stub-sheet ladder that repaired one property at a time, each assertion failing with its
+intended message before the real sheet was edited.
 """
 
 from __future__ import annotations
@@ -56,7 +64,7 @@ DOORS = (("whetstone gate", "gate"), ("whetstone check-leakage", "check-leakage"
 
 #: This unit's worktree, and every worktree an earlier unit used. A stale name in a sheet sends
 #: an operator to a directory that no longer holds the code they think they are running.
-WORKTREE = "feat-p3-promotion-gate"
+WORKTREE = "feat-gate-untrained-incumbent"
 STALE_WORKTREES = (
     "feat-p2-format-hardening",
     "feat-format-hardening-measurement",
@@ -65,6 +73,7 @@ STALE_WORKTREES = (
     "feat-stratum-probe-execution",
     "feat-larger-base-arm",
     "feat-p2-rollouts",
+    "feat-p3-promotion-gate",
 )
 
 #: Every flag on either door whose value is a path. All of them must be absolute — the failure
@@ -356,3 +365,93 @@ def test_the_post_run_chain_proves_the_night_did_not_leak() -> None:
     values = _values(leak[0], "whetstone check-leakage")
     assert values.get("--run"), "the leakage check names no run directory"
     assert values.get("--heldout"), "the leakage check names no held-out document"
+
+
+def _assert_untrained_base_incumbent(text: str) -> None:
+    """Every assertion of the untrained-incumbent pin, on the given sheet text.
+
+    The text is a parameter so the stub-sheet drill can run this on a deliberately wrong
+    sheet (and on the real one) without touching `RUNBOOK`; the committed test below is the
+    one caller.
+    """
+    plain = text.replace("*", "")
+    blocks = _bash_blocks(text)
+
+    materialized = [block for block in blocks if "write_baseline_checkpoint" in block]
+    assert materialized, (
+        "WHY THIS IS A FAILURE: no bash block materializes the untrained base "
+        "(`write_baseline_checkpoint`). `docs/ROADMAP.md:663-671` made the untrained base the "
+        "first incumbent — materialized before the gate, never a second night — and a sheet "
+        "without the materialization step sends the operator to the gate with nothing to "
+        "compare the candidate against"
+    )
+    match = re.search(r"Path\('([^']+)'\)", materialized[0])
+    assert match, (
+        "WHY THIS IS A FAILURE: the materialization block names no checkpoint path. The gate "
+        "command's `--incumbent` must name the very path the block writes, and a block that "
+        "leaves it implicit cannot be the incumbent the sheet resolves"
+    )
+    base_path = match.group(1)
+    assert base_path.startswith("/"), (
+        "WHY THIS IS A FAILURE: the materialization block names the relative checkpoint path "
+        f"{base_path!r}. The sheet is run from a stated CWD, and a relative path materializes "
+        "the incumbent somewhere the gate never reads"
+    )
+
+    gate = _door_blocks(blocks, "whetstone gate")
+    assert gate, "WHY THIS IS A FAILURE: the sheet invokes `whetstone gate` nowhere"
+    incumbents = _values(gate[0], "whetstone gate").get("--incumbent", [])
+    assert incumbents, (
+        "WHY THIS IS A FAILURE: the gate command passes no `--incumbent`. The candidate must "
+        "beat something, and the only thing it may beat is the untrained base"
+    )
+    incumbent = incumbents[0]
+    assert incumbent.startswith("/"), (
+        f"WHY THIS IS A FAILURE: the gate command's `--incumbent` is the relative path "
+        f"{incumbent!r}. A relative incumbent resolves against the sheet's stated CWD, so the "
+        "gate compares the candidate with whatever happens to sit there"
+    )
+    assert "night-" not in incumbent, (
+        f"WHY THIS IS A FAILURE: the gate command's `--incumbent` names a night checkpoint "
+        f"({incumbent!r}). The first gated evaluation compares night #1's candidate against "
+        "the untrained base the night started from — never against another night's checkpoint, "
+        "which is the two-night reading the launch-path reorder removed"
+    )
+    assert incumbent == base_path, (
+        f"WHY THIS IS A FAILURE: the gate command's `--incumbent` ({incumbent!r}) is not the "
+        f"path the materialization block writes ({base_path!r}). An operator who gates against "
+        "one path while materializing another scores the wrong side of the comparison"
+    )
+
+    assert "not the § 3 baseline measurement" in plain, (
+        "WHY THIS IS A FAILURE: the sheet never states the § 3 boundary — the gate's "
+        "incumbent is **not** the § 3 baseline measurement, different roles, different homes "
+        "(`docs/ROADMAP.md:678-683`). A sheet that blurs the two invites the first "
+        "disagreement between their figures to be reconciled instead of published as a finding"
+    )
+    assert "two nights" not in plain, (
+        "WHY THIS IS A FAILURE: the sheet still says the first gated evaluation needs **two** "
+        "nights. The launch-path reorder made the untrained base the first incumbent, so the "
+        "first evaluation needs **one** night; an operator following a two-night sheet waits "
+        "for a second night that is not required — and spends it before the gate can fire"
+    )
+
+
+def test_the_sheet_names_the_untrained_base_as_the_first_incumbent() -> None:
+    """The first gated evaluation is one night: night #1's candidate vs the untrained base.
+
+    The sheet was written when the first incumbent was a second night.
+    `docs/ROADMAP.md:663-671` reordered the launch path — the first incumbent is the untrained
+    base the night started from, materialized by `write_baseline_checkpoint` before the gate —
+    and this pin refuses the old reading in all four places it could resurface: the
+    materialization block itself (a bash block naming the writer, at an absolute checkpoint
+    path), the gate command's `--incumbent` (that same path, never a night checkpoint), the
+    § 3 boundary sentence, and the "two nights" phrase. Emphasis is stripped before the two
+    phrase checks, so `**two**` and `**not**` cannot dodge them.
+
+    **Watched failing first:** every assertion was run against the current sheet and against a
+    stub-sheet ladder that repaired one property at a time — no materialization block, a
+    night-001 incumbent, a mismatched incumbent, no § 3 boundary, "two nights" — and each
+    failed with its intended message before the real sheet was edited.
+    """
+    _assert_untrained_base_incumbent(_runbook())
