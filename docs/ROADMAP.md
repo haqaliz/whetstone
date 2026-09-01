@@ -701,3 +701,15 @@ review fixed the path to it:
 - **If the number needs help, the levers are raising `K` or a larger base** (P2's pivot
   response) — never a looser verifier; a zero or negative delta is a valid, publishable
   outcome (P4 has no pivot signal).
+
+> **Corrected 2026-09-01, when the dispatch landed.** The bullet above (663-673) named
+> `gate-untrained-incumbent` as the next code unit, and the later bullet (689-691) named it
+> as the one unit still buildable while the GPU is busy. Both are history now: the dispatch
+> shipped 2026-09-01 (`docs/planning/gate-untrained-incumbent/`) — `gate_engine` dispatches on
+> `Checkpoint.untrained`, `baseline_engine` moved into `gate.py` and is re-imported by
+> `baseline.py` by identity, an untrained **candidate** is refused by name (its constant
+> `sha256("")` digest cannot discriminate bases), and the gate runbook was rewritten in the
+> same unit, code first: one night, the incumbent a `write_baseline_checkpoint`-materialized
+> path, the § 3 boundary stated. The operator chain above (684-688) is unblocked: § 7.3
+> amendment → night #1 → the first gated evaluation against the untrained incumbent → baseline
+> spend → P4 report → finding. The gate still has not run on real checkpoints.

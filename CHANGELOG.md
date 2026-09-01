@@ -9,6 +9,52 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [0.12.0] - 2026-09-01
+
+### Added
+
+- **The gate's untrained incumbent — the launch-path unit `docs/ROADMAP.md:663-671` names as
+  next** (`docs/planning/gate-untrained-incumbent/`). `gate_engine` dispatches on
+  `Checkpoint.untrained`: the trained path is byte-identical, the untrained path loads the
+  base alone — delegating to `baseline_engine`, which moved into `gate.py` and is re-imported
+  by `baseline.py` **by identity** (asserted `is`). `whetstone gate --candidate X --incumbent
+  <untrained base>` now reaches the decision table: the first gated evaluation compares
+  night #1's candidate against the untrained base it started from, taking a whole night off
+  the launch path.
+- **`UntrainedCandidate`, refused by name.** A night's candidate is always trained; an
+  untrained candidate's digest is the constant `sha256("")` that cannot discriminate bases,
+  so passing one as `--candidate` is exit 2 with the side and path named. An untrained
+  **incumbent** is the point of the unit and is not refused.
+- **The gate runbook, rewritten in the same unit, code first.** The first gated evaluation
+  now needs **one** night: candidate = night #1's checkpoint, incumbent = the untrained base
+  materialized by `write_baseline_checkpoint` (its own step, since the § 3 spend runs after
+  the first gated evaluation). The replacement paragraph states the § 3 boundary in words —
+  the gate's incumbent is not the § 3 measurement, and a disagreement between the two figures
+  is published as a finding. A new guard pin holds the wording and the materialization step,
+  watched failing against stub sheets first; the guard's worktree moved to this unit's, with
+  `feat-p3-promotion-gate` stale.
+
+### Fixed
+
+- **Prose that claimed the gate always stacks an adapter**: `gate.py`'s module and engine
+  docstrings, the `NoBaseWeights` refusal, the `GateEngine` alias and `cli.py`'s `--weights`
+  help now state the untrained shape is loaded bare.
+- **The gate runbook's "needs two nights" paragraph** — the launch-path reorder
+  (`docs/ROADMAP.md` § 12) made the first incumbent the untrained base; the sheet now says
+  one night, and the record-read step notes the incumbent digest is the constant untrained
+  digest, so the record is read by role and base identity, never by digest equality.
+
+### Not claimed
+
+- **The gate still has not run on real checkpoints.** The three exits, the retry discipline
+  and the new dispatch are proven against fixture checkpoints and the stub engine; whether
+  the gate can fire on a real machine remains unmeasured, and the roadmap's response if it
+  cannot is a more reliable sandbox, never a looser gate. The launch path's next step is the
+  operator chain: the § 7.3 Type 1 amendment, night #1, the first gated evaluation against
+  the untrained incumbent, the baseline spend, and the P4 report.
+- **Nothing is published.** `reports/` gains no directory and no `PREREGISTRATION.md` § 10
+  amendment is owed — this publishes no series.
+
 ## [0.11.0] - 2026-08-29
 
 ### Added
