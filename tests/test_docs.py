@@ -240,7 +240,7 @@ def test_claude_md_states_what_replaced_the_stale_claims() -> None:
     This asserts the corrected content is actually present.
     """
     text = _read("CLAUDE.md")
-    for expected in ("mlx-lm", "ROADMAP.md", "src/whetstone/verify/"):
+    for expected in ("mlx-lm", "ROADMAP.md", "**STRICT** verifier"):
         assert expected in text, (
             f"CLAUDE.md no longer mentions {expected!r}. The stale-claim guard checks for "
             "absence, so a gutted file would pass it — this control is what stops that."
