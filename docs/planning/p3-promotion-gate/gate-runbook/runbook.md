@@ -1,7 +1,7 @@
 # Runbook — the first gated evaluation (`whetstone gate`)
 
-**Unit:** `p3-promotion-gate` · **Aspect:** `gate-runbook` · **Branch:** `feat/p3-promotion-gate/aliz` ·
-**Worktree:** `/Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p3-promotion-gate`
+**Unit:** `p3-promotion-gate` · **Aspect:** `gate-runbook` · **Branch:** `feat/gate-untrained-incumbent/aliz` ·
+**Worktree:** `/Users/aliz/dev/at/whetstone/.claude/worktrees/feat-gate-untrained-incumbent`
 
 The operator's sheet for the first evaluation that decides whether a night's candidate may
 replace the incumbent. Every command here is run verbatim. A sheet that disagrees with the code
@@ -35,16 +35,25 @@ state of a filesystem rather than on what the operator chose.
 
 - **Candidate:** the checkpoint written by the night under evaluation —
   `/Users/aliz/dev/at/whetstone/checkpoints/night-002`.
-- **Incumbent:** the checkpoint the candidate must beat —
-  `/Users/aliz/dev/at/whetstone/checkpoints/night-001`.
+- **Incumbent:** the checkpoint the candidate must beat — the **untrained base** the night
+  started from, materialized by the checkpoint writer in Step 2 below —
+  `/Users/aliz/dev/at/whetstone/checkpoints/incumbent-base-001`.
+
+**§ 7.3 stays open.** The incumbent is the 32B (`mlx-community/Qwen2.5-Coder-32B-Instruct-4bit`),
+the runbook-resolved candidate the night runbook retained on its evidence
+(`docs/planning/p2-rollouts/night-door/runbook.md`): the only candidate with evidence, never a
+base the pre-registration has pinned. Materializing it as the gate's incumbent is not a base
+selection, and § 7.3 closes only by a Type 1 amendment before the measurement it governs runs.
 
 Both are re-hashed by `verify_checkpoint` before anything is compared, so the decision is a
 statement about the bytes on disk and not about the directory names above. A checkpoint whose
 hash does not match its provenance refuses the run by name (exit 2).
 
-The first gated evaluation therefore needs **two** nights: the shipped night writes one
-checkpoint per night that selected something, and the gate compares two. Until a second night
-has run, there is nothing to gate.
+The first gated evaluation therefore needs **one** night: the candidate is night #1's
+checkpoint and the incumbent is the untrained base the night started from. This is the
+gate's incumbent, **not** the § 3 baseline measurement: different roles, different homes
+(`docs/ROADMAP.md:678-683`) — if the two figures disagree it is published as a finding,
+never reconciled.
 
 ## Before the gate
 
@@ -59,6 +68,8 @@ has run, there is nothing to gate.
    or named itself would differ between two renders of the same documented command.
 4. **Verify the machinery first** (below). A machinery regression must be found before a night's
    candidate is spent on it.
+5. **Materialize the untrained incumbent** (Step 2 below) — the checkpoint writer, from the
+   weights root's provenance.
 
 ## Step 1 — verify the machinery on the fixture pair
 
@@ -70,23 +81,37 @@ itself. This costs no GPU and takes a few minutes.
 **Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p3-promotion-gate \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-gate-untrained-incumbent \
   pytest tests/loop/test_gate.py tests/loop/test_gate_cli.py tests/loop/test_gate_retry.py -q
 ```
 
 **Halt if this is not green.** A red fixture suite means the gate is not the gate this sheet
 describes, and no result it produces on the real pair may be recorded.
 
-## Step 2 — the gated evaluation
+## Step 2 — materialize the untrained incumbent
+
+The checkpoint writer (`sft.write_baseline_checkpoint`; the module has no door) records the
+untrained base as a `whetstone-checkpoint/1` provenance over no adapter, from the weights
+root's provenance — the 32B's `repo_id` and its immutable revision:
+
+```bash
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-gate-untrained-incumbent \
+  python -c "from pathlib import Path; from whetstone.loop.ledger import tool_versions; from whetstone.loop.sft import write_baseline_checkpoint; write_baseline_checkpoint(Path('/Users/aliz/dev/at/whetstone/checkpoints/incumbent-base-001'), repo_id='mlx-community/Qwen2.5-Coder-32B-Instruct-4bit', revision='<the revision recorded in /Users/aliz/dev/at/whetstone/weights/provenance.json>', tool_versions=tool_versions())"
+```
+
+The directory must be empty at materialization — the writer refuses a checkpoint that would
+record an adapter beside a base that never trained.
+
+## Step 3 — the gated evaluation
 
 **Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`), executing the branch
 code via its project:**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p3-promotion-gate \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-gate-untrained-incumbent \
   whetstone gate \
   --candidate /Users/aliz/dev/at/whetstone/checkpoints/night-002 \
-  --incumbent /Users/aliz/dev/at/whetstone/checkpoints/night-001 \
+  --incumbent /Users/aliz/dev/at/whetstone/checkpoints/incumbent-base-001 \
   --heldout /Users/aliz/dev/at/whetstone/tasks/heldout/source-b.json \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
@@ -147,13 +172,13 @@ in this line.
 (Type 1, 2026-08-25, closing § 7.2). It is not a flag: revising it needs a further dated
 amendment grounded in a measured unverified rate, never a command-line choice.
 
-## Step 3 — prove the night did not leak
+## Step 4 — prove the night did not leak
 
 The gate scores the held-out membership; this is what says that membership was never trained on.
 Run it over the night that produced the **candidate**:
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p3-promotion-gate \
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-gate-untrained-incumbent \
   whetstone check-leakage \
   --run /Users/aliz/dev/at/whetstone/runs/night-002 \
   --heldout /Users/aliz/dev/at/whetstone/tasks/heldout/source-b.json
@@ -164,7 +189,7 @@ night's partition seam** — the fix is in the night that produced the run, and 
 leaked examples after the fact would leave the defect in place and print a clean result. A
 promotion whose leakage was never checked is a promotion nobody may quote.
 
-## Step 4 — read the record back
+## Step 5 — read the record back
 
 ```bash
 cat /Users/aliz/dev/at/whetstone/runs/promotions/promote-001.json
@@ -174,7 +199,9 @@ Into the operator's log, from the record itself and never from memory:
 
 - the decision and its three terms (`solved_new`, `solved_old`, `regressed`, `unverified`), each
   over the shared denominator;
-- both checkpoint digests, as re-hashed;
+- both checkpoint digests, as re-hashed — the incumbent's is the constant untrained digest
+  (sha256 over the empty file set, the same for every untrained base), so the record is read
+  by role and by base identity, never by digest equality;
 - the held-out document digest — it must equal the digest of the committed
   `tasks/heldout/source-b.json`, whose split is fixed by `PREREGISTRATION.md` § 10.7 (Type 1,
   2026-08-24, closing § 7.1);
