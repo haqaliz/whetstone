@@ -29,9 +29,12 @@ is used here by identity.
   document reduces against.
 
 **The one new machine seam is `gate_engine`.** Nothing else in the tree loads a checkpoint
-(base + LoRA adapter) at all; the bake-off's engine and the loop's take `Weights` only. It is
-exercised in tests only through the seam — every test injects a stub — and its smoke test
-asserts the factory exists and is callable without importing `mlx`.
+at all; the bake-off's engine and the loop's take `Weights` only. It dispatches on the
+checkpoint's own shape: a trained checkpoint (a night's candidate, always) loads its LoRA
+adapter onto the base, and an untrained one (`checkpoint.untrained` — the § 3 baseline
+door's engine, `baseline_engine`, imported by identity there) loads the base alone. Both
+are exercised in tests only through the seam — every test injects a stub — and the smoke
+tests assert the factories exist and are callable without importing `mlx`.
 
 **Locality, in the `runs/` discipline.** The promotion record is written to
 `runs/promotions/<id>.json` — gitignored local evidence, never published — and the runs root
@@ -253,23 +256,37 @@ def _sentence(
 class NoBaseWeights(ValueError):
     """The weights root holds no candidate matching the base a checkpoint names.
 
-    A checkpoint's provenance names the base it was trained on; the gate loads that base and
-    stacks the checkpoint's LoRA adapter on it. A base the weights provenance cannot identify
-    is a checkpoint nobody can score — refused rather than guessed at, because guessing would
-    score the adapter against the wrong model and publish the result as a comparison.
+    A checkpoint's provenance names the base it was trained on; the gate loads that base —
+    with a trained checkpoint's LoRA adapter stacked on it, bare for an untrained one. A
+    base the weights provenance cannot identify is a checkpoint nobody can score — refused
+    rather than guessed at, because guessing would score the checkpoint against the wrong
+    model and publish the result as a comparison.
+    """
+
+
+class UntrainedCandidate(ValueError):
+    """A checkpoint passed as the gate's candidate that has no adapter to score.
+
+    A night's candidate is trained, always. A checkpoint whose provenance declares
+    `untrained: true` holds no adapter, and its digest is the constant sha256 over the
+    empty file set — the same for every untrained base, whatever the repo id or revision —
+    so a comparison keyed on it could not discriminate bases. The refusal names the side
+    and the checkpoint path.
     """
 
 
 #: Every refusal `run_gate` raises that is an **operator's error** rather than a finding: a
-#: runs root pointed at a published directory, a checkpoint that cannot be re-hashed, a
-#: held-out document that cannot be read or whose membership resolves nowhere, a checkpoint
-#: naming a base the weights root does not hold, weights whose provenance does not match the
-#: disk, and a task root that is empty or malformed. Collected here so `cli.py` — a guarded
+#: runs root pointed at a published directory, a checkpoint that cannot be re-hashed, an
+#: untrained checkpoint passed as the candidate, a held-out document that cannot be read or
+#: whose membership resolves nowhere, a checkpoint naming a base the weights root does not
+#: hold, weights whose provenance does not match the disk, and a task root that is empty or
+#: malformed. Collected here so `cli.py` — a guarded
 #: root, which may hold exactly its documented function-local imports into this package —
 #: can map them to the usage code without importing the modules that raise them.
 REFUSALS: tuple[type[Exception], ...] = (
     TranscriptNotPrivate,
     CheckpointUnverified,
+    UntrainedCandidate,
     HeldoutSchemaError,
     HeldoutDigestMismatch,
     EmptyHeldout,
@@ -282,7 +299,8 @@ REFUSALS: tuple[type[Exception], ...] = (
 
 #: How the gate's one new machine seam is shaped: a checkpoint's base weights and the
 #: checkpoint itself, to a `Generator`. The night's engine takes `Weights` only; a gate
-#: engine must also know which adapter to stack on them.
+#: engine must also know how the checkpoint is loaded — a trained checkpoint stacks its
+#: LoRA adapter on the base, an untrained one loads the base alone (`baseline_engine`).
 GateEngine = Callable[[Weights, Checkpoint, int], Generator]
 
 
@@ -441,19 +459,65 @@ class GateOutcome:
     retries: tuple[RetryOutcome, ...]
 
 
+def baseline_engine(
+    weights: Weights, checkpoint: Checkpoint, max_tokens: int = DEFAULT_MAX_TOKENS
+) -> Generator:
+    """Load the base `checkpoint` names — base only, no adapter — and return a greedy `Generator`.
+
+    The base-only load: the gate's untrained arm and the § 3 baseline door's engine
+    (`loop.baseline` imports this same function by identity, never a copy). An untrained
+    checkpoint's provenance declares `untrained: true` (the aspect-1 writer), so there is
+    no adapter to stack: the base is loaded from `weights.local_dir` (never a repo id) at
+    the revision the checkpoint's own provenance names, and decoding is greedy —
+    `sampler_for(1)` is `greedy_sampler` **by identity**, so an untrained draw and the
+    bake-off are one experiment. `gate_engine` delegates to this when
+    `checkpoint.untrained` is True; a trained checkpoint goes through `gate_engine`'s own
+    adapter load.
+
+    Every `mlx` import is function-local, on the loop package's own rule. The factory is
+    never *invoked* by the test suite — `mlx` is an optional extra, and every test injects a
+    stub engine — so its behaviour is pinned by the smoke test and by the operator's runbook.
+    """
+    from mlx_lm.generate import generate
+    from mlx_lm.utils import load as load_model
+
+    # Indexed rather than unpacked, for the reason `gate_engine` records at its own call
+    # site: `load` is typed as returning EITHER `(model, tokenizer)` OR `(model, tokenizer,
+    # config)`, selected by a `return_config` argument that defaults to `False`. mypy cannot
+    # narrow that union from a default, so `model, tokenizer = load(...)` is an error even
+    # though the two-tuple is what arrives here; indexing is total over both arms.
+    loaded = load_model(
+        str(weights.local_dir),
+        revision=weights.revision,
+        adapter_path=None,
+    )
+    model, tokenizer = loaded[0], loaded[1]
+    return _CheckpointGenerator(
+        model,
+        tokenizer,
+        generate=generate,
+        max_tokens=max_tokens,
+        sampler=sampler_for(1),
+    )
+
+
 def gate_engine(
     weights: Weights, checkpoint: Checkpoint, max_tokens: int = DEFAULT_MAX_TOKENS
 ) -> Generator:
-    """Load `checkpoint`'s LoRA adapter onto `weights`' base and return a greedy `Generator`.
+    """Load `checkpoint` onto `weights`' base and return a greedy `Generator` — the one new
+    machine seam in this unit, dispatched on the checkpoint's own shape.
 
-    The one new machine seam in this unit: nothing else in the tree loads a checkpoint at
-    all — the bake-off's `MlxGenerator` and the loop's `SampledMlxGenerator` take `Weights`
-    only. The base is loaded from `weights.local_dir` (never a repo id) at the revision the
-    checkpoint's own provenance names, the adapter is stacked from the checkpoint directory
-    (`adapters.safetensors` + `adapter_config.json`, both re-hashed by `verify_checkpoint`
-    before this is ever called), and decoding is greedy — `sampler_for(1)` is
-    `greedy_sampler` **by identity**, so a single-draw gate eval and the bake-off are one
-    experiment.
+    Nothing else in the tree loads a checkpoint at all — the bake-off's `MlxGenerator` and
+    the loop's `SampledMlxGenerator` take `Weights` only. A trained checkpoint (a night's
+    candidate, always) is loaded from `weights.local_dir` (never a repo id) at the revision
+    the checkpoint's own provenance names, with its LoRA adapter stacked from the checkpoint
+    directory (`adapters.safetensors` + `adapter_config.json`, both re-hashed by
+    `verify_checkpoint` before this is ever called). An untrained checkpoint
+    (`checkpoint.untrained` — provenance only, no adapter) delegates to `baseline_engine`,
+    the base-only load and the § 3 baseline door's engine, so the untrained incumbent the
+    launch path's first gated evaluation needs is scored through the base alone. Decoding is
+    greedy in both arms — `sampler_for(1)` is `greedy_sampler` **by identity**, so a
+    single-draw gate eval and the bake-off are one experiment.
 
     Every `mlx` import is function-local, on the loop package's own rule. The factory is
     never *invoked* by the test suite — `mlx` is an optional extra, and every test injects a
@@ -461,6 +525,8 @@ def gate_engine(
     It is nonetheless **type-checked**: `.github/workflows/ci.yml` runs `mypy src/` a second
     time with the extra installed, which is what caught the unpack below.
     """
+    if checkpoint.untrained:
+        return baseline_engine(weights, checkpoint, max_tokens)
     from mlx_lm.generate import generate
     from mlx_lm.utils import load as load_model
 
@@ -573,6 +639,14 @@ def run_gate(
 
     candidate_checkpoint = verify_checkpoint(candidate)
     incumbent_checkpoint = verify_checkpoint(incumbent)
+    if candidate_checkpoint.untrained:
+        raise UntrainedCandidate(
+            f"candidate ({str(candidate_checkpoint.directory)!r}) is an untrained "
+            "checkpoint. A night's candidate is always trained: an untrained checkpoint "
+            "holds no adapter, and its digest is the constant sha256 over the empty file "
+            "set — the same for every untrained base, whatever the repo id or revision — "
+            "so a comparison keyed on it could not discriminate bases"
+        )
 
     fetched = load_weights(weights)
     candidate_base = _base_for(candidate_checkpoint, fetched, "candidate")
@@ -1275,8 +1349,9 @@ def _base_for(checkpoint: Checkpoint, fetched: Sequence[Weights], label: str) ->
     raise NoBaseWeights(
         f"checkpoint {label} ({str(checkpoint.directory)!r}) names base {base['repo_id']!r} "
         f"at revision {base['revision']!r}, and the weights root holds no such candidate. "
-        "The gate loads the base under a checkpoint's LoRA adapter, and a base the "
-        "provenance cannot identify is a checkpoint nobody can score"
+        "The gate loads the base a checkpoint names — under its LoRA adapter when the "
+        "checkpoint is trained, bare when it is untrained — and a base the provenance "
+        "cannot identify is a checkpoint nobody can score"
     )
 
 

@@ -161,6 +161,24 @@ def test_a_known_worse_pair_exits_one(tmp_path: Any, monkeypatch: pytest.MonkeyP
     assert code == cli.FAIL_EXIT
 
 
+def test_an_untrained_candidate_exits_two_naming_the_side(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC2 at the process boundary: an untrained candidate is a usage error, exit 2.
+
+    The candidate side of the gate is a night's trained adapter, always. A checkpoint whose
+    provenance declares `untrained: true` has no adapter — its digest is the constant
+    `sha256("")`, which cannot discriminate bases — so passing one as `--candidate` is
+    refused by name before anything is scored, naming the side and the checkpoint path.
+    """
+    code, fixtures = _invoke(tmp_path, monkeypatch, untrained_candidate=True)
+
+    assert code == cli.USAGE_ERROR, capsys.readouterr().err
+    printed = capsys.readouterr().err
+    assert "candidate" in printed, printed
+    assert str(fixtures["candidate"]) in printed, printed
+
+
 def test_a_deliberately_incomplete_eval_exits_three_and_is_not_promoted(
     tmp_path: Any, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

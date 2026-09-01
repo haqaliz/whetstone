@@ -26,8 +26,10 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import pytest
@@ -310,6 +312,19 @@ def _checkpoint(root: Path, *, repo_id: str, revision: str, label: str) -> sft.C
     )
 
 
+def _untrained_checkpoint(root: Path, *, repo_id: str, revision: str) -> sft.Checkpoint:
+    """The untrained base as a checkpoint, via the real writer — never a hand-written directory.
+
+    `sft.write_baseline_checkpoint` is the same seam the baseline measurement uses, so the
+    gate tests' untrained fixture is the real artefact `verify_checkpoint` will re-hash. Its
+    digest is the constant `sha256("")` — the empty file set — read from the returned
+    checkpoint rather than hardcoded anywhere in this file.
+    """
+    return sft.write_baseline_checkpoint(
+        root, repo_id=repo_id, revision=revision, tool_versions={"python": "3.12.0"}
+    )
+
+
 def _heldout_document(
     root: Path, members: Sequence[str], *, corpus_ids: Sequence[str] = _PRIVATE_IDS, **fields: Any
 ) -> Path:
@@ -392,6 +407,8 @@ def _gate_fixtures(
     members: Sequence[str] = _MEMBERS,
     bulk: Mapping[str, int] | None = None,
     runs: Path | None = None,
+    untrained_candidate: bool = False,
+    untrained_incumbent: bool = False,
 ) -> dict[str, Any]:
     """Everything a gate invocation needs on disk — checkpoints, document, corpus, weights —
     plus the stub engine keyed on the checkpoints' digests.
@@ -399,6 +416,13 @@ def _gate_fixtures(
     The shared shape behind both `_run_gate` (direct calls) and the CLI tests (invocations
     of `whetstone gate` with `gate.gate_engine` monkeypatched to `fixtures["engine"]`), so
     the three exits are asserted through the full harness at both boundaries.
+
+    `untrained_candidate` / `untrained_incumbent` build that side through
+    `_untrained_checkpoint` instead of `_checkpoint`. The untrained digest is the constant
+    `sha256("")` — read from the writer's returned checkpoint, never hardcoded — so the
+    stub's keying keeps the two sides distinct only when at most one side is untrained
+    (the candidate side is refused before any scoring, so the two-untrained run is not
+    reachable through this fixture).
     """
     private, private_built = _private_corpus(tmp_path / "corpus", private_ids, bulk=bulk)
     public, public_built = corpus(tmp_path / "corpus", "public", ("pallets__flask-4045",))
@@ -415,11 +439,19 @@ def _gate_fixtures(
     doc = _heldout_document(tmp_path / "doc", members, corpus_ids=private_ids)
     weights_root = harness_weights(tmp_path / "weights", _BASE)
     base = load_weights(weights_root)[0]
-    candidate_checkpoint = _checkpoint(
-        tmp_path / "candidate", repo_id=_BASE, revision=base.revision, label="candidate"
+    candidate_checkpoint = (
+        _checkpoint(
+            tmp_path / "candidate", repo_id=_BASE, revision=base.revision, label="candidate"
+        )
+        if not untrained_candidate
+        else _untrained_checkpoint(tmp_path / "candidate", repo_id=_BASE, revision=base.revision)
     )
-    incumbent_checkpoint = _checkpoint(
-        tmp_path / "incumbent", repo_id=_BASE, revision=base.revision, label="incumbent"
+    incumbent_checkpoint = (
+        _checkpoint(
+            tmp_path / "incumbent", repo_id=_BASE, revision=base.revision, label="incumbent"
+        )
+        if not untrained_incumbent
+        else _untrained_checkpoint(tmp_path / "incumbent", repo_id=_BASE, revision=base.revision)
     )
 
     used_checkpoints: list[str] = []
@@ -468,15 +500,17 @@ def _run_gate(
     members: Sequence[str] = _MEMBERS,
     bulk: Mapping[str, int] | None = None,
     runs: Path | None = None,
+    untrained_incumbent: bool = False,
     **overrides: Any,
 ) -> tuple[gate.GateOutcome, dict[str, Any]]:
     """One full gate run over the shared fixtures — see `_gate_fixtures`.
 
     The candidate answers the reference patch for every held-out member unless narrowed by
     `candidate_solve`; the incumbent answers `incumbent_solve` of them. Either table can be
-    replaced wholesale via `candidate_answers` / `incumbent_answers`. The returned fixtures
-    dict carries the checkpoints, the document, and every posed prompt, so a test can assert
-    on the evidence rather than on the code's own claims.
+    replaced wholesale via `candidate_answers` / `incumbent_answers`. `untrained_incumbent`
+    builds that side through the real untrained writer (see `_gate_fixtures`). The returned
+    fixtures dict carries the checkpoints, the document, and every posed prompt, so a test
+    can assert on the evidence rather than on the code's own claims.
     """
     fixtures = _gate_fixtures(
         tmp_path,
@@ -488,6 +522,7 @@ def _run_gate(
         members=members,
         bulk=bulk,
         runs=runs,
+        untrained_incumbent=untrained_incumbent,
     )
     arguments: dict[str, Any] = {
         "candidate": fixtures["candidate"],
@@ -927,6 +962,221 @@ def test_gate_engine_is_the_callable_factory_smoke_test() -> None:
         f"{probe.stdout.strip()!r}). The exempt package's rule is that every mlx import is "
         "function-local inside the factory"
     )
+
+
+def test_gate_engine_dispatches_on_checkpoint_untrained(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC1: `adapter_path` is the checkpoint directory for a trained checkpoint, `None` for
+    an untrained one.
+
+    The first test to actually *invoke* `gate_engine`. `mlx` is an optional extra, so the
+    factory's two function-local imports are satisfied with fake modules installed into
+    `sys.modules` for the duration — the substitution `test_mlx_runtime.py` makes, and the
+    import discipline it exercises: the day someone hoists `from mlx_lm...` to module scope,
+    this stops working and the suite stops collecting under a plain `uv sync`. `load` records
+    its kwargs and returns dummies; `generate` raises if ever called. `sampler_for(1)` needs
+    no stub (it returns `greedy_sampler` by identity; `mlx.core` is imported only inside the
+    sampler's body), but the returned generator is never *called*.
+    """
+    weights_root = harness_weights(tmp_path / "weights", _BASE)
+    base = load_weights(weights_root)[0]
+    trained = _checkpoint(
+        tmp_path / "trained", repo_id=_BASE, revision=base.revision, label="trained"
+    )
+    untrained = _untrained_checkpoint(
+        tmp_path / "untrained", repo_id=_BASE, revision=base.revision
+    )
+
+    captured: list[dict[str, Any]] = []
+    model_dummy, tokenizer_dummy = object(), object()
+
+    def fake_load(*args: Any, **kwargs: Any) -> tuple[Any, Any]:
+        captured.append(kwargs)
+        return model_dummy, tokenizer_dummy
+
+    def fake_generate(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError(
+            "gate_engine must not call mlx_lm.generate.generate — the factory only "
+            "constructs; a real run calls the returned generator"
+        )
+
+    mlx_lm = ModuleType("mlx_lm")
+    utils = ModuleType("mlx_lm.utils")
+    utils.load = fake_load
+    generate = ModuleType("mlx_lm.generate")
+    generate.generate = fake_generate
+    mlx_lm.utils = utils
+    mlx_lm.generate = generate
+    monkeypatch.setitem(sys.modules, "mlx_lm", mlx_lm)
+    monkeypatch.setitem(sys.modules, "mlx_lm.utils", utils)
+    monkeypatch.setitem(sys.modules, "mlx_lm.generate", generate)
+
+    trained_engine = gate.gate_engine(base, trained, max_tokens=64)
+    untrained_engine = gate.gate_engine(base, untrained, max_tokens=64)
+
+    assert captured[0]["adapter_path"] == str(trained.directory), captured
+    assert captured[1]["adapter_path"] is None, (
+        f"WHY THIS IS A FAILURE: the untrained side was loaded with adapter_path "
+        f"{captured[1]['adapter_path']!r}. An untrained checkpoint has no adapter — its "
+        "provenance is the base alone — so the base-only load is the only honest one"
+    )
+    assert captured[0]["adapter_path"] != captured[1]["adapter_path"], (
+        "WHY THIS IS A FAILURE: the two shapes loaded identically, so this test does not "
+        "exercise a dispatch at all"
+    )
+    assert isinstance(trained_engine, gate.Generator)
+    assert isinstance(untrained_engine, gate.Generator)
+    assert callable(trained_engine.generate) and callable(untrained_engine.generate)
+
+
+def test_an_untrained_candidate_is_refused_naming_the_side(tmp_path: Path) -> None:
+    """AC2: `run_gate` refuses an untrained candidate by name, before anything is scored.
+
+    A night's candidate is trained, always: a checkpoint whose provenance declares
+    `untrained: true` has no adapter, and its digest is the constant `sha256("")` — the same
+    for every untrained base, whatever the repo id or revision — so comparing on it could
+    not discriminate bases. The refusal names the side and the checkpoint path.
+    """
+    fixtures = _gate_fixtures(tmp_path, untrained_candidate=True)
+
+    with pytest.raises(gate.UntrainedCandidate) as refused:
+        gate.run_gate(
+            candidate=fixtures["candidate"],
+            incumbent=fixtures["incumbent"],
+            heldout=fixtures["heldout"],
+            tasks=fixtures["tasks"],
+            public=fixtures["public"],
+            pool=fixtures["pool"],
+            weights=fixtures["weights"],
+            runs=fixtures["runs"],
+            workspace=fixtures["workspace"],
+            timeout=fixtures["timeout"],
+            recorded_on=fixtures["recorded_on"],
+            run_id=fixtures["run_id"],
+            engine=fixtures["engine"],
+        )
+    message = str(refused.value)
+    assert "candidate" in message, (
+        f"WHY THIS IS A FAILURE: the refusal does not name the side: {message!r}"
+    )
+    assert str(fixtures["candidate"]) in message, (
+        "WHY THIS IS A FAILURE: the refusal does not name the checkpoint path: " + message
+    )
+
+
+_UNTRAINED_INCUMBENT_ROWS: list[Any] = [
+    pytest.param(
+        {},
+        Exit.PROMOTED,
+        {
+            "denominator": len(_MEMBERS),
+            "solved_new": len(_MEMBERS),
+            "solved_old": _INCUMBENT_SOLVES,
+            "regressed": 0,
+            "unverified": 0,
+        },
+        id="known-better-promoted",
+    ),
+    pytest.param(
+        {"candidate_solve": 3, "incumbent_solve": len(_MEMBERS)},
+        Exit.REJECTED,
+        {
+            "denominator": len(_MEMBERS),
+            "solved_new": 3,
+            "solved_old": len(_MEMBERS),
+            "regressed": len(_MEMBERS) - 3,
+            "unverified": 0,
+        },
+        id="known-worse-rejected",
+    ),
+    pytest.param(
+        {
+            "private_ids": (*_PRIVATE_IDS, "t-12"),
+            "members": (*_MEMBERS[:9], "t-12"),
+            "bulk": _BULK,
+        },
+        Exit.UNVERIFIED,
+        {
+            "denominator": len(_MEMBERS),
+            "solved_new": len(_MEMBERS) - 1,
+            "solved_old": _INCUMBENT_SOLVES,
+            "unverified": 1,
+        },
+        id="one-still-unverified-task-whole-eval-unverified",
+    ),
+    pytest.param(
+        {"solved_gain_with_regression": True},
+        Exit.REJECTED,
+        {
+            "denominator": len(_MEMBERS),
+            "solved_new": 9,
+            "solved_old": 8,
+            "regressed": 1,
+            "unverified": 0,
+        },
+        id="regression-rejected-even-with-a-solved-gain",
+    ),
+]
+
+
+@pytest.mark.parametrize("kwargs,expected,counts", _UNTRAINED_INCUMBENT_ROWS)
+def test_an_untrained_incumbent_reaches_the_decision_table(
+    tmp_path: Path,
+    kwargs: dict[str, Any],
+    expected: Exit,
+    counts: dict[str, int],
+) -> None:
+    """AC3: the full decision table holds for a trained candidate vs an untrained incumbent.
+
+    The incumbent is the untrained base — the launch path's first gated evaluation
+    (`docs/ROADMAP.md:663-671`) — built by the real writer, its digest the constant
+    `sha256("")`. The stub engine keys that side on the constant, so the four rows assert
+    the untrained incumbent is **not** refused: it reaches `decide` exactly like a trained
+    one. The regression row needs non-prefix answer tables (a gain *and* a loss cannot be
+    prefixes of one ordering), so it builds them explicitly: the candidate solves nine of
+    the ten members, the incumbent eight, and the one the candidate misses is one the
+    incumbent solved — `rejected`, never netted.
+    """
+    kwargs = dict(kwargs)
+    if kwargs.pop("solved_gain_with_regression", False):
+        fixtures_for_answers = _gate_fixtures(tmp_path / "answers", untrained_incumbent=True)
+        held = [
+            one for one in fixtures_for_answers["private_built"] if one.task.task_id in _MEMBERS
+        ]
+        kwargs["candidate_answers"] = solving_answers(
+            *held[:9], *fixtures_for_answers["public_built"]
+        )
+        kwargs["incumbent_answers"] = solving_answers(
+            *held[2:10], *fixtures_for_answers["public_built"]
+        )
+
+    outcome, fixtures = _run_gate(tmp_path, untrained_incumbent=True, **kwargs)
+
+    assert outcome.decision.exit is expected, outcome.decision.detail
+    for name, value in counts.items():
+        assert getattr(outcome.decision, name) == value, (name, getattr(outcome.decision, name))
+    assert set(fixtures["used_checkpoints"]) == {
+        fixtures["candidate_checkpoint"].digest,
+        fixtures["incumbent_checkpoint"].digest,
+    }, (
+        "WHY THIS IS A FAILURE: the untrained incumbent was not scored through the engine "
+        "seam like any other checkpoint. Both sides must reach the seam exactly once, under "
+        "the re-hashed bytes"
+    )
+    assert fixtures["incumbent_checkpoint"].untrained is True
+
+
+def test_baseline_engine_is_the_gates_untrained_arm_by_identity() -> None:
+    """AC4: the base-only load is one definition, imported by identity, never copied.
+
+    `baseline_engine` is the gate's untrained arm (and the § 3 baseline door's engine); a
+    second copy of the load would be a second answer to "how is an untrained checkpoint
+    scored", and the day the two diverged nothing would say so.
+    """
+    from whetstone.loop import baseline
+
+    assert baseline.baseline_engine is gate.baseline_engine
 
 
 def test_the_promotion_record_home_is_gitignored() -> None:
