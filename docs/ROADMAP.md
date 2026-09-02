@@ -384,6 +384,16 @@ miner off the fail-closed guard at `strict.py:131-140`, which is its purpose rat
 > **Corrected 2026-08-01.** The signal below read *"any **held-out** task"*. `PREREGISTRATION.md`
 > § 7.1 leaves that split open until P3, so it is read against the declared source-B set instead.
 
+> **Corrected 2026-09-02, when the § 7.3 Type 1 amendment landed.** This paragraph
+> asserted that no base was selected and that `PREREGISTRATION.md` § 7.3 stays open.
+> Both were exact until the amendment and are false now; the sentences are preserved
+> as quotations rather than deleted, because they describe what the bake-off found.
+> The bake-off's zero remains the dated record; the larger-base arm's evidence — the
+> first nonzero strict-PASS yield, control intact — became the basis, and § 7.3 is
+> closed by `PREREGISTRATION.md` § 10.10 naming
+> `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit` as the fine-tuned base, before night
+> #1 trains.
+
 **Pivot signal — fired.** If no candidate base solves *any* task in the declared source-B set,
 expert iteration has nothing to bootstrap from. Pivot to an easier task stratum or a larger base
 — not to a looser verifier.
