@@ -4,10 +4,10 @@
 
 This document fixes what Whetstone will measure, which figure is the headline, how the result is
 reported, and what its known limitations are — **before** the first measurement is taken. It
-discharges `docs/ROADMAP.md` § 6 (`docs/ROADMAP.md:508-518`) and is P1 exit criterion 6
+discharges `docs/ROADMAP.md` § 6 (`docs/ROADMAP.md:518-528`) and is P1 exit criterion 6
 (`docs/ROADMAP.md:355-356`).
 
-`docs/ROADMAP.md` § 4, P4 (`docs/ROADMAP.md:466-467`) grades the published headline against this
+`docs/ROADMAP.md` § 4, P4 (`docs/ROADMAP.md:476-477`) grades the published headline against this
 file: *"The headline matches what `PREREGISTRATION.md` committed to, and both sources are
 published together."* So everything below is written to be checkable later by someone who did not
 write it — **including its own citations, which `tests/test_docs.py` resolves against the lines
@@ -121,7 +121,7 @@ promoted, and not rejected either, because no comparison was actually made.
 ## 3. The baseline protocol
 
 Every headline figure is a delta, so the "before" is pinned before anything trains
-(`docs/ROADMAP.md:494-503`).
+(`docs/ROADMAP.md:504-513`).
 
 - **A pinned baseline checkpoint** — the untrained open base, scored on the held-out set by the
   same STRICT verifier, with its provenance committed alongside: seeds, model revision, task set,
@@ -157,7 +157,7 @@ it were.
 **Every rate carries its denominator.** Nothing is reported as a bare proportion.
 
 **A zero or negative delta is published as plainly as a positive one**, in the same place, with
-the same prominence (`docs/ROADMAP.md:470-471`). Shipping the honest number even when modest is
+the same prominence (`docs/ROADMAP.md:480-481`). Shipping the honest number even when modest is
 the point; a flattering unsourced one is the failure.
 
 **This document contains no figure about a model** — not a target, not a projection, not an
@@ -235,7 +235,7 @@ them.
 ## 7. Open at the time of writing
 
 Three questions this document would naturally settle are genuinely undecided
-(`docs/ROADMAP.md:599-604`). Each is named with what closes it and by when. **An open item named
+(`docs/ROADMAP.md:609-614`). Each is named with what closes it and by when. **An open item named
 here is a commitment; a blank would be an IOU**, and a pre-registration containing blanks reads as
 a commitment while committing to nothing.
 
@@ -316,12 +316,11 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-08-24 | The held-out source-B split is fixed and committed; § 7.1 is closed by the amendment below (§ 10.7) | 1 — closes an open item | Yes |
 | 2026-08-25 | The promotion gate's retry count `R` is declared; § 7.2 is closed by the amendment below (§ 10.8) | 1 — closes an open item | Yes |
 | 2026-08-27 | The honest-number report measures the delta/final series under the loop's contract; its report has its own non-comparable home (§ 10.9) | 2 — adds a disclosure | No |
+| 2026-09-02 | The fine-tuned base is pinned; § 7.3 is closed by the amendment below (§ 10.10) | 1 — closes an open item | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
-none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is still
-**open** — in particular the P1 bake-off selected no base, so it does **not** close § 7.3, and an
-amendment that tried to close it after the fact would document only that the item was never
-closed (§ 8.1). § 7.1 and § 7.2 are closed by the dated amendments below (§ 10.7, § 10.8).
+none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
+dated amendment below (§ 10.10). § 7.1 and § 7.2 are closed by the dated amendments below (§ 10.7, § 10.8).
 
 ## 10. Amendments
 
@@ -600,3 +599,31 @@ decision's function, never a new measurement. It is not the pinned baseline of �
 held-out split's own report; and § 7.3 stays open, closing only by a Type 1 amendment
 committed before the measurement it governs runs (§ 8.1). At the time of this
 amendment no count has been measured under the report, and none is claimed here.
+
+### 10.10 The fine-tuned base is pinned, closing § 7.3 — 2026-09-02
+
+**Type 1 (§ 8.1): closes § 7.3, committed before the night it governs runs.** It introduces
+no success threshold and rewords nothing in § 1, § 4, or § 6.
+
+**The base.** The nightly loop fine-tunes `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit`,
+pinned at the immutable revision `d1e3b690c8e225d7795bccddf971ca6be68b2012` and recorded by
+per-file hash in `weights/provenance.json` (gitignored — the weights never leave the box),
+re-hashed on every run by the harness. The night runbook's resolution block names the same
+base (`docs/planning/p2-rollouts/night-door/runbook.md`), and the run ledger records it, so
+the base this amendment pins and the base the night runs are one and the same input.
+
+**The evidence it was chosen on.** § 7.3 asks that the base be decided on evidence against
+the working verifier, not on paper. The larger-base arm is that evidence: it scored this
+candidate on the declared source-B set under the hardened contract with the control
+discipline intact, and it produced the first nonzero strict-PASS yield the harness has ever
+measured. The arm's figures have one home, `reports/larger-base/`, and this amendment
+restates none of them; the arm's finding names the fork decision and the closure rule this
+amendment performs (`docs/planning/larger-base-arm/finding.md`). The base is named as the
+best available evidence, not as a selection the evidence exceeds.
+
+**What is not claimed.** No night has run: no training set, checkpoint or yield figure
+exists. At the time of this amendment no night has run, no count has been measured under it,
+and none is claimed here — this amendment precedes night #1, which is the whole of its
+value, and the pinned baseline measurement of § 3 remains unspent. The base is pinned for
+this series; it remains deliberately swappable, and a change of base is a further Type 1
+amendment committed before the measurement it governs runs (§ 8.1).

@@ -41,6 +41,7 @@ from pathlib import Path
 
 import pytest
 from adversarial.corpus import BOTH_ACCEPT, CHEATS
+from test_night_runbook_guards import RETAINED
 
 # A concrete working branch, e.g. `feat/p0-scaffold/aliz`. The angle-bracket template
 # `<type>/<id>/aliz` that documents the naming convention deliberately does not match.
@@ -135,16 +136,16 @@ AMENDMENT_EXCEPTION = "may never introduce a success threshold"
 # named the wrong sections. Anchors, not line numbers, are what make the guard survive the
 # next edit — a shifted section fails loudly here instead of misleading a reader silently.
 ROADMAP_CITATIONS = (
-    ("508", "518", "The private source (B) is the headline"),
+    ("518", "528", "The private source (B) is the headline"),
     ("355", "356", "**`PREREGISTRATION.md` is committed**"),
-    ("466", "467", "The headline matches what `PREREGISTRATION.md` committed to"),
+    ("476", "477", "The headline matches what `PREREGISTRATION.md` committed to"),
     ("364", "368", "not one number about a model exists anywhere in this repository"),
     ("62", "72", "reward := exit status, folded with the assertions above"),
     ("106", "117", "N := count(rollouts where WEAK == PASS and STRICT == FAIL)"),
-    ("494", "503", "Measured once, re-measured never"),
-    ("470", "471", "A zero or negative delta is a valid, publishable outcome"),
+    ("504", "513", "Measured once, re-measured never"),
+    ("480", "481", "A zero or negative delta is a valid, publishable outcome"),
     ("187", "190", "confines what the run can write, **not** what it can read"),
-    ("599", "604", "The held-out split size and stratification"),
+    ("609", "614", "The held-out split size and stratification"),
 )
 
 
@@ -758,6 +759,55 @@ def test_the_honest_number_amendment_claims_no_count_measured_here() -> None:
         "the report and that none is claimed here. The sentence is the § 10.6 "
         "disclosure's own shape, and its absence would let the home's first figure "
         "appear without a record of when the claim began."
+    )
+
+
+def test_the_base_amendment_closes_section_7_3_and_claims_no_count_measured_here() -> None:
+    """§ 10.10 closes § 7.3 by a Type 1 amendment before night #1, in the § 10.9 shape.
+
+    The fine-tuned base must be pinned in the pre-registration before the night it
+    governs runs (§ 8.1): a night that trained unpinned would be a silent breach of
+    the amendment rule. The amendment names the base the night runbook already pins
+    (the same repo_id the runbook guard holds), claims no count measured under the
+    night, and records its closure in the amendment log. Asserted in the § 10.9 shape,
+    sentence by sentence.
+    """
+    flat = _flat(_read(PREREGISTRATION))
+    assert "10.10" in flat, (
+        f"{PREREGISTRATION} no longer carries a § 10.10 amendment. The fine-tuned base "
+        "must be pinned before the night it governs runs (§ 8.1); without the "
+        "amendment, night #1 would train on a base the pre-registration never named."
+    )
+    assert "Type 1 (§ 8.1): closes § 7.3" in flat, (
+        f"{PREREGISTRATION} § 10.10 no longer states the Type 1 closure of § 7.3. The "
+        "amendment must close the open item by § 8.1's rule, committed before the "
+        "measurement it governs runs."
+    )
+    assert RETAINED in flat, (
+        f"{PREREGISTRATION} § 10.10 no longer names the fine-tuned base. The repo_id "
+        "must match the night runbook's own pin, or the pre-registration and the night "
+        "can drift apart silently."
+    )
+    assert (
+        "At the time of this amendment no night has run, no count has been measured "
+        "under it, and none is claimed here" in flat
+    ), (
+        f"{PREREGISTRATION} § 10.10 does not state that no count has been measured "
+        "under the night and that none is claimed here. The sentence is the disclosure "
+        "shape § 10.9 pins, and its absence would let a night's figures appear without "
+        "a record of when the claim began."
+    )
+    assert "§ 7.3 is closed by the amendment below (§ 10.10)" in flat, (
+        f"{PREREGISTRATION}'s open-items status sentence no longer records that § 7.3 "
+        "is closed by § 10.10. The status paragraph is the one live sentence above "
+        "§ 10 and must track the closure."
+    )
+    assert (
+        "The fine-tuned base is pinned; § 7.3 is closed by the amendment below (§ 10.10)"
+        in flat
+    ), (
+        f"{PREREGISTRATION}'s amendment log no longer records the § 10.10 row closing "
+        "an open item. A closure that is not in the log is a silent edit (§ 8.4)."
     )
 
 

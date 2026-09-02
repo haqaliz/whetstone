@@ -9,6 +9,28 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [0.13.0] - 2026-09-02
+
+### Added
+
+- **The § 7.3 Type 1 amendment — the launch path's first step** (`docs/planning/close-base-7.3/`).
+  `PREREGISTRATION.md` § 7.3 is closed by the dated amendment § 10.10, committed before night
+  #1 trains (§ 8.1): the nightly loop fine-tunes `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit`
+  at the immutable revision `d1e3b690c8e225d7795bccddf971ca6be68b2012`, recorded by per-file
+  hash in the gitignored `weights/provenance.json`, on the larger-base arm's evidence (first
+  nonzero strict-PASS yield, control intact — figures stay in `reports/larger-base/`). The
+  amendment landed TDD: a shape guard in `tests/test_docs.py` was watched failing first and
+  now pins § 10.10's shape, the no-measurement sentence, the status-paragraph closure, the
+  § 10.10 log row, and cross-pins the repo_id against the night runbook guard's `RETAINED`
+  constant. The roadmap gained a dated correction blockquote next to the bake-off record, and
+  CLAUDE.md's "Still open" base bullet is settled.
+
+### Not claimed
+
+- **The night has not been run.** No training set, checkpoint or yield figure exists; the gate
+  has still not run on real checkpoints; the baseline spend and the P4 report follow. Nothing
+  is published by this unit — the amendment reads no number.
+
 ## [0.12.0] - 2026-09-01
 
 ### Added

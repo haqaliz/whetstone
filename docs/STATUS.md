@@ -10,6 +10,25 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The § 7.3 Type 1 amendment — the launch path's first step — is done**
+(`docs/planning/close-base-7.3/`, 2026-09-02). `PREREGISTRATION.md` § 7.3 is closed by the
+dated amendment § 10.10, committed before night #1 trains (§ 8.1): the nightly loop
+fine-tunes `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit`, pinned at the immutable
+revision `d1e3b690c8e225d7795bccddf971ca6be68b2012` and recorded by per-file hash in the
+gitignored `weights/provenance.json`, the evidence being the larger-base arm's first
+nonzero strict-PASS yield with the control discipline intact (figures stay in
+`reports/larger-base/`, restated nowhere). The amendment landed TDD: a shape guard in
+`tests/test_docs.py` was watched failing first (RED), then the amendment satisfied it
+(GREEN) — the guard pins § 10.10's shape, the no-measurement sentence, the status-paragraph
+closure, the § 10.10 log row, and cross-pins the repo_id against the night runbook guard's
+`RETAINED` constant so the pre-registration and the night cannot drift apart silently. The
+one edit above § 10 was the status paragraph's § 7.3 sentences, per the § 10.7/§ 10.8
+precedent; the roadmap gained the dated correction blockquote next to the bake-off record,
+CLAUDE.md's 'Still open' base bullet settled, and the changelog records the unit. **The
+night has still not been run**: no training set, checkpoint or yield figure exists, the
+gate has still not run on real checkpoints, and the baseline spend and the P4 report
+follow.
+
 **The gate-untrained-incumbent unit — the launch path's first incumbent — is done**
 (`docs/planning/gate-untrained-incumbent/`, 2026-09-01). The roadmap's named next code unit
 (`docs/ROADMAP.md:663-671`) is shipped: `gate_engine` now dispatches on `Checkpoint.untrained`

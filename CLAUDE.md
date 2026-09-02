@@ -17,7 +17,10 @@ This file orients a coding agent working in this repository. Read it first.
 > a pure function of two documents, byte-identical across processes. Then the
 > **gate-untrained-incumbent** dispatch (2026-09-01): the gate's engine dispatches on
 > `Checkpoint.untrained`, so the first gated evaluation compares a night's candidate
-> against the untrained base it started from — one night, not two.
+> against the untrained base it started from — one night, not two. Then the
+> **close-base-7.3** amendment (2026-09-02): `PREREGISTRATION.md` § 7.3 is closed by the
+> Type 1 amendment (§ 10.10), naming `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit` as
+> the base the night fine-tunes, committed before night #1 trains.
 >
 > **The corpus, stated precisely.** Source B (private, pre-registered headline):
 > **66 tasks**, each proven live rather than asserted. Source A (public SWE-bench-Lite):
@@ -148,10 +151,10 @@ own thesis (improvement), not a feature of the sibling project.
 
 **Still open — genuinely undecided, decide with evidence.**
 
-- **Which open base** we fine-tune / LoRA — **still open, and now open on evidence.** The P1
-  bake-off ran against the *working* verifier rather than on paper, and no candidate gave any
-  evidence to choose on, so nothing was selected and `PREREGISTRATION.md` § 7.3 stays open.
-  Re-opening it means an easier task stratum or a larger base, never a looser verifier.
+- **Which open base we fine-tune / LoRA — closed 2026-09-02 by the § 7.3 Type 1 amendment**
+  (`PREREGISTRATION.md` § 10.10): `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit`, chosen on
+  the larger-base arm's first nonzero strict-PASS yield. A change of base is a further Type 1
+  amendment, never a looser verifier.
 - **The BYOK cloud teacher for distillation** — optional, and post-horizon; nothing inside the
   current roadmap horizon calls a cloud model at all.
 - Everything `docs/ROADMAP.md` § 10 lists as an open question.
