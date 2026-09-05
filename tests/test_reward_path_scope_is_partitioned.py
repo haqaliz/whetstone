@@ -125,25 +125,32 @@ EXEMPT: Mapping[str, str] = {
         " held-out task. The same library is correct here and fatal under verify/, and the only"
         " thing keeping those two facts apart is where the code lives — so the loop is a SIBLING"
         " of verify/ and tasks/, never nested under either. The dependency runs one way"
-        " (loop -> bakeoff -> verify) with exactly FOUR documented edges in the other direction:"
+        " (loop -> bakeoff -> verify) with exactly FIVE documented edges in the other direction:"
         " cli.py holds a FUNCTION-LOCAL import of whetstone.loop.night inside the `run --night`"
         " handler, because the roadmap names that command as the loop's door, a FUNCTION-LOCAL"
         " import of whetstone.loop.gate inside the `gate` handler, the p3-promotion-gate unit's"
-        " door, and a FUNCTION-LOCAL import of whetstone.loop.check_leakage inside the"
-        " `check-leakage` handler, the roadmap's own leakage exit criterion — a subcommand needs"
-        " a call. The third handler needs no inference library and never will (it reads two JSON"
-        " documents and compares two id sets), and it is function-local anyway: the argument is"
+        " door, a FUNCTION-LOCAL import of whetstone.loop.check_leakage inside the"
+        " `check-leakage` handler, the roadmap's own leakage exit criterion, a FUNCTION-LOCAL"
+        " import of whetstone.loop.morning inside the `report` handler, the morning-after door,"
+        " and a FUNCTION-LOCAL import of whetstone.loop.check_probe inside the `check-probe`"
+        " handler, the probe-decision-gate unit's door — a subcommand needs a call. The last"
+        " three handlers need no inference library and never will: check_leakage reads two JSON"
+        " documents and compares two id sets, morning reads two documents and renders text, and"
+        " check_probe reads one run directory's ledger and compares values against a verdict"
+        " vocabulary. They are function-local anyway: the argument is"
         " about the module graph of `whetstone verify`, not about what one handler happens to"
-        " need, and check_leakage imports night for the two source names — so a module-scope"
-        " import there would put the night, the bake-off and mlx_lm on the reward's own entry"
+        " need — check_leakage and check_probe import night for the two source names, and"
+        " morning imports the gate for a constant, so a module-scope import of any of them would"
+        " put the night, the bake-off and mlx_lm on the reward's own entry"
         " path. Those edges are not holes with comments on"
         " them: test_the_reward_path_reaches_the_exempt_packages_by_exactly_the_documented_edges"
         " at the foot of this file asserts they are the only ones and that they are function-"
         " local, so `whetstone verify` — the reward's own entry point — never executes them and"
-        " never imports mlx_lm even transitively. A third such import, or either one moved to"
+        " never imports mlx_lm even transitively. A sixth such import, or any one moved to"
         " module scope, fails the build. As with bakeoff, the AST ban would not notice any of"
         " this: it flags first-party imports whose dotted name carries an inference-shaped"
-        " component, and none of 'loop', 'night', 'gate' or 'check_leakage' is one."
+        " component, and none of 'loop', 'night', 'gate', 'morning', 'check_leakage' or"
+        " 'check_probe' is one."
     ),
 }
 
@@ -156,6 +163,7 @@ _DOCUMENTED_EDGES: tuple[tuple[Path, str], ...] = (
     (Path("whetstone/cli.py"), "whetstone.loop.gate"),
     (Path("whetstone/cli.py"), "whetstone.loop.check_leakage"),
     (Path("whetstone/cli.py"), "whetstone.loop.morning"),
+    (Path("whetstone/cli.py"), "whetstone.loop.check_probe"),
 )
 
 

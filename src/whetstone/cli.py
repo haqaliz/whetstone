@@ -27,15 +27,15 @@ here deliberately describes the old sentence instead of quoting it: the guard ca
 quotation from a live claim, and a guard that punishes recording a correction would teach people
 to delete their corrections.)
 
-**``run --night``, ``gate``, ``check-leakage`` and ``report`` are the commands here whose bodies
-are not in this file, and deliberately.** This module is a guarded root — it calls
-``verify_strict``, and nothing it imports may reach an inference library. The loop and the gate
-reach ``mlx_lm`` legitimately, so they live in the EXEMPT ``whetstone.loop`` package, and
+**``run --night``, ``gate``, ``check-leakage``, ``check-probe`` and ``report`` are the commands
+here whose bodies are not in this file, and deliberately.** This module is a guarded root — it
+calls ``verify_strict``, and nothing it imports may reach an inference library. The loop and the
+gate reach ``mlx_lm`` legitimately, so they live in the EXEMPT ``whetstone.loop`` package, and
 ``run_night`` below holds a single **function-local** import into it, as do ``run_gate_cli``,
-``run_check_leakage_cli`` and ``run_report_cli``: running ``whetstone verify`` never executes
-those lines and never loads a model. The last two need no inference library themselves and are
-function-local anyway — the argument is about the module graph of ``whetstone verify``, not
-about what one handler happens to need.
+``run_check_leakage_cli``, ``run_report_cli`` and ``run_check_probe_cli``: running
+``whetstone verify`` never executes those lines and never loads a model. The last three need
+no inference library themselves and are function-local anyway — the argument is about the
+module graph of ``whetstone verify``, not about what one handler happens to need.
 ``tests/test_reward_path_scope_is_partitioned.py`` asserts they are the only such edges and
 that they are function-local.
 
@@ -811,15 +811,15 @@ def run_mine(
 def run_night(args: argparse.Namespace) -> int:
     """Dispatch one night into `whetstone.loop`, print its disclosure, and return the exit code.
 
-    **The import is function-local, and that is the whole design of this function.** This module
-    is a guarded root (`tests/test_no_inference_on_reward_path.py`): it calls `verify_strict`, it
-    is the reward's entry point, and nothing it imports may reach an inference library. The loop
-    reaches `mlx_lm` legitimately, so its body lives in the EXEMPT `whetstone.loop` package and
-    this file holds exactly one edge into it — inside the handler, so `whetstone verify` and
-    `whetstone mine` never execute it and never import `mlx_lm` even transitively. That the edge
-    is the only one, and that it is function-local, is asserted by
-    `tests/test_reward_path_scope_is_partitioned.py`; a second such import, or the same one moved
-    to module scope, fails the build.
+**The import is function-local, and that is the whole design of this function.** This module
+is a guarded root (`tests/test_no_inference_on_reward_path.py`): it calls `verify_strict`, it
+is the reward's entry point, and nothing it imports may reach an inference library. The loop
+reaches `mlx_lm` legitimately, so its body lives in the EXEMPT `whetstone.loop` package and
+this file holds one of exactly five edges into it — inside the handler, so `whetstone verify`
+and `whetstone mine` never execute it and never import `mlx_lm` even transitively. That this
+edge, like the other four, is function-local, is asserted by
+`tests/test_reward_path_scope_is_partitioned.py`; a sixth such import, or any one moved to
+module scope, fails the build.
 
     **The exit code answers "is there a candidate", and never flatters.** A night that wrote a
     checkpoint is `PASS_EXIT`. A night that did not is floored at `FAIL_EXIT` even when its own
@@ -875,10 +875,10 @@ def run_gate_cli(args: argparse.Namespace) -> int:
     second documented edge from a guarded root into an exempt package, in the `run_night`
     shape.** The gate loads a checkpoint (base + LoRA adapter) through `mlx_lm`; this file is
     the reward's entry point; the import sits inside the handler so `whetstone verify` never
-    executes it and never imports `mlx_lm` even transitively. That it is one of exactly two
-    such edges, and that both are function-local, is asserted by
-    `tests/test_reward_path_scope_is_partitioned.py`; a third such import, or either one
-    moved to module scope, fails the build.
+executes it and never imports `mlx_lm` even transitively. That it is one of exactly five
+such edges, and that all five are function-local, is asserted by
+`tests/test_reward_path_scope_is_partitioned.py`; a sixth such import, or any one
+moved to module scope, fails the build.
 
     **The exit codes are the roadmap's three, mapped onto the existing four-code contract**
     (`cli.py:64-84`, no fifth): `promoted` → 0, `rejected` → 1, `UNVERIFIED` → 3. UNVERIFIED
@@ -931,7 +931,7 @@ def run_check_leakage_cli(args: argparse.Namespace) -> int:
     `whetstone.loop.check_leakage` imports `whetstone.loop.night` for the two source names,
     and a module-scope import here would put the night, the bake-off and `mlx_lm` on the
     reward's own entry path. `tests/test_reward_path_scope_is_partitioned.py` asserts these
-    are the only three edges and that all three are function-local.
+    are the only five edges and that all five are function-local.
 
     **The exits are the existing contract, no fifth code**: disjoint → 0, a named overlap →
     1 (a leak is a failure, not a mistyped command), and a refusal an operator can fix — a
@@ -997,8 +997,8 @@ def run_report_cli(args: argparse.Namespace) -> int:
     happens to need — `whetstone.loop.morning` imports the gate for a constant and the
     bake-off for the count-over-denominator helper, so a module-scope import here would put
     both, and `mlx_runtime` behind them, on the reward's own entry path.
-    `tests/test_reward_path_scope_is_partitioned.py` asserts these are the only four edges
-    and that all four are function-local.
+    `tests/test_reward_path_scope_is_partitioned.py` asserts these are the only five edges
+    and that all five are function-local.
 
     **The exits are the existing contract, no fifth code**: rendered → 0, a `--verify`
     mismatch → `FAIL_EXIT` (something on disk disagrees with the evidence, and the operator
