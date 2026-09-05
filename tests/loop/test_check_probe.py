@@ -235,3 +235,51 @@ def test_a_refused_disclosure_never_renders_pass_or_unverified(tmp_path: Path) -
     ):
         lines = check_probe.disclosure(check_probe.run_check(run))
         assert not any("PASS" in line or "UNVERIFIED" in line for line in lines), lines
+
+
+@pytest.mark.parametrize(
+    "relative",
+    ["src/whetstone/loop/check_probe.py", "tests/loop/test_check_probe.py"],
+)
+def test_the_probe_check_path_imports_no_inference_library(relative: str) -> None:
+    """The decision reads one JSON document. It must cost nothing and load no weights.
+
+    The test file is walked too: a fixture that generated its own harness would make the
+    module's guarantee untestable, since the guard would pass while the path that exercised
+    it did the very thing the guard forbids.
+    """
+    from bakeoff.test_comparison import FORBIDDEN_IMPORT_ROOTS, _imported_roots
+
+    path = Path(__file__).resolve().parents[2] / relative
+    roots = _imported_roots(path.read_bytes())
+
+    assert not roots & FORBIDDEN_IMPORT_ROOTS, (
+        f"{relative} imports {sorted(roots & FORBIDDEN_IMPORT_ROOTS)}.\n\n"
+        "WHY THIS IS A FAILURE: the probe decision reads one ledger document and compares "
+        "values against a verdict vocabulary. An inference import here means the gate needs "
+        "a GPU to decide."
+    )
+    assert roots, (
+        f"{relative} contains no import at all, so the assertion above holds for a file "
+        "nothing was checked against (`CONTRIBUTING.md:60`)."
+    )
+
+
+def test_the_probe_check_composes_by_identity() -> None:
+    """AC10: every fact the decision reads is the shipped one, asserted `is`.
+
+    A second spelling of a source name, the ledger's name, the schema gate, the verdict
+    vocabulary, or the journal path derivation would be a second answer to a question one
+    document already answers — and the day they disagreed neither document would say so.
+    """
+    from whetstone.loop import draws, ledger
+    from whetstone.verify import verdict
+
+    assert check_probe.SOURCES[0] is night.PRIVATE
+    assert check_probe.SOURCES[1] is night.PUBLIC
+    assert check_probe.read_ledger is ledger.read
+    assert check_probe.LEDGER_FILE is ledger.LEDGER_FILE
+    assert check_probe.LedgerUnreadable is ledger.LedgerUnreadable
+    assert check_probe.Status is verdict.Status
+    assert check_probe.evidence_paths is draws.evidence_paths
+    assert check_probe.EVIDENCE_DIR is night.EVIDENCE_DIR
