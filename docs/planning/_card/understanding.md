@@ -1,83 +1,109 @@
-# Understanding — gate-untrained-incumbent
+# Understanding — probe-decision-gate
 
-**Branch:** `feat/gate-untrained-incumbent/aliz` · **Date:** 2026-09-01
+**Branch:** `feat/probe-decision-gate/aliz` · **Date:** 2026-09-05
 
 ## What the work is really asking
 
-`docs/ROADMAP.md:663-671` names this unit: dispatch the gate's per-side engine on
-`Checkpoint.untrained` so `whetstone gate --candidate X --incumbent <untrained base>` reaches a
-decision. Today the only obstacle is `gate_engine`'s unconditional
-`adapter_path=str(checkpoint.directory)` (`src/whetstone/loop/gate.py:480`). Removing it takes a
-whole GPU night off the launch path (`docs/ROADMAP.md:663-671, 684-688`): the first gated
-evaluation becomes candidate = night #1's checkpoint, incumbent = the untrained base — the
-comparison the product actually claims (did the night beat the base it started from?). The unit
-also owns the gate runbook's "needs **two** nights" paragraph
-(`docs/planning/p3-promotion-gate/gate-runbook/runbook.md:45-47`), which may not be edited ahead
-of the code it would then disagree with.
+The night-door runbook pre-commits a go/no-go for night #1 — *"the night proceeds iff the
+probe completes with the control arm `PASS` on every draw and a non-empty seed map"*
+(`docs/planning/p2-rollouts/night-door/runbook.md:78-80`) — and today an operator enforces it
+by reading the probe's ledger by eye. This unit turns that pre-commitment into a command, so
+the decision is a process exit, never a narrative judgement — against the roadmap's own
+exit-criteria principle (`docs/ROADMAP.md:278`). It is the last buildable unit that de-risks
+the launch path's most expensive, least certain, least reversible step (the night) and reads
+no number. Modeled on `check_leakage` (`src/whetstone/loop/check_leakage.py`).
 
-## What the code actually shows (all verified on this branch)
+## What the code actually shows (all verified in this worktree, 2026-09-05)
 
-1. **The one-line obstacle.** `gate_engine` (gate.py:444-489) passes `adapter_path=` at gate.py:480
-   with no regard for checkpoint shape. `baseline_engine` (baseline.py:490-527) is its sibling
-   differing in exactly that one line, and `mlx_lm.utils.load`'s `adapter_path` is optional
-   (`None` = base only), so a conditional is all the code change needs.
-2. **Nothing else blocks an untrained incumbent.** `verify_checkpoint` already accepts the
-   untrained shape (sft.py:526-535); base resolution is provenance-only (`_base_for`,
-   gate.py:1269-1289); `decide`, the retry seam, the counts and the promotion record never see
-   the checkpoint. `gate.py` currently contains zero occurrences of "untrained". An untrained
-   checkpoint's digest is the constant `sha256("")` — already understood by the baseline series
-   identity (baseline.py:36-39, 163-166); the promotion record carries digests only and needs no
-   `untrained` field.
-3. **The import direction constrains the design.** `baseline.py:78` imports gate; gate must not
-   import baseline (cycle). So the untrained arm must live in gate.py — either the dispatch
-   folds into `gate_engine` itself (the roadmap's phrasing points at this), with `baseline.py`
-   importing the base-only arm from gate **by identity** (asserted `is`, never copied), or the
-   dispatch happens at the per-side construction site (gate.py:581-586) with the untrained
-   engine living in gate.py.
-4. **The runbook's two-nights paragraph is currently UNGUARDED.** `tests/test_gate_runbook_guards.py`
-   pins nine properties (flags ⊆ parser, absolute paths, one worktree, `R` by identity, record
-   home, fixture-before-real ordering, liveness sentence, no-rerun phrasing, check-leakage block)
-   — none references "two nights", so the rewrite is unopposed. The sheet also names the
-   incumbent path `/…/checkpoints/night-001` in the candidate-resolution block and the gate
-   command (runbook.md:36-39, 88-89) — both must become the untrained base checkpoint. The unit
-   should add a *new* pin holding the replacement sentence, watched failing first.
-5. **Test seams.** The gate's suites inject a stub engine (`engine=` param of `run_gate`;
-   monkeypatch of `gate.gate_engine` in CLI tests). `gate_engine` itself is smoke-tested only
-   (test_gate.py:891). A dispatch test can monkeypatch `mlx_lm.utils.load` (imported
-   function-locally, so the module attribute is read at call time) to capture `adapter_path`
-   without loading a model. The untrained-checkpoint fixture builder already exists in
-   `tests/loop/test_baseline_checkpoint.py:43-59` (`_untrained`).
-6. **Prose drift to correct alongside the code:** `gate_engine`'s docstring (gate.py:447-456),
-   the `NoBaseWeights` docstring/refusal (gate.py:253-260, 1278), the module docstring
-   (gate.py:31-32), and `cli.py:484-488` `--weights` help all assert "base + LoRA adapter"
-   unconditionally.
-7. **Non-goals verified:** the reward path (`src/whetstone/verify/`, `patch.py`,
-   `attribution.py`) is untouched by any of this; the partition guard needs no new edge (the
-   dispatch lives inside `gate.py`, already an exempt package); `decide()` must not move.
+1. **A probe run writes no checkpoint and a full ledger.** `run_night(..., probe=N)` narrows
+   the private source to its first `N` tasks (`night.py:248-249`), writes no checkpoint
+   (`night.py:495-500`), and writes `ledger.json`, `dataset.json`, `data/`, and
+   `draws/draw-NN.journal.jsonl` + `.transcript.jsonl` (`night.py:291-332`). The ledger
+   (`whetstone-run/1`, `ledger.py:47`) carries the three facts the decision needs:
+   `task_set.probe` (int iff a probe), `draws_recorded[].harness` (the per-draw control
+   fold), and `seeds` (the seed map). Readable fail-closed via `ledger.read`
+   (`ledger.py:211-224`, `LedgerUnreadable`) and the deeper typed `morning.read_ledger`
+   (`morning.py:279-328`).
+2. **The control fold is `harness_status`**: any `BROKEN` → `UNVERIFIED`, no `INTACT` at all
+   → `UNVERIFIED`, else `PASS` (`bakeoff/control.py:472-494`). "Control arm PASS on every
+   draw" = every `draws_recorded[].harness == "PASS"`. **A real written probe ledger always
+   satisfies this**: `rankable` raises `HarnessNotProven` unless every draw's status is PASS
+   (`sweep.py:160-183`), and the night then exits `UNVERIFIED_EXIT` (3) with **no ledger**
+   (`cli.py:828-830`). So the exit-1 control-violation case is reachable only through a
+   doctored ledger or the journals — the adversarial fixture is the point (the
+   `check_leakage` digest-swap posture).
+3. **The seed-map subtlety is real.** `Applied` seeds are recorded only when `generate()`
+   runs (`sampling.py:203-214`); a fully-replayed **resume** re-appends recorded steps
+   verbatim (`draws.py:176-179`) and can therefore write a ledger whose `seeds` array is
+   empty even though every draw ran under a seed. `_select` already falls back to the pure
+   `attempt_seed(run_seed, task_id, attempt)` derivation (`night.py:462-464`,
+   `sampling.py:100-119`). The decision gate must define "non-empty seed map" against this:
+   recorded-only (strict) or re-derived-on-miss (matching `_select`). This is the unit's
+   sharpest open question. The runbook's killed-night restart (same command, same `--run-id`)
+   applies to a probe too, so a resumed probe with an empty recorded seed map is not
+   hypothetical.
+4. **The go/no-go paragraph is NOT guard-pinned.** `tests/test_night_runbook_guards.py`
+   contains no reference to "Decision rule", "night proceeds iff", or the
+   "Read runs/night-probe/probe-001/ledger.json" sentence — rewriting it breaks nothing. The
+   guard DOES pin **exactly two door blocks** (`test_night_runbook_guards.py:175`), so adding
+   a check-probe step to the sheet means extending the guard 2 → 3, in the same commit, code
+   first. The pins to preserve: two (→ three) door invocations with flags ⊆ `build_parser()`,
+   absolute writable paths, exactly one worktree (`feat-p2-rollouts`), `RETAINED`/`EXCLUDED`
+   candidate names, the five dev ids, and the prose strings "zero"/"ceiling", "not a halt",
+   "raise `K`", "loosen", "Nothing here is published".
+5. **CLI subcommand vs module door.** A `whetstone check-probe` subcommand costs a **fifth**
+   partition-guard edge: `_DOCUMENTED_EDGES` (`test_reward_path_scope_is_partitioned.py:154-159`),
+   the `EXEMPT["loop"]` "exactly FOUR" reason (`:120-147`), the stale "three/four edges"
+   docstrings in `cli.py` (`:850-853, 905-906, 938-939`), the module docstring's command list
+   (`cli.py:27-37`, guarded by `test_morning_cli.py:212-239`), and the function-local-import
+   handler shape (`cli.py:895-924`). A module door (`python -m whetstone.loop.probe_check`,
+   the `heldout`/`baseline`/`honest_report` pattern) adds **zero** guard edges — the guard
+   walks only guarded roots, never inside the exempt loop package
+   (`test_reward_path_scope_is_partitioned.py:435-448`). The card's brief says "modeled on
+   `check_leakage`"; `check-leakage` is a CLI subcommand. Decide in the PRD: the runbook is
+   the only caller either way.
+6. **Exit-code contract for the gate (no fifth code).** 0 = the decision rule holds (proceed
+   to the night); 1 = the finding the command exists to report (named violation: a draw whose
+   harness is not PASS, or an empty seed map); 2 = refusal an operator can fix (not a probe
+   run, unreadable ledger). **No `UNVERIFIED`**: the command reads documents rather than
+   running anything ("it either answers or refuses", `cli.py:911-912`). `cli.py:82-93` fixes
+   PASS=0 / FAIL=1 / USAGE=2 / UNVERIFIED=3.
+7. **No fixture probe directories exist.** Tests build nights at runtime via
+   `tests/loop/harness.py` (`corpus`, `pool`, `weights`, `Answers` stub engine) +
+   `tests/loop/test_night.py::_night` (`probe=1`, `draws=2`), and hand-build ledgers via
+   `run_ledger.Ledger`/`write` (`tests/loop/test_run_ledger.py:53-105`). The decision gate's
+   tests need fixture probe run directories — a helper is new code.
 
 ## Open questions for the PRD
 
-- **Dispatch site**: inside `gate_engine` (one conditional on `checkpoint.untrained`) vs. at the
-  per-side construction site. Recommendation: fold into `gate_engine` — it is the single seam
-  the roadmap names, and the tests inject the whole engine per side, so the dispatch is tested
-  exactly where the real machine would hit it.
-- **`baseline_engine`'s fate**: with the arm in gate.py, baseline.py should import it by
-  identity (`assert baseline.baseline_engine is gate.<arm>`), removing the sibling duplication —
-  or keep the name `baseline_engine` in gate.py and have baseline.py re-export. Either way the
-  "differing in one line" pair becomes one shape-aware engine.
-- **Runbook wording**: what the replacement paragraph says ("one night + the untrained base"),
-  what the incumbent path becomes, and what new guard pin holds it.
-- **Does the gate need to *refuse* anything new?** An untrained *candidate* would be nonsense
-  (a night's candidate always trained). Decide: refuse `candidate.untrained` by name, or leave
-  it (an untrained candidate vs untrained incumbent would both be sha256("") digests and equal
-  solves → rejected by the `>` term anyway)? Refusing by name is the house style.
+- **Seed-map semantics on resume.** Recorded-only vs re-derived-on-miss (matching `_select`
+  by identity). Strict recorded-only makes a legitimately resumed probe un-runnable;
+  re-derivation makes "non-empty" total. Middle path: the runbook forbids *resuming a probe*
+  (a killed probe restarts fresh — it is cheap, first-N private tasks) while the gate reads
+  recorded-only, which keeps both honest. Recommend deciding this explicitly rather than by
+  accident.
+- **CLI subcommand vs module door** (§ 5). The partition-guard cost of the CLI is mechanical
+  and the house has done it four times; the module door avoids it. The card says "modeled on
+  `check_leakage`".
+- **Per-draw fold vs per-task detail.** The pre-committed rule's words are the per-draw fold
+  (`draws_recorded[].harness`). Reading the journals for per-task `INTACT` detail is stricter
+  than the rule and would re-litigate what "control arm PASS" means — recommend the fold,
+  with the journals read only to prove each draw actually ran (completeness), never to add a
+  bar.
+- **Does the gate need a `--heldout`-style second input?** No — it reads one run directory,
+  like `check_leakage` reads one run + the heldout doc. Here the probe run is the only input;
+  the night's task set is already in the ledger.
 
 ## Guardrail placement
 
-- Core-loop element changed: **③ never-regress promotion gate** — its first real incumbent.
-- Reward stays execution-grounded: the reward path is pinned byte-identical; this unit changes
-  only which weights an engine loads, never what grades a rollout.
-- `UNVERIFIED` still never a win: `decide()` and the three exits are untouched.
-- Local/private: pure local machinery; nothing leaves the box. Not redundant with a better
-  base: the gate and its comparison are the durable moat; a better base only strengthens the
-  incumbent.
+- Core-loop element changed: **② nightly improvement loop** — the probe decision gate is the
+  door to the night. It is *not* the promotion gate (③): `decide()`, the three exits and the
+  retry discipline are untouched.
+- Reward stays execution-grounded: the reward path (`src/whetstone/verify/`, `patch.py`,
+  `attribution.py`) is untouched; the gate reads evidence documents only.
+- `UNVERIFIED` still never a win: the gate has no `UNVERIFIED` exit and promotes nothing; a
+  probe that proved nothing already aborts the night at `UNVERIFIED_EXIT` with no ledger
+  (`cli.py:828-830`).
+- Local/private: reads the gitignored `runs/<id>/`; nothing leaves the box; nothing is
+  published. Not redundant with a better base: the pre-committed go/no-go is part of the
+  loop's honesty contract, which a stronger base only makes more worth defending.

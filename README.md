@@ -135,10 +135,11 @@ journals and transcripts) and, when the night selected anything and the declared
 fits, a hashed candidate under `checkpoints/<id>/`. A night that selected nothing writes no
 candidate, says so, and exits non-zero.
 
-This one **is** a subcommand, because it is the product surface the roadmap names — and it is the
-only place in the CLI that reaches the loop, through a single function-local import inside its own
-handler, so `whetstone verify` never loads a model. That the edge is the only one, and that it is
-function-local, is asserted by the reward-path partition guard.
+This one **is** a subcommand, because it is the product surface the roadmap names — and it reaches
+the loop through a function-local import inside its own handler, so `whetstone verify` never loads
+a model. It is one of exactly five such edges (`run --night`, `gate`, `check-leakage`, `report`,
+`check-probe`); that there are five and that every one of them is function-local is asserted by the
+reward-path partition guard, which fails the build on a sixth or on any one moved to module scope.
 
 Both `runs/` and `checkpoints/` are gitignored, and the run's own documents carry hashes and
 verdicts and never file contents: the training set is your code, and it stays on your machine.
@@ -224,10 +225,10 @@ test produced a **PASS with no patch applied at all**.
 
 | | |
 |---|---|
-| ✅ **Built** | The task contract, the STRICT and WEAK verifiers, the Seatbelt sandbox, the adversarial cheat corpus, the reward-path import guard, task ingestion for a private and a public source, the base-model bake-off, the pre-registration, the measurement instrumentation (a transcript of what a base actually wrote, and an offline attributor and classifier that say *why* a rollout never produced an applicable patch), **the nightly loop** (seeded rejection sampling, strict-PASS-only selection, the run ledger, LoRA-SFT behind a declared capacity probe, and the `whetstone run --night` door), **the never-regress promotion gate** with its held-out split, its declared retry discipline and its leakage check, the § 3 baseline machinery and the honest-number report writer, and — new — **the signed morning report** (`whetstone report --last-night`), which renders one night's sealed evidence into a page a person reads |
+| ✅ **Built** | The task contract, the STRICT and WEAK verifiers, the Seatbelt sandbox, the adversarial cheat corpus, the reward-path import guard, task ingestion for a private and a public source, the base-model bake-off, the pre-registration, the measurement instrumentation (a transcript of what a base actually wrote, and an offline attributor and classifier that say *why* a rollout never produced an applicable patch), **the nightly loop** (seeded rejection sampling, strict-PASS-only selection, the run ledger, LoRA-SFT behind a declared capacity probe, and the `whetstone run --night` door), **the never-regress promotion gate** with its held-out split, its declared retry discipline and its leakage check, the § 3 baseline machinery and the honest-number report writer, the signed morning report (`whetstone report --last-night`), which renders one night's sealed evidence into a page a person reads, and — new — **the probe decision gate** (`whetstone check-probe --run <runs/id>`), which turns the night door's pre-committed go/no-go into a command exit rather than an operator reading a ledger by eye |
 | 🔬 **Open question** | **What a night actually yields.** The loop's machinery is shipped and tested; it has not been run, so this repository holds no training set, no checkpoint and no yield figure. The response to a low yield is pre-committed — raise the number of draws, never loosen the check — see `docs/planning/p2-rollouts/night-door/runbook.md` |
 | ❌ **Not built** | The Next.js dashboard, and distillation into a small local model — both named post-horizon |
-| 📦 **Released** | v0.3.0 through v0.10.0, tagged and published to PyPI as `whetstonehq`; the import package and the CLI stay `whetstone`. Tag-push is the whole release mechanism (`RELEASING.md`) |
+| 📦 **Released** | v0.3.0 through v0.13.0, tagged and published to PyPI as `whetstonehq`; the import package and the CLI stay `whetstone`. Tag-push is the whole release mechanism (`RELEASING.md`) |
 
 **Platform:** macOS / Apple Silicon only today. The sandbox is Seatbelt and the runtime is MLX;
 Linux portability is named as post-horizon rather than promised.

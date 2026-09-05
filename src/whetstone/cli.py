@@ -1,7 +1,7 @@
 """The `whetstone` command line entry point.
 
 The failure this module prevents: a ``--help`` that advertises work the code cannot do.
-Commands appear here only when something stands behind them, and six now do. ``verify`` runs
+Commands appear here only when something stands behind them, and seven now do. ``verify`` runs
 the execution-grounded reward in `whetstone.verify.strict`: it applies a patch to a task's
 known-broken commit inside a sandbox, restores the operator-held tests from golden, and
 compares what pytest actually executed against what the task declared. ``mine`` is the other
@@ -11,7 +11,10 @@ attempts per task, keeps only the rollouts that reward passed, and trains a cand
 ``gate`` is the never-regress promotion gate: it scores a candidate checkpoint against the
 incumbent on the held-out source-B membership and returns exactly one of three exits.
 ``check-leakage`` proves a night's training set disjoint from the held-out membership, because
-an exclusion nobody checks is a claim. And ``report`` is the morning after: it renders one
+an exclusion nobody checks is a claim. ``check-probe`` decides the night's go/no-go behind the
+probe run it names, reading the run's ledger against the pre-committed rule — the door that
+keeps a night from running behind a probe that proved nothing. And ``report`` is the morning
+after: it renders one
 night's sealed evidence into a page a person reads, sealed to that evidence and — the claim
 kept the size of what the code checks — not cryptographically signed.
 
@@ -24,15 +27,15 @@ here deliberately describes the old sentence instead of quoting it: the guard ca
 quotation from a live claim, and a guard that punishes recording a correction would teach people
 to delete their corrections.)
 
-**``run --night``, ``gate``, ``check-leakage`` and ``report`` are the commands here whose bodies
-are not in this file, and deliberately.** This module is a guarded root — it calls
-``verify_strict``, and nothing it imports may reach an inference library. The loop and the gate
-reach ``mlx_lm`` legitimately, so they live in the EXEMPT ``whetstone.loop`` package, and
+**``run --night``, ``gate``, ``check-leakage``, ``check-probe`` and ``report`` are the commands
+here whose bodies are not in this file, and deliberately.** This module is a guarded root — it
+calls ``verify_strict``, and nothing it imports may reach an inference library. The loop and the
+gate reach ``mlx_lm`` legitimately, so they live in the EXEMPT ``whetstone.loop`` package, and
 ``run_night`` below holds a single **function-local** import into it, as do ``run_gate_cli``,
-``run_check_leakage_cli`` and ``run_report_cli``: running ``whetstone verify`` never executes
-those lines and never loads a model. The last two need no inference library themselves and are
-function-local anyway — the argument is about the module graph of ``whetstone verify``, not
-about what one handler happens to need.
+``run_check_leakage_cli``, ``run_report_cli`` and ``run_check_probe_cli``: running
+``whetstone verify`` never executes those lines and never loads a model. The last three need
+no inference library themselves and are function-local anyway — the argument is about the
+module graph of ``whetstone verify``, not about what one handler happens to need.
 ``tests/test_reward_path_scope_is_partitioned.py`` asserts they are the only such edges and
 that they are function-local.
 
@@ -576,6 +579,31 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    check_probe = commands.add_parser(
+        "check-probe",
+        help="decide a probe run's go/no-go from its ledger",
+        description=(
+            "Decide whether the night proceeds behind a probe run, reading the run's ledger "
+            "against the pre-committed rule "
+            "(docs/planning/p2-rollouts/night-door/runbook.md:78-80): the night proceeds iff "
+            "every draw's harness is PASS and the recorded seed map is non-empty. Exits 0 "
+            "when the rule holds; 1 on a named violation — a draw whose harness is not PASS, "
+            "or an empty seed map — and no night runs behind it; 2 on a refusal an operator "
+            "can fix by retyping: a directory that is not a probe run, a ledger that cannot "
+            "be read, an incomplete run. There is no UNVERIFIED exit: this command reads "
+            "documents rather than running anything, so it either answers or refuses."
+        ),
+    )
+    check_probe.add_argument(
+        "--run",
+        required=True,
+        type=Path,
+        metavar="<runs/id>",
+        help=(
+            "the probe run directory to decide, as a --probe night wrote it under runs/<id>/"
+        ),
+    )
+
     report = commands.add_parser(
         "report",
         help="render last night's morning report from its sealed evidence",
@@ -787,11 +815,11 @@ def run_night(args: argparse.Namespace) -> int:
     is a guarded root (`tests/test_no_inference_on_reward_path.py`): it calls `verify_strict`, it
     is the reward's entry point, and nothing it imports may reach an inference library. The loop
     reaches `mlx_lm` legitimately, so its body lives in the EXEMPT `whetstone.loop` package and
-    this file holds exactly one edge into it — inside the handler, so `whetstone verify` and
-    `whetstone mine` never execute it and never import `mlx_lm` even transitively. That the edge
-    is the only one, and that it is function-local, is asserted by
-    `tests/test_reward_path_scope_is_partitioned.py`; a second such import, or the same one moved
-    to module scope, fails the build.
+    this file holds one of exactly five edges into it — inside the handler, so `whetstone verify`
+    and `whetstone mine` never execute it and never import `mlx_lm` even transitively. That this
+    edge, like the other four, is function-local, is asserted by
+    `tests/test_reward_path_scope_is_partitioned.py`; a sixth such import, or any one moved to
+    module scope, fails the build.
 
     **The exit code answers "is there a candidate", and never flatters.** A night that wrote a
     checkpoint is `PASS_EXIT`. A night that did not is floored at `FAIL_EXIT` even when its own
@@ -847,10 +875,10 @@ def run_gate_cli(args: argparse.Namespace) -> int:
     second documented edge from a guarded root into an exempt package, in the `run_night`
     shape.** The gate loads a checkpoint (base + LoRA adapter) through `mlx_lm`; this file is
     the reward's entry point; the import sits inside the handler so `whetstone verify` never
-    executes it and never imports `mlx_lm` even transitively. That it is one of exactly two
-    such edges, and that both are function-local, is asserted by
-    `tests/test_reward_path_scope_is_partitioned.py`; a third such import, or either one
-    moved to module scope, fails the build.
+    executes it and never imports `mlx_lm` even transitively. That it is one of exactly five
+    such edges, and that all five are function-local, is asserted by
+    `tests/test_reward_path_scope_is_partitioned.py`; a sixth such import, or any one moved to
+    module scope, fails the build.
 
     **The exit codes are the roadmap's three, mapped onto the existing four-code contract**
     (`cli.py:64-84`, no fifth): `promoted` → 0, `rejected` → 1, `UNVERIFIED` → 3. UNVERIFIED
@@ -903,7 +931,7 @@ def run_check_leakage_cli(args: argparse.Namespace) -> int:
     `whetstone.loop.check_leakage` imports `whetstone.loop.night` for the two source names,
     and a module-scope import here would put the night, the bake-off and `mlx_lm` on the
     reward's own entry path. `tests/test_reward_path_scope_is_partitioned.py` asserts these
-    are the only three edges and that all three are function-local.
+    are the only five edges and that all five are function-local.
 
     **The exits are the existing contract, no fifth code**: disjoint → 0, a named overlap →
     1 (a leak is a failure, not a mistyped command), and a refusal an operator can fix — a
@@ -924,6 +952,40 @@ def run_check_leakage_cli(args: argparse.Namespace) -> int:
     return PASS_EXIT if report.clean else FAIL_EXIT
 
 
+def run_check_probe_cli(args: argparse.Namespace) -> int:
+    """Decide a probe run's go/no-go from its ledger, and say which way it points.
+
+    **The import is function-local, and it is the fifth documented edge from a guarded root
+    into an exempt package** — the `run_night` / `run_gate_cli` / `run_check_leakage_cli` /
+    `run_report_cli` shape. This one needs no `mlx_lm` and never will: it reads one run
+    directory's ledger and compares values against a verdict vocabulary, nothing else. It is
+    still function-local, because the edge's soundness argument is about the module graph of
+    `whetstone verify` and not about what any one handler happens to need today —
+    `whetstone.loop.check_probe` imports `whetstone.loop.night` for the two source names,
+    and a module-scope import here would put the night, the bake-off and `mlx_lm` on the
+    reward's own entry path. `tests/test_reward_path_scope_is_partitioned.py` asserts these
+    are the only five edges and that all five are function-local.
+
+    **The exits are the existing contract, no fifth code**: the rule holds → 0, a named
+    violation → 1 (a draw whose harness is not `PASS`, or an empty seed map — the night does
+    not run behind it, and that is a finding, not a mistyped command), and a refusal an
+    operator can fix by retyping — a directory that is not a probe run, a ledger that cannot
+    be read, an incomplete run — → 2. There is no `UNVERIFIED` exit here: this command reads
+    documents rather than running anything, so it either answers or refuses.
+    """
+    from whetstone.loop.check_probe import REFUSALS, disclosure, run_check
+
+    try:
+        report = run_check(args.run)
+    except REFUSALS as refusal:
+        print(f"whetstone check-probe: {refusal}", file=sys.stderr)
+        return USAGE_ERROR
+
+    for line in disclosure(report):
+        print(line)
+    return PASS_EXIT if report.proceed else FAIL_EXIT
+
+
 def run_report_cli(args: argparse.Namespace) -> int:
     """Render or verify a morning report, and say which artifacts it wrote.
 
@@ -935,8 +997,8 @@ def run_report_cli(args: argparse.Namespace) -> int:
     happens to need — `whetstone.loop.morning` imports the gate for a constant and the
     bake-off for the count-over-denominator helper, so a module-scope import here would put
     both, and `mlx_runtime` behind them, on the reward's own entry path.
-    `tests/test_reward_path_scope_is_partitioned.py` asserts these are the only four edges
-    and that all four are function-local.
+    `tests/test_reward_path_scope_is_partitioned.py` asserts these are the only five edges
+    and that all five are function-local.
 
     **The exits are the existing contract, no fifth code**: rendered → 0, a `--verify`
     mismatch → `FAIL_EXIT` (something on disk disagrees with the evidence, and the operator
@@ -1059,6 +1121,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if namespace.command == "check-leakage":
         return run_check_leakage_cli(namespace)
+
+    if namespace.command == "check-probe":
+        return run_check_probe_cli(namespace)
 
     if namespace.command == "report":
         return run_report_cli(namespace)

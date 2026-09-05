@@ -72,12 +72,23 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-rollouts
 The probe draws `K` attempts at the first two source-B tasks and **writes no checkpoint** — a
 probe that trained would produce a candidate from a self-chosen subset. What it proves is the
 chain: the weights re-hash, the frozen contract, the control arm, the seeded draws, the
-per-draw journals and transcripts, the selection, and the ledger. Read
-`runs/night-probe/probe-001/ledger.json` before going further.
+per-draw journals and transcripts, the selection, and the ledger.
+
+```bash
+uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-rollouts \
+  whetstone check-probe \
+  --run /Users/aliz/dev/at/whetstone/runs/night-probe/probe-001
+```
+
+The decision is the command's exit: `whetstone check-probe` reads the run directory the probe
+block wrote (`runs/night-probe/probe-001/ledger.json`) against the rule below. Exit 0 — the probe
+satisfies the rule; proceed to the night. Exit 1 — a named harness finding (which draw/source, or
+an empty seed map); no night runs behind it. Exit 2 — a refusal an operator can fix by retyping;
+never a verdict about the probe.
 
 **Decision rule (pre-committed): the night proceeds iff the probe completes with the control arm
-`PASS` on every draw and a non-empty seed map.** A probe whose control arm proved nothing is a
-harness finding, and no night runs behind it.
+`PASS` on every draw and a non-empty seed map.** A killed probe is **never resumed** —
+restart it fresh under a new `--run-id`; a killed **night** still resumes unchanged (below).
 
 ## The night
 

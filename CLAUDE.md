@@ -20,7 +20,11 @@ This file orients a coding agent working in this repository. Read it first.
 > against the untrained base it started from — one night, not two. Then the
 > **close-base-7.3** amendment (2026-09-02): `PREREGISTRATION.md` § 7.3 is closed by the
 > Type 1 amendment (§ 10.10), naming `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit` as
-> the base the night fine-tunes, committed before night #1 trains.
+> the base the night fine-tunes, committed before night #1 trains. Then the
+> **probe decision gate** (2026-09-05): `whetstone check-probe --run <runs/id>` turns the
+> night door's pre-committed go/no-go into a command exit — read-only over one probe run,
+> 0 the rule holds, 1 a named violation, 2 a refusal — so night #1's decision is a process
+> exit rather than an operator reading a ledger by eye.
 >
 > **The corpus, stated precisely.** Source B (private, pre-registered headline):
 > **66 tasks**, each proven live rather than asserted. Source A (public SWE-bench-Lite):
@@ -29,7 +33,8 @@ This file orients a coding agent working in this repository. Read it first.
 >
 > **Not built, and not measured.** The nightly loop has **never been run**, so no training
 > set, checkpoint or yield figure exists — and the gate has therefore **never run on real
-> checkpoints**. Its exits and refusals are proven against fixtures only. `R = 3` is
+> checkpoints**. Its exits and refusals are proven against fixtures only — as are
+> `check-probe`'s, which has never been pointed at a real probe. `R = 3` is
 > declared a priori because there is no observed unverified rate to set it from. Cheat 6
 > and cheat 10 remain **documented residuals**. Cuts v0.3.0 onward publish `whetstonehq`
 > to PyPI and a GitHub Release by tag push; last tag 2026-08-26.

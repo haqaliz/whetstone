@@ -15,7 +15,7 @@ command are re-implemented here against **this** door's command rather than by m
 constant the other guards read, because a guard that reaches into another guard's globals is a
 guard that can silently repoint the sheet it was watching.
 
-Six properties, and the last two are this sheet's own:
+Seven properties, and the last three are this sheet's own:
 
 1. the parse really reads the sheet (anti-vacuity);
 2. every flag the night command passes exists in the shipped parser;
@@ -24,11 +24,18 @@ Six properties, and the last two are this sheet's own:
 5. the candidate resolution names the retained candidate and excludes the other **by name**, and
    the excluded name appears in no `--only` value;
 6. the zero-strict-PASS outcome is stated as a published result rather than as a halt, and the
-   declared dev ids are the ones the arms declared.
+   declared dev ids are the ones the arms declared;
+7. the probe decision is commanded, not read: a `check-probe` block runs before the night with
+   only `--run` (against the shipped parser's surface), absolute and exactly the probe block's
+   `--runs` root joined with its `--run-id`, the decision rule keeps both pre-committed
+   conditions and all three exits' meanings, and a killed probe is never resumed — while a
+   killed **night** still resumes unchanged.
 
 **Watched failing first** (CONTRIBUTING.md): every assertion below was run against a deliberately
 wrong stub sheet — relative writable paths, a `--sample-more` flag the parser does not define, the
-excluded candidate in `--only`, a stale worktree name, and the zero-yield paragraph deleted — and
+excluded candidate in `--only`, a stale worktree name, the zero-yield paragraph deleted, and for
+the probe pin: a sheet with no `check-probe` block, a relative `--run`, a `--run` pointing at the
+night's own dir, a decision sentence missing an exit, and a sentence claiming a probe resumes — and
 each one refused it before the real sheet existed.
 """
 
@@ -48,6 +55,10 @@ RUNBOOK = Path(__file__).parent.parent / "docs/planning/p2-rollouts/night-door/r
 #: The command every block that invokes the door begins with. The night's door is a `whetstone`
 #: subcommand rather than a `python -m` module, which is why this constant is this file's own.
 DOOR = "whetstone run --night"
+
+#: The go/no-go command the sheet runs between the probe pass and the night. It is a `whetstone`
+#: subcommand of its own (`--run <dir>`), so it is keyed here rather than by the night's DOOR.
+PROBE_CHECK = "whetstone check-probe"
 
 #: This unit's worktree, and every worktree an earlier unit used. A stale name in a sheet sends an
 #: operator to a directory that no longer holds the code they think they are running.
@@ -147,6 +158,45 @@ def _parser_flags() -> set[str]:
     assert subparsers, "the CLI defines no subcommands, so this guard would compare against nothing"
     night = subparsers[0].choices["run"]
     return {option for action in night._actions for option in action.option_strings}
+
+
+def _probe_check_block(blocks: list[str]) -> str:
+    """The block that invokes `whetstone check-probe`, or empty when the sheet has none."""
+    return next((block for block in blocks if PROBE_CHECK in block), "")
+
+
+def _probe_check_values(block: str) -> dict[str, list[str]]:
+    """Flag → every value the `check-probe` block gave, from the tokens after its invocation.
+
+    Mirrors `_values` for the go/no-go command: `uv run`'s own `--project` sits before the
+    invocation, so only what follows `whetstone check-probe` is the subcommand's surface.
+    """
+    tokens = shlex.split(block.partition(PROBE_CHECK)[2], posix=True)
+    values: dict[str, list[str]] = {}
+    current: str | None = None
+    for token in tokens:
+        if token.startswith("--"):
+            current = token
+            values.setdefault(current, [])
+        elif current is not None:
+            values[current].append(token)
+            current = None
+    return values
+
+
+def _probe_check_flags() -> set[str]:
+    """Every option string the shipped `check-probe` subcommand accepts."""
+    import argparse
+
+    parser = build_parser()
+    subparsers = [
+        action
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    ]
+    assert subparsers, "the CLI defines no subcommands, so this guard would compare against nothing"
+    check_probe = subparsers[0].choices["check-probe"]
+    return {option for action in check_probe._actions for option in action.option_strings}
 
 
 def test_the_guard_shares_the_parse_helpers_it_can() -> None:
@@ -334,3 +384,103 @@ def test_the_sheet_publishes_nothing() -> None:
                     f"WHY THIS IS A FAILURE: the command names {value!r}, inside the published "
                     "reports directory. The door refuses it, and the sheet must not ask for it"
                 )
+
+
+def test_the_probe_decision_is_commanded_before_the_night() -> None:
+    """The go/no-go is a command the sheet runs, before the night, with only `--run`.
+
+    A decision the operator reads is one they can misread at 3 a.m.; a decision the sheet runs
+    is one the door has already proved against the parser. And the run it decides must be the
+    run the probe block wrote — the two commands are bound by the run dir, so a mismatch
+    between them is exactly the drift this guard exists to catch.
+    """
+    blocks = _bash_blocks(_runbook())
+    check = _probe_check_block(blocks)
+    assert check and PROBE_CHECK in check, (
+        "WHY THIS IS A FAILURE: the sheet does not run `whetstone check-probe` as a command. "
+        "The decision rule stays a paragraph an operator reads instead of a gate the sheet "
+        "actually executes"
+    )
+    night = _night_block(blocks)
+    assert night, "no bash block invokes the night without --probe"
+    assert blocks.index(check) < blocks.index(night), (
+        "WHY THIS IS A FAILURE: the probe decision is commanded after the night. The go/no-go "
+        "must be decided before a night is committed to"
+    )
+    values = _probe_check_values(check)
+    unknown = sorted(set(values) - _probe_check_flags())
+    assert not unknown, (
+        f"WHY THIS IS A FAILURE: the check-probe block passes {unknown} and the shipped "
+        f"`check-probe` defines none of them. Parser accepts: {sorted(_probe_check_flags())}"
+    )
+    run_values = values.get("--run", [])
+    assert run_values, (
+        "WHY THIS IS A FAILURE: the check-probe block passes no --run. The command refuses "
+        "without the run directory it must decide"
+    )
+    run_dir = run_values[0]
+    assert run_dir.startswith("/"), (
+        f"WHY THIS IS A FAILURE: --run is relative ({run_dir!r}). The decision must name the "
+        "probe run directory outright, independent of CWD"
+    )
+    probe = next((block for block in _door_blocks(blocks) if "--probe" in block), "")
+    assert probe, "no bash block invokes the probe pass"
+    probe_values = _values(probe)
+    runs_root = probe_values["--runs"][0]
+    run_id = probe_values["--run-id"][0]
+    assert run_dir == f"{runs_root}/{run_id}", (
+        f"WHY THIS IS A FAILURE: --run is {run_dir!r} but the probe block wrote "
+        f"{runs_root}/{run_id}. The decision must point at the run the probe pass actually "
+        "produced, or it decides a different run than the one that ran"
+    )
+
+
+def test_the_decision_sentence_keeps_both_conditions_and_the_exits() -> None:
+    """The pre-committed rule survives in the pre-committed words, and the exits carry it.
+
+    Both conditions must be stated in the words the rule was pre-committed in — the control arm
+    `PASS` on every draw, and a non-empty seed map — and the command's exits must mean what they
+    do: 0 proceeds to the night, 1 is a named finding with no night behind it, 2 is a refusal
+    an operator fixes by retyping, never a verdict about the probe.
+    """
+    text = _runbook()
+    assert "control arm" in text and "`PASS`" in text and "every draw" in text, (
+        "WHY THIS IS A FAILURE: the sheet drops the control arm `PASS` on every draw, the half "
+        "of the pre-committed rule that proves the harness discriminates"
+    )
+    assert "non-empty seed map" in text, (
+        "WHY THIS IS A FAILURE: the sheet drops the non-empty seed map condition. A probe whose "
+        "map is empty selected nothing and must not stand behind a night"
+    )
+    assert "no night runs behind it" in text, (
+        "WHY THIS IS A FAILURE: the sheet does not say what exit 1 means — a named harness "
+        "finding, and no night runs behind it"
+    )
+    assert "proceed to the night" in text, (
+        "WHY THIS IS A FAILURE: the sheet does not say what exit 0 means — the probe satisfies "
+        "the rule, proceed to the night"
+    )
+    assert "never a verdict" in text, (
+        "WHY THIS IS A FAILURE: the sheet does not say what exit 2 means — a refusal an operator "
+        "can fix by retyping, never a verdict about the probe"
+    )
+
+
+def test_a_probe_is_never_resumed() -> None:
+    """A killed probe restarts fresh under a new id; only a killed night resumes unchanged.
+
+    The restart rule is asymmetric by cost: the probe is first-N private tasks, cheap to re-run
+    and worthless if half its draws came from a different run's state, so a killed probe is
+    never resumed — it restarts fresh. A killed night, by contrast, still resumes unchanged, and
+    that sentence must survive untouched.
+    """
+    text = _runbook()
+    assert "never resumed" in text and "restart it fresh" in text, (
+        "WHY THIS IS A FAILURE: the sheet does not say a killed probe is never resumed and must "
+        "be restarted fresh under a new --run-id. The cheap probe is the one place a restart is "
+        "affordable, and the rule must say so before the run"
+    )
+    assert "Restart the **same command, unchanged**" in text, (
+        "WHY THIS IS A FAILURE: the killed-night restart sentence is gone. A night is resumed "
+        "unchanged with the same --run-id and --run-seed; the sheet must still say so"
+    )
