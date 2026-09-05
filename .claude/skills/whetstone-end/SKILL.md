@@ -17,7 +17,7 @@ Arguments and conventions are identical to `whetstone-end-fast`.
 
 **REQUIRED SUB-SKILL:** Use `whetstone-end-fast` for the cleanup pipeline.
 
-Run its **Phase 0 → Phase 3 exactly as written** (safety check → master + pull → remove worktree → delete branch, then the release phase). Whetstone's base branch is **`master`**, never `main`. **Phase 3 is blocked today** — there is no `pyproject.toml`, `RELEASING.md`, or `release.yml` yet, so no release is cut; check whether that's still true rather than assuming, and say plainly that nothing was published. Proceed to the report once cleanup verification passes.
+Run its **Phase 0 → Phase 3 exactly as written** (safety check → master + pull → remove worktree → delete branch, then the release phase). Whetstone's base branch is **`master`**, never `main`. **Phase 3 is mandatory** — `pyproject.toml`, `RELEASING.md`, `CHANGELOG.md` and `release.yml` all exist, so every finished unit cuts a release by tag push; verify those four files rather than assuming, and report which channels actually published. Proceed to the report once cleanup verification passes.
 
 ### Phase 4 — Completion report
 
@@ -52,6 +52,6 @@ The comment can mirror the report's plain-English summary in a sentence or two. 
 | Passing the wrong type to `whetstone-report` | Apply the mapping table (`feat`/`feature` → `feature`, `chore` → `task`) |
 | Posting the issue comment before the report | The comment (Phase 5) comes after the report (Phase 4); the report's plain-English summary is good source material |
 | Cleaning up against `main` | Whetstone's base branch is `master` |
-| Improvising a release because Phase 3 "should" run | Release machinery doesn't exist yet — verify, then say nothing was published |
+| Skipping the release because Phase 3 once read as blocked | The machinery exists — Phase 3 is mandatory; verify the four files and cut it |
 | Putting a projected improvement in the report | Only a measured delta on the held-out verified set goes in a report |
 | Posting the comment without confirmation | Draft first, confirm with the user, then post |

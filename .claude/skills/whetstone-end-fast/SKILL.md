@@ -8,7 +8,7 @@ arguments: "type id"
 
 ## Overview
 
-Closes out a unit of work's local state after the PR has merged: **master → pull → remove worktree → delete branch**, with a **release phase that is blocked today** (no release machinery exists yet). No report (use `whetstone-end` / `we` for that).
+Closes out a unit of work's local state after the PR has merged: **master → pull → remove worktree → delete branch → cut the release**. No report (use `whetstone-end` / `we` for that).
 
 **Invocation:** `wef <type> <id>` — e.g. `wef bug 12`, `wef feat task-verifier`.
 
@@ -66,17 +66,19 @@ git -C "$PRIMARY" worktree list           # the worktree should be gone
 git -C "$PRIMARY" branch --list "$BRANCH" # should print nothing
 ```
 
-### Phase 3 — Release a new version (BLOCKED today)
+### Phase 3 — Release a new version (MANDATORY)
 
-**There is no release machinery in Whetstone yet.** No `pyproject.toml`, no `CHANGELOG.md`, no `RELEASING.md`, no `.github/workflows/release.yml`, and no chosen package name. So today this phase is a **no-op**: say plainly that no release was cut and why, then move on. Do not hand-craft a release to fill the gap — an unpublished project with a manually uploaded artifact is worse than no release at all.
-
-Check before assuming (the repo may have moved on since this skill was written):
+**The release machinery exists** — `pyproject.toml`, `CHANGELOG.md`, `RELEASING.md` and `.github/workflows/release.yml` all landed, the distribution name is `whetstonehq`, and cuts from v0.3.0 onward have published to PyPI and to a GitHub Release by tag push. This phase was blocked when the skill was written; it stopped being blocked in P0 and the text lagged. **Every finished unit of work cuts a release**, and `RELEASING.md` is the source of truth. Verify anyway rather than trusting this paragraph — the repo moves:
 
 ```bash
 ls pyproject.toml RELEASING.md CHANGELOG.md .github/workflows/release.yml 2>&1
 ```
 
-**Once those exist, this phase becomes mandatory** — every finished unit of work cuts a release. `RELEASING.md` is the source of truth at that point; what follows is the shape it should take, matching the sibling projects:
+If any of them is missing, stop and say so rather than hand-crafting a release: an unpublished project with a manually uploaded artifact is worse than no release at all.
+
+**One drift to expect:** `uv.lock` records the project's own version, so a bump without `uv lock` leaves the lock a version behind and every later `uv sync` reintroduces the diff. Re-lock in the bump commit. This has already been missed twice (the 0.12.0 and 0.13.0 cuts).
+
+**The changelog may already carry the section.** A unit that wrote its own dated `## [X.Y.Z]` section in the merged PR needs no `[Unreleased]` move — check before editing, and never write a second section for the same version.
 
 1. **Version from the work type:** `feat`/`feature` → **minor** (`0.x+1.0`), `bug`/`chore`/`task` → **patch** (`0.x.y+1`). Read the current `version` in `pyproject.toml` and compute the next; confirm the exact `vX.Y.Z` with the user only if it's ambiguous, otherwise state it and proceed.
 2. **Bump + changelog:** update `version` in `pyproject.toml` and move the `CHANGELOG.md` `[Unreleased]` notes into a new dated `## [X.Y.Z]` section. Commit to `master` as `aliz@foresightanalytics.ca` (maps to haqaliz).
@@ -126,7 +128,8 @@ Otherwise:
 | Forcing worktree remove with `--force` | Same — never silently discard uncommitted work |
 | Deleting a worktree holding checkpoints/eval results | Gitignored ≠ worthless; move the evidence out first, then remove |
 | Worktree dir vs branch confusion | Worktree dir is `<type>-<id>` (e.g. `bug-12`); branch is `<type>/<id>/aliz` |
-| Cutting a release today | Phase 3 is blocked — no `pyproject.toml`/`RELEASING.md`/`release.yml` yet; say so instead of improvising one |
+| Skipping the release because the skill once said it was blocked | Phase 3 is mandatory now — the machinery exists; verify the four files and cut it |
+| Bumping `pyproject.toml` without `uv lock` | The lock records the project version too; re-lock in the same commit |
 | Hand-crafting a release (`gh release create`, manual upload) | When the machinery lands, a tag push is the whole mechanism |
 | Tagging on red CI | A release is irreversible (a PyPI version can't be reused); confirm CI green before the tag |
 | Cutting a future release as `playdolphia` | The release is haqaliz's; switch with `gh auth switch --user haqaliz` |
