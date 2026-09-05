@@ -69,7 +69,19 @@ monitored for.
 ## Quickstart
 
 **Requirements:** macOS on Apple Silicon (the sandbox is Seatbelt; the runtime is MLX), Python
-3.10+, and [uv](https://github.com/astral-sh/uv). Nothing is on PyPI yet — install from source.
+3.10+, and [uv](https://github.com/astral-sh/uv).
+
+The published distribution is **`whetstonehq`**; the import package and the CLI are both
+`whetstone`. It has zero runtime dependencies — the CLI is stdlib-only:
+
+```bash
+uv tool install whetstonehq
+whetstone --help
+```
+
+The nightly loop needs the MLX runtime, which is an optional extra
+(`uv tool install "whetstonehq[mlx]"`); `whetstone verify` needs nothing beyond the standard
+library. To work on Whetstone itself, install from source instead:
 
 ```bash
 git clone https://github.com/haqaliz/whetstone.git
@@ -77,6 +89,9 @@ cd whetstone
 uv sync
 uv run whetstone --help
 ```
+
+Every command below is written `uv run whetstone …` for the source checkout; drop the `uv run`
+if you installed the tool.
 
 ### 1 · Grade a patch against a task
 
