@@ -6,7 +6,7 @@
 
 **A model that trains itself overnight — and proves it didn't cheat.**
 
-Point Whetstone at your own repositories. Each night a local loop generates candidate fixes, grades every one by **re-executing the tests you hold** in a sandbox — never by asking a model what it thinks — keeps only the wins, and distils them back into a small local model. In the morning you get the verified delta, what changed, and the count of reward-hacking attempts the strictness caught.
+Point Whetstone at your own repositories. Each night a local loop generates candidate fixes, grades every one by **re-executing the tests you hold** in a sandbox — never by asking a model what it thinks — keeps only the wins, and LoRA-trains your local base on them. In the morning you get the verified delta, what changed, and the count of reward-hacking attempts the strictness caught. (Distilling into a *smaller* model is named post-horizon, not built.)
 
 [![CI](https://github.com/haqaliz/whetstone/actions/workflows/ci.yml/badge.svg)](https://github.com/haqaliz/whetstone/actions/workflows/ci.yml)
 [![Status](https://img.shields.io/badge/status-pre--release%20·%20macOS%20only-e3b341)](docs/ROADMAP.md)
@@ -22,13 +22,24 @@ Point Whetstone at your own repositories. Each night a local loop generates cand
 
 ---
 
-> **Read this before anything else.** Whetstone is **pre-release**: the reward and task ingestion
-> are built and tested; the nightly loop and the promotion gate are **not**. Nothing has been
-> tagged and no version has been published. The one measurement taken so far lives in
-> [`reports/baseline/`](reports/baseline/), which is the **only** place in this repository a figure
-> about a model may appear — and its result was that **no base model was selected**, because no
-> candidate produced evidence to choose on. [`PREREGISTRATION.md`](PREREGISTRATION.md) was
-> committed *before* that measurement existed, which is the whole of its value.
+> **Read this before anything else.** Whetstone is **pre-release**, and the honest summary is that
+> **the machinery is built and the claim is not yet measured**.
+>
+> Built and tested: the reward, task ingestion, the nightly loop, the never-regress promotion gate,
+> the § 3 baseline machinery, the honest-number report writer, the signed morning report, and the
+> probe decision gate. Released as [`whetstonehq`](https://pypi.org/project/whetstonehq/) on PyPI
+> by tag push, v0.3.0 onward.
+>
+> **Not measured: everything the product claims.** The nightly loop has never been run on this
+> machine or any other, so no training set, no checkpoint and no yield figure exists; the promotion
+> gate has never scored a real checkpoint; the morning report has never been rendered from a real
+> night. Every figure in this repository comes from the base-model bake-off and its follow-up arms,
+> each confined to its own home under [`reports/`](reports/) — a figure about a model may appear
+> nowhere else. [`PREREGISTRATION.md`](PREREGISTRATION.md) fixed what any future number may claim
+> *before* any of them existed, which is the whole of its value.
+>
+> When the first honest number exists, it will be published whether it is a gain, a zero, or a
+> regression. There is no pivot signal at that stage on purpose.
 
 ## Why Whetstone
 
@@ -257,7 +268,7 @@ Linux portability is named as post-horizon rather than promised.
 | [`VISION.md`](VISION.md) | The thesis, the moat, and the non-goals |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | The authoritative technical plan: task family, verifier, cheat surface, phases |
 | [`PREREGISTRATION.md`](PREREGISTRATION.md) | What any future number may claim — fixed before any number existed |
-| [`reports/baseline/`](reports/baseline/) | The one measurement taken so far, and the only home for a figure about a model |
+| [`reports/`](reports/) | Every measurement taken so far, each confined to its own home — the bake-off and its follow-up arms. A figure about a model may appear nowhere else |
 | [`tasks/README.md`](tasks/README.md) | Which half of the corpus is committed, and why the other half never can be |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev setup and the few rules that are load-bearing |
 | [`SECURITY.md`](SECURITY.md) | The privacy model, and how to report a vulnerability |
