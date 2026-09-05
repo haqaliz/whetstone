@@ -283,3 +283,13 @@ def test_the_probe_check_composes_by_identity() -> None:
     assert check_probe.Status is verdict.Status
     assert check_probe.evidence_paths is draws.evidence_paths
     assert check_probe.EVIDENCE_DIR is night.EVIDENCE_DIR
+
+
+def test_refusals_are_named_and_closed_by_value_error() -> None:
+    """AC8: every refusal is named for exit-2, and `ValueError` closes the tuple — an
+    unforeseen crash is a named exit-2, never a traceback."""
+    assert check_probe.NotARun in check_probe.REFUSALS
+    assert check_probe.LedgerUnreadable in check_probe.REFUSALS
+    assert check_probe.NotAProbe in check_probe.REFUSALS
+    assert check_probe.IncompleteRun in check_probe.REFUSALS
+    assert check_probe.REFUSALS[-1] is ValueError
