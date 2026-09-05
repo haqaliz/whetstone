@@ -85,3 +85,81 @@ def test_check_probe_exits_two_on_a_refusal(
     assert captured.out == "", captured.out
     assert "whetstone check-probe:" in captured.err
     assert "ledger.json" in captured.err
+
+
+def _check_probe_parser() -> argparse.ArgumentParser:
+    """The `check-probe` subparser, observed directly so a renamed door is caught."""
+    import argparse
+
+    parser = cli.build_parser()
+    subparsers = [
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+    ]
+    return subparsers[0].choices["check-probe"]
+
+
+def test_the_check_probe_flag_surface() -> None:
+    """The parser exposes exactly `--run`, and nothing that could change the decision.
+
+    The flag surface is pinned because the operator's sheet will spell the command out. A
+    second flag that narrowed the draw set or relaxed the fold would let a failing probe be
+    turned green at the command line, which is the one thing a go/no-go must not allow.
+    """
+    probe = _check_probe_parser()
+    offered = sorted(
+        option
+        for action in probe._actions
+        for option in action.option_strings
+        if option.startswith("--")
+    )
+
+    assert offered == ["--help", "--run"], offered
+
+
+def test_check_probe_imports_by_identity() -> None:
+    """The handler's import is the shipped module — a second spelling would be a second answer.
+
+    The `test_check_leakage_cli.py:161-167` source-identity precedent, asserted over the
+    handler's own body: `run_check_probe_cli` imports `REFUSALS`, `disclosure` and
+    `run_check` from `whetstone.loop.check_probe` and from nowhere else, function-locally —
+    the module graph of `whetstone verify` never contains them, and the module object the
+    name resolves to is the shipped one, never a copy.
+    """
+    import ast
+    import sys
+
+    import whetstone.loop.check_probe as shipped
+
+    src = Path(__file__).resolve().parents[2] / "src" / "whetstone" / "cli.py"
+    tree = ast.parse(src.read_bytes(), filename=str(src))
+    handler = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "run_check_probe_cli"
+    )
+    imports = {
+        (node.module, tuple(alias.name for alias in node.names))
+        for node in ast.walk(handler)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+
+    assert ("whetstone.loop.check_probe", ("REFUSALS", "disclosure", "run_check")) in imports, (
+        "WHY THIS IS A FAILURE: the handler does not import the shipped check_probe module by "
+        "identity. A second spelling of the decision would be a second answer to the go/no-go "
+        "question, and the day they disagreed neither document would say so"
+    )
+    assert sys.modules["whetstone.loop.check_probe"] is shipped
+
+
+def test_the_check_probe_no_fifth_code_contract() -> None:
+    """No UNVERIFIED exit: the description states it — the command reads documents, it never runs.
+
+    The four-code contract (`cli.py:64-84`) has no fifth code for this door. A verdict that
+    nothing could be concluded does not exist here: `check-probe` runs nothing, so a refusal
+    an operator can fix by retyping is the only way it fails to answer — and the description
+    must say so, because a parser that promised an unverifiable outcome would be promising a
+    code that never comes.
+    """
+    probe = _check_probe_parser()
+
+    assert "no UNVERIFIED exit" in probe.description, probe.description
