@@ -157,3 +157,38 @@ def test_a_missing_journal_is_incomplete(tmp_path: Path) -> None:
     with pytest.raises(check_probe.IncompleteRun) as refusal:
         check_probe.run_check(run)
     assert "draw 1" in str(refusal.value)
+
+
+def test_a_valid_probe_proceeds(tmp_path: Path) -> None:
+    """AC1: the pre-committed rule holds — every source `PASS`, non-empty seed map."""
+    report = check_probe.run_check(_probe_run(tmp_path))
+
+    assert report.proceed is True
+    assert report.violation is None
+    assert report.draws == 2
+    assert report.draws_recorded == 2
+    assert report.sources == 2
+    assert report.probe == 1
+    assert report.seeds == 1
+
+
+def test_a_non_pass_harness_is_a_named_violation(tmp_path: Path) -> None:
+    """AC2: a doctored fold names the attempt and the source — never just "failed"."""
+    report = check_probe.run_check(
+        _probe_run(
+            tmp_path,
+            harness={night.PRIVATE: Status.PASS, night.PUBLIC: Status.FAIL},
+        )
+    )
+
+    assert report.proceed is False
+    assert "draw 1" in report.violation
+    assert night.PUBLIC in report.violation
+
+
+def test_an_empty_seed_map_is_a_named_violation(tmp_path: Path) -> None:
+    """AC3: the recorded seed map is refused when empty — literally, no coverage assertion."""
+    report = check_probe.run_check(_probe_run(tmp_path, seeds=()))
+
+    assert report.proceed is False
+    assert "seed map" in report.violation

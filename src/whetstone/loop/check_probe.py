@@ -133,14 +133,67 @@ def run_check(run: Path) -> ProbeReport:
             "unidentified run proves nothing about any night"
         )
     payload = read_ledger(ledger)
-    _probe_of(payload, run)
+    probe = _probe_of(payload, run)
     _require_complete(payload, run)
-    raise NotImplementedError
+    for entry in payload["draws_recorded"]:
+        for source in SOURCES:
+            value = entry["harness"].get(source)
+            if value != Status.PASS:
+                return _report(
+                    proceed=False,
+                    violation=(
+                        f"draw {entry['attempt']} ({source}): harness is {value}"
+                    ),
+                    payload=payload,
+                    probe=probe,
+                )
+    seeds: Any = payload.get("seeds", ())
+    if len(seeds) == 0:
+        return _report(
+            proceed=False,
+            violation="the seed map is empty",
+            payload=payload,
+            probe=probe,
+        )
+    return _report(proceed=True, violation=None, payload=payload, probe=probe)
 
 
 def disclosure(report: ProbeReport) -> tuple[str, ...]:
-    """The lines the check's caller prints: the decision and the counts it was read from."""
-    raise NotImplementedError
+    """The lines the check's caller prints: the decision and the counts it was read from.
+
+    A refused run's harness values are never rendered: the violation names the draw and the
+    source, and a status vocabulary has no place in a decision that reads none — `UNVERIFIED`
+    is never rendered as `PASS`.
+    """
+    lines = [
+        f"probe: {'PROCEED' if report.proceed else 'DO NOT PROCEED'}",
+        f"draws: {report.draws}; recorded: {report.draws_recorded}",
+        f"sources: {report.sources}",
+        f"probe: {report.probe}",
+        f"seeds: {report.seeds}",
+    ]
+    if report.violation is not None:
+        lines.append(f"violation: {report.violation}")
+    return tuple(lines)
+
+
+def _report(
+    *,
+    proceed: bool,
+    violation: str | None,
+    payload: Mapping[str, Any],
+    probe: int,
+) -> ProbeReport:
+    """One `ProbeReport` with every count read from the payload the decision was made on."""
+    return ProbeReport(
+        proceed=proceed,
+        violation=violation,
+        draws=payload["draws"],
+        draws_recorded=len(payload["draws_recorded"]),
+        sources=len(SOURCES),
+        probe=probe,
+        seeds=len(payload.get("seeds", ())),
+    )
 
 
 def _probe_of(payload: Mapping[str, Any], run: Path) -> int:
