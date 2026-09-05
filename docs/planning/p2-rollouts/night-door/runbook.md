@@ -1,13 +1,13 @@
 # Runbook — the first night (`whetstone run --night`)
 
 **Unit:** `p2-rollouts` · **Aspect:** `night-door` · **Branch:** `feat/p2-rollouts/aliz` ·
-**Worktree:** `/Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-rollouts`
+**Run from:** `/Users/aliz/dev/at/whetstone` (the primary checkout)
 
 The operator's sheet for the first night of the improvement loop. Every command here is run
 verbatim. A command sheet that disagrees with the code it runs fails at three in the morning, in a
 run nobody can undo, so `tests/test_night_runbook_guards.py` refuses the disagreements first: the
-flags are checked against the shipped parser, the writable paths must be absolute, exactly one
-worktree may be named, and the declared dev ids must match the ones the arms declared.
+flags are checked against the shipped parser, the writable paths must be absolute, no worktree may
+be named, and the declared dev ids must match the ones the arms declared.
 
 ## Candidate resolution (decided before the run)
 
@@ -43,11 +43,10 @@ could name, and the door refuses both (`ManyCandidates`).
 
 ## The probe pass
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`), executing the branch code via its project (`uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-rollouts`):**
+**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-rollouts \
-  whetstone run --night \
+uv run whetstone run --night \
   --probe 2 \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
@@ -75,8 +74,7 @@ chain: the weights re-hash, the frozen contract, the control arm, the seeded dra
 per-draw journals and transcripts, the selection, and the ledger.
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-rollouts \
-  whetstone check-probe \
+uv run whetstone check-probe \
   --run /Users/aliz/dev/at/whetstone/runs/night-probe/probe-001
 ```
 
@@ -93,8 +91,7 @@ restart it fresh under a new `--run-id`; a killed **night** still resumes unchan
 ## The night
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-rollouts \
-  whetstone run --night \
+uv run whetstone run --night \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
   --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
   --public /Users/aliz/dev/at/whetstone/tasks/public/instances \
@@ -198,8 +195,7 @@ Read, in this order:
 Then re-verify the candidate's bytes before anything else reads them:
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-p2-rollouts \
-  python -c "from pathlib import Path; from whetstone.loop.sft import verify_checkpoint; print(verify_checkpoint(Path('/Users/aliz/dev/at/whetstone/checkpoints/night-001')).digest)"
+uv run python -c "from pathlib import Path; from whetstone.loop.sft import verify_checkpoint; print(verify_checkpoint(Path('/Users/aliz/dev/at/whetstone/checkpoints/night-001')).digest)"
 ```
 
 **Nothing here is published.** The night's counts live in its own gitignored run directory, which

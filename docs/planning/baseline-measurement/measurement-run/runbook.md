@@ -1,17 +1,16 @@
 # Runbook — the § 3 baseline measurement (`python -m whetstone.loop.baseline`)
 
 **Unit:** `baseline-measurement` · **Aspect:** `measurement-run` · **Branch:**
-`feat/baseline-measurement/aliz` · **Worktree:**
-`/Users/aliz/dev/at/whetstone/.claude/worktrees/feat-baseline-measurement`
+`feat/baseline-measurement/aliz` · **Run from:**
+`/Users/aliz/dev/at/whetstone` (the primary checkout)
 
-The operator's sheet for the single GPU pass that spends the `PREREGISTRATION.md` § 3
-baseline — the untrained open base scored on the held-out split, **measured once,
-re-measured never** (`PREREGISTRATION.md:129-135`). Every command here is run verbatim. A
-sheet that disagrees with the code it runs fails after the number is gone, so
-`tests/test_baseline_runbook_guards.py` refuses the disagreements first: the flags are
-checked against `baseline.build_parser`, every writable path must be absolute, exactly one
-worktree may be named, and the sheet must state the measured-once discipline as the refusal
-it is.
+The operator's sheet for the single GPU pass that spends the `PREREGISTRATION.md` § 3 baseline —
+the untrained open base scored on the held-out split, **measured once, re-measured never**
+(`PREREGISTRATION.md:129-135`). Every command here is run verbatim. A sheet that disagrees with
+the code it runs fails after the number is gone, so `tests/test_baseline_runbook_guards.py`
+refuses the disagreements first: the flags are checked against `baseline.build_parser`, every
+writable path must be absolute, no worktree may be named, and the sheet must state the
+measured-once discipline as the refusal it is.
 
 ## Candidate resolution (decided before the run)
 
@@ -59,8 +58,7 @@ result it produces on the real pass may be recorded.
 **Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-baseline-measurement \
-  pytest tests/loop/test_baseline_door.py tests/loop/test_baseline_document.py tests/bakeoff/test_baseline_report.py -q
+uv run pytest tests/loop/test_baseline_door.py tests/loop/test_baseline_document.py tests/bakeoff/test_baseline_report.py -q
 ```
 
 ## Step 2 — materialize the untrained checkpoint
@@ -70,8 +68,7 @@ untrained base as a `whetstone-checkpoint/1` provenance over no adapter, from th
 root's provenance — the 32B's `repo_id` and its immutable revision:
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-baseline-measurement \
-  python -c "from pathlib import Path; from whetstone.loop.ledger import tool_versions; from whetstone.loop.sft import write_baseline_checkpoint; write_baseline_checkpoint(Path('/Users/aliz/dev/at/whetstone/checkpoints/baseline-001'), repo_id='mlx-community/Qwen2.5-Coder-32B-Instruct-4bit', revision='<the revision recorded in /Users/aliz/dev/at/whetstone/weights/provenance.json>', tool_versions=tool_versions())"
+uv run python -c "from pathlib import Path; from whetstone.loop.ledger import tool_versions; from whetstone.loop.sft import write_baseline_checkpoint; write_baseline_checkpoint(Path('/Users/aliz/dev/at/whetstone/checkpoints/baseline-001'), repo_id='mlx-community/Qwen2.5-Coder-32B-Instruct-4bit', revision='<the revision recorded in /Users/aliz/dev/at/whetstone/weights/provenance.json>', tool_versions=tool_versions())"
 ```
 
 The directory must be empty at materialization — the writer refuses a checkpoint that would
@@ -79,12 +76,10 @@ record an adapter beside a base that never trained.
 
 ## Step 3 — the measurement
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`), executing the
-branch code via its project:**
+**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-baseline-measurement \
-  python -m whetstone.loop.baseline \
+uv run python -m whetstone.loop.baseline \
   --weights /Users/aliz/dev/at/whetstone/weights \
   --checkpoint /Users/aliz/dev/at/whetstone/checkpoints/baseline-001 \
   --heldout /Users/aliz/dev/at/whetstone/tasks/heldout/source-b.json \
@@ -165,8 +160,7 @@ Read, in this order:
 2. **The render door** — turn the evidence into the committed artifact:
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-baseline-measurement \
-  python -m whetstone.loop.baseline \
+uv run python -m whetstone.loop.baseline \
   --render /Users/aliz/dev/at/whetstone/runs/baseline-001/evidence.json \
   --checkpoint /Users/aliz/dev/at/whetstone/checkpoints/baseline-001 \
   --out /Users/aliz/dev/at/whetstone/reports/baseline-measurement \

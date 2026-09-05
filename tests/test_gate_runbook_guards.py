@@ -17,7 +17,7 @@ Ten properties, and the last five are this sheet's own:
 1. the parse really reads the sheet (anti-vacuity);
 2. every flag either command passes exists in the shipped parser;
 3. every path either command names is absolute;
-4. exactly one worktree is named anywhere, and no stale one survives;
+4. no worktree is named anywhere, and no stale one survives;
 5. the retry budget the sheet states is `gate.RETRY_COUNT` — the declared constant, by identity,
    so an amendment that moved `R` without updating the sheet fails here;
 6. the promotion record's home is `gate.PROMOTIONS_DIR`, by identity;
@@ -62,10 +62,15 @@ RUNBOOK = Path(__file__).parent.parent / "docs/planning/p3-promotion-gate/gate-r
 #: The two doors this sheet drives, paired with the subcommand whose parser defines their flags.
 DOORS = (("whetstone gate", "gate"), ("whetstone check-leakage", "check-leakage"))
 
-#: This unit's worktree, and every worktree an earlier unit used. A stale name in a sheet sends
-#: an operator to a directory that no longer holds the code they think they are running.
-WORKTREE = "feat-gate-untrained-incumbent"
+#: Every worktree any unit ever used. A worktree is removed the moment its unit merges, so a
+#: sheet that names one sends the operator to a directory that no longer exists — including the
+#: sheet's *own* unit's worktree, which is why no name here is exempt. The launch-chain sheets
+#: run from the primary checkout instead, and name no worktree at all. Imported by identity by
+#: the baseline and honest-number guards, so a name added here is retired everywhere at once.
 STALE_WORKTREES = (
+    "feat-gate-untrained-incumbent",
+    "feat-baseline-measurement",
+    "feat-honest-number-report",
     "feat-p2-format-hardening",
     "feat-format-hardening-measurement",
     "feat-measured-arm-run",
@@ -221,8 +226,13 @@ def test_every_path_the_commands_name_is_absolute() -> None:
             )
 
 
-def test_exactly_one_worktree_is_named_and_no_stale_one_survives() -> None:
-    """A stale worktree sends the operator to a directory that no longer holds this code."""
+def test_no_worktree_is_named_and_no_stale_one_survives() -> None:
+    """Every worktree is deleted when its unit merges, so a sheet may name none.
+
+    This guard used to require *exactly one* — this unit's — which stopped holding the
+    moment the unit merged and cleanup removed the directory. The sheet is read long
+    after its branch is gone; only the primary checkout survives.
+    """
     text = _runbook()
     named = {
         name
@@ -231,9 +241,10 @@ def test_exactly_one_worktree_is_named_and_no_stale_one_survives() -> None:
         if (name := _worktree_name(path)) is not None
     }
 
-    assert named == {WORKTREE}, (
-        f"WHY THIS IS A FAILURE: the sheet names worktree(s) {sorted(named)} and this unit's is "
-        f"{WORKTREE!r}. A sheet naming two sends the operator to whichever they read first"
+    assert named == set(), (
+        f"WHY THIS IS A FAILURE: the sheet names worktree(s) {sorted(named)}. Worktrees are "
+        "removed when their unit merges, so an operator running this sheet verbatim hits a "
+        "directory that does not exist. Run from the primary checkout, with no --project"
     )
     stale = sorted(one for one in STALE_WORKTREES if one in text)
     assert not stale, (
