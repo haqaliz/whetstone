@@ -10,6 +10,42 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The probe decision gate — night #1's go/no-go as a command — is done**
+(`docs/planning/probe-decision-gate/`, 2026-09-05). The night-door runbook has pre-committed
+the rule since P2 — the night proceeds iff the probe completes with the control arm `PASS` on
+every draw and a non-empty seed map — and an operator enforced it by reading the ledger by
+eye, which is the narrative judgement `docs/ROADMAP.md:278` forbids as an exit criterion.
+`whetstone check-probe --run <runs/id>` is now that sentence as a process exit: read-only over
+one probe run directory, running nothing, publishing nothing, reading no number. Exit 0 the
+rule holds; exit 1 a named violation (which draw and which source's harness is not `PASS`, or
+an empty seed map) and no night runs behind it; exit 2 a refusal an operator can fix by
+retyping — `NotARun`, `LedgerUnreadable` (via `ledger.read` by identity), `NotAProbe`,
+`IncompleteRun`. There is no `UNVERIFIED` exit: the command reads documents rather than
+running anything, so it either answers or refuses. The decision lives in
+`whetstone.loop.check_probe` on the `check_leakage` shape — a pure `run_check` plus a
+`disclosure()` — and orders itself deliberately: identify the run, pass the ledger through the
+schema gate, prove the probe identity, and only then decide, because a check that read a
+doctored document and answered "proceed" would be worse than no check. **The two conditions
+are exactly the pre-committed ones and nothing more**: the seed map is tested for
+non-emptiness literally, never re-derived from `attempt_seed` and never grown into a coverage
+bar the rule never set; journals are checked for existence only, because the ledger is the
+completeness authority. The sources, the ledger's name and reader, the verdict vocabulary and
+the evidence-path derivation are composed by identity from the modules that write them,
+asserted `is`. Two notes for whoever reads this next: a genuinely-written probe ledger cannot
+carry a non-`PASS` fold, because `rankable` raises `HarnessNotProven` and the night exits
+`UNVERIFIED_EXIT` with no ledger at all — so the exit-1 control case exists to catch a doctored
+ledger or a future regression in the night's own gate, and its fixtures are adversarial on
+purpose; and a fully-replayed **resume** can write a ledger whose recorded seed map is empty
+even though every draw ran under a seed, which is why the runbook now says a killed probe is
+restarted fresh under a new `--run-id` rather than resumed (a killed **night** still resumes
+unchanged). The runbook was rewritten in the same unit, code first — the
+`gate-untrained-incumbent` precedent — and its guard grew from two door blocks to three,
+watched failing first; the reward path's partition guard grew its fifth edge
+(`run_check_probe_cli`, function-local like the other four). **The night has still not been
+run**: no training set, checkpoint or yield figure exists, the gate has still not run on real
+checkpoints, and this command has never been pointed at a real probe — its exits are proven
+against fixtures only. The baseline spend and the P4 report still follow.
+
 **The § 7.3 Type 1 amendment — the launch path's first step — is done**
 (`docs/planning/close-base-7.3/`, 2026-09-02). `PREREGISTRATION.md` § 7.3 is closed by the
 dated amendment § 10.10, committed before night #1 trains (§ 8.1): the nightly loop

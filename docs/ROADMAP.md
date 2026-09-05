@@ -723,3 +723,20 @@ review fixed the path to it:
 > path, the § 3 boundary stated. The operator chain above (684-688) is unblocked: § 7.3
 > amendment → night #1 → the first gated evaluation against the untrained incumbent → baseline
 > spend → P4 report → finding. The gate still has not run on real checkpoints.
+
+> **Appended 2026-09-05, when the probe decision gate landed.** The bullet at 689-691 said one
+> unit was still buildable while the GPU is busy and the 2026-09-01 correction called that one
+> shipped. A second was, and now is: the night door's probe decision
+> (`docs/planning/probe-decision-gate/`). The rule the night-door runbook pre-committed in P2 —
+> the night proceeds iff the probe completes with the control arm `PASS` on every draw and a
+> non-empty seed map — was enforced by an operator reading a ledger by eye, which is the
+> narrative judgement this document rules out as an exit criterion (`:278`). It is now
+> `whetstone check-probe --run <runs/id>`: read-only over one probe run, 0 the rule holds, 1 a
+> named violation, 2 a refusal an operator can fix by retyping, and no `UNVERIFIED` exit
+> because the command reads documents rather than running anything. The rule is neither
+> loosened nor tightened — the seed map is tested for non-emptiness and nothing more. The
+> runbook was rewritten in the same unit, code first, and now restarts a killed **probe** fresh
+> under a new `--run-id` (a killed **night** still resumes unchanged), because a fully-replayed
+> resume can write an empty recorded seed map. The operator chain (684-688) is unchanged and
+> unblocked: night #1 → the first gated evaluation against the untrained incumbent → baseline
+> spend → P4 report → finding. The command has never been pointed at a real probe.

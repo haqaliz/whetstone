@@ -9,6 +9,58 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [0.14.0] - 2026-09-05
+
+### Added
+
+- **The probe decision gate — night #1's go/no-go as a command exit**
+  (`docs/planning/probe-decision-gate/`). The night-door runbook pre-commits the rule in prose
+  — *"the night proceeds iff the probe completes with the control arm `PASS` on every draw and
+  a non-empty seed map"* — and until now an operator enforced it by reading the probe's ledger
+  by eye, which is exactly the narrative judgement `docs/ROADMAP.md:278` forbids as an exit
+  criterion. `whetstone check-probe --run <runs/id>` is that sentence as a process exit:
+  read-only over one probe run directory, nothing generated, nothing published, no number
+  read. Exit 0 — the rule holds, the night proceeds. Exit 1 — a named violation (which draw
+  and which source's harness is not `PASS`, or an empty seed map), and no night runs behind
+  it. Exit 2 — a refusal an operator can fix by retyping, each by name: a directory holding no
+  ledger (`NotARun`), a ledger that fails the schema gate (`LedgerUnreadable`, via
+  `ledger.read` by identity), a run whose `task_set.probe` is not an int and so is a full
+  night (`NotAProbe`), and a run missing a recorded draw, a declared source or a draw's
+  journal (`IncompleteRun`). There is no `UNVERIFIED` exit: the command reads documents rather
+  than running anything, so it either answers or refuses.
+- **`whetstone.loop.check_probe`** — the decision itself, modelled on `check_leakage`: a pure
+  `run_check(run) -> ProbeReport` plus a `disclosure()` that prints the decision and the
+  counts it was read from. The run is identified before it is read, the ledger goes through
+  the schema gate before anything is decided, and the probe identity is proven before the rule
+  is applied — a check that read a doctored document and answered "proceed" would be worse
+  than no check. The two conditions are exactly the pre-committed ones and nothing more: the
+  seed map is tested for non-emptiness only, never re-derived and never grown into a coverage
+  bar. The two source names, the ledger's filename and reader, the verdict vocabulary and the
+  evidence-path derivation are all composed **by identity** from the modules that write them,
+  asserted `is` in the suite.
+
+### Changed
+
+- **The night-door runbook's decision step is now the command**
+  (`docs/planning/p2-rollouts/night-door/runbook.md`). The sheet's "read the ledger before
+  going further" sentence is replaced by the `check-probe` invocation and its three exits; the
+  pre-committed rule itself is reworded in neither direction. The sheet is guard-pinned, so it
+  was rewritten in the same unit, code first — the `gate-untrained-incumbent` precedent — and
+  `tests/test_night_runbook_guards.py` was extended from two door blocks to three, watched
+  failing first.
+- **The reward path's partition guard grew its fifth edge.**
+  `tests/test_reward_path_scope_is_partitioned.py` now pins five function-local imports from
+  the guarded CLI root into the exempt `whetstone.loop` package — `run_night`, `run_gate_cli`,
+  `run_check_leakage_cli`, `run_report_cli` and `run_check_probe_cli`. A sixth such import, or
+  any one moved to module scope, fails the build. `check-probe` needs no inference library and
+  never will; the edge is function-local anyway, because the argument is about the module
+  graph of `whetstone verify` and not about what one handler happens to need today.
+
+### Fixed
+
+- Two `cli.py` docstring paragraphs (`run_night`, `run_gate_cli`) had lost their indentation
+  and sat at column 0 inside the string. Cosmetic only — no behaviour, no rendered help text.
+
 ## [0.13.0] - 2026-09-02
 
 ### Added
