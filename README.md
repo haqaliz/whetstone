@@ -135,10 +135,11 @@ journals and transcripts) and, when the night selected anything and the declared
 fits, a hashed candidate under `checkpoints/<id>/`. A night that selected nothing writes no
 candidate, says so, and exits non-zero.
 
-This one **is** a subcommand, because it is the product surface the roadmap names — and it is the
-only place in the CLI that reaches the loop, through a single function-local import inside its own
-handler, so `whetstone verify` never loads a model. That the edge is the only one, and that it is
-function-local, is asserted by the reward-path partition guard.
+This one **is** a subcommand, because it is the product surface the roadmap names — and it reaches
+the loop through a function-local import inside its own handler, so `whetstone verify` never loads
+a model. It is one of exactly five such edges (`run --night`, `gate`, `check-leakage`, `report`,
+`check-probe`); that there are five and that every one of them is function-local is asserted by the
+reward-path partition guard, which fails the build on a sixth or on any one moved to module scope.
 
 Both `runs/` and `checkpoints/` are gitignored, and the run's own documents carry hashes and
 verdicts and never file contents: the training set is your code, and it stays on your machine.
