@@ -1,7 +1,7 @@
 """The `whetstone` command line entry point.
 
 The failure this module prevents: a ``--help`` that advertises work the code cannot do.
-Commands appear here only when something stands behind them, and six now do. ``verify`` runs
+Commands appear here only when something stands behind them, and seven now do. ``verify`` runs
 the execution-grounded reward in `whetstone.verify.strict`: it applies a patch to a task's
 known-broken commit inside a sandbox, restores the operator-held tests from golden, and
 compares what pytest actually executed against what the task declared. ``mine`` is the other
@@ -11,7 +11,10 @@ attempts per task, keeps only the rollouts that reward passed, and trains a cand
 ``gate`` is the never-regress promotion gate: it scores a candidate checkpoint against the
 incumbent on the held-out source-B membership and returns exactly one of three exits.
 ``check-leakage`` proves a night's training set disjoint from the held-out membership, because
-an exclusion nobody checks is a claim. And ``report`` is the morning after: it renders one
+an exclusion nobody checks is a claim. ``check-probe`` decides the night's go/no-go behind the
+probe run it names, reading the run's ledger against the pre-committed rule — the door that
+keeps a night from running behind a probe that proved nothing. And ``report`` is the morning
+after: it renders one
 night's sealed evidence into a page a person reads, sealed to that evidence and — the claim
 kept the size of what the code checks — not cryptographically signed.
 
@@ -576,6 +579,31 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    check_probe = commands.add_parser(
+        "check-probe",
+        help="decide a probe run's go/no-go from its ledger",
+        description=(
+            "Decide whether the night proceeds behind a probe run, reading the run's ledger "
+            "against the pre-committed rule "
+            "(docs/planning/p2-rollouts/night-door/runbook.md:78-80): the night proceeds iff "
+            "every draw's harness is PASS and the recorded seed map is non-empty. Exits 0 "
+            "when the rule holds; 1 on a named violation — a draw whose harness is not PASS, "
+            "or an empty seed map — and no night runs behind it; 2 on a refusal an operator "
+            "can fix by retyping: a directory that is not a probe run, a ledger that cannot "
+            "be read, an incomplete run. There is no UNVERIFIED exit: this command reads "
+            "documents rather than running anything, so it either answers or refuses."
+        ),
+    )
+    check_probe.add_argument(
+        "--run",
+        required=True,
+        type=Path,
+        metavar="<runs/id>",
+        help=(
+            "the probe run directory to decide, as a --probe night wrote it under runs/<id>/"
+        ),
+    )
+
     report = commands.add_parser(
         "report",
         help="render last night's morning report from its sealed evidence",
@@ -924,6 +952,40 @@ def run_check_leakage_cli(args: argparse.Namespace) -> int:
     return PASS_EXIT if report.clean else FAIL_EXIT
 
 
+def run_check_probe_cli(args: argparse.Namespace) -> int:
+    """Decide a probe run's go/no-go from its ledger, and say which way it points.
+
+    **The import is function-local, and it is the fifth documented edge from a guarded root
+    into an exempt package** — the `run_night` / `run_gate_cli` / `run_check_leakage_cli` /
+    `run_report_cli` shape. This one needs no `mlx_lm` and never will: it reads one run
+    directory's ledger and compares values against a verdict vocabulary, nothing else. It is
+    still function-local, because the edge's soundness argument is about the module graph of
+    `whetstone verify` and not about what any one handler happens to need today —
+    `whetstone.loop.check_probe` imports `whetstone.loop.night` for the two source names,
+    and a module-scope import here would put the night, the bake-off and `mlx_lm` on the
+    reward's own entry path. `tests/test_reward_path_scope_is_partitioned.py` asserts these
+    are the only five edges and that all five are function-local.
+
+    **The exits are the existing contract, no fifth code**: the rule holds → 0, a named
+    violation → 1 (a draw whose harness is not `PASS`, or an empty seed map — the night does
+    not run behind it, and that is a finding, not a mistyped command), and a refusal an
+    operator can fix by retyping — a directory that is not a probe run, a ledger that cannot
+    be read, an incomplete run — → 2. There is no `UNVERIFIED` exit here: this command reads
+    documents rather than running anything, so it either answers or refuses.
+    """
+    from whetstone.loop.check_probe import REFUSALS, disclosure, run_check
+
+    try:
+        report = run_check(args.run)
+    except REFUSALS as refusal:
+        print(f"whetstone check-probe: {refusal}", file=sys.stderr)
+        return USAGE_ERROR
+
+    for line in disclosure(report):
+        print(line)
+    return PASS_EXIT if report.proceed else FAIL_EXIT
+
+
 def run_report_cli(args: argparse.Namespace) -> int:
     """Render or verify a morning report, and say which artifacts it wrote.
 
@@ -1059,6 +1121,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if namespace.command == "check-leakage":
         return run_check_leakage_cli(namespace)
+
+    if namespace.command == "check-probe":
+        return run_check_probe_cli(namespace)
 
     if namespace.command == "report":
         return run_report_cli(namespace)
