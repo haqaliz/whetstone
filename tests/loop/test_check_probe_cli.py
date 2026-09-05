@@ -19,6 +19,7 @@ documents, shared by import.
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import pytest
@@ -68,7 +69,8 @@ def test_check_probe_exits_one_naming_the_violation(
 def test_check_probe_exits_two_on_a_refusal(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """AC3: refusals are 2 and name what an operator can fix — stdout stays silent, never a traceback."""
+    """AC3: refusals are 2 and name what an operator can fix — stdout stays silent, never a
+    traceback."""
     full_night = _probe_run(tmp_path / "runs" / "night-001", probe=None)
     not_a_run = _probe_run(tmp_path / "loose", ledger=False)
 
@@ -89,8 +91,6 @@ def test_check_probe_exits_two_on_a_refusal(
 
 def _check_probe_parser() -> argparse.ArgumentParser:
     """The `check-probe` subparser, observed directly so a renamed door is caught."""
-    import argparse
-
     parser = cli.build_parser()
     subparsers = [
         action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
