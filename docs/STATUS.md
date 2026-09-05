@@ -10,6 +10,34 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The launch chain's runbooks now run from the primary checkout — is done**
+(2026-09-05). Found while actually running the probe pass: all four sheets the operator still
+has to execute — the night door, the gate, the § 3 baseline measurement and the honest-number
+report — routed every command through `uv run --project …/.claude/worktrees/<unit>`, and every
+one of the seven worktrees named across the planning docs had been removed when its unit
+merged. Fifteen commands, on sheets that open by saying every command is run verbatim. Run
+verbatim today, all fifteen fail on a directory that does not exist.
+
+**The guards encoded a property that expires.** Each of the four pinned *"exactly one worktree
+is named anywhere, and it is this unit's"* — true while the unit is in flight, false the moment
+it merges and `whetstone-end` removes the worktree. The invariant died exactly when the sheet
+became needed, and no test noticed because the test was asserting the wrong thing. The four
+guards now pin that **no** worktree is named anywhere, watched failing first (five RED
+assertions, one per sheet plus the night's stale-name guard), and each unit's own worktree name
+is retired into the shared `STALE_WORKTREES` tuple — which the baseline and honest-number guards
+import from the gate guard by identity, so a name retired once is retired everywhere. The sheets
+then dropped `--project` and their headers changed from **Worktree:** to **Run from:** the
+primary checkout.
+
+**What was deliberately left alone:** the completed arms' sheets — format-hardening,
+easier-stratum, larger-base — and their guards, which still require exactly one worktree. Those
+are records of runs that already happened, on the checkouts they happened from. Rewriting them
+would falsify history to fix a command nobody is going to type again; the distinction is between
+a sheet that documents a past run and a sheet that is still an instruction.
+
+This changes no code on the reward path and reads no number. It removes the first thing that
+would have gone wrong on the operator chain.
+
 **The probe decision gate — night #1's go/no-go as a command — is done**
 (`docs/planning/probe-decision-gate/`, 2026-09-05). The night-door runbook has pre-committed
 the rule since P2 — the night proceeds iff the probe completes with the control arm `PASS` on

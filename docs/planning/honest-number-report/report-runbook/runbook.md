@@ -1,8 +1,8 @@
 # Runbook — the honest-number report render (`python -m whetstone.loop.honest_report`)
 
 **Unit:** `honest-number-report` · **Aspect:** `report-runbook` · **Branch:**
-`feat/honest-number-report/aliz` · **Worktree:**
-`/Users/aliz/dev/at/whetstone/.claude/worktrees/feat-honest-number-report`
+`feat/honest-number-report/aliz` · **Run from:**
+`/Users/aliz/dev/at/whetstone` (the primary checkout)
 
 The operator's sheet for the report render — the last step of the operator chain
 (`docs/ROADMAP.md:652-656`): § 7.3 amendment → baseline spend → night #1 → night #2 → first
@@ -15,7 +15,7 @@ night that selected something, and the gate compares two.
 Every command here is run verbatim. A sheet that disagrees with the code it runs fails after
 a night has been spent producing the candidate, so `tests/test_honest_number_runbook_guards.py`
 refuses the disagreements first: the flags are checked against `honest_report.build_parser`,
-every writable path must be absolute, exactly one worktree may be named, and the sheet must
+every writable path must be absolute, no worktree may be named, and the sheet must
 state the refusals as the refusals they are.
 
 ## What the render is
@@ -65,18 +65,15 @@ evidence may be recorded.
 **Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-honest-number-report \
-  pytest tests/loop/test_honest_report_door.py tests/bakeoff/test_honest_number_report.py tests/loop/test_promotion_record_n.py -q
+uv run pytest tests/loop/test_honest_report_door.py tests/bakeoff/test_honest_number_report.py tests/loop/test_promotion_record_n.py -q
 ```
 
 ## Step 2 — the render
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`), executing the
-branch code via its project:**
+**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-honest-number-report \
-  python -m whetstone.loop.honest_report \
+uv run python -m whetstone.loop.honest_report \
   --render \
   --baseline /Users/aliz/dev/at/whetstone/reports/baseline-measurement/report.json \
   --record /Users/aliz/dev/at/whetstone/runs/promotions/<run-id>.json \

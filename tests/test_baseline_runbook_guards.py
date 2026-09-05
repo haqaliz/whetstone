@@ -21,7 +21,7 @@ Ten properties, and the last six are this sheet's own:
 2. every flag the chain passes exists in `baseline.build_parser` — the module door's own
    parser, never `whetstone.cli`'s;
 3. every writable path the chain names is absolute;
-4. exactly one worktree is named anywhere, and no stale one survives;
+4. no worktree is named anywhere, and no stale one survives;
 5. the measured-once discipline is stated as a **refusal**, and the sheet nowhere tells the
    operator to re-measure, re-render or "confirm" the number — re-measuring until it
    flatters is selecting on the outcome, and the § 3 baseline is not re-run for any reason;
@@ -61,10 +61,6 @@ RUNBOOK = (
 #: `baseline.build_parser()` itself; `whetstone.cli` is not involved.
 DOORS = (("python -m whetstone.loop.baseline", None),)
 
-#: This unit's worktree, and every worktree an earlier unit used. A stale name in a sheet
-#: sends an operator to a directory that no longer holds the code they think they are
-#: running — the gate guard's own list, by identity.
-WORKTREE = "feat-baseline-measurement"
 
 #: Every flag the door accepts whose value is a path. All of them must be absolute — the
 #: failure that killed the measured arm on 2026-08-12 was a relative workspace, and this
@@ -239,8 +235,13 @@ def test_every_writable_path_the_chain_names_is_absolute() -> None:
             )
 
 
-def test_exactly_one_worktree_is_named_and_no_stale_one_survives() -> None:
-    """A stale worktree sends the operator to a directory that no longer holds this code."""
+def test_no_worktree_is_named_and_no_stale_one_survives() -> None:
+    """Every worktree is deleted when its unit merges, so a sheet may name none.
+
+    This guard used to require *exactly one* — this unit's — which stopped holding the
+    moment the unit merged and cleanup removed the directory. The sheet is read long
+    after its branch is gone; only the primary checkout survives.
+    """
     text = _runbook()
     named = {
         name
@@ -249,9 +250,10 @@ def test_exactly_one_worktree_is_named_and_no_stale_one_survives() -> None:
         if (name := _worktree_name(path)) is not None
     }
 
-    assert named == {WORKTREE}, (
-        f"WHY THIS IS A FAILURE: the sheet names worktree(s) {sorted(named)} and this unit's "
-        f"is {WORKTREE!r}. A sheet naming two sends the operator to whichever they read first"
+    assert named == set(), (
+        f"WHY THIS IS A FAILURE: the sheet names worktree(s) {sorted(named)}. Worktrees are "
+        "removed when their unit merges, so an operator running this sheet verbatim hits a "
+        "directory that does not exist. Run from the primary checkout, with no --project"
     )
     stale = sorted(one for one in STALE_WORKTREES if one in text)
     assert not stale, (

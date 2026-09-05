@@ -1,7 +1,7 @@
 # Runbook — the first gated evaluation (`whetstone gate`)
 
 **Unit:** `p3-promotion-gate` · **Aspect:** `gate-runbook` · **Branch:** `feat/gate-untrained-incumbent/aliz` ·
-**Worktree:** `/Users/aliz/dev/at/whetstone/.claude/worktrees/feat-gate-untrained-incumbent`
+**Run from:** `/Users/aliz/dev/at/whetstone` (the primary checkout)
 
 The operator's sheet for the first evaluation that decides whether a night's candidate may
 replace the incumbent. Every command here is run verbatim. A sheet that disagrees with the code
@@ -81,8 +81,7 @@ itself. This costs no GPU and takes a few minutes.
 **Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-gate-untrained-incumbent \
-  pytest tests/loop/test_gate.py tests/loop/test_gate_cli.py tests/loop/test_gate_retry.py -q
+uv run pytest tests/loop/test_gate.py tests/loop/test_gate_cli.py tests/loop/test_gate_retry.py -q
 ```
 
 **Halt if this is not green.** A red fixture suite means the gate is not the gate this sheet
@@ -95,8 +94,7 @@ untrained base as a `whetstone-checkpoint/1` provenance over no adapter, from th
 root's provenance — the 32B's `repo_id` and its immutable revision:
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-gate-untrained-incumbent \
-  python -c "from pathlib import Path; from whetstone.loop.ledger import tool_versions; from whetstone.loop.sft import write_baseline_checkpoint; write_baseline_checkpoint(Path('/Users/aliz/dev/at/whetstone/checkpoints/incumbent-base-001'), repo_id='mlx-community/Qwen2.5-Coder-32B-Instruct-4bit', revision='<the revision recorded in /Users/aliz/dev/at/whetstone/weights/provenance.json>', tool_versions=tool_versions())"
+uv run python -c "from pathlib import Path; from whetstone.loop.ledger import tool_versions; from whetstone.loop.sft import write_baseline_checkpoint; write_baseline_checkpoint(Path('/Users/aliz/dev/at/whetstone/checkpoints/incumbent-base-001'), repo_id='mlx-community/Qwen2.5-Coder-32B-Instruct-4bit', revision='<the revision recorded in /Users/aliz/dev/at/whetstone/weights/provenance.json>', tool_versions=tool_versions())"
 ```
 
 The directory must be empty at materialization — the writer refuses a checkpoint that would
@@ -104,12 +102,10 @@ record an adapter beside a base that never trained.
 
 ## Step 3 — the gated evaluation
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`), executing the branch
-code via its project:**
+**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-gate-untrained-incumbent \
-  whetstone gate \
+uv run whetstone gate \
   --candidate /Users/aliz/dev/at/whetstone/checkpoints/night-002 \
   --incumbent /Users/aliz/dev/at/whetstone/checkpoints/incumbent-base-001 \
   --heldout /Users/aliz/dev/at/whetstone/tasks/heldout/source-b.json \
@@ -178,8 +174,7 @@ The gate scores the held-out membership; this is what says that membership was n
 Run it over the night that produced the **candidate**:
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-gate-untrained-incumbent \
-  whetstone check-leakage \
+uv run whetstone check-leakage \
   --run /Users/aliz/dev/at/whetstone/runs/night-002 \
   --heldout /Users/aliz/dev/at/whetstone/tasks/heldout/source-b.json
 ```

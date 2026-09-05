@@ -691,7 +691,7 @@ review fixed the path to it:
     (`reports/baseline-measurement/`); the gate's incumbent counts stay in the gitignored
     promotion record. The two are the same base on the same split under greedy decoding, so
     they should agree — and a disagreement is published as a finding, never reconciled.
-- **The operator runs, in dependency order, runbooks ready**: the § 7.3 Type 1 amendment
+- **The operator runs, in dependency order, runbooks ready**<sup>†</sup>: the § 7.3 Type 1 amendment
   (the base being fine-tuned must be pinned before the night trains) → **night #1** → the
   first gated evaluation (candidate: night #1's checkpoint; incumbent: the untrained base) →
   spend the baseline → the P4 report (slice 2's door) → the finding. The night's yield and
@@ -740,3 +740,10 @@ review fixed the path to it:
 > resume can write an empty recorded seed map. The operator chain (684-688) is unchanged and
 > unblocked: night #1 → the first gated evaluation against the untrained incumbent → baseline
 > spend → P4 report → finding. The command has never been pointed at a real probe.
+
+> <sup>†</sup> **"Runbooks ready" was not true, and was corrected 2026-09-05.** All four
+> launch-chain sheets routed every command through a `uv run --project …/.claude/worktrees/<unit>`
+> target, and every worktree so named had been deleted when its unit merged — so each sheet
+> failed on its first command. The sheets now run from the primary checkout, and their guards pin
+> that no worktree is named rather than that exactly one is. The dependency order above is
+> unchanged; only the commands were broken, and only in a way nobody could see until one was run.

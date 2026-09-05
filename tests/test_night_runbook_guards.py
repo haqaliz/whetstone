@@ -20,7 +20,7 @@ Seven properties, and the last three are this sheet's own:
 1. the parse really reads the sheet (anti-vacuity);
 2. every flag the night command passes exists in the shipped parser;
 3. every writable path the night command names is absolute;
-4. exactly one worktree is named anywhere, and no stale one survives;
+4. no worktree is named anywhere, and no stale one survives;
 5. the candidate resolution names the retained candidate and excludes the other **by name**, and
    the excluded name appears in no `--only` value;
 6. the zero-strict-PASS outcome is stated as a published result rather than as a halt, and the
@@ -60,10 +60,12 @@ DOOR = "whetstone run --night"
 #: subcommand of its own (`--run <dir>`), so it is keyed here rather than by the night's DOOR.
 PROBE_CHECK = "whetstone check-probe"
 
-#: This unit's worktree, and every worktree an earlier unit used. A stale name in a sheet sends an
-#: operator to a directory that no longer holds the code they think they are running.
-WORKTREE = "feat-p2-rollouts"
+#: Every worktree any unit ever used. A worktree is removed the moment its unit merges, so a
+#: sheet that names one sends the operator to a directory that no longer exists — including the
+#: sheet's *own* unit's worktree, which is why no name here is exempt. The launch-chain sheets
+#: run from the primary checkout instead, and name no worktree at all.
 STALE_WORKTREES = (
+    "feat-p2-rollouts",
     "feat-p2-format-hardening",
     "feat-format-hardening-measurement",
     "feat-measured-arm-run",
@@ -272,8 +274,14 @@ def test_the_night_commands_writable_paths_are_absolute() -> None:
                 )
 
 
-def test_the_runbook_names_exactly_one_worktree_everywhere() -> None:
-    """One worktree, and it is this unit's. Two would mean half the sheet runs other code."""
+def test_the_runbook_names_no_worktree_anywhere() -> None:
+    """The sheet runs from the primary checkout, because every worktree is eventually deleted.
+
+    This guard used to require *exactly one* worktree — this unit's — which encoded an
+    assumption that stopped holding the moment the unit merged: cleanup removes the worktree,
+    and the sheet then pointed every command at a directory that no longer exists. The sheet is
+    read long after its branch is gone, so the only path that survives is the primary checkout.
+    """
     text = _runbook()
     named = {
         name
@@ -281,10 +289,11 @@ def test_the_runbook_names_exactly_one_worktree_everywhere() -> None:
         for path in _named_paths(line)
         if (name := _worktree_name(path)) is not None
     }
-    assert named == {WORKTREE}, (
-        f"WHY THIS IS A FAILURE: the sheet names {sorted(named)} as worktrees and this unit's is "
-        f"{WORKTREE!r}. An operator running half the commands against another branch's checkout "
-        "produces a run nothing in the evidence would explain"
+    assert named == set(), (
+        f"WHY THIS IS A FAILURE: the sheet names worktree(s) {sorted(named)}. Worktrees are "
+        "removed when their unit merges, so an operator running this sheet verbatim hits a "
+        "directory that does not exist — or, worse, whatever was left behind in it. Run from "
+        "the primary checkout: plain `uv run whetstone ...`, no --project"
     )
 
 

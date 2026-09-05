@@ -61,6 +61,26 @@ released version until it exists in the code.
 - Two `cli.py` docstring paragraphs (`run_night`, `run_gate_cli`) had lost their indentation
   and sat at column 0 inside the string. Cosmetic only — no behaviour, no rendered help text.
 
+- **Every runbook on the launch chain pointed the operator at a deleted directory.** All four
+  sheets the operator still has to run — the night door, the gate, the § 3 baseline measurement
+  and the honest-number report — routed each command through
+  `uv run --project …/.claude/worktrees/<unit>`, and all seven worktrees named across the
+  planning docs were removed when their units merged. Fifteen commands, on sheets whose own
+  opening line is *"every command here is run verbatim"*. The four sheets now run from the
+  primary checkout with a plain `uv run whetstone …`.
+
+  The guards had the right idea and the wrong invariant: each pinned *"exactly one worktree is
+  named, and it is this unit's"*, which is false the moment the unit merges and `whetstone-end`
+  removes the worktree — the property expired exactly when the sheet started being needed. The
+  four guards now pin that **no** worktree is named anywhere, and each unit's own name is
+  retired into the shared `STALE_WORKTREES` list (imported by identity by the baseline and
+  honest-number guards, so a name retired once is retired everywhere).
+
+  The completed arms' sheets — the format-hardening, easier-stratum and larger-base runs — keep
+  their worktree paths and their existing guards on purpose. Those sheets are records of runs
+  that already happened, on the checkouts they happened from; rewriting them would falsify
+  history rather than fix a command anyone is going to type.
+
 ## [0.13.0] - 2026-09-02
 
 ### Added
