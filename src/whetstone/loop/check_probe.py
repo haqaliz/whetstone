@@ -134,6 +134,7 @@ def run_check(run: Path) -> ProbeReport:
         )
     payload = read_ledger(ledger)
     _probe_of(payload, run)
+    _require_complete(payload, run)
     raise NotImplementedError
 
 
@@ -158,6 +159,43 @@ def _probe_of(payload: Mapping[str, Any], run: Path) -> int:
             "night"
         )
     return probe
+
+
+def _require_complete(payload: Mapping[str, Any], run: Path) -> None:
+    """Every declared draw, source, and journal must be present before any decision.
+
+    Journals are checked for existence only, never parsed — content is the night's own
+    record, and reading it as a bar would re-litigate what "control arm PASS" means.
+    """
+    recorded: Any = payload.get("draws_recorded", ())
+    draws = payload.get("draws")
+    if len(recorded) != draws:
+        raise IncompleteRun(
+            f"{str(run)!r} records {len(recorded)} of {draws} declared draws. Refused before "
+            "any decision: a gate over a half-recorded run proves nothing about the night"
+        )
+    for entry in recorded:
+        attempt = entry.get("attempt")
+        if not isinstance(attempt, int):
+            raise IncompleteRun(
+                f"{str(run)!r} records a draw without an attempt number. Refused rather than "
+                "skipped: a draw the gate cannot name is a draw it cannot prove complete"
+            )
+        harness = entry.get("harness") or {}
+        missing = [source for source in SOURCES if source not in harness]
+        if missing:
+            raise IncompleteRun(
+                f"draw {attempt} records no harness for {missing[0]!r}. Refused rather than "
+                "skipped: a draw whose control fold cannot be read is a draw the gate cannot "
+                "decide"
+            )
+        journal, _ = evidence_paths(run / EVIDENCE_DIR, attempt)
+        if not journal.is_file():
+            raise IncompleteRun(
+                f"draw {attempt} declares no journal at {str(journal)!r}. Refused before any "
+                "decision: a draw that left no evidence is a draw that cannot be proven to "
+                "have run"
+            )
 
 
 __all__ = [

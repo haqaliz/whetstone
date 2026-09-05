@@ -122,3 +122,38 @@ def test_an_unreadable_ledger_is_refused(tmp_path: Path) -> None:
     with pytest.raises(run_ledger.LedgerUnreadable) as refusal:
         check_probe.run_check(run)
     assert run_ledger.LEDGER_SCHEMA in str(refusal.value)
+
+
+def test_a_truncated_draws_recorded_is_incomplete(tmp_path: Path) -> None:
+    """AC6: fewer recorded draws than declared is refused, named with both counts."""
+    run = _probe_run(
+        tmp_path,
+        recorded=(
+            run_ledger.DrawRecord(attempt=1, harness=dict(_HARNESS), counts=_COUNTS),
+        ),
+    )
+
+    with pytest.raises(check_probe.IncompleteRun) as refusal:
+        check_probe.run_check(run)
+    assert "1 of 2" in str(refusal.value)
+
+
+def test_a_missing_source_is_incomplete(tmp_path: Path) -> None:
+    """AC6: a draw whose harness lacks a declared source is refused, never silently skipped."""
+    run = _probe_run(tmp_path, harness={night.PRIVATE: Status.PASS})
+
+    with pytest.raises(check_probe.IncompleteRun) as refusal:
+        check_probe.run_check(run)
+    assert "draw 1" in str(refusal.value)
+    assert night.PUBLIC in str(refusal.value)
+
+
+def test_a_missing_journal_is_incomplete(tmp_path: Path) -> None:
+    """AC7: a declared draw whose journal file is absent is refused, named with the draw."""
+    run = _probe_run(tmp_path)
+    journal, _ = run_draws.evidence_paths(run / night.EVIDENCE_DIR, 1)
+    journal.unlink()
+
+    with pytest.raises(check_probe.IncompleteRun) as refusal:
+        check_probe.run_check(run)
+    assert "draw 1" in str(refusal.value)
