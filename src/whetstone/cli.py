@@ -811,15 +811,15 @@ def run_mine(
 def run_night(args: argparse.Namespace) -> int:
     """Dispatch one night into `whetstone.loop`, print its disclosure, and return the exit code.
 
-**The import is function-local, and that is the whole design of this function.** This module
-is a guarded root (`tests/test_no_inference_on_reward_path.py`): it calls `verify_strict`, it
-is the reward's entry point, and nothing it imports may reach an inference library. The loop
-reaches `mlx_lm` legitimately, so its body lives in the EXEMPT `whetstone.loop` package and
-this file holds one of exactly five edges into it — inside the handler, so `whetstone verify`
-and `whetstone mine` never execute it and never import `mlx_lm` even transitively. That this
-edge, like the other four, is function-local, is asserted by
-`tests/test_reward_path_scope_is_partitioned.py`; a sixth such import, or any one moved to
-module scope, fails the build.
+    **The import is function-local, and that is the whole design of this function.** This module
+    is a guarded root (`tests/test_no_inference_on_reward_path.py`): it calls `verify_strict`, it
+    is the reward's entry point, and nothing it imports may reach an inference library. The loop
+    reaches `mlx_lm` legitimately, so its body lives in the EXEMPT `whetstone.loop` package and
+    this file holds one of exactly five edges into it — inside the handler, so `whetstone verify`
+    and `whetstone mine` never execute it and never import `mlx_lm` even transitively. That this
+    edge, like the other four, is function-local, is asserted by
+    `tests/test_reward_path_scope_is_partitioned.py`; a sixth such import, or any one moved to
+    module scope, fails the build.
 
     **The exit code answers "is there a candidate", and never flatters.** A night that wrote a
     checkpoint is `PASS_EXIT`. A night that did not is floored at `FAIL_EXIT` even when its own
@@ -875,10 +875,10 @@ def run_gate_cli(args: argparse.Namespace) -> int:
     second documented edge from a guarded root into an exempt package, in the `run_night`
     shape.** The gate loads a checkpoint (base + LoRA adapter) through `mlx_lm`; this file is
     the reward's entry point; the import sits inside the handler so `whetstone verify` never
-executes it and never imports `mlx_lm` even transitively. That it is one of exactly five
-such edges, and that all five are function-local, is asserted by
-`tests/test_reward_path_scope_is_partitioned.py`; a sixth such import, or any one
-moved to module scope, fails the build.
+    executes it and never imports `mlx_lm` even transitively. That it is one of exactly five
+    such edges, and that all five are function-local, is asserted by
+    `tests/test_reward_path_scope_is_partitioned.py`; a sixth such import, or any one moved to
+    module scope, fails the build.
 
     **The exit codes are the roadmap's three, mapped onto the existing four-code contract**
     (`cli.py:64-84`, no fifth): `promoted` → 0, `rejected` → 1, `UNVERIFIED` → 3. UNVERIFIED
