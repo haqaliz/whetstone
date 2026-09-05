@@ -192,3 +192,46 @@ def test_an_empty_seed_map_is_a_named_violation(tmp_path: Path) -> None:
 
     assert report.proceed is False
     assert "seed map" in report.violation
+
+
+def test_disclosure_states_the_decision_and_counts(tmp_path: Path) -> None:
+    """A proceeding probe discloses the decision and the counts it was read from."""
+    report = check_probe.run_check(_probe_run(tmp_path))
+    lines = check_probe.disclosure(report)
+
+    assert any("PROCEED" in line for line in lines), lines
+    assert any("draws: 2" in line for line in lines), lines
+    assert any("seeds: 1" in line for line in lines), lines
+
+
+def test_disclosure_names_the_violation_of_a_refused_run(tmp_path: Path) -> None:
+    """A refused probe discloses "DO NOT PROCEED" and the named violation."""
+    report = check_probe.run_check(
+        _probe_run(
+            tmp_path / "harness",
+            harness={night.PRIVATE: Status.PASS, night.PUBLIC: Status.FAIL},
+        )
+    )
+    lines = check_probe.disclosure(report)
+
+    assert any("DO NOT PROCEED" in line for line in lines), lines
+    assert any("draw 1 (public)" in line for line in lines), lines
+
+    empty = check_probe.run_check(_probe_run(tmp_path / "seeds", seeds=()))
+    seed_lines = check_probe.disclosure(empty)
+
+    assert any("DO NOT PROCEED" in line for line in seed_lines), seed_lines
+    assert any("seed map" in line for line in seed_lines), seed_lines
+
+
+def test_a_refused_disclosure_never_renders_pass_or_unverified(tmp_path: Path) -> None:
+    """A refused run's harness is never rendered — `UNVERIFIED` is never rendered as `PASS`."""
+    for run in (
+        _probe_run(
+            tmp_path / "harness",
+            harness={night.PRIVATE: Status.PASS, night.PUBLIC: Status.FAIL},
+        ),
+        _probe_run(tmp_path / "seeds", seeds=()),
+    ):
+        lines = check_probe.disclosure(check_probe.run_check(run))
+        assert not any("PASS" in line or "UNVERIFIED" in line for line in lines), lines
