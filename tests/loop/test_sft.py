@@ -24,6 +24,7 @@ from __future__ import annotations
 import inspect
 import json
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -290,9 +291,61 @@ def test_the_emitted_adapter_loads_against_the_pinned_base(tmp_path: Path) -> No
             f"no local weights at {weights} — the base snapshots are gitignored and fetched by "
             "the operator, so the round-trip can only run on the machine that holds them"
         )
-    assert hasattr(mlx, "load"), (
-        "WHY THIS IS A FAILURE: the pinned mlx-lm exposes no `load`, so the adapter round-trip "
-        "cannot be performed at all and the checkpoint's loadability is unasserted"
+    adapter = Path(__file__).resolve().parents[2] / "checkpoints" / "night-001" / sft.ADAPTER_FILE
+    if not adapter.is_file():
+        pytest.skip(
+            f"no adapter at {adapter} — checkpoints/ is gitignored, so the round-trip can only "
+            "run on a machine that has trained one"
+        )
+
+    # Sealed by the real writer, never hand-assembled. The bug this asserts against was invisible
+    # precisely because the gate's fixtures hand-write `adapter_config.json`: production wrote a
+    # bare tensor file, `load_adapters` opens that config unguarded, and the gate would have
+    # raised `FileNotFoundError` on its first real candidate.
+    directory = tmp_path / "sealed"
+    directory.mkdir()
+    shutil.copy2(adapter, directory / sft.ADAPTER_FILE)
+    sft.write_checkpoint(
+        directory,
+        repo_id="mlx-community/Qwen2.5-Coder-32B-Instruct-4bit",
+        revision="d1e3b690c8e225d7795bccddf971ca6be68b2012",
+        dataset_digest="d" * 64,
+        run_seed=20260906,
+        args=sft.TrainingArgs(),
+        tool_versions={"python": "3.12.13"},
+        valid_split="",
+        capacity=sft.CapacityProbe(
+            iters=sft.CAPACITY_PROBE_ITERS,
+            headroom_bytes=sft.CAPACITY_HEADROOM_BYTES,
+            peak_bytes=FITS,
+            seconds=1.0,
+        ),
+        backend=backend.Backend(
+            name=backend.MLX,
+            library="mlx-lm",
+            version="0.31.3",
+            device="Apple M4 Max",
+            device_memory_bytes=38654705664,
+        ),
+    )
+
+    base = weights / "Qwen2.5-Coder-32B-Instruct-4bit"
+    if not base.is_dir():
+        pytest.skip(f"no base weights at {base}")
+    loaded = mlx.load(str(base), adapter_path=str(directory))
+
+    # Asserted by module TYPE, not by module name. `linear_to_lora_layers` replaces a module at
+    # its existing key, so the path stays `q_proj` while the class becomes `LoRALinear` — a
+    # search for "lora" in the names finds nothing even on a perfectly applied adapter, which is
+    # what the first version of this check did and it reported a false failure.
+    attached = sum(
+        1 for _, module in loaded[0].named_modules() if "lora" in type(module).__name__.lower()
+    )
+    assert attached, (
+        "WHY THIS IS A FAILURE: the checkpoint loaded and NO adapter attached. "
+        "`load_weights(..., strict=False)` applies nothing rather than raising, so the gate "
+        "would score the untrained base and publish it as the candidate's result — silent, and "
+        "worse than a crash"
     )
 
 

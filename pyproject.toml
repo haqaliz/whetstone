@@ -30,7 +30,12 @@ whetstone = "whetstone.cli:main"
 mlx = ["mlx-lm>=0.31,<0.32"]
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff", "mypy"]
+# `pyyaml` is a DEV dependency, never a runtime one: the model card's frontmatter guard
+# parses the block the way the Hub parses it, and a regex over the text would assert this
+# repository's idea of YAML instead. In the dev group it is present under a plain
+# `uv sync` — so the guard actually runs in CI rather than skipping there, which is a
+# green suite in which nothing was checked. Runtime dependencies stay at zero.
+dev = ["pytest>=8", "ruff", "mypy", "pyyaml"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/whetstone"]
