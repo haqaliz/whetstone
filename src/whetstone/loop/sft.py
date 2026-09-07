@@ -464,6 +464,47 @@ def mlx_trainer(request: TrainingRequest) -> TrainingResult:
     )
 
 
+def adapter_config(args: TrainingArgs, *, repo_id: str) -> dict[str, Any]:
+    """The adapter's own configuration, in both vocabularies that read this filename.
+
+    Night #1's checkpoint directory held one file — `adapters.safetensors` — and nothing else.
+    `mlx_lm.tuner.utils.load_adapters` opens `adapter_config.json` unguarded (`utils.py:127`) and
+    `gate.py` hands it a checkpoint directory, so the promotion gate raised `FileNotFoundError`
+    on the first real candidate it was given. The never-regress mechanism could not load anything
+    this project produced. The suite did not catch it because the gate's fixtures hand-write the
+    file production never wrote.
+
+    **Two readers, one filename, no collision.** MLX dereferences `num_layers` and
+    `lora_parameters`; PEFT reads `r`, `lora_alpha`, `lora_dropout` and `base_model_name_or_path`
+    (https://huggingface.co/docs/peft/developer_guides/checkpoint). The key sets are disjoint, so
+    one document serves both — which is the difference between an adapter only this repository
+    can open and one the ecosystem can.
+
+    **The alpha is derived, not guessed.** `mlx_lm/tuner/lora.py:98` applies
+    `y + scale * (x @ lora_a @ lora_b)`; PEFT applies `y + (lora_alpha / r) * (x @ A @ B)`. So
+    the equivalent alpha is `scale * r`. Published at any other value it is a different adapter
+    from the one that trained.
+
+    `target_modules` is deliberately absent. MLX decides which modules get adapters from the
+    model at load time (`linear_to_lora_layers` computes its own keys), so this writer cannot
+    know them without the weights; they are recoverable from the adapter's own tensor names, and
+    that belongs with the publishing step rather than here, where it would be a guess.
+    """
+    return {
+        # What `mlx_lm.tuner.utils.load_adapters` dereferences.
+        "fine_tune_type": "lora",
+        "num_layers": args.lora_layers,
+        "lora_parameters": args.lora_config(),
+        # What PEFT reads. Same file, disjoint keys.
+        "peft_type": "LORA",
+        "task_type": "CAUSAL_LM",
+        "base_model_name_or_path": repo_id,
+        "r": args.lora_rank,
+        "lora_alpha": args.lora_scale * args.lora_rank,
+        "lora_dropout": args.lora_dropout,
+    }
+
+
 def write_checkpoint(
     directory: Path,
     *,
@@ -486,12 +527,27 @@ def write_checkpoint(
     in its own provenance, that it was trained without validation — which is the whole point of
     the degenerate rule. A checkpoint silent on the question reads exactly like a validated one.
     """
-    files = _hash_directory(directory)
-    if not files:
+    # The refusal comes FIRST, before this function writes anything of its own. Writing the
+    # adapter config up here instead would defeat the check outright: the directory would never
+    # be empty, and a checkpoint holding no adapter at all would seal successfully. The suite
+    # caught exactly that regression.
+    if not _hash_directory(directory):
         raise CheckpointUnverified(
             f"{str(directory)!r} holds no files to record, so this provenance would verify "
             "nothing and succeed — which reads in a review exactly like a check that passed"
         )
+
+    # Written BEFORE the digest, deliberately. Rank, scale and dropout are the difference
+    # between two adapters, so a config outside the digest could be edited afterwards and the
+    # checkpoint would still verify — the gate would re-hash successfully and then build a
+    # different adapter from the one the night trained. The directory is re-hashed rather than
+    # the first result reused, so the config is inside the digest that seals it.
+    (directory / ADAPTER_CONFIG).write_text(
+        json.dumps(adapter_config(args, repo_id=repo_id), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    files = _hash_directory(directory)
     digest = _digest_of(files)
     (directory / CHECKPOINT_FILE).write_text(
         json.dumps(
