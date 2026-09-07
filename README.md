@@ -30,10 +30,12 @@ Point Whetstone at your own repositories. Each night a local loop generates cand
 > probe decision gate. Released as [`whetstonehq`](https://pypi.org/project/whetstonehq/) on PyPI
 > by tag push, v0.3.0 onward.
 >
-> **Not measured: everything the product claims.** The nightly loop has never been run on this
-> machine or any other, so no training set, no checkpoint and no yield figure exists; the promotion
-> gate has never scored a real checkpoint; the morning report has never been rendered from a real
-> night. Every figure in this repository comes from the base-model bake-off and its follow-up arms,
+> **Not measured: everything the product claims.** The nightly loop has been run **once** —
+> night #1, 496 rollouts over 26.6 hours, with the control arm `INTACT` on every one of them —
+> and it ended without a checkpoint: the training step raised inside the pinned `mlx-lm` before
+> it wrote one. So a training set and a yield figure now exist and **no trained model does**;
+> the promotion gate has never scored a real checkpoint; the morning report has never been
+> rendered from a real night. Every figure in this repository comes from the base-model bake-off and its follow-up arms,
 > each confined to its own home under [`reports/`](reports/) — a figure about a model may appear
 > nowhere else. [`PREREGISTRATION.md`](PREREGISTRATION.md) fixed what any future number may claim
 > *before* any of them existed, which is the whole of its value.
@@ -252,9 +254,9 @@ test produced a **PASS with no patch applied at all**.
 | | |
 |---|---|
 | ✅ **Built** | The task contract, the STRICT and WEAK verifiers, the Seatbelt sandbox, the adversarial cheat corpus, the reward-path import guard, task ingestion for a private and a public source, the base-model bake-off, the pre-registration, the measurement instrumentation (a transcript of what a base actually wrote, and an offline attributor and classifier that say *why* a rollout never produced an applicable patch), **the nightly loop** (seeded rejection sampling, strict-PASS-only selection, the run ledger, LoRA-SFT behind a declared capacity probe, and the `whetstone run --night` door), **the never-regress promotion gate** with its held-out split, its declared retry discipline and its leakage check, the § 3 baseline machinery and the honest-number report writer, the signed morning report (`whetstone report --last-night`), which renders one night's sealed evidence into a page a person reads, and — new — **the probe decision gate** (`whetstone check-probe --run <runs/id>`), which turns the night door's pre-committed go/no-go into a command exit rather than an operator reading a ledger by eye |
-| 🔬 **Open question** | **What a night actually yields.** The loop's machinery is shipped and tested; it has not been run, so this repository holds no training set, no checkpoint and no yield figure. The response to a low yield is pre-committed — raise the number of draws, never loosen the check — see `docs/planning/p2-rollouts/night-door/runbook.md` |
+| 🔬 **Open question** | **What a night actually yields.** Night #1 ran 496 rollouts and selected **6** strict-`PASS` examples, 4 of them from a single task — yield is clustered, not uniformly thin. A quarter of the corpus returned `UNVERIFIED` for a structural reason (source files over the 80 000-character oracle budget), and the run wrote no checkpoint: the training step raised. The response to a low yield is pre-committed — stratify by difficulty or raise the number of draws, never loosen the check — see `docs/planning/p2-rollouts/night-door/runbook.md` |
 | ❌ **Not built** | The Next.js dashboard, and distillation into a small local model — both named post-horizon |
-| 📦 **Released** | v0.3.0 through v0.13.0, tagged and published to PyPI as `whetstonehq`; the import package and the CLI stay `whetstone`. Tag-push is the whole release mechanism (`RELEASING.md`) |
+| 📦 **Released** | v0.3.0 through v0.14.1, tagged and published to PyPI as `whetstonehq`; the import package and the CLI stay `whetstone`. Tag-push is the whole release mechanism (`RELEASING.md`) |
 
 **Platform:** macOS / Apple Silicon only today. The sandbox is Seatbelt and the runtime is MLX;
 Linux portability is named as post-horizon rather than promised.

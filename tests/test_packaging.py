@@ -60,3 +60,40 @@ def test_changelog_documents_the_released_version() -> None:
         "Either the changelog was not updated for this version, or the virtualenv is stale "
         "and predates a version bump in pyproject.toml — run `uv sync` and re-check."
     )
+
+
+def test_the_mlx_extra_pins_an_upper_bound() -> None:
+    """AC8: the runtime this project trains against is pinned at both ends, not just the floor.
+
+    ``sft.mlx_trainer``'s own docstring says it calls the trainer *"at the pinned version, with
+    the declared arguments and nothing else"*. The requirement was ``mlx-lm>=0.31`` — a floor and
+    nothing above it — so "the pinned version" named whatever the index served that morning. That
+    is the same failure the task format's ``==`` environment pins exist to prevent, on the one
+    dependency that decides what a night produces.
+
+    It is not hypothetical. ``mlx-lm`` 0.31.3 made ``config["dropout"]`` an unconditional read in
+    ``linear_to_lora_layers``; night #1 resolved to it and died there after 26.6 hours of
+    verified rollouts. An upper bound turns that class of change into a resolution failure at
+    ``uv sync`` — visible before a night starts, rather than at the end of one.
+
+    Read as text rather than parsed: ``tomllib`` landed in 3.11 and ``requires-python`` is
+    ``>=3.10``, so parsing here would narrow the supported range to satisfy a test.
+    """
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text()
+    requirements = [
+        line
+        for line in pyproject.splitlines()
+        if "mlx-lm" in line and not line.lstrip().startswith("#")
+    ]
+
+    assert requirements, (
+        "WHY THIS IS A FAILURE: no `mlx-lm` requirement was found in pyproject.toml, so this "
+        "guard is asserting nothing about a dependency that decides what every night produces"
+    )
+    for line in requirements:
+        assert "<" in line, (
+            f"WHY THIS IS A FAILURE: the mlx-lm requirement {line.strip()!r} has no upper bound, "
+            "so `the pinned version` means whatever the index served that morning. A library that "
+            "changes its LoRA config contract then breaks a night at its last step, after every "
+            "rollout has been paid for — which is exactly how night #1 was lost"
+        )

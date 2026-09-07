@@ -107,7 +107,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -441,7 +441,7 @@ name = "mlx"
 version = "0.32.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "mlx-metal", marker = "sys_platform == 'darwin'" },
+    { name = "mlx-metal" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/df/38/a034159df4d21ef7b5721225a2c46092e20a2c627724f57be3e89fa7dbce/mlx-0.32.0-cp310-cp310-macosx_14_0_arm64.whl", hash = "sha256:c6feb17e32160b70c7634aab925cf3f8c5c7bebbf99f227c48450478e1008af2", size = 562899, upload-time = "2026-07-07T17:55:25.157Z" },
@@ -1288,7 +1288,7 @@ wheels = [
 
 [[package]]
 name = "whetstonehq"
-version = "0.14.0"
+version = "0.14.1"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1304,7 +1304,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mlx-lm", marker = "extra == 'mlx'", specifier = ">=0.31" }]
+requires-dist = [{ name = "mlx-lm", marker = "extra == 'mlx'", specifier = ">=0.31,<0.32" }]
 provides-extras = ["mlx"]
 
 [package.metadata.requires-dev]

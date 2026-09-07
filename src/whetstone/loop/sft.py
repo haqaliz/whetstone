@@ -132,6 +132,18 @@ class TrainingArgs:
     #: How many transformer layers get adapters.
     lora_layers: int = 8
 
+    #: The adapter's inner dimension. Was a literal at the call site, which put a value that
+    #: decides what the adapter *is* outside the record of what trained it.
+    lora_rank: int = 8
+
+    #: How hard the adapter's output is scaled into the frozen layer.
+    lora_scale: float = 20.0
+
+    #: Adapter dropout. Zero, and stated: the pinned library reads this key unconditionally, so
+    #: an omitted default is a `KeyError` at the first training step rather than a library
+    #: default. Night #1 died on exactly that, after every rollout had been generated.
+    lora_dropout: float = 0.0
+
     #: Recompute activations instead of storing them. **Pre-committed on**, see the module
     #: docstring: turning it on after a probe failed would be tuning against the probe.
     grad_checkpoint: bool = True
@@ -156,10 +168,24 @@ class TrainingArgs:
             max_seq_length=self.max_seq_length,
             learning_rate=self.learning_rate,
             lora_layers=self.lora_layers,
+            lora_rank=self.lora_rank,
+            lora_scale=self.lora_scale,
+            lora_dropout=self.lora_dropout,
             grad_checkpoint=self.grad_checkpoint,
             grad_accumulation_steps=self.grad_accumulation_steps,
             adapter_file=self.adapter_file,
         )
+
+    def lora_config(self) -> dict[str, Any]:
+        """The adapter's shape, in the mapping `mlx_lm.tuner.utils.linear_to_lora_layers` reads.
+
+        Built from the recorded fields rather than written as a literal beside the call. The
+        literal it replaces (`{"rank": 8, "scale": 20.0}`) was wrong in both directions at once:
+        it omitted `dropout`, which the pinned library subscripts unconditionally, and it kept
+        rank and scale out of `recorded()` — so a checkpoint's provenance named every training
+        hyper-parameter except the two that decide what the adapter is.
+        """
+        return {"rank": self.lora_rank, "scale": self.lora_scale, "dropout": self.lora_dropout}
 
     def recorded(self) -> dict[str, Any]:
         """The arguments as plain JSON types, for the checkpoint's provenance."""
@@ -169,6 +195,9 @@ class TrainingArgs:
             "max_seq_length": self.max_seq_length,
             "learning_rate": self.learning_rate,
             "lora_layers": self.lora_layers,
+            "lora_rank": self.lora_rank,
+            "lora_scale": self.lora_scale,
+            "lora_dropout": self.lora_dropout,
             "grad_checkpoint": self.grad_checkpoint,
             "grad_accumulation_steps": self.grad_accumulation_steps,
             "adapter_file": self.adapter_file,
@@ -347,6 +376,32 @@ def train(
     return trainer(request)
 
 
+def training_datasets(data: Path, tokenizer: Any) -> tuple[Any, Any]:
+    """The night's train and validation sets, wrapped the way the library's trainer indexes them.
+
+    `load_local_dataset` returns bare `TextDataset`s whose `__getitem__` hands back the raw
+    record, while `iterate_batches` sorts by `len(dataset[idx][0])` — so an unwrapped set raises
+    `KeyError: 0` on the first batch. `CacheDataset` is what applies `process()` and turns each
+    record into the `(tokens, offset)` pair the trainer indexes, which is why `mlx_lm/lora.py`
+    wraps both sets before calling `train`. Composing the library's parts by hand means composing
+    that wrapper too; night #1 is what leaving it out costs.
+
+    Extracted from `mlx_trainer` so the shape can be asserted without weights or a GPU. The
+    trainer itself cannot be — it needs 18 GiB and an engine — so the seam is drawn exactly where
+    the untestable part begins.
+
+    `(train, valid, test)`; a subset whose file was never written comes back **empty**, and the
+    library's own loop reads `if val_dataset and ...`. So a night below the valid-split floor
+    wrote no `valid.jsonl`, gets an empty validation set here, and the trainer prints no
+    validation loss at all — which is the honest rendering of "no valid split". Pointing it at
+    the training set instead would print a number labelled `Val loss` that is not one.
+    """
+    from mlx_lm.tuner.datasets import CacheDataset, load_local_dataset
+
+    datasets = load_local_dataset(data, tokenizer, {})
+    return CacheDataset(datasets[0]), CacheDataset(datasets[1])
+
+
 def mlx_trainer(request: TrainingRequest) -> TrainingResult:
     """`mlx_lm.lora.train` at the pinned version, with the declared arguments and nothing else.
 
@@ -355,8 +410,8 @@ def mlx_trainer(request: TrainingRequest) -> TrainingResult:
     trains is what `write_local` wrote — a second in-memory path would let the files and the
     training diverge with nothing comparing them.
     """
+    import mlx.core as mx
     from mlx.optimizers import Adam
-    from mlx_lm.tuner.datasets import load_local_dataset
     from mlx_lm.tuner.trainer import TrainingArgs as MlxTrainingArgs
     from mlx_lm.tuner.trainer import train as lora_train
     from mlx_lm.tuner.utils import linear_to_lora_layers
@@ -375,20 +430,18 @@ def mlx_trainer(request: TrainingRequest) -> TrainingResult:
     tokenizer: Any = loaded[1]
 
     model.freeze()
-    linear_to_lora_layers(model, request.args.lora_layers, {"rank": 8, "scale": 20.0})
+    linear_to_lora_layers(model, request.args.lora_layers, request.args.lora_config())
 
-    # `(train, valid, test)`; a subset whose file was never written comes back **empty**, and the
-    # library's own loop reads `if val_dataset and ...`. So a night below the valid-split floor
-    # wrote no `valid.jsonl`, gets an empty validation set here, and the trainer prints no
-    # validation loss at all — which is the honest rendering of "no valid split". Pointing it at
-    # the training set instead would print a number labelled `Val loss` that is not one.
-    datasets = load_local_dataset(request.data, tokenizer, {})
+    train_dataset, val_dataset = training_datasets(request.data, tokenizer)
+    # Reset before the step so the peak read afterwards belongs to THIS training run and not to
+    # whatever the process allocated loading the weights in a previous one.
+    mx.reset_peak_memory()
     started = time.perf_counter()
     lora_train(
         model=model,
         optimizer=Adam(learning_rate=request.args.learning_rate),
-        train_dataset=datasets[0],
-        val_dataset=datasets[1],
+        train_dataset=train_dataset,
+        val_dataset=val_dataset,
         args=MlxTrainingArgs(
             batch_size=request.args.batch_size,
             iters=request.args.iters,
@@ -398,7 +451,10 @@ def mlx_trainer(request: TrainingRequest) -> TrainingResult:
             grad_accumulation_steps=request.args.grad_accumulation_steps,
         ),
     )
-    return TrainingResult(peak_bytes=peak_bytes(), seconds=time.perf_counter() - started)
+    return TrainingResult(
+        peak_bytes=training_peak_bytes(mlx_peak=int(mx.get_peak_memory()), resident=peak_bytes()),
+        seconds=time.perf_counter() - started,
+    )
 
 
 def write_checkpoint(
@@ -558,6 +614,30 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
             "night does not"
         )
     return Checkpoint(directory=directory, digest=digest, files=recorded, untrained=untrained)
+
+
+def training_peak_bytes(*, mlx_peak: int, resident: int) -> int:
+    """The memory a training step actually held: the larger of the allocator's peak and RSS.
+
+    `peak_bytes()` alone was the defect. It reads `ru_maxrss` — *resident* bytes — and MLX
+    allocates through Metal, where the buffers are largely invisible to RSS. On the first real
+    run of the fixed trainer `mlx_lm` reported a 22.994 GB peak while `peak_bytes()` returned
+    8.83 GiB: the capacity guard was under-measuring the quantity it exists to bound by 2.6x, and
+    writing that number into a checkpoint's provenance as a capacity finding.
+
+    It answered `fits` correctly anyway, which is why nothing surfaced it — the guard was wrong
+    and the decision was right. A wider adapter or a longer sequence would have had it answer
+    `fits` on the way into swap.
+
+    **An instrument correction, not a tuned threshold.** `CAPACITY_HEADROOM_BYTES` and
+    `CAPACITY_PROBE_ITERS` are untouched and still declared before any run; only the quantity
+    compared against them changes, to the one that was always meant.
+
+    `max` rather than a sum: on unified memory both readings draw from the same pool, so adding
+    them double-counts whatever part of the Metal buffers is also resident. The weights are
+    themselves MLX arrays, so the allocator's peak dominates in practice.
+    """
+    return max(mlx_peak, resident)
 
 
 def peak_bytes() -> int:
