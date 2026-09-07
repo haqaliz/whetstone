@@ -912,12 +912,12 @@ control arm was `INTACT` on **496 of 496 draws**: the reference patch `PASS`, th
 tree `FAIL`, every time. That is the property the verifier exists to hold, and it held for a
 day without a single break. Three rollouts hit the 900-second ceiling and were capped, as
 designed. The night selected **6 strict-`PASS` training examples**, 4 of them from one task
-(`contig-c6e4d4c4de87`, which solved 4 of its 8 draws while 49 other verifiable tasks solved
+(`contig-c6e4d4c4de87`, which solved 4 of its 8 draws while 47 of the other 49 verifiable tasks solved
 none) — the first evidence that yield is *clustered* rather than uniformly thin, which is what
 the roadmap's pre-committed "stratify by difficulty" response would exploit. 102 rollouts came
 back `UNVERIFIED`, 96 of them from **12 tasks whose source files exceed the 80 000-character
-oracle budget** — a quarter of the corpus that cannot produce a training example regardless of
-what the model writes, decided before generation starts.
+oracle budget** — 19% of the corpus (96 of 496 rollouts) that cannot produce a training example
+regardless of what the model writes, decided before generation starts.
 
 **Then it died.** `mlx_lm.tuner.utils.to_lora` reads `config["dropout"]` unconditionally at the
 pinned version; the call site passed a literal `{"rank": 8, "scale": 20.0}`; the capacity probe
