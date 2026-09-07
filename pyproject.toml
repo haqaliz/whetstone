@@ -9,7 +9,7 @@ build-backend = "hatchling.build"
 # `__version__` resolves the DISTRIBUTION name, so changing one without the other breaks it
 # loudly.
 name = "whetstonehq"
-version = "0.14.0"
+version = "0.14.1"
 description = "A model that trains itself overnight — and proves it didn't cheat."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,7 +27,7 @@ whetstone = "whetstone.cli:main"
 # Optional, never a dev dependency: the test suite must not depend on mlx. CI installs
 # this group on macOS solely to prove it resolves AND imports — `mlx-lm` declares
 # `mlx; platform_system == "Darwin"`, so off Darwin it installs with no engine behind it.
-mlx = ["mlx-lm>=0.31"]
+mlx = ["mlx-lm>=0.31,<0.32"]
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff", "mypy"]

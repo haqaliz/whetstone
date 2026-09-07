@@ -21,7 +21,9 @@ adapter round-trip — skips loudly, naming what is missing.
 
 from __future__ import annotations
 
+import inspect
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -278,3 +280,197 @@ def test_the_emitted_adapter_loads_against_the_pinned_base(tmp_path: Path) -> No
         "WHY THIS IS A FAILURE: the pinned mlx-lm exposes no `load`, so the adapter round-trip "
         "cannot be performed at all and the checkpoint's loadability is unasserted"
     )
+
+
+def test_the_lora_config_supplies_every_key_the_library_requires() -> None:
+    """AC4: the LoRA configuration handed to `mlx_lm` carries every key `mlx_lm` subscripts.
+
+    Night #1 died here after 26.6 hours of verified rollouts. The call site passed a literal
+    `{"rank": 8, "scale": 20.0}` and the pinned `mlx_lm.tuner.utils.to_lora` reads
+    `config["dropout"]` **unconditionally**, so the capacity probe raised `KeyError: 'dropout'`
+    before a single training step — with every draw already generated and paid for.
+
+    The guard reads the library's own source for the keys it subscripts rather than restating a
+    list here, because a list restated in a test drifts from the library the same way the literal
+    drifted from it: silently, and only on the night that matters. `config.get(...)` keys are
+    excluded deliberately — those the library supplies a default for, and demanding them would
+    pin an interface the library does not actually require.
+    """
+    utils = pytest.importorskip(
+        "mlx_lm.tuner.utils",
+        reason=(
+            "the `mlx` extra is not installed, so the library's own requirements cannot be read. "
+            "This is CI's state by design (`uv sync` omits the extra); run `uv sync --extra mlx` "
+            "on macOS / Apple Silicon to exercise it"
+        ),
+    )
+    source = inspect.getsource(utils.linear_to_lora_layers)
+    required = set(re.findall(r'config\["(\w+)"\]', source))
+    assert required, (
+        "WHY THIS IS A FAILURE: no `config[...]` subscript was found in the pinned "
+        "`linear_to_lora_layers`, so this guard is asserting nothing. The library's shape changed "
+        "and the guard must be re-read against it rather than left passing vacuously"
+    )
+
+    supplied = set(sft.TrainingArgs().lora_config())
+
+    assert required <= supplied, (
+        f"WHY THIS IS A FAILURE: the pinned mlx_lm subscripts {sorted(required)} on the LoRA "
+        f"config and this repository supplies {sorted(supplied)}. The missing key(s) "
+        f"{sorted(required - supplied)} raise `KeyError` inside the capacity probe — after every "
+        "rollout of the night has been generated, and before any of them can be trained on"
+    )
+
+
+def test_the_lora_shape_travels_into_the_checkpoints_provenance(tmp_path: Path) -> None:
+    """AC5: rank, scale and dropout are recorded, like every other value that decides training.
+
+    The module's own contract is that *everything that decides what is trained* is fixed at
+    construction and written into provenance. Rank and scale were neither: they lived as a literal
+    at the call site, so two checkpoints trained at different ranks carried provenance documents
+    that agreed in every field. A gate comparing them would be comparing an unrecorded variable.
+    """
+    checkpoint = _written(tmp_path)
+    recorded = json.loads((checkpoint.directory / sft.CHECKPOINT_FILE).read_text())
+    args = recorded["training_args"]
+
+    for key in ("lora_rank", "lora_scale", "lora_dropout"):
+        assert key in args, (
+            f"WHY THIS IS A FAILURE: {key!r} decides what the adapter is and the checkpoint's "
+            f"provenance does not name it. Got {sorted(args)}. Two candidates trained at "
+            "different LoRA shapes would produce provenance documents that agree in every field"
+        )
+
+
+def test_the_capacity_probe_preserves_the_lora_shape(tmp_path: Path) -> None:
+    """AC6: only `iters` may differ between the probe and the night, the LoRA shape included.
+
+    `replace_iters` enumerates its fields, so a field added to `TrainingArgs` and forgotten here
+    silently reverts to its default in the probe — and the probe would then measure the peak of a
+    configuration the night does not run. Rank is exactly such a field: it drives adapter size,
+    which is what the probe exists to measure.
+    """
+    shaped = sft.TrainingArgs(lora_rank=4, lora_scale=8.0, lora_dropout=0.25)
+    probed = shaped.replace_iters(sft.CAPACITY_PROBE_ITERS)
+
+    assert probed.lora_config() == shaped.lora_config(), (
+        f"WHY THIS IS A FAILURE: the probe runs LoRA config {probed.lora_config()} and the night "
+        f"runs {shaped.lora_config()}. A probe of a different adapter shape measures a peak for a "
+        "configuration nothing trains"
+    )
+
+
+def test_the_datasets_are_wrapped_the_way_the_trainer_indexes_them(tmp_path: Path) -> None:
+    """AC9: what reaches `lora_train` answers `dataset[i][0]`, which is how it reads lengths.
+
+    The second defect behind night #1, found only by running the real trainer on the real base.
+    `load_local_dataset` returns a bare `TextDataset` whose `__getitem__` hands back the raw
+    record — `{"text": ...}` — while `iterate_batches` sorts by `len(dataset[idx][0])`. Indexing
+    a dict with `0` raises `KeyError: 0`, so training died on its first batch. The library's own
+    entry point never hits this because `mlx_lm/lora.py:299-300` wraps both sets in
+    `CacheDataset`, which is what applies `process()` and turns each record into the
+    `(tokens, offset)` pair the trainer indexes. This repository composed the library's parts by
+    hand and left that wrapper out.
+
+    Asserted by evaluating the trainer's own expression rather than by checking the wrapper's
+    type: a future version that changes how it indexes would still be caught, and a wrapper
+    renamed but equivalent would not fail for the wrong reason.
+    """
+    pytest.importorskip(
+        "mlx_lm.tuner.datasets",
+        reason=(
+            "the `mlx` extra is not installed, so the library's dataset shapes cannot be "
+            "exercised. This is CI's state by design (`uv sync` omits the extra); run "
+            "`uv sync --extra mlx` on macOS / Apple Silicon"
+        ),
+    )
+
+    class _Tokenizer:
+        """Only what `TextDataset.process` touches."""
+
+        eos_token_id = 2
+
+        def encode(self, text: str) -> list[int]:
+            return [1] * max(1, len(text.split()))
+
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "train.jsonl").write_text(
+        '{"text": "a diff and the prompt that produced it"}\n{"text": "another one"}\n'
+    )
+
+    train, valid = sft.training_datasets(data, _Tokenizer())
+
+    assert len(train) == 2, f"WHY THIS IS A FAILURE: the loader read {len(train)} of 2 records"
+    # Verbatim `mlx_lm.tuner.trainer.iterate_batches`' own `len_fn`. If this raises, training
+    # dies on its first batch — after every rollout of the night has been generated and paid for.
+    assert len(train[0][0]) > 0, (
+        "WHY THIS IS A FAILURE: `dataset[0][0]` did not yield tokens. This is exactly the "
+        "expression `iterate_batches` sorts by, so a dataset that fails it kills training at its "
+        "first batch — which is where night #1's 26.6 hours went the second time"
+    )
+    assert not valid, (
+        "WHY THIS IS A FAILURE: no `valid.jsonl` was written and the validation set is truthy, "
+        "so the trainer would print a `Val loss` computed over something that is not one"
+    )
+
+
+def test_the_capacity_peak_counts_the_gpu_allocator_not_just_resident_bytes() -> None:
+    """AC10: the probe's peak measures the memory training actually holds.
+
+    `peak_bytes()` reads `ru_maxrss` — the process's *resident* bytes. MLX allocates through
+    Metal, and those buffers are largely invisible to RSS, so the number the capacity probe
+    recorded was not the number the capacity probe exists to bound. Observed on the first real
+    run of the fixed trainer: `mlx_lm` reported a peak of **22.994 GB** while `peak_bytes()`
+    returned **8.83 GiB** — a 2.6x under-measurement, written into a checkpoint's provenance as
+    a capacity finding.
+
+    It happened to say `fits` correctly (23 GB against a declared 30.6 GiB ceiling on a 36 GB
+    machine), which is the dangerous case: the guard was wrong and the decision was right, so
+    nothing surfaced it. A larger base, a longer sequence or a wider adapter would have had it
+    answer `fits` on the way into swapping at three in the morning.
+
+    **This corrects an instrument, it does not tune a threshold.** `CAPACITY_HEADROOM_BYTES`
+    and `CAPACITY_PROBE_ITERS` are unchanged and still declared before any run; what changes is
+    that the quantity compared against them is now the one that was always meant.
+
+    `max` rather than a sum: on unified memory both readings draw from the same pool and the
+    portion of Metal buffers that *is* resident would be double-counted by adding them. The
+    weights themselves are MLX arrays, so the allocator's peak already dominates.
+    """
+    gib = 1024**3
+
+    observed = sft.training_peak_bytes(mlx_peak=23 * gib, resident=9 * gib)
+    assert observed == 23 * gib, (
+        f"WHY THIS IS A FAILURE: the allocator peaked at 23 GiB, the process was resident at 9, "
+        f"and the recorded peak is {observed / gib:.1f} GiB. A capacity guard that reports the "
+        "smaller of the two answers `fits` on the way into swap"
+    )
+    assert sft.training_peak_bytes(mlx_peak=0, resident=9 * gib) == 9 * gib, (
+        "WHY THIS IS A FAILURE: with no allocator reading available the resident bytes are the "
+        "only measurement there is, and dropping them would report a peak of zero"
+    )
+
+
+def test_the_pinned_runtime_still_exposes_the_allocator_reading() -> None:
+    """AC11: the reading AC10 depends on exists in the pinned runtime.
+
+    Asserted rather than assumed, for the reason night #1 exists: this repository already lost a
+    day to a library contract that had moved while a call site had not. If these disappear, the
+    capacity probe silently falls back to resident bytes — which is the defect AC10 just closed,
+    returning without a sound.
+    """
+    mx = pytest.importorskip(
+        "mlx.core",
+        reason=(
+            "the `mlx` extra is not installed, so the allocator's API cannot be checked. This is "
+            "CI's state by design (`uv sync` omits the extra); run `uv sync --extra mlx` on "
+            "macOS / Apple Silicon"
+        ),
+    )
+    for name in ("get_peak_memory", "reset_peak_memory"):
+        assert hasattr(mx, name), (
+            f"WHY THIS IS A FAILURE: the pinned mlx exposes no `{name}`, so the capacity probe "
+            "cannot read what training actually allocated and falls back to resident bytes — "
+            "the 2.6x under-measurement that AC10 closed"
+        )

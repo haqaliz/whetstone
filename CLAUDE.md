@@ -31,9 +31,14 @@ This file orients a coding agent working in this repository. Read it first.
 > **1 eligible instance of 300** — `pallets__flask-4045` — with all 299 refusals ledgered.
 > **One instance is not a public benchmark set and must never be quoted as one.**
 >
-> **Not built, and not measured.** The nightly loop has **never been run**, so no training
-> set, checkpoint or yield figure exists — and the gate has therefore **never run on real
-> checkpoints**. Its exits and refusals are proven against fixtures only — as are
+> **Run once, and still without a model.** Night #1 (2026-09-05 → 09-07) was the loop's first
+> real execution: 496 rollouts over 26.6 hours, the control arm `INTACT` on **496 of 496
+> draws**, 6 strict-`PASS` examples selected — and then `KeyError: 'dropout'` from the pinned
+> `mlx-lm` inside the capacity probe, so **no checkpoint was written and no model has been
+> trained**. The three defects behind that are fixed in 0.14.1 (`docs/STATUS.md`), including
+> the one that mattered: a night's ledger is now written even when training raises, so 26
+> hours of verified rollouts can never again be lost to an exception in the final minutes.
+> The gate has therefore **still never run on real checkpoints**. Its exits and refusals are proven against fixtures only — as are
 > `check-probe`'s, which has never been pointed at a real probe. `R = 3` is
 > declared a priori because there is no observed unverified rate to set it from. Cheat 6
 > and cheat 10 remain **documented residuals**. Cuts v0.3.0 onward publish `whetstonehq`

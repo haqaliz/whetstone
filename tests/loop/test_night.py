@@ -323,3 +323,56 @@ def test_a_second_candidate_is_refused_rather_than_resolved(tmp_path: Path) -> N
             ),
         )
     assert "--only" in str(refused.value), refused.value
+
+
+def test_a_training_failure_still_writes_the_nights_ledger(tmp_path: Path) -> None:
+    """AC7: the evidence outlives the training step, whatever the training step does.
+
+    Night #1 generated 496 rollouts over 26.6 hours, every control INTACT, and then raised
+    `KeyError` inside the capacity probe. The ledger is written *after* training, so the
+    exception took the whole night's record with it: no ledger, therefore no morning report, no
+    `check-leakage`, and nothing the gate could ever read. Twenty-six hours of verified work
+    became unrenderable because a library call in the final minutes raised the wrong exception
+    type.
+
+    `CapacityExceeded` was already handled this way, and the docstring's reason generalises
+    exactly: *a night that discovered its own machine cannot train is a night whose evidence is
+    worth keeping*. So is a night that discovered its own trainer is broken. The night still
+    emits no candidate and still refuses to reduce to `PASS` — the failure is recorded, never
+    absorbed.
+    """
+
+    def exploding_trainer(request: sft.TrainingRequest) -> sft.TrainingResult:
+        raise KeyError("dropout")
+
+    night = _night(tmp_path, trainer=exploding_trainer)
+
+    assert night.checkpoint is None, (
+        "WHY THIS IS A FAILURE: the trainer raised and a candidate was emitted anyway"
+    )
+    assert night.ledger.is_file(), (
+        f"WHY THIS IS A FAILURE: the trainer raised and {str(night.ledger)!r} was never written, "
+        "so every draw the night generated is unreadable by the morning report, by "
+        "`check-leakage` and by the gate. The evidence must outlive the training step"
+    )
+    assert "dropout" in night.checkpoint_absent, (
+        "WHY THIS IS A FAILURE: the night wrote no candidate and does not name what stopped it. "
+        f"An operator cannot tell a broken trainer from a zero-yield night. Got "
+        f"{night.checkpoint_absent!r}"
+    )
+    recorded = run_ledger.read(night.ledger)
+    assert recorded["checkpoint"]["digest"] is None and recorded["checkpoint"]["absent"], (
+        f"WHY THIS IS A FAILURE: the ledger does not record why the candidate is missing. Got "
+        f"{recorded['checkpoint']!r}"
+    )
+    # `night.status` is the DRAWS' reduction and legitimately stays PASS here — every draw
+    # solved its task. The "no candidate never exits 0" contract lives one layer up, where
+    # `cli.run_night` floors a checkpoint-less night at `FAIL_EXIT` (`cli.py:862-868`). What
+    # belongs here is the property that was actually lost: the evidence is whole.
+    assert len(recorded["draws_recorded"]) == DRAWS, (
+        f"WHY THIS IS A FAILURE: the trainer raised and the ledger recorded "
+        f"{len(recorded['draws_recorded'])} of {DRAWS} draws. The point of writing the ledger "
+        "anyway is "
+        "that the rollouts — the expensive, irreplaceable half of a night — survive a failure in "
+        "the training step, which is minutes and re-runnable"
+    )

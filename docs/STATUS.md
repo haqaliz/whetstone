@@ -901,9 +901,81 @@ refusals, its determinism and its three gate renderings are proven against fixtu
 fixture promotion records — the gate's own posture. No operator runbook was written for it: it
 is one invocation, no GPU spend and no ordering hazard, so a sheet would restate `--help`.
 
-**What is not built.** The nightly loop has never been *run*, so no training set, checkpoint
-or yield figure exists yet — and **the gate has therefore never been run on real
-checkpoints**. Its three exits, its retry discipline and its refusals are proven against
+**Night #1 was run, and it failed at its last step** (2026-09-05 → 2026-09-07). The first real
+execution of the nightly loop. It is recorded here because the run happened, not because it
+produced a claim: nothing below is a pre-registered measurement, `PREREGISTRATION.md` § 3 is
+still unspent, and no delta about a model exists or is asserted.
+
+**What the run did.** 496 rollouts — 62 tasks × 8 draws, the 5 `--dev-subset` tasks held out —
+across 26.6 hours of generation on `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit`. Every
+control arm was `INTACT` on **496 of 496 draws**: the reference patch `PASS`, the unpatched
+tree `FAIL`, every time. That is the property the verifier exists to hold, and it held for a
+day without a single break. Three rollouts hit the 900-second ceiling and were capped, as
+designed. The night selected **6 strict-`PASS` training examples**, 4 of them from one task
+(`contig-c6e4d4c4de87`, which solved 4 of its 8 draws while 47 of the other 49 verifiable tasks solved
+none) — the first evidence that yield is *clustered* rather than uniformly thin, which is what
+the roadmap's pre-committed "stratify by difficulty" response would exploit. 102 rollouts came
+back `UNVERIFIED`, 96 of them from **12 tasks whose source files exceed the 80 000-character
+oracle budget** — 19% of the corpus (96 of 496 rollouts) that cannot produce a training example
+regardless of what the model writes, decided before generation starts.
+
+**Then it died.** `mlx_lm.tuner.utils.to_lora` reads `config["dropout"]` unconditionally at the
+pinned version; the call site passed a literal `{"rank": 8, "scale": 20.0}`; the capacity probe
+raised `KeyError: 'dropout'` before a single training step. **No checkpoint was written, and
+there is still no trained model.** Three defects, in increasing order of what they cost:
+
+1. **The missing key** — a literal at the call site that the library's contract had moved past.
+2. **The literal itself** — rank and scale decided what the adapter *is* and were not in
+   `TrainingArgs`, so they never reached `recorded()`. The checkpoint's provenance named every
+   training hyper-parameter except the two that define the adapter. Now `TrainingArgs.lora_rank`,
+   `lora_scale` and `lora_dropout`, built into the library's mapping by `lora_config()` and
+   carried through `replace_iters` so the capacity probe measures the shape the night runs.
+3. **The ledger was written last** — and this is the one that cost 26.6 hours. Any exception
+   escaping `_train` took the night's entire record with it: no ledger, therefore no morning
+   report, no `check-leakage`, and nothing the gate could read. `CapacityExceeded` was already
+   handled as a recorded outcome, and its stated reason — *a night that discovered its own
+   machine cannot train is a night whose evidence is worth keeping* — generalises without
+   amendment to a night that discovered its own trainer is broken. Training failures are now
+   recorded as the named reason there is no candidate; the night still emits none, and
+   `cli.run_night` still floors it at `FAIL_EXIT`.
+
+**A second defect sat directly behind the first.** With `dropout` supplied, the LoRA layers
+applied and training started — and died on its first batch with `KeyError: 0`.
+`load_local_dataset` returns bare `TextDataset`s whose `__getitem__` hands back the raw record,
+while `iterate_batches` sorts by `len(dataset[idx][0])`. `mlx_lm/lora.py:299-300` wraps both
+sets in `CacheDataset` before calling `train`; this repository composed the library's parts by
+hand and left that wrapper out. Now `sft.training_datasets()`, with the guard asserting the
+trainer's own indexing expression rather than the wrapper's type. **Neither defect was
+reachable from the suite**: every test of the training path runs a stub trainer, by design, and
+the stub cannot fail the way the library does. Both were found by pointing the real
+`mlx_trainer` at the real base — a step now taken before a night is started, never after.
+
+**And running it revealed a third defect, in a safety mechanism.** With training finally
+working end to end on the real base, `mlx_lm` reported a peak of 22.994 GB where this
+repository's capacity probe recorded 8.83 GiB — `peak_bytes()` reads `ru_maxrss`, and MLX's
+Metal buffers are largely invisible to RSS. The guard was under-measuring the quantity it
+exists to bound by 2.6x and writing that figure into provenance as a capacity finding. It
+answered `fits` correctly regardless (23 GB against the declared 30.6 GiB ceiling), which is
+exactly why it had never surfaced. `sft.training_peak_bytes()` now takes the larger of the
+allocator's peak and RSS. **The declared constants did not move**: this corrects an instrument,
+it does not tune a threshold.
+
+**And the pin was never a pin.** `sft.mlx_trainer`'s docstring says it calls the trainer *"at
+the pinned version"*; the requirement was `mlx-lm>=0.31`, a floor and nothing above it, so "the
+pinned version" meant whatever the index served that morning. It is now `>=0.31,<0.32`, and
+`tests/test_packaging.py` refuses a requirement with no upper bound — the same discipline the
+task format's `==` environment pins already apply, on the one dependency that decides what a
+night produces.
+
+**The guard that would have caught it reads the library, not a list.**
+`test_the_lora_config_supplies_every_key_the_library_requires` introspects the pinned
+`linear_to_lora_layers` for the keys it subscripts and asserts this repository supplies all of
+them, skipping loudly without the `mlx` extra. A list of required keys restated in a test would
+have drifted from the library exactly the way the literal did.
+
+**What is not built.** The nightly loop has now been run once (above), so a training set and
+a yield figure exist — but **no checkpoint does**, because the training step raised before it
+wrote one, and **the gate has therefore still never been run on real checkpoints**. Its three exits, its retry discipline and its refusals are proven against
 fixture checkpoints, the stub engine and a simulated wobble; whether the gate can *fire* on a
 real machine is unmeasured, and the roadmap's response if it cannot is a more reliable
 sandbox, never a looser gate. `R = 3` is declared a priori for the same reason: there is no

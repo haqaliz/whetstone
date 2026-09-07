@@ -9,6 +9,69 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [0.14.1] - 2026-09-07
+
+### Fixed
+
+- **Night #1's training step, and the three defects behind it.** The first real run of the
+  nightly loop generated 496 rollouts over 26.6 hours with every control arm `INTACT` on 496 of
+  496 draws, selected 6 strict-`PASS` training examples — and then raised `KeyError: 'dropout'`
+  inside the capacity probe, before a single training step. No checkpoint was written.
+  `mlx_lm.tuner.utils.to_lora` subscripts `config["dropout"]` unconditionally at the pinned
+  version and the call site passed a literal `{"rank": 8, "scale": 20.0}`.
+- **The training sets are wrapped the way the trainer indexes them.** A second defect, hidden
+  directly behind the first and reachable only once the `KeyError: 'dropout'` was gone.
+  `load_local_dataset` returns bare `TextDataset`s whose `__getitem__` hands back the raw record,
+  while `mlx_lm.tuner.trainer.iterate_batches` sorts by `len(dataset[idx][0])` — indexing a dict
+  with `0`, which raises `KeyError: 0` on the first batch. The library's own entry point never
+  meets this because `mlx_lm/lora.py:299-300` wraps both sets in `CacheDataset`, which applies
+  `process()` and yields the `(tokens, offset)` pairs the trainer expects; this repository
+  composed the library's parts by hand and left the wrapper out. Now `sft.training_datasets()`,
+  extracted so the shape is assertable without weights — the seam drawn exactly where the
+  untestable part begins.
+- **The LoRA shape is now recorded, because it decides what is trained.** `rank` and `scale`
+  lived as a literal beside the call rather than in `TrainingArgs`, so they never reached
+  `recorded()` — a checkpoint's provenance named every training hyper-parameter except the two
+  that define the adapter, and two candidates trained at different ranks would have produced
+  provenance documents that agree in every field. Now `lora_rank`, `lora_scale` and
+  `lora_dropout` are fields, assembled into the library's mapping by `TrainingArgs.lora_config()`
+  and carried through `replace_iters()` so the capacity probe measures the shape the night runs.
+- **A night's evidence now outlives its training step.** The ledger is written after training,
+  so any exception escaping `_train` took the whole night's record with it: no ledger, therefore
+  no morning report, no `check-leakage`, and nothing the promotion gate could read. 26.6 hours of
+  verified rollouts became unrenderable because a library call in the final minutes raised the
+  wrong exception type. `CapacityExceeded` was already handled as a *recorded outcome* for a
+  reason that generalises without amendment — *a night that discovered its own machine cannot
+  train is a night whose evidence is worth keeping* — and so is a night that discovered its own
+  trainer is broken. The failure's type and message are now the stated reason there is no
+  candidate. Nothing is absorbed: the night still emits no checkpoint, and `cli.run_night` still
+  floors a candidate-less night at `FAIL_EXIT`.
+- **The capacity probe measured the wrong memory.** `peak_bytes()` reads `ru_maxrss` — the
+  process's *resident* bytes — and MLX allocates through Metal, where the buffers are largely
+  invisible to RSS. On the first real run of the fixed trainer `mlx_lm` reported a peak of
+  **22.994 GB** while the probe recorded **8.83 GiB**: a 2.6x under-measurement of the one
+  quantity the guard exists to bound, written into a checkpoint's provenance as a capacity
+  finding. It answered `fits` correctly anyway — 23 GB against a declared 30.6 GiB ceiling — which
+  is precisely why nothing had surfaced it: the guard was wrong and the decision was right. A
+  wider adapter or a longer sequence would have had it answer `fits` on the way into swap.
+  `sft.training_peak_bytes()` now reports the larger of the allocator's peak and RSS, and
+  `mlx_trainer` resets the allocator's counter before the step so the reading belongs to that
+  run. **This corrects an instrument, it does not tune a threshold**: `CAPACITY_HEADROOM_BYTES`
+  and `CAPACITY_PROBE_ITERS` are unchanged and still declared before any run.
+- **`mlx-lm` is pinned at both ends.** `sft.mlx_trainer`'s docstring says it calls the trainer
+  *"at the pinned version"*; the requirement was `mlx-lm>=0.31`, which named whatever the index
+  served that morning. Now `>=0.31,<0.32`, with `tests/test_packaging.py` refusing a requirement
+  that has no upper bound — the discipline the task format's `==` environment pins already apply,
+  on the one dependency that decides what a night produces.
+
+### Added
+
+- **A guard that reads the library rather than restating it.**
+  `test_the_lora_config_supplies_every_key_the_library_requires` introspects the pinned
+  `linear_to_lora_layers` for the keys it subscripts and asserts this repository supplies every
+  one, skipping loudly without the `mlx` extra. A list of required keys restated in a test drifts
+  from the library the same way the literal did — silently, and only on the night that matters.
+
 ## [0.14.0] - 2026-09-05
 
 ### Added

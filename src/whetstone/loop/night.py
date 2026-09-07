@@ -511,11 +511,34 @@ def _train(
         adapters=checkpoints,
         args=sft.TrainingArgs(),
     )
-    capacity = sft.probe_capacity(request, trainer=trainer)
+    # The probe runs the trainer, so it fails the same ways the training does — and both are
+    # inside the guard for the reason below.
+    capacity: sft.CapacityProbe | None = None
     try:
+        capacity = sft.probe_capacity(request, trainer=trainer)
         sft.train(request, trainer=trainer, capacity=capacity, examples=len(selected.examples))
     except sft.CapacityExceeded as exceeded:
         return None, str(exceeded), capacity
+    except Exception as failure:
+        # A BROAD catch, and the narrow alternative is what cost night #1. The ledger is
+        # written after this function returns, so any exception escaping here takes the
+        # night's entire
+        # record with it: no ledger, therefore no morning report, no `check-leakage`, and nothing
+        # the gate can read. Night #1 generated 496 rollouts across 26.6 hours with every control
+        # INTACT, then raised `KeyError: 'dropout'` from inside the pinned library — and all of it
+        # became unrenderable.
+        #
+        # `CapacityExceeded` was already handled exactly this way, and its stated reason
+        # generalises without amendment: *a night that discovered its own machine cannot train is
+        # a night whose evidence is worth keeping*. So is a night that discovered its own trainer
+        # is broken. Nothing here is absorbed — the exception's type and message are recorded as
+        # the stated reason there is no candidate, the night emits none, and it cannot reduce to
+        # PASS. The rollouts are the expensive, irreplaceable half of a night; the training step
+        # is minutes and re-runnable.
+        return None, (
+            f"training raised {type(failure).__name__}: {failure}. The night's draws are complete "
+            "and recorded below; the failure is in the training step, which produced no candidate"
+        ), capacity
 
     checkpoint = sft.write_checkpoint(
         checkpoints,
