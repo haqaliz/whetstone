@@ -43,9 +43,9 @@ from loop.harness import (
     weights,
 )
 from whetstone.bakeoff.scoring import Outcome
+from whetstone.loop import backend, sft
 from whetstone.loop import dataset as training
 from whetstone.loop import ledger as run_ledger
-from whetstone.loop import sft
 from whetstone.loop.night import DATA_DIR, DATASET_FILE, EVIDENCE_DIR, Night, run_night
 from whetstone.verify.verdict import Status
 
@@ -57,6 +57,16 @@ DRAWS = 2
 
 #: The night's declared seed. An input everywhere, like every other pinned input.
 SEED = 20260820
+
+#: The runtime these tests declare they ran under. A stated input rather than a detected one:
+#: the suite has no GPU and, in CI, no runtime at all.
+RUNTIME = backend.Backend(
+    name=backend.MLX,
+    library="mlx-lm",
+    version="0.31.3",
+    device="Apple M4 Max",
+    device_memory_bytes=38654705664,
+)
 
 
 def _trainer(request: sft.TrainingRequest) -> sft.TrainingResult:
@@ -100,6 +110,11 @@ def _night(tmp_path: Path, **overrides: Any) -> Night:
         "engine": engine_of(Answers(answers)),
         "trainer": _trainer,
         "seeder": lambda _: None,
+        # Injected for the reason `engine` and `trainer` are: these tests run with no runtime
+        # installed, which is CI's state by design. Detecting here would make the suite pass
+        # only where a runtime happens to be present — the asymmetry that put this unit's first
+        # CI run red while every local check was green.
+        "runtime": RUNTIME,
     }
     arguments.update(overrides)
     return run_night(**arguments)

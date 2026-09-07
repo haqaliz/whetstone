@@ -72,7 +72,7 @@ def test_no_runtime_is_a_named_refusal_never_a_default() -> None:
     it with a runtime that was never loaded.
     """
     with pytest.raises(backend.NoBackend) as refusal:
-        backend.detect(installed=())
+        backend.choose(installed=())
 
     assert "mlx" in str(refusal.value) and "torch" in str(refusal.value), (
         "WHY THIS IS A FAILURE: the refusal does not say what could be installed to satisfy it, "
@@ -90,13 +90,13 @@ def test_two_runtimes_is_a_refusal_rather_than_a_silent_choice() -> None:
     both = (backend.MLX, backend.TORCH_CUDA)
 
     with pytest.raises(backend.AmbiguousBackend) as refusal:
-        backend.detect(installed=both)
+        backend.choose(installed=both)
     assert backend.MLX in str(refusal.value) and backend.TORCH_CUDA in str(refusal.value), (
         f"WHY THIS IS A FAILURE: the refusal does not name the candidates it could not choose "
         f"between. Got {str(refusal.value)!r}"
     )
 
-    assert backend.detect(installed=both, prefer=backend.MLX).name == backend.MLX, (
+    assert backend.choose(installed=both, prefer=backend.MLX) == backend.MLX, (
         "WHY THIS IS A FAILURE: an explicit choice was not honoured, so an operator on a machine "
         "with both runtimes has no way to run at all"
     )
@@ -110,7 +110,7 @@ def test_an_unknown_preference_is_refused_rather_than_ignored() -> None:
     that decides comparability.
     """
     with pytest.raises(backend.NoBackend) as refusal:
-        backend.detect(installed=(backend.MLX,), prefer=backend.TORCH_CUDA)
+        backend.choose(installed=(backend.MLX,), prefer=backend.TORCH_CUDA)
 
     assert backend.TORCH_CUDA in str(refusal.value), (
         f"WHY THIS IS A FAILURE: the refusal does not name what was asked for. Got "

@@ -132,7 +132,19 @@ def installed() -> tuple[str, ...]:
 
 
 def detect(*, installed: tuple[str, ...] | None = None, prefer: str | None = None) -> Backend:
-    """The one backend this run uses, or a named refusal — never a guess.
+    """The one backend this run uses, described — the choice followed by the load.
+
+    Split in two on purpose. `choose` decides *which*, and imports nothing; `describe` loads the
+    winner to read its version and device. Keeping them apart is what lets every refusal be
+    asserted on a machine with no runtime at all, which is CI's state by design — and CI is
+    where this split was learned, by a first version that made the choice and the import
+    inseparable and so could only be tested where a runtime happened to be installed.
+    """
+    return describe(choose(installed=installed, prefer=prefer))
+
+
+def choose(*, installed: tuple[str, ...] | None = None, prefer: str | None = None) -> str:
+    """Which backend this run uses, as a name — or a named refusal. Imports no runtime.
 
     `installed` is injected for the reason every other seam here is: the refusals are properties
     of this function and asserting them must not require installing two inference stacks.
@@ -147,7 +159,7 @@ def detect(*, installed: tuple[str, ...] | None = None, prefer: str | None = Non
                 "while the operator believes they selected this one produces evidence labelled "
                 "with a backend that never ran"
             )
-        return _describe(prefer)
+        return prefer
 
     if not present:
         raise NoBackend(
@@ -163,14 +175,15 @@ def detect(*, installed: tuple[str, ...] | None = None, prefer: str | None = Non
             f"{sorted(_RUNTIMES)} (e.g. prefer={MLX!r}). Choosing by the order of a list would "
             "make the answer depend on how this file happens to be written"
         )
-    return _describe(present[0])
+    return present[0]
 
 
-def _describe(name: str) -> Backend:
+def describe(name: str) -> Backend:
     """Load the named runtime far enough to record what it is and what it is running on.
 
-    The only place a runtime is imported, and it happens **after** the choice is made — so a
-    machine with two installed never loads the one it did not pick.
+    The only place a runtime is imported, and it happens **after** `choose` has decided — so a
+    machine with two installed never loads the one it did not pick, and a test of the choice
+    never loads either.
     """
     library = _RUNTIMES[name][1]
     if name == MLX:
