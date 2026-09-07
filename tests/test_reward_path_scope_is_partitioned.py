@@ -125,7 +125,7 @@ EXEMPT: Mapping[str, str] = {
         " held-out task. The same library is correct here and fatal under verify/, and the only"
         " thing keeping those two facts apart is where the code lives — so the loop is a SIBLING"
         " of verify/ and tasks/, never nested under either. The dependency runs one way"
-        " (loop -> bakeoff -> verify) with exactly FIVE documented edges in the other direction:"
+        " (loop -> bakeoff -> verify) with exactly SIX documented edges in the other direction:"
         " cli.py holds a FUNCTION-LOCAL import of whetstone.loop.night inside the `run --night`"
         " handler, because the roadmap names that command as the loop's door, a FUNCTION-LOCAL"
         " import of whetstone.loop.gate inside the `gate` handler, the p3-promotion-gate unit's"
@@ -164,6 +164,7 @@ _DOCUMENTED_EDGES: tuple[tuple[Path, str], ...] = (
     (Path("whetstone/cli.py"), "whetstone.loop.check_leakage"),
     (Path("whetstone/cli.py"), "whetstone.loop.morning"),
     (Path("whetstone/cli.py"), "whetstone.loop.check_probe"),
+    (Path("whetstone/cli.py"), "whetstone.loop.card"),
 )
 
 

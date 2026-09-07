@@ -16,7 +16,10 @@ probe run it names, reading the run's ledger against the pre-committed rule — 
 keeps a night from running behind a probe that proved nothing. And ``report`` is the morning
 after: it renders one
 night's sealed evidence into a page a person reads, sealed to that evidence and — the claim
-kept the size of what the code checks — not cryptographically signed.
+kept the size of what the code checks — not cryptographically signed. ``card`` is the step
+after that: it renders a sealed checkpoint and the night that produced it into a Hub model card,
+so what the loop trains is a repository somebody else can load rather than bytes only this
+project can interpret.
 
 An earlier version of this paragraph counted four commands, enumerated four, omitted
 ``check-leakage`` entirely, and closed by saying no report command existed. All three claims
@@ -604,6 +607,42 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    publish = commands.add_parser(
+        "card",
+        help="render a sealed checkpoint's model card from its own evidence",
+        description=(
+            "Render a checkpoint and the night that produced it into a Hub model card "
+            "(README.md with YAML frontmatter). Written to --out rather than into the "
+            "checkpoint, deliberately: the checkpoint's digest seals what trained, and a "
+            "page regenerated whenever a wording changes would either break that seal or "
+            "sit outside it unsealed. The card is derived, so it is re-derivable — render "
+            "it twice and diff it against what was published. A night that wrote no "
+            "checkpoint is refused, repeating the night's own reason: a card beside it "
+            "would advertise a model nobody can download."
+        ),
+    )
+    publish.add_argument(
+        "--run",
+        required=True,
+        type=Path,
+        metavar="<runs/id>",
+        help="the night's run directory, whose ledger holds every figure the card prints",
+    )
+    publish.add_argument(
+        "--checkpoint",
+        required=True,
+        type=Path,
+        metavar="<dir>",
+        help="the sealed checkpoint directory. Re-hashed before anything is rendered from it",
+    )
+    publish.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        metavar="<path>",
+        help="where the card is written. Refused inside a published reports/ directory",
+    )
+
     report = commands.add_parser(
         "report",
         help="render last night's morning report from its sealed evidence",
@@ -986,6 +1025,43 @@ def run_check_probe_cli(args: argparse.Namespace) -> int:
     return PASS_EXIT if report.proceed else FAIL_EXIT
 
 
+def run_card_cli(args: argparse.Namespace) -> int:
+    """Render a checkpoint's model card from the night that produced it, and say where it went.
+
+    **The import is function-local, and it is the sixth documented edge from a guarded root
+    into an exempt package** — the `run_night` / `run_gate_cli` / `run_check_leakage_cli` /
+    `run_report_cli` / `run_check_probe_cli` shape. Like the third and fourth it needs no
+    `mlx_lm` and never will: it reads two JSON documents and renders text. It is still
+    function-local, because the edge's soundness argument is about the module graph of
+    `whetstone verify` rather than about what one handler happens to need — `whetstone.loop.card`
+    is imported beside `whetstone.loop.morning`, whose own imports reach the gate and the
+    bake-off, so a module-scope import here would put `mlx_runtime` on the reward's own entry
+    path. `tests/test_reward_path_scope_is_partitioned.py` asserts these are the only six edges
+    and that all six are function-local. The file work lives in `card.render_card` rather than
+    here, so this handler needs one edge and not three.
+
+    **The checkpoint is re-hashed before a word is rendered from it.** A card describing bytes
+    nobody can demonstrate they read is the `verify_checkpoint` argument applied to a published
+    page: the figures would be about a directory that may have been rebuilt or hand-edited since
+    the night sealed it.
+
+    **The exits are the existing contract, no seventh code**: rendered → 0, and a refusal an
+    operator can fix by retyping → `USAGE_ERROR`. A night with no checkpoint is such a refusal,
+    not a failure: there is nothing wrong with the command, there is simply no model.
+    """
+    from whetstone.loop.card import MODEL_CARD_FILE, render_card
+
+    try:
+        written = render_card(run=args.run, checkpoint=args.checkpoint, out=args.out)
+    except (OSError, ValueError) as refusal:
+        print(f"whetstone card: {refusal}", file=sys.stderr)
+        return USAGE_ERROR
+
+    print(f"card {written}")
+    print(f"filename the Hub renders as a card: {MODEL_CARD_FILE}")
+    return PASS_EXIT
+
+
 def run_report_cli(args: argparse.Namespace) -> int:
     """Render or verify a morning report, and say which artifacts it wrote.
 
@@ -1127,6 +1203,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if namespace.command == "report":
         return run_report_cli(namespace)
+
+    if namespace.command == "card":
+        return run_card_cli(namespace)
 
     # Every input the CLI accepts is handled above. Falling through means a flag or a
     # subcommand was added without a behaviour behind it: report usage and fail rather than

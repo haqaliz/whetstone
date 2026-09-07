@@ -1300,6 +1300,7 @@ mlx = [
 dev = [
     { name = "mypy" },
     { name = "pytest" },
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
 
@@ -1311,5 +1312,6 @@ provides-extras = ["mlx"]
 dev = [
     { name = "mypy" },
     { name = "pytest", specifier = ">=8" },
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
