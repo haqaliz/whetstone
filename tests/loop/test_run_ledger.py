@@ -24,6 +24,7 @@ import pytest
 from whetstone.bakeoff import run as bakeoff_run
 from whetstone.bakeoff.report import GenerationContract
 from whetstone.bakeoff.scoring import Outcome, Rollout
+from whetstone.loop import backend
 from whetstone.loop import dataset as training
 from whetstone.loop import ledger as run_ledger
 from whetstone.loop.sampling import Applied
@@ -85,6 +86,13 @@ def _ledger() -> run_ledger.Ledger:
             heldout=run_ledger.HeldoutRecord(document_digest="d" * 64, membership_count=12),
         ),
         tool_versions={"python": "3.12.0", "mlx-lm": "0.31.3"},
+        backend=backend.Backend(
+            name=backend.MLX,
+            library="mlx-lm",
+            version="0.31.3",
+            device="Apple M4 Max",
+            device_memory_bytes=38654705664,
+        ),
         seeds=(Applied(task_id="alpha", attempt=1, seed=1234),),
         draws_recorded=(
             run_ledger.DrawRecord(

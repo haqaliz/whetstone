@@ -30,7 +30,7 @@ import pytest
 
 from whetstone.bakeoff import report as bakeoff_report
 from whetstone.bakeoff.report import build_baseline_report, write_baseline_report
-from whetstone.loop import baseline, gate, heldout, ledger, sft
+from whetstone.loop import backend, baseline, gate, heldout, ledger, sft
 from whetstone.verify.verdict import Status
 
 #: The repository root — the committed funnel ledger and the subprocess half live here.
@@ -204,6 +204,13 @@ def _checkpoint(root: Path, label: str, *, revision: str = _REVISION) -> sft.Che
         tool_versions=_TOOLS,
         valid_split="",
         capacity=sft.CapacityProbe(iters=1, headroom_bytes=0, peak_bytes=0, seconds=0.0),
+        backend=backend.Backend(
+            name=backend.MLX,
+            library="mlx-lm",
+            version="0.31.3",
+            device="Apple M4 Max",
+            device_memory_bytes=38654705664,
+        ),
     )
 
 
@@ -219,7 +226,7 @@ def _ledger(root: Path, *, run_id: str = _RUN_ID) -> Path:
     path.write_text(
         json.dumps(
             {
-                "schema": "whetstone-run/1",
+                "schema": ledger.LEDGER_SCHEMA,
                 "run_id": run_id,
                 "recorded_on": _RECORDED_ON,
                 "run_seed": 20260827,

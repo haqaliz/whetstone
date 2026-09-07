@@ -211,6 +211,11 @@ _KNOWN_FIELDS: frozenset[str] = frozenset(
         "draws_recorded",
         "environment_pins",
         "seeds",
+        # Which runtime produced the night (`whetstone-run/2`). Declared here rather than
+        # rendered: the report's figures are the night's, and the backend is a property of the
+        # machine that produced them. It is in the ledger for the gate's cross-backend refusal,
+        # and this reader has to know the key exists or it refuses the document outright.
+        "backend",
         *REQUIRED_FIELDS,
     }
 )

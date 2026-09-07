@@ -275,6 +275,43 @@ class UntrainedCandidate(ValueError):
     """
 
 
+class MismatchedBackend(ValueError):
+    """The two checkpoints were produced by different runtimes, so they cannot be compared.
+
+    Never-regress only means something if the difference the gate measures is the night's. Two
+    adapters from different runtimes differ by kernels and by a different quantisation of the
+    same weights *before* they differ by anything training did, so scoring them would attribute
+    the backend's difference to the improvement and promote on it.
+
+    Refused rather than flagged, for the reason `UNVERIFIED` is never rendered as `PASS`: a
+    warning printed beside a promotion still promotes.
+    """
+
+
+def refuse_cross_backend(
+    *, candidate: Mapping[str, Any] | None, incumbent: Mapping[str, Any] | None
+) -> None:
+    """Refuse a comparison whose two sides were trained by different runtimes.
+
+    An **untrained** incumbent carries no backend and is exempt by construction: nothing trained
+    it, so there is nothing to disagree about, and refusing it would break the untrained-incumbent
+    dispatch that lets a first night be gated at all. The same is true of a checkpoint written
+    before the field existed — its absence is an unknown, and an unknown is not a mismatch.
+    """
+    if candidate is None or incumbent is None:
+        return
+    if candidate == incumbent:
+        return
+    raise MismatchedBackend(
+        f"the candidate was produced by {candidate.get('name')!r} on "
+        f"{candidate.get('device')!r} and the incumbent by {incumbent.get('name')!r} on "
+        f"{incumbent.get('device')!r}. These are not comparable: different runtimes differ by "
+        "their kernels and by a different quantisation of the same weights before they differ "
+        "by anything a night did, so a promotion decided here would be measuring the backend. "
+        "Score each candidate against an incumbent from its own runtime"
+    )
+
+
 #: Every refusal `run_gate` raises that is an **operator's error** rather than a finding: a
 #: runs root pointed at a published directory, a checkpoint that cannot be re-hashed, an
 #: untrained checkpoint passed as the candidate, a held-out document that cannot be read or
@@ -287,6 +324,7 @@ REFUSALS: tuple[type[Exception], ...] = (
     TranscriptNotPrivate,
     CheckpointUnverified,
     UntrainedCandidate,
+    MismatchedBackend,
     HeldoutSchemaError,
     HeldoutDigestMismatch,
     EmptyHeldout,
@@ -647,6 +685,13 @@ def run_gate(
             "set — the same for every untrained base, whatever the repo id or revision — "
             "so a comparison keyed on it could not discriminate bases"
         )
+
+    # Before a token is generated, and before the base weights are even fetched: two
+    # checkpoints from different runtimes are not comparable, and discovering that after
+    # scoring a held-out set is discovering it too late to matter.
+    refuse_cross_backend(
+        candidate=candidate_checkpoint.backend, incumbent=incumbent_checkpoint.backend
+    )
 
     fetched = load_weights(weights)
     candidate_base = _base_for(candidate_checkpoint, fetched, "candidate")
