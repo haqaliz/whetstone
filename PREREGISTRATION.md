@@ -317,6 +317,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-08-25 | The promotion gate's retry count `R` is declared; § 7.2 is closed by the amendment below (§ 10.8) | 1 — closes an open item | Yes |
 | 2026-08-27 | The honest-number report measures the delta/final series under the loop's contract; its report has its own non-comparable home (§ 10.9) | 2 — adds a disclosure | No |
 | 2026-09-02 | The fine-tuned base is pinned; § 7.3 is closed by the amendment below (§ 10.10) | 1 — closes an open item | Yes |
+| 2026-09-08 | A portability arm trains a second, smaller base on a second runtime; § 10.10's base is untouched (§ 10.11) | 1 — pins an input for a new arm | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -627,3 +628,50 @@ and none is claimed here — this amendment precedes night #1, which is the whol
 value, and the pinned baseline measurement of § 3 remains unspent. The base is pinned for
 this series; it remains deliberately swappable, and a change of base is a further Type 1
 amendment committed before the measurement it governs runs (§ 8.1).
+
+### 10.11 A portability arm, with its own base and its own runtime — 2026-09-08
+
+**Type 1 (§ 8.1): pins the inputs of a new arm, committed before the training it governs
+runs.** It introduces no success threshold, rewords nothing in § 1, § 4, or § 6, and — this is
+the part that matters — **does not change the base § 10.10 pinned.** The 32B base and the MLX
+runtime remain the pinned inputs of the main series. This amendment opens a second arm beside
+it, in the shape `reports/larger-base/` and `reports/easier-stratum/` already established: a
+changed input means a non-comparable arm with its own home, never a quiet substitution inside
+an existing series.
+
+**Why an arm and not a substitution.** Whetstone's runtime was MLX end to end, which is Apple
+Silicon only, so the loop could train on exactly one class of machine and the model it produced
+was loadable by exactly one runtime. That is a property of the *implementation*, not of the
+thesis: nothing in the wedge — an execution-grounded reward, a never-regress gate, an honest
+number — depends on Metal. This arm exists to demonstrate the loop on a second runtime and a
+second operating system, and to emit an adapter in the ecosystem's own interchange format so
+that what the loop produces is loadable off the machine that produced it.
+
+**The base.** The arm fine-tunes an open Qwen2.5-Coder instruct base in Hugging Face format,
+pinned by immutable revision and recorded by per-file hash in the same
+`weights/provenance.json` shape the main series uses, re-hashed before a token is generated.
+The specific base and revision are recorded in the arm's own report home before it trains,
+because a base named after the fact is not a pinned input.
+
+**The base size is deliberately not fixed by this amendment, and the machinery must not fix it
+either.** The arm begins at the smallest size that trains on the hardware available — a CPU-only
+Linux host with 16 GB of RAM — because the question it answers first is *does the loop run at
+all off Apple Silicon*, and that question is answered no better by a larger base than by a
+smaller one. Larger bases on this runtime are expected and intended. Each is a further Type 1
+amendment naming its base and revision, committed before it trains; the trainer, the adapter
+format and the gate take the base as an input and are required to be indifferent to its size, so
+that scaling up is an amendment and not a rewrite.
+
+**Comparability, stated plainly.** A figure measured under this arm is **not comparable** to any
+figure from the main series, and not to any other arm's. Different weights, a different runtime,
+different kernels and a different quantisation of the same architecture all sit between them,
+and each is sufficient on its own to make the comparison meaningless. The arm's figures have one
+home and this document restates none of them. The promotion gate already refuses to score a
+candidate from one runtime against an incumbent from another, and that refusal is the mechanical
+form of this paragraph.
+
+**What is not claimed.** No training has run under this arm. At the time of this amendment no
+count has been measured under it and none is claimed here — the amendment precedes the training,
+which is the whole of its value. In particular nothing here claims the arm's adapter is better
+than its base: that is the promotion gate's question, on a held-out set, and it is unasked. The
+§ 3 baseline remains unspent.

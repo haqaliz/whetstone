@@ -973,6 +973,53 @@ night produces.
 them, skipping loudly without the `mlx` extra. A list of required keys restated in a test would
 have drifted from the library exactly the way the literal did.
 
+**The verifier runs on Linux** (2026-09-08). Until now `sandbox.py` refused outright on
+anything but Darwin — and it was right to: a sandbox that cannot contain must never run the
+command anyway. But it meant the **reward could not be computed off macOS at all**. Not slower,
+not degraded: the STRICT verifier is the moat, the sandbox is its boundary, and the boundary
+existed on one operating system.
+
+`run_confined` now dispatches on a **probed** mechanism: Seatbelt on Darwin, **bubblewrap** on
+Linux. `build_bubblewrap_argv` enforces the same three properties by different means —
+`--unshare-all` drops the network namespace, `--ro-bind / /` plus one `--bind <scope>` inverts
+Seatbelt's `(deny file-write*)` plus one allow to land in the same place. The pinned
+environment was already platform-neutral; only the mechanism differed.
+
+**Running it on a real Ubuntu 24.04 host found three defects a Mac could not have surfaced.**
+The first draft mounted `--tmpfs /tmp`, reasoning that a private empty `/tmp` keeps the child's
+temp writes off the host — it does, and it also hands the child a *writable* `/tmp`, so a write
+outside the scope succeeded. The host was safe; the property was not. The second is sharper: the
+never-started marker was `b"sandbox-exec:"` alone, so a command **bubblewrap could not start**
+was read as a failing task rather than one that never ran — `FAIL` where the truth was
+`UNVERIFIED`, which is the honesty contract inverted on exactly the case it exists for. The
+third was two probes written in Seatbelt's errno vocabulary rather than in properties:
+bubblewrap denies the network by having no interface (`ENETUNREACH`, arguably the stronger
+confinement) and refuses writes with `EROFS`. All three are fixed, and the fifteen containment
+assertions now pass on macOS and Linux alike.
+
+**Probed, never inferred from a filename, and that is the whole design.** Ubuntu 24.04 ships
+`bwrap` and sets `kernel.apparmor_restrict_unprivileged_userns=1`, which stops an unprivileged
+user creating the namespaces it needs. Measured on a real 24.04 host: the binary is present,
+executable, and exits `setting up uid map: Permission denied`. A check that stopped at
+`which bwrap` would hand back a sandbox that fails **open** — and a reward with no boundary
+behind it still reads as verified, which is the one outcome this module exists to prevent. So
+`confinement()` runs the mechanism against `/bin/true` and requires success, memoised because a
+host's confinement cannot move under a running night. The refusal names the sysctl and the three
+ways an administrator can lift it.
+
+**The property suite is gated on capability, not on a platform name.** `test_sandbox.py`'s
+fourteen assertions all go through `run_confined`, which is mechanism-agnostic, so the same
+tests prove network denial, write confinement and the pinned environment on **both** platforms.
+Gating on `sys.platform != "darwin"` — as it did — would have shipped Linux with the reward's
+boundary unproven while the suite went green.
+
+**`docs/planning/p0-scaffold/prd.md` decision 2 is superseded, not contradicted.** It fixed CI
+as "`macos-latest` only, no matrix", and its reason was sound and still is: `mlx-lm` declares
+`mlx; platform_system == "Darwin"`, so an ubuntu runner installs it successfully with no engine
+behind it and proves nothing. That argument is about **mlx**. The new `sandbox (Linux)` job makes
+a different claim, the one macOS cannot make — that containment is real under bubblewrap — and
+it touches no engine. The mlx step stays macOS-only for exactly the reason decision 2 gave.
+
 **What is not built.** The nightly loop has now been run once (above), so a training set and
 a yield figure exist — but **no checkpoint does**, because the training step raised before it
 wrote one, and **the gate has therefore still never been run on real checkpoints**. Its three exits, its retry discipline and its refusals are proven against

@@ -9,6 +9,43 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Added
+
+- **The verifier runs on Linux.** `sandbox.run_confined` dispatches on a probed mechanism —
+  Seatbelt on Darwin, bubblewrap on Linux — enforcing the same three properties by different
+  means: `--unshare-all` for network denial, `--ro-bind / /` plus **exactly one** `--bind <scope>`
+  for write confinement. Until now the reward could not be computed off macOS **at all**: the
+  STRICT verifier is the moat and the sandbox is its boundary. The fifteen containment
+  assertions now pass on both platforms — the same tests, the same properties, two mechanisms.
+- **Three defects a Mac could not have surfaced,** found by running the suite on a real Ubuntu
+  24.04 host. A `--tmpfs /tmp` in the first draft handed the child a *writable* `/tmp`, so a
+  write outside its scope succeeded — the host was safe, but the property the sandbox owes the
+  reward is "writes land inside the scope or they do not land". The never-started marker matched
+  only `sandbox-exec:`, so a command bubblewrap **could not start** came back `FAIL` rather than
+  `UNVERIFIED` — a task recorded as solved-wrongly when nothing had executed. And two probes
+  demanded Seatbelt's errno (`PermissionError`) where bubblewrap refuses differently:
+  `ENETUNREACH` with no interface to deny on, and `EROFS` from the read-only bind. All three are
+  fixed; `CONNECTED` and `OUTSIDE WROTE` still fail, which is what those probes are for.
+- **`confinement()` probes rather than infers.** Ubuntu 24.04 ships `bwrap` and sets
+  `kernel.apparmor_restrict_unprivileged_userns=1`, so the binary is present, executable, and
+  confines nothing — measured on a real host, where it exits `setting up uid map: Permission
+  denied`. A check that stopped at `which bwrap` would hand back a sandbox that fails **open**,
+  and a reward with no boundary behind it still reads as verified. The probe runs the mechanism
+  against `/bin/true` and requires success; the refusal names the sysctl and how to lift it.
+- **A `sandbox (Linux)` CI job** holding the macOS job's standard: it asserts the boundary
+  *works* rather than that a package is installed, and treats a skipped containment assertion as
+  a failure. It supersedes `p0-scaffold` decision 2 for the sandbox claim only — the mlx step
+  stays macOS-only for exactly the reason that decision gave.
+
+### Changed
+
+- **`test_sandbox.py` is gated on capability, not on a platform name.** Its fourteen assertions
+  go through the mechanism-agnostic `run_confined`, so the same tests now prove network denial,
+  write confinement and the pinned environment on both platforms. `skipif(sys.platform !=
+  "darwin")` would have shipped Linux with the reward's boundary unproven while CI went green.
+
 ## [0.14.1] - 2026-09-07
 
 ### Fixed

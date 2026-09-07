@@ -99,3 +99,76 @@ jobs:
           uv run python -c "import mlx.core; print(mlx.core.__name__)"
           uv run mypy src/
           uv run pytest tests/bakeoff/ -rs
+
+  sandbox-linux:
+    name: sandbox (Linux)
+    # The macOS job's comment says an ubuntu runner "would go green while proving nothing" —
+    # that is about **mlx**, and it stays true: nothing here touches the engine. This job
+    # exists for the other claim, the one macOS cannot make: that the verifier's containment
+    # boundary is real on Linux. The sandbox IS the reward. Shipping a Linux backend whose
+    # network denial and write confinement were only ever asserted on Darwin would be shipping
+    # the product's central guarantee unproven on half the platforms it claims to support.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync
+      - name: bubblewrap is installed and permitted to create namespaces
+        # Two separate things, and conflating them is the defect this whole milestone is
+        # built around. Ubuntu 24.04 ships bwrap AND sets
+        # `kernel.apparmor_restrict_unprivileged_userns=1`, so the binary is present,
+        # executable, and confines nothing — measured on a real 24.04 host, where it exits
+        # with `setting up uid map: Permission denied`. A runner that installed the package
+        # and stopped there would run this job's suite against a sandbox that fails OPEN.
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          # The runner is a disposable VM, so the blunt sysctl is appropriate here. On a real
+          # workstation prefer an AppArmor profile granting `userns` to bwrap alone.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: the sandbox actually denies the network on this runner
+        # The macOS job's standard, applied to the other mechanism: assert the boundary WORKS,
+        # never that a package is installed. A skip is a failure here for the same reason it is
+        # there — a silently-skipped containment assertion is a green CI that proves nothing,
+        # which is the same class of lie as rendering UNVERIFIED as PASS.
+        run: |
+          set -uo pipefail
+          if ! bwrap --unshare-all --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp /bin/true; then
+            echo "::error::SANDBOX-CANNOT-CONFINE: bwrap is installed and cannot create the namespaces it needs on this runner, so no reward computed here would be bounded by anything. The fix is a host that permits user namespaces, never a weaker profile."
+            exit 1
+          fi
+          log="${RUNNER_TEMP}/sandbox.log"
+          status=0
+          uv run pytest tests/test_sandbox.py -rs -q > "$log" 2>&1 || status=$?
+          cat "$log"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::SANDBOX-FAILED: the containment suite did not pass under bubblewrap. The fix is a working sandbox, never a weaker profile."
+            exit "$status"
+          fi
+          if grep -q '^SKIPPED' "$log"; then
+            {
+              echo "### UNPROVEN: SANDBOX-NETWORK-DENIAL (Linux)"
+              echo
+              echo "The containment suite passed under bubblewrap, but part of it did not run:"
+              echo
+              grep '^SKIPPED' "$log" | while read -r line; do echo "- \`${line}\`"; done
+              echo
+              echo "Treat Linux containment as undemonstrated until the skip is gone."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::UNPROVEN: SANDBOX-NETWORK-DENIAL (Linux) — the suite passed with skips, so the denial was NOT demonstrated. See the job summary."
+          else
+            echo "PROVEN: under bubblewrap the sandboxed probe was refused the network, the unsandboxed control reached it, and no test skipped."
+          fi
+      - name: the tree is portable, not merely macOS-shaped
+        # The whole suite on Linux. Anything that fails here is something this repository
+        # believed about its own portability and had never checked — which is the point.
+        run: |
+          uv run ruff check .
+          uv run mypy src/
+          uv run pytest -q

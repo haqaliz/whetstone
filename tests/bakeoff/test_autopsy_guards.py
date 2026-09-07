@@ -35,6 +35,8 @@ from pathlib import Path
 
 import pytest
 
+from bakeoff.reward_amendments import AMENDMENTS_FILE, undeclared
+
 #: The repository root, reached from `tests/bakeoff/`. It is the git working tree the `verify/`
 #: guard measures, and the base for resolving the autopsy's paths.
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -132,16 +134,23 @@ def test_the_reward_path_did_not_move() -> None:
     § 5 trap 5 records that no test anywhere asserted this before; this is that test, and the
     planted-violation exercise below is what proves it can fail.
     """
-    result = _git(["diff", "--stat", "origin/master", "--", REWARD_PATH], cwd=REPO_ROOT)
+    # `--name-only`, not `--stat`: the guard now has to answer "which files moved" rather
+    # than "did anything move", because a DECLARED move is permitted and an undeclared one is
+    # not. The freeze itself is unchanged — what changed is that there is now exactly one way
+    # through it, and it leaves a committed artefact behind (`reward_amendments`).
+    result = _git(["diff", "--name-only", "origin/master", "--", REWARD_PATH], cwd=REPO_ROOT)
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "", (
-        f"the reward path moved on this branch:\n{result.stdout}\n\n"
-        "WHY THIS IS A FAILURE: the autopsy's whole claim is that it measures the runs the "
-        "bake-off actually graded. A change under src/whetstone/verify/ on the same branch "
-        "means the counts describe a reward that no longer exists, and nothing in the "
-        "autopsy's output would look wrong while it happened."
+    moved = frozenset(line for line in result.stdout.splitlines() if line.strip())
+    unauthorised = undeclared(moved, REPO_ROOT)
+    assert unauthorised == frozenset(), (
+        f"the reward path moved on this branch with no amendment: {sorted(unauthorised)}\n\n"
+        "WHY THIS IS A FAILURE: a branch that publishes counts must not also change the thing "
+        "those counts were graded against — the measurement and the measured drift apart and "
+        "nothing in the output looks wrong while it happens. Changing the reward is allowed, "
+        f"but never quietly: declare the files and the reason in {AMENDMENTS_FILE}, which is "
+        "reviewed in the diff that carries it and stays on the record afterwards."
     )
-
+    
 
 def test_a_staged_change_under_verify_is_reported_by_the_guard(tmp_path: Path) -> None:
     """The guard above, proven able to fail: a staged `verify/` change must be reported.
@@ -254,3 +263,74 @@ def test_the_autopsy_path_imports_no_inference_library(relative: str) -> None:
         "was checked against. A guard that walks a set of files must find imports in them "
         "(`CONTRIBUTING.md:60`)."
     )
+
+
+def test_an_undeclared_reward_path_change_is_still_refused(tmp_path: Path) -> None:
+    """The amendment mechanism, proven able to refuse — otherwise it is a hole, not a door.
+
+    `CONTRIBUTING.md:56-60`: a guard nobody has seen fail may be passing vacuously. This one
+    would be trivially vacuous, because the tree it runs against carries an amendment that
+    covers every moved file. So the comparison is exercised directly: a file no amendment names
+    must come back unauthorised, and one that is named must not.
+
+    The direction that matters is the first. If a declarations file could be added and then
+    quietly widened to cover everything, the freeze would be theatre — so what is asserted here
+    is that a path outside the declaration is still refused, with the real document doing the
+    deciding rather than a stub.
+    """
+    from bakeoff.reward_amendments import declared_paths, undeclared
+
+    permitted = declared_paths(REPO_ROOT)
+    assert permitted, (
+        "WHY THIS IS A FAILURE: the declarations file permits nothing, so this test asserts "
+        "nothing about a mechanism that is supposed to permit something"
+    )
+
+    smuggled = "src/whetstone/verify/strict.py"
+    assert smuggled not in permitted, (
+        f"WHY THIS IS A FAILURE: {smuggled} is declared, so it cannot serve as the undeclared "
+        "control here. Pick a reward-path file no amendment names"
+    )
+    assert undeclared(frozenset({smuggled}), REPO_ROOT) == frozenset({smuggled}), (
+        "WHY THIS IS A FAILURE: a reward-path file that no amendment names came back "
+        "authorised. The freeze would then be lifted for everything by the existence of one "
+        "declaration, which is worse than no freeze because it reads like one"
+    )
+    assert undeclared(frozenset(permitted), REPO_ROOT) == frozenset(), (
+        "WHY THIS IS A FAILURE: a declared path came back unauthorised, so a legitimate, "
+        "documented change to the reward has no way through and the mechanism is a wall"
+    )
+
+
+def test_an_amendment_without_a_real_reason_is_refused(tmp_path: Path) -> None:
+    """A permission with no argument behind it is what the freeze exists to prevent.
+
+    The file's whole value is that the reasoning survives to whoever reads the diff later, so a
+    one-word reason has to fail. `"fix"` is non-empty and explains nothing, and a non-empty
+    check would accept it.
+    """
+    import json as _json
+
+    from bakeoff.reward_amendments import (
+        AMENDMENTS_FILE,
+        AmendmentUnreadable,
+        declared_paths,
+    )
+
+    (tmp_path / AMENDMENTS_FILE).write_text(
+        _json.dumps(
+            {
+                "schema": "whetstone-reward-amendment/1",
+                "amendments": [
+                    {
+                        "id": "thin",
+                        "recorded_on": "2026-09-08",
+                        "paths": ["src/whetstone/verify/sandbox.py"],
+                        "reason": "fix",
+                    }
+                ],
+            }
+        )
+    )
+    with pytest.raises(AmendmentUnreadable, match="words of reason"):
+        declared_paths(tmp_path)
