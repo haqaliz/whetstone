@@ -48,7 +48,7 @@ from loop.harness import (
 )
 from whetstone.bakeoff.scoring import Outcome
 from whetstone.bakeoff.weights import Weights, load_weights
-from whetstone.loop import gate, heldout, sft
+from whetstone.loop import backend, gate, heldout, sft
 from whetstone.loop.gate import Exit, GateDecision, decide
 from whetstone.verify.task import Task
 
@@ -309,6 +309,13 @@ def _checkpoint(root: Path, *, repo_id: str, revision: str, label: str) -> sft.C
         tool_versions={"python": "3.12.0"},
         valid_split="",
         capacity=capacity,
+        backend=backend.Backend(
+            name=backend.MLX,
+            library="mlx-lm",
+            version="0.31.3",
+            device="Apple M4 Max",
+            device_memory_bytes=38654705664,
+        ),
     )
 
 

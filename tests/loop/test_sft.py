@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from whetstone.loop import sft
+from whetstone.loop import backend, sft
 from whetstone.loop.dataset import NO_VALID_SPLIT
 
 #: What the stub trainer reports. Comfortably under the declared headroom, so a test asserting the
@@ -73,6 +73,13 @@ def _written(tmp_path: Path, *, valid_split: str = "") -> sft.Checkpoint:
         tool_versions={"python": "3.12.0"},
         valid_split=valid_split,
         capacity=capacity,
+        backend=backend.Backend(
+            name=backend.MLX,
+            library="mlx-lm",
+            version="0.31.3",
+            device="Apple M4 Max",
+            device_memory_bytes=38654705664,
+        ),
     )
 
 
@@ -251,6 +258,13 @@ def test_a_checkpoint_with_no_files_is_refused(tmp_path: Path) -> None:
             tool_versions={},
             valid_split="",
             capacity=sft.probe_capacity(_request(tmp_path), trainer=_trainer()),
+        backend=backend.Backend(
+            name=backend.MLX,
+            library="mlx-lm",
+            version="0.31.3",
+            device="Apple M4 Max",
+            device_memory_bytes=38654705664,
+        ),
         )
 
 

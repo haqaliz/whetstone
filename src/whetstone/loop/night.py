@@ -62,9 +62,11 @@ from whetstone.bakeoff.weights import (
     WeightsUnverified,
     load_weights,
 )
+from whetstone.loop import backend as backend_runtime
 from whetstone.loop import dataset as training
 from whetstone.loop import ledger as run_ledger
 from whetstone.loop import sft
+from whetstone.loop.backend import Backend as BackendRecord
 from whetstone.loop.draws import Drawn, sample
 from whetstone.loop.heldout import (
     EmptyHeldout,
@@ -191,6 +193,7 @@ def run_night(
     engine: Engine = sampling_engine,
     trainer: sft.Trainer = sft.mlx_trainer,
     seeder: Seeder = mlx_seeder,
+    runtime: BackendRecord | None = None,
 ) -> Night:
     """Run a night and return what it produced. The order below is the design.
 
@@ -221,6 +224,10 @@ def run_night(
     """
     _refuse_published_root(runs, "--runs")
     _refuse_published_root(checkpoints, "--checkpoints")
+    # Detected HERE, before a single token is generated. A night whose runtime cannot be
+    # identified has nothing to label its evidence with, and discovering that after 26 hours of
+    # rollouts is how this project already lost one night's worth of work.
+    runtime = backend_runtime.detect() if runtime is None else runtime
     os.environ[HF_HUB_OFFLINE] = "1"
 
     private_root_tasks = load_task_roots(tasks)
@@ -295,6 +302,7 @@ def run_night(
     training.write_document(directory / DATASET_FILE, selected)
 
     checkpoint, absent, capacity = _train(
+        runtime=runtime,
         candidate=candidate,
         selected=selected,
         chosen=chosen,
@@ -321,6 +329,10 @@ def run_night(
             heldout=heldout_record,
         ),
         tool_versions=run_ledger.tool_versions(),
+        # Detected, not declared. `tool_versions()` names `mlx-lm` unconditionally, so on any
+        # other runtime it is not merely silent but wrong; this is the field a reader can trust
+        # about which backend actually produced these draws.
+        backend=runtime,
         seeds=_seeds(drawn),
         draws_recorded=_records(drawn),
         dataset=selected,
@@ -483,6 +495,7 @@ def _train(
     run_seed: int,
     probe: int | None,
     trainer: sft.Trainer,
+    runtime: BackendRecord,
 ) -> tuple[sft.Checkpoint | None, str, sft.CapacityProbe | None]:
     """Probe capacity, train, and hash the result — or say, in one sentence, why none of that ran.
 
@@ -550,6 +563,7 @@ def _train(
         tool_versions=run_ledger.tool_versions(),
         valid_split=chosen.reason,
         capacity=capacity,
+        backend=runtime,
     )
     # Re-read what was just written. The gate that later compares checkpoints will re-hash them,
     # and a checkpoint that cannot survive its own verification an instant after being written is

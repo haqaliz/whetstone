@@ -37,6 +37,7 @@ from whetstone.bakeoff import report as bakeoff_report
 from whetstone.bakeoff import run as bakeoff_run
 from whetstone.bakeoff.report import GenerationContract
 from whetstone.bakeoff.scoring import Rollout
+from whetstone.loop.backend import Backend as BackendRecord
 from whetstone.loop.dataset import TRAINABLE, Dataset
 from whetstone.loop.sampling import Applied
 from whetstone.verify.verdict import Status
@@ -44,7 +45,11 @@ from whetstone.verify.verdict import Status
 #: The document's own version, checked on read. A schema string rather than a shape check for the
 #: reason `weights.PROVENANCE_SCHEMA` gives: every field this reader needs is one an optimistic
 #: parse would default, and a defaulted seed map or task set records nothing while succeeding.
-LEDGER_SCHEMA = "whetstone-run/1"
+LEDGER_SCHEMA = "whetstone-run/2"
+#: Bumped from `whetstone-run/1` when `backend` was added. A required field under the old
+#: version would have made its presence optional in practice: a reader could not tell a night
+#: that recorded no backend from one written before the field existed, and the whole value of
+#: the field is that its absence is impossible.
 
 #: What the ledger is called inside a run directory.
 LEDGER_FILE = "ledger.json"
@@ -171,6 +176,13 @@ class Ledger:
     #: The versions a figure is only interpretable against.
     tool_versions: Mapping[str, str]
 
+    #: Which runtime produced this night, detected from the machine. A **pinned input**, in the
+    #: sense the base weights and the generation contract already are: two nights from different
+    #: backends are not comparable however much else they agree on, and `tool_versions` cannot
+    #: answer the question — it names `mlx-lm` unconditionally, so on any other runtime it is
+    #: not merely silent but wrong.
+    backend: BackendRecord
+
     #: Every seed applied, in application order.
     seeds: tuple[Applied, ...]
 
@@ -246,6 +258,7 @@ def _payload(ledger: Ledger) -> dict[str, Any]:
         "run_seed": ledger.run_seed,
         "draws": ledger.draws,
         "model": {"repo_id": ledger.model.repo_id, "revision": ledger.model.revision},
+        "backend": ledger.backend.recorded(),
         "generation_contract": {
             "prompt_sha256": ledger.contract.prompt_sha256,
             "sampler": ledger.contract.sampler,

@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from whetstone.loop.backend import Backend as BackendRecord
 from whetstone.loop.dataset import NO_VALID_SPLIT
 
 #: How many training steps the capacity probe runs. Declared before the probe, never after: a
@@ -311,6 +312,12 @@ class Checkpoint:
     #: the night's and gate's constructors are untouched; only `verify_checkpoint` populates it.
     untrained: bool = False
 
+    #: The runtime that trained this adapter, read back from its own provenance. `None` for an
+    #: untrained base (nothing trained it) and for a checkpoint written before the field existed
+    #: — in both cases an absence, which the gate treats as unknown rather than as a mismatch.
+    #: Defaulted for the same reason `untrained` is; only `verify_checkpoint` populates it.
+    backend: Mapping[str, Any] | None = None
+
 
 def probe_capacity(
     request: TrainingRequest,
@@ -468,6 +475,7 @@ def write_checkpoint(
     tool_versions: Mapping[str, str],
     valid_split: str,
     capacity: CapacityProbe,
+    backend: BackendRecord,
 ) -> Checkpoint:
     """Record what produced this adapter, hash every file beside it, and return the checkpoint.
 
@@ -493,6 +501,11 @@ def write_checkpoint(
                 "base": {"repo_id": repo_id, "revision": revision},
                 "dataset_digest": dataset_digest,
                 "run_seed": run_seed,
+                # The runtime that produced this adapter. The gate loads two checkpoints and
+                # scores one against the other; two from different backends differ by the
+                # backend before they differ by anything the night did, so the provenance —
+                # the only document that travels with the adapter — has to carry it.
+                "backend": backend.recorded(),
                 "training_args": args.recorded(),
                 "tool_versions": dict(sorted(tool_versions.items())),
                 "validation": valid_split or "validated against the run's own valid split",
@@ -580,6 +593,8 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
         for one in raw["files"]
     )
     untrained = raw.get("untrained") is True
+    trained_by = raw.get("backend")
+    recorded_backend = trained_by if isinstance(trained_by, dict) else None
     if not recorded and not untrained:
         raise CheckpointUnverified(
             f"{str(document)!r} records no files, so verifying it checks nothing and succeeds"
@@ -613,7 +628,13 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
             f"to {digest!r}. The document disagrees with itself, which a hand edit produces and a "
             "night does not"
         )
-    return Checkpoint(directory=directory, digest=digest, files=recorded, untrained=untrained)
+    return Checkpoint(
+        directory=directory,
+        digest=digest,
+        files=recorded,
+        untrained=untrained,
+        backend=recorded_backend,
+    )
 
 
 def training_peak_bytes(*, mlx_peak: int, resident: int) -> int:

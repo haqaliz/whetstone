@@ -64,7 +64,9 @@ warn_unused_ignores = true
 # one is what let `bakeoff/weights.py` reach a pull request red. Both directions now have
 # a step: `ci.yml` runs mypy under a plain sync AND again with the extra installed.
 [[tool.mypy.overrides]]
-module = ["huggingface_hub.*", "mlx.*", "mlx_lm.*"]
+# `torch.*` is here before a Torch backend exists: `loop/backend.py` names the runtime it
+# would detect, so the import is type-checked on a machine that has neither runtime.
+module = ["huggingface_hub.*", "mlx.*", "mlx_lm.*", "torch.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

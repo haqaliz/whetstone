@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from whetstone.loop import sft
+from whetstone.loop import backend, sft
 
 #: The declared base for the untrained-shape fixtures. A pinned input — the *choice* of base is
 #: the operator's, recorded in the runbook, never decided in this aspect.
@@ -188,6 +188,9 @@ TRAINED_KEYS = {
     "tool_versions",
     "validation",
     "capacity_probe",
+    # The runtime that trained this adapter (`whetstone-run/2`). Added deliberately, and this
+    # pin updated with it: the point of the set is that a key cannot arrive unnoticed.
+    "backend",
     "files",
 }
 
@@ -211,6 +214,13 @@ def _trained(tmp_path: Path) -> Path:
         args=sft.TrainingArgs(),
         tool_versions={"python": "3.12.0"},
         valid_split="",
+        backend=backend.Backend(
+            name=backend.MLX,
+            library="mlx-lm",
+            version="0.31.3",
+            device="Apple M4 Max",
+            device_memory_bytes=38654705664,
+        ),
         capacity=sft.CapacityProbe(
             iters=sft.CAPACITY_PROBE_ITERS,
             headroom_bytes=sft.CAPACITY_HEADROOM_BYTES,
