@@ -65,7 +65,7 @@ from whetstone.bakeoff.weights import (
 from whetstone.loop import backend as backend_runtime
 from whetstone.loop import dataset as training
 from whetstone.loop import ledger as run_ledger
-from whetstone.loop import sft
+from whetstone.loop import sampling, sft
 from whetstone.loop.backend import Backend as BackendRecord
 from whetstone.loop.draws import Drawn, sample
 from whetstone.loop.heldout import (
@@ -84,8 +84,6 @@ from whetstone.loop.sampling import (
     K,
     Seeder,
     attempt_seed,
-    mlx_seeder,
-    sampling_engine,
 )
 from whetstone.tasks.manifest import load_tasks
 from whetstone.verify.verdict import Status, Verdict, reduce
@@ -190,9 +188,9 @@ def run_night(
     only: Sequence[str] = (),
     probe: int | None = None,
     retries: bool = True,
-    engine: Engine = sampling_engine,
+    engine: Engine | None = None,
     trainer: sft.Trainer | None = None,
-    seeder: Seeder = mlx_seeder,
+    seeder: Seeder | None = None,
     runtime: BackendRecord | None = None,
 ) -> Night:
     """Run a night and return what it produced. The order below is the design.
@@ -279,10 +277,19 @@ def run_night(
 
     directory = runs / run_id
     directory.mkdir(parents=True, exist_ok=True)
+    # Both chosen from the runtime that was detected, never defaulted. These used to be
+    # `sampling_engine` and `mlx_seeder` outright, so a night on a Torch host would record
+    # `torch` in its ledger, train with PEFT, and then try to generate with MLX — which on a
+    # machine without the extra does not produce a wrong number, it produces no night at all.
+    # `seeder` is dispatched separately from `engine` because they seed different globals: an
+    # engine paired with the other runtime's seeder records seeds that were applied to state
+    # nothing read, and the ledger would look complete.
+    chosen_engine = sampling.engine_for(runtime.name) if engine is None else engine
+    chosen_seeder = sampling.seeder_for(runtime.name) if seeder is None else seeder
     drawn = sample(
         candidate=candidate.repo_id,
         sources={PRIVATE: private_tasks, PUBLIC: public_tasks},
-        engine=engine(candidate, max_tokens),
+        engine=chosen_engine(candidate, max_tokens),
         contract=contract,
         run_seed=run_seed,
         draws=draws,
@@ -291,7 +298,7 @@ def run_night(
         timeout=timeout,
         interpreters=Interpreters(workspace=workspace / "environments"),
         pool=pool,
-        seeder=seeder,
+        seeder=chosen_seeder,
         retries=retries,
     )
 

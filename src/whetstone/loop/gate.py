@@ -539,6 +539,30 @@ def baseline_engine(
     )
 
 
+def gate_engine_for(checkpoint: Checkpoint) -> GateEngine:
+    """The gate engine belonging to the runtime that **trained this checkpoint**, not this host.
+
+    `fuse.fuser_for`'s rule, and it is the same failure it exists to prevent. An adapter trained
+    under Torch and one trained under MLX are different tensor layouts behind one filename, and
+    both runtimes will happily be pointed at either: the wrong loader does not raise, it produces
+    weights. A gate that chose its engine from the host would, on a Mac holding a Torch-trained
+    candidate, score a model nobody trained and publish the result as a promotion decision.
+
+    An untrained checkpoint records no backend it trained under — nothing trained it — so it
+    follows the side it is being compared against. That is decided by the caller, which has both.
+    """
+    from whetstone.loop.backend import MLX
+    from whetstone.loop.backend import family as backend_family
+
+    recorded = checkpoint.backend or {}
+    name = str(recorded.get("name") or MLX)
+    if backend_family(name) == MLX:
+        return gate_engine
+    from whetstone.loop.torch_runtime import torch_gate_engine
+
+    return torch_gate_engine
+
+
 def gate_engine(
     weights: Weights, checkpoint: Checkpoint, max_tokens: int = DEFAULT_MAX_TOKENS
 ) -> Generator:
@@ -648,7 +672,7 @@ def run_gate(
     recorded_on: str,
     run_id: str,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    engine: GateEngine = gate_engine,
+    engine: GateEngine | None = None,
 ) -> GateOutcome:
     """Score two checkpoints on the held-out membership and return the roadmap's verdict.
 
@@ -697,11 +721,19 @@ def run_gate(
     candidate_base = _base_for(candidate_checkpoint, fetched, "candidate")
     incumbent_base = _base_for(incumbent_checkpoint, fetched, "incumbent")
 
+    # Chosen from the CANDIDATE's recorded backend, and used for both sides. The candidate is
+    # always trained (an untrained one is refused above), so it is the side that carries the
+    # answer; the incumbent either agrees — `MismatchedBackend` refuses it otherwise — or is
+    # untrained, in which case nothing trained it and it has no backend of its own to follow.
+    # Chosen from the artefact rather than from this host, `fuse.fuser_for`'s rule: pointing the
+    # wrong loader at an adapter does not raise, it emits weights, and the gate would publish a
+    # promotion decision about a model nobody trained.
+    chosen = gate_engine_for(candidate_checkpoint) if engine is None else engine
     candidate_recorder = _CompletionRecorder(
-        engine(candidate_base, candidate_checkpoint, max_tokens)
+        chosen(candidate_base, candidate_checkpoint, max_tokens)
     )
     incumbent_recorder = _CompletionRecorder(
-        engine(incumbent_base, incumbent_checkpoint, max_tokens)
+        chosen(incumbent_base, incumbent_checkpoint, max_tokens)
     )
 
     interpreters = Interpreters(workspace=workspace / "environments")

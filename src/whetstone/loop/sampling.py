@@ -61,7 +61,10 @@ from whetstone.bakeoff.mlx_runtime import (
     greedy_sampler,
 )
 from whetstone.bakeoff.rendering import prompt_hash
+from whetstone.bakeoff.run import Engine
 from whetstone.bakeoff.weights import Weights
+from whetstone.loop.backend import MLX
+from whetstone.loop.backend import family as backend_family
 
 #: How many attempts each task gets, per candidate, per night. **Declared here and nowhere else,
 #: and deliberately not a flag.** A per-run `k` is a knob an operator turns after seeing a
@@ -348,6 +351,39 @@ class SampledMlxGenerator:
                 "chat_template": CHAT_TEMPLATE,
             }
         )
+
+
+def engine_for(backend_name: str) -> Engine:
+    """The night's engine belonging to a runtime, chosen by the record rather than by a default.
+
+    The `sft.trainer_for` shape, and it closes the same hole one layer up. Until this existed
+    the trainer was dispatched on the detected backend while the **engine** was still whatever
+    `run_night`'s default said — so a night on a Torch host would train with PEFT and generate
+    with MLX, or more accurately fail to generate at all, having recorded `torch` in its ledger.
+
+    The Torch import is function-local, `mlx_seeder`'s own rule: naming an engine must not pull
+    an inference stack into a process that only wanted to know which one to use.
+    """
+    if backend_family(backend_name) == MLX:
+        return sampling_engine
+    from whetstone.loop.torch_runtime import torch_sampling_engine
+
+    return torch_sampling_engine
+
+
+def seeder_for(backend_name: str) -> Seeder:
+    """The seeder belonging to a runtime. Separate from `engine_for`, because the seam is.
+
+    `Draw` seeds a global RNG immediately before asking, and which global depends on which
+    library is about to sample. A night that used one runtime's engine with the other's seeder
+    would produce draws nobody can reproduce — the seeds would be recorded, applied to state
+    nothing read, and the ledger would look complete.
+    """
+    if backend_family(backend_name) == MLX:
+        return mlx_seeder
+    from whetstone.loop.torch_runtime import torch_seeder
+
+    return torch_seeder
 
 
 def sampling_engine(weights: Weights, max_tokens: int) -> Generator:

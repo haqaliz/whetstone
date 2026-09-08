@@ -174,6 +174,43 @@ released version until it exists in the code.
   step count reaches the trainer *before* the night's — because a test checking only the output
   would pass against a second hand-built implementation.
 
+### Added
+
+- **Generation on Torch, so the loop is not Apple Silicon's alone (M6).** M3 gave this repository
+  a second *trainer* and stopped there, which turned out to be half a runtime: `sampling_engine`
+  and `gate_engine` both reach `mlx_lm` directly, so on a machine without Metal the loop could
+  train an adapter and could not draw a single rollout or score a single gated evaluation. That is
+  the shape the portability arm actually ran in — it trained on Linux from examples night #1 had
+  drawn **on the Mac**, and has never generated a token.
+  - `TorchGenerator` — the `Generator` protocol on `transformers`, with an optional adapter so the
+    gate can stack one. **The prompt is sliced back off by token count on the input ids**, which is
+    the whole correctness argument: `mlx_lm.generate` returns the completion alone while
+    `transformers.generate` returns the prompt's tokens followed by the completion's, so decoding
+    the whole sequence would hand the extractor the task's own prompt — the failing test, often the
+    fix — and a model that produced nothing would score as having solved everything, silently.
+  - `torch_seeder`, dispatched **separately** from the engine because they seed different globals.
+    An engine paired with the other runtime's seeder records seeds applied to state nothing read,
+    and the ledger would look complete.
+  - `torch_sampling_engine` and `torch_gate_engine`. The gate's stays **greedy**: `gate_engine`
+    decodes with `sampler_for(1)`, which is `greedy_sampler` by identity, so a single-draw gate
+    evaluation and the bake-off are one experiment. A sampled gate would make a promotion decision
+    depend on a draw.
+  - `sampling.engine_for` / `sampling.seeder_for` / `gate.gate_engine_for` — the dispatch. The
+    gate's is chosen by **the checkpoint's own recorded backend, never the host's**,
+    `fuse.fuser_for`'s rule: pointing MLX's loader at a Torch adapter does not raise, it emits
+    weights, and the gate would publish a promotion decision about a model nobody trained.
+  - `TORCH_SAMPLER` is deliberately **not** a copy of MLX's sentence. The two libraries do not
+    implement the same sampler — `transformers` renormalises after the top-p cut and orders
+    temperature differently — so the temperature and the cut-off are shared by identity and the
+    claim about what they mean is not.
+
+### Fixed
+
+- **A night's engine and seeder follow the runtime it detected.** The trainer was already
+  dispatched; these two were still `sampling_engine` and `mlx_seeder` outright, so a night on a
+  Torch host would record `torch` in its ledger, train with PEFT, and then reach for MLX to
+  generate — which on a machine without the extra is not a wrong number, it is no night at all.
+
 ### Changed
 
 - **`test_sandbox.py` is gated on capability, not on a platform name.** Its fourteen assertions
