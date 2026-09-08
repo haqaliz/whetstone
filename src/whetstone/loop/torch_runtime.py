@@ -398,14 +398,25 @@ def _load_torch(
     tokenizer = AutoTokenizer.from_pretrained(str(model_path), revision=revision)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(str(model_path), revision=revision, dtype=dtype)
+    # Annotated `Any` deliberately, and for the reason `gate_engine` records at its own call
+    # site. Under plain `uv sync` every symbol in `transformers` and `peft` resolves to `Any` and
+    # none of this is checked at all; with the extra installed, `PeftModel.to` is a decorated
+    # `_Wrapped` typed against `PreTrainedModel` and `.eval()` is untyped, so the same two lines
+    # become errors. CI's second mypy run — the one with the extra — is what surfaced that, and
+    # the annotation is what stops the file typechecking on one machine only.
+    model: Any = AutoModelForCausalLM.from_pretrained(
+        str(model_path), revision=revision, dtype=dtype
+    )
 
     if adapter_path is not None:
         from peft import PeftModel
 
         model = PeftModel.from_pretrained(model, str(adapter_path))
 
-    model.to(device)
+    # Reassigned rather than called for the side effect: `nn.Module.to` returns `self`, but
+    # `PeftModel`'s wrapper does not promise to, and a model left on the wrong device generates
+    # correctly and slowly rather than raising.
+    model = model.to(device)
     model.eval()
     return model, tokenizer, device
 
