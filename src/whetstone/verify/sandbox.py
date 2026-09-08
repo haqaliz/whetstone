@@ -31,6 +31,7 @@ Stdlib only, and no model: this is a subprocess and a string.
 
 from __future__ import annotations
 
+import functools
 import os
 import subprocess
 import sys
@@ -41,9 +42,17 @@ from pathlib import Path
 
 from whetstone.verify.verdict import Status, Verdict
 
-#: The kernel's front door. An absolute path, never resolved through `PATH`: the boundary must
-#: not be selectable by the environment of whoever launched the verifier.
+#: The kernel's front door on macOS. An absolute path, never resolved through `PATH`: the
+#: boundary must not be selectable by the environment of whoever launched the verifier.
 SANDBOX_EXEC = "/usr/bin/sandbox-exec"
+
+#: The kernel's front door on Linux. Absolute for `SANDBOX_EXEC`'s reason, and the two standard
+#: locations are tried in order rather than `PATH` being consulted.
+BWRAP_PATHS = ("/usr/bin/bwrap", "/usr/local/bin/bwrap")
+
+#: The two mechanisms that can confine, named so a result can say which one did.
+SEATBELT = "seatbelt"
+BUBBLEWRAP = "bubblewrap"
 
 #: The `kind` on every verdict this module emits, so a reader can tell a sandbox verdict from
 #: the pytest verdict it will sit beside.
@@ -61,6 +70,17 @@ _BIT_BUCKET = os.devnull
 #: `sandbox-exec` prefixes its own failures — a profile that would not compile, a binary it
 #: could not exec. That is not the child's exit status, because there was no child.
 _SANDBOX_EXEC_FAILURE = b"sandbox-exec:"
+
+#: bubblewrap's equivalent prefix. Both are needed and neither is optional: this marker is what
+#: separates "the task failed" from "the task never ran", which is the UNVERIFIED-vs-FAIL
+#: contract at its sharpest. Matching only Seatbelt's prefix meant a command bubblewrap could not
+#: start came back `FAIL` — a task recorded as *solved wrongly* when in truth nothing executed.
+#: Found by running the containment suite on a real Linux host, where `bwrap: execvp ...` on
+#: stderr was being read as a failing task.
+_BWRAP_FAILURE = b"bwrap:"
+
+#: Every prefix that means the mechanism itself refused to start the child.
+_NEVER_STARTED_MARKERS = (_SANDBOX_EXEC_FAILURE, _BWRAP_FAILURE)
 
 
 class UnsupportedPlatform(RuntimeError):
@@ -121,6 +141,112 @@ def build_profile(scope: Path | str) -> str:
     )
 
 
+def bubblewrap_binary() -> str | None:
+    """The `bwrap` this host would use, or `None`. Absolute paths only, never `PATH`."""
+    for candidate in BWRAP_PATHS:
+        if Path(candidate).exists():
+            return candidate
+    return None
+
+
+def build_bubblewrap_argv(binary: str, scope: Path | str) -> list[str]:
+    """The Linux confinement spec: no network, everything read-only but the scope, no host /tmp.
+
+    The counterpart of `build_profile`, and it enforces the same three properties by different
+    means — namespaces rather than a policy language:
+
+    - `--unshare-all` drops the network namespace along with the rest, so the child has no route
+      off the machine. This is the property the reward depends on: a task that can reach the
+      network can fetch a patch, or a test result, from somewhere the operator never granted.
+    - `--ro-bind / /` mounts the whole filesystem **read-only**, then `--bind <scope> <scope>`
+      punches exactly one writable hole. That is the inverse of Seatbelt's `(deny file-write*)`
+      plus one allow, and lands in the same place: writes land inside `scope` or they do not
+      land.
+    - **There is deliberately no `--tmpfs /tmp`.** An earlier version mounted one, reasoning that
+      a private empty `/tmp` keeps the child's temp writes off the host. It does — but it also
+      hands the child a *writable* `/tmp`, and the property this sandbox owes the reward is not
+      "the host is unharmed", it is **writes land inside the scope or they do not land**. With a
+      tmpfs there, a write outside the scope succeeds and the child can read it back, which is a
+      thing macOS refuses outright. Measured on a real Linux host: the containment suite's
+      `OUTSIDE DENIED` assertion failed and reported `OUTSIDE WROTE`. `_child_env` already points
+      `TMPDIR` inside the scope, so nothing needed the writable `/tmp` in the first place.
+    - `--die-with-parent` means an abandoned child cannot outlive the verifier that launched it.
+
+    Like the SBPL profile, this is returned rather than executed, so a caller auditing a run can
+    read exactly what the kernel was asked for.
+    """
+    resolved = Path(scope).expanduser().resolve()
+    return [
+        binary,
+        "--unshare-all",
+        "--die-with-parent",
+        "--ro-bind", "/", "/",
+        "--dev", "/dev",
+        "--proc", "/proc",
+        "--bind", str(resolved), str(resolved),
+    ]
+
+
+@functools.cache
+def confinement() -> str:
+    """Which mechanism confines on this host — **probed**, never inferred from a filename.
+
+    Presence is not capability, and Linux is where that bites. Ubuntu 24.04 ships `bwrap` and
+    sets `kernel.apparmor_restrict_unprivileged_userns=1`, which stops an unprivileged user
+    creating the namespaces `bwrap` needs: the binary is on disk, executable, and confines
+    nothing. A check that stopped at `which bwrap` would hand back a sandbox that silently
+    fails open, which is the one outcome this module exists to prevent — the reward is only
+    worth anything if the boundary behind it is real.
+
+    So the probe **runs the thing**: it asks the mechanism to confine `true` and requires
+    success. Cheap (milliseconds) and cached, because a host's confinement does not change
+    under a running night, and paying for it per rollout would be paying for an answer that
+    cannot have changed.
+    """
+    if sys.platform == "darwin":
+        if not Path(SANDBOX_EXEC).exists():
+            raise UnsupportedPlatform(
+                f"{SANDBOX_EXEC} is not present, so nothing can be confined. Raising rather "
+                "than running the command unsandboxed: an unconfined run would produce a "
+                "reward with no boundary behind it."
+            )
+        return SEATBELT
+
+    if sys.platform.startswith("linux"):
+        binary = bubblewrap_binary()
+        if binary is None:
+            raise UnsupportedPlatform(
+                "no `bwrap` at " + " or ".join(BWRAP_PATHS) + ", so nothing can be confined on "
+                "this host. Install bubblewrap (`apt install bubblewrap`). Raising rather than "
+                "running the command unsandboxed: an unconfined run would produce a reward with "
+                "no boundary behind it."
+            )
+        probe = subprocess.run(
+            [*build_bubblewrap_argv(binary, Path(tempfile.gettempdir())), "/bin/true"],
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        if probe.returncode != 0:
+            raise UnsupportedPlatform(
+                f"{binary} is installed and cannot confine anything here: it exited "
+                f"{probe.returncode} with {probe.stderr.decode(errors='replace').strip()!r}. On "
+                "Ubuntu 24.04 and later this is usually "
+                "`kernel.apparmor_restrict_unprivileged_userns=1`, which stops an unprivileged "
+                "user creating the namespaces bwrap needs; an administrator can set it to 0, "
+                "install an AppArmor profile for bwrap, or make bwrap setuid. Raising rather "
+                "than running the command unsandboxed: a sandbox that fails open is worse than "
+                "none, because the reward would look verified."
+            )
+        return BUBBLEWRAP
+
+    raise UnsupportedPlatform(
+        f"no confinement mechanism is known for {sys.platform!r}. Raising rather than running "
+        "the command unsandboxed: a no-op that returned success would be Whetstone claiming a "
+        "containment boundary that does not exist on this platform."
+    )
+
+
 def run_confined(
     command: Sequence[str],
     *,
@@ -147,45 +273,54 @@ def run_confined(
 
     Blocks until the child exits, and unlinks the profile on the way out whatever happens.
     """
-    if sys.platform != "darwin":
-        raise UnsupportedPlatform(
-            f"the Seatbelt sandbox is macOS-only and cannot contain anything on "
-            f"{sys.platform!r}. Raising rather than running the command unsandboxed: a no-op "
-            f"that returned success would be Whetstone claiming a containment boundary that "
-            f"does not exist on this platform."
-        )
-    if not Path(SANDBOX_EXEC).exists():
-        raise UnsupportedPlatform(
-            f"{SANDBOX_EXEC} is not present, so nothing can be confined. Raising rather than "
-            f"running the command unsandboxed: an unconfined run would produce a reward with "
-            f"no boundary behind it."
-        )
+    # Probed, not inferred. `confinement` raises `UnsupportedPlatform` when this host cannot
+    # confine — including the case where the mechanism is installed and cannot create the
+    # namespaces it needs, which is Ubuntu 24.04 out of the box.
+    mechanism = confinement()
 
     scope_path = Path(scope).expanduser().resolve()
     tmpdir = scope_path / _TMPDIR_NAME
     tmpdir.mkdir(parents=True, exist_ok=True)
+    env = _child_env(scope_path, tmpdir, python_path)
 
-    profile = build_profile(scope_path)
-    handle, profile_path = tempfile.mkstemp(prefix="whetstone-sandbox-", suffix=".sb")
-    try:
-        with os.fdopen(handle, "w") as fh:
-            fh.write(profile)
+    if mechanism == BUBBLEWRAP:
+        binary = bubblewrap_binary()
+        assert binary is not None  # `confinement` already proved it runs
+        argv = build_bubblewrap_argv(binary, scope_path)
+        profile = " ".join(argv)
         try:
             completed = subprocess.run(
-                [SANDBOX_EXEC, "-f", profile_path, *command],
+                [*argv, *command],
                 capture_output=True,
                 cwd=str(cwd) if cwd is not None else None,
-                env=_child_env(scope_path, tmpdir, python_path),
+                env=env,
                 timeout=timeout,
                 check=False,
             )
         except subprocess.TimeoutExpired as expired:
             return _timed_out(expired, profile=profile, timeout=timeout)
-    finally:
-        os.unlink(profile_path)
+    else:
+        profile = build_profile(scope_path)
+        handle, profile_path = tempfile.mkstemp(prefix="whetstone-sandbox-", suffix=".sb")
+        try:
+            with os.fdopen(handle, "w") as fh:
+                fh.write(profile)
+            try:
+                completed = subprocess.run(
+                    [SANDBOX_EXEC, "-f", profile_path, *command],
+                    capture_output=True,
+                    cwd=str(cwd) if cwd is not None else None,
+                    env=env,
+                    timeout=timeout,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as expired:
+                return _timed_out(expired, profile=profile, timeout=timeout)
+        finally:
+            os.unlink(profile_path)
 
 
-    if completed.returncode != 0 and completed.stderr.startswith(_SANDBOX_EXEC_FAILURE):
+    if completed.returncode != 0 and completed.stderr.startswith(_NEVER_STARTED_MARKERS):
         return _never_started(completed, profile=profile)
 
     return SandboxResult(

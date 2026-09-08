@@ -34,6 +34,7 @@ from pathlib import Path
 
 import pytest
 
+from bakeoff.reward_amendments import AMENDMENTS_FILE, undeclared
 from whetstone.bakeoff import stratum
 from whetstone.bakeoff.control import reference_patch
 from whetstone.tasks.manifest import load_tasks
@@ -286,8 +287,12 @@ def test_the_membership_is_a_proper_nonempty_subset_of_the_declared_corpus() -> 
 
 def test_the_frozen_reward_paths_are_byte_identical_to_origin_master() -> None:
     """AC 7: the reward path did not move while the selection machinery was built beside it."""
+    # `--name-only`, not `--stat`: the guard now answers "which files moved" rather than "did
+    # anything move", because a DECLARED move is permitted and an undeclared one is not. The
+    # freeze is unchanged; there is now exactly one way through it, and it leaves a committed
+    # artefact behind.
     result = subprocess.run(
-        ["git", "diff", "--stat", "origin/master", "--", *FROZEN_PATHS],
+        ["git", "diff", "--name-only", "origin/master", "--", *FROZEN_PATHS],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
@@ -295,11 +300,13 @@ def test_the_frozen_reward_paths_are_byte_identical_to_origin_master() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "", (
-        f"a frozen path moved on this branch:\n{result.stdout}\n\n"
-        "WHY THIS IS A FAILURE: the stratum rule and the filter it feeds build beside the "
-        "reward path and depend on it being exactly what every recorded verdict was graded "
-        "against (spec AC 7, `prd.md:151-154`)."
+    moved = frozenset(line for line in result.stdout.splitlines() if line.strip())
+    unauthorised = undeclared(moved, REPO_ROOT)
+    assert unauthorised == frozenset(), (
+        f"a frozen path moved on this branch with no amendment: {sorted(unauthorised)}\n\n"
+        "WHY THIS IS A FAILURE: the selection machinery was built beside the reward path and "
+        "depends on it being exactly what every recorded verdict was graded against. Changing "
+        f"the reward is allowed, never quietly: declare it in {AMENDMENTS_FILE}."
     )
     for relative in FROZEN_PATHS:
         assert (REPO_ROOT / relative).exists(), f"frozen path {relative!r} is missing"

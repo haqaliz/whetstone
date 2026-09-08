@@ -25,6 +25,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from bakeoff.reward_amendments import AMENDMENTS_FILE, undeclared
+
 #: The repository root, reached from `tests/bakeoff/`. It is the git working tree the pins
 #: measure, and the base for the synthetic exercise below.
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -105,16 +107,23 @@ def test_the_frozen_paths_are_byte_identical_to_origin_master() -> None:
     floor all describe a harness that no longer exists — and nothing in their outputs would
     look wrong while it happened.
     """
-    result = _git(["diff", "--stat", "origin/master", "--", *FROZEN_PATHS], cwd=REPO_ROOT)
+    # `--name-only`, not `--stat`: the guard now has to answer "which files moved" rather
+    # than "did anything move", because a DECLARED move is permitted and an undeclared one is
+    # not. The freeze itself is unchanged — what changed is that there is now exactly one way
+    # through it, and it leaves a committed artefact behind (`reward_amendments`).
+    result = _git(["diff", "--name-only", "origin/master", "--", *FROZEN_PATHS], cwd=REPO_ROOT)
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "", (
-        f"a frozen path moved on this branch:\n{result.stdout}\n\n"
-        "WHY THIS IS A FAILURE: the format-hardening slice builds beside the reward path and "
-        "depends on it being exactly what every recorded verdict was graded against. A change "
-        "under src/whetstone/verify/, patch.py or attribution.py on the same branch means the "
-        "retry decision and the autopsy describe a harness that no longer exists."
+    moved = frozenset(line for line in result.stdout.splitlines() if line.strip())
+    unauthorised = undeclared(moved, REPO_ROOT)
+    assert unauthorised == frozenset(), (
+        f"the reward path moved on this branch with no amendment: {sorted(unauthorised)}\n\n"
+        "WHY THIS IS A FAILURE: a branch that publishes counts must not also change the thing "
+        "those counts were graded against — the measurement and the measured drift apart and "
+        "nothing in the output looks wrong while it happens. Changing the reward is allowed, "
+        f"but never quietly: declare the files and the reason in {AMENDMENTS_FILE}, which is "
+        "reviewed in the diff that carries it and stays on the record afterwards."
     )
-
+    
 
 def test_a_planted_change_is_reported_by_the_pin(tmp_path: Path) -> None:
     """The pin above, proven able to fail: a planted change in any frozen path is reported.

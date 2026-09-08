@@ -35,9 +35,13 @@ from pathlib import Path
 import pytest
 
 from whetstone.verify.sandbox import (
+    BUBBLEWRAP,
     SandboxResult,
     UnsupportedPlatform,
+    bubblewrap_binary,
+    build_bubblewrap_argv,
     build_profile,
+    confinement,
     run_confined,
 )
 from whetstone.verify.verdict import Status
@@ -87,9 +91,28 @@ print("TMPDIR", os.environ.get("TMPDIR"))
 print("GETTEMPDIR", tempfile.gettempdir())
 """
 
+def _confines() -> bool:
+    """Can this host confine anything at all? Probed, so the answer is the truth about the host."""
+    try:
+        confinement()
+    except UnsupportedPlatform:
+        return False
+    return True
+
+
+#: Skipped only where nothing can confine — not "unless macOS". Every property below is a
+#: property of `run_confined`, which is mechanism-agnostic: Seatbelt on Darwin, bubblewrap on
+#: Linux. Gating on the platform name instead would mean the network denial, the write
+#: confinement and the pinned environment were asserted on exactly one operating system while
+#: the other shipped them unproven — and the sandbox is the reward's boundary, so "unproven"
+#: there is the whole product unproven.
 pytestmark = pytest.mark.skipif(
-    sys.platform != "darwin",
-    reason="the Seatbelt sandbox is macOS-only; there is nothing to contain anything with here",
+    not _confines(),
+    reason=(
+        "no confinement mechanism works on this host, so there is nothing to contain anything "
+        "with. On Linux this is usually bubblewrap missing, or "
+        "`kernel.apparmor_restrict_unprivileged_userns=1` stopping it creating namespaces"
+    ),
 )
 
 
@@ -151,7 +174,15 @@ def test_the_sandbox_denies_the_network_to_the_child(
         scope=tmp_path,
         timeout=60,
     )
-    assert _probe_outcome(result.stdout) == "DENIED", (
+    # Both refusal shapes count, and the difference is the mechanism rather than the strength.
+    # Seatbelt denies the syscall on an interface that exists, so the probe sees `PermissionError`
+    # and prints DENIED. bwrap's `--unshare-all` puts the child in an empty network namespace, so
+    # there is no interface to deny on and the probe sees `ENETUNREACH` and prints UNREACHABLE —
+    # if anything the stronger confinement, since nothing is reachable to be refused. What must
+    # never appear is CONNECTED, and the control test beside this one proves the network was
+    # there to be reached. Pinning the errno vocabulary of one kernel would have made the other
+    # platform's containment look like a failure while it was in fact working.
+    assert _probe_outcome(result.stdout) in {"DENIED", "UNREACHABLE"}, (
         f"expected the kernel to refuse the connection, got "
         f"{result.stdout.decode(errors='replace')!r}"
     )
@@ -192,7 +223,10 @@ def test_writes_land_inside_the_scope_and_are_refused_outside_it(tmp_path: Path)
 
     stdout = result.stdout.decode(errors="replace")
     assert "INSIDE WROTE" in stdout, stdout
-    assert "OUTSIDE DENIED" in stdout, stdout
+    # `DENIED` is Seatbelt's `PermissionError`; `FAILED` covers the read-only-filesystem
+    # refusal bubblewrap produces from `--ro-bind / /`. The property is that the write
+    # did not land, not which errno said so — `OUTSIDE WROTE` must never appear.
+    assert ("OUTSIDE DENIED" in stdout) or ("OUTSIDE FAILED" in stdout), stdout
     assert (scope / "inside.txt").exists()
     assert not outside.exists()
 
@@ -218,6 +252,11 @@ try:
         handle.write("landed")
 except PermissionError:
     print("OUTSIDE DENIED")
+except OSError as exc:
+    # Seatbelt denies the write (`PermissionError`); bubblewrap's read-only bind refuses it
+    # with `EROFS`, which is an `OSError` and not a `PermissionError`. Catching only the
+    # narrower type let the probe die on its own traceback and report nothing at all.
+    print("OUTSIDE FAILED", type(exc).__name__, exc)
 else:
     print("OUTSIDE WROTE")
 """
@@ -228,7 +267,10 @@ else:
 
     stdout = result.stdout.decode(errors="replace")
     assert "DEVNULL WROTE" in stdout, stdout
-    assert "OUTSIDE DENIED" in stdout, stdout
+    # `DENIED` is Seatbelt's `PermissionError`; `FAILED` covers the read-only-filesystem
+    # refusal bubblewrap produces from `--ro-bind / /`. The property is that the write
+    # did not land, not which errno said so — `OUTSIDE WROTE` must never appear.
+    assert ("OUTSIDE DENIED" in stdout) or ("OUTSIDE FAILED" in stdout), stdout
     assert not outside.exists()
 
 
@@ -379,17 +421,82 @@ def test_the_import_path_is_never_inherited_from_the_launching_shell(
     )
 
 
-def test_a_non_darwin_platform_raises_rather_than_running_unsandboxed(
+def test_a_platform_with_no_mechanism_raises_rather_than_running_unsandboxed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Never silently unsandboxed: a no-op returning success would claim a boundary we lack."""
+    """Never silently unsandboxed: a no-op returning success would claim a boundary we lack.
+
+    This used to read "a non-darwin platform", and that is no longer the property — Linux
+    confines through bubblewrap. What survives, and is the thing actually worth asserting, is
+    that a host with *no* mechanism refuses rather than running the command bare.
+
+    The cache is cleared around the monkeypatch because `confinement` memoises: a host's
+    confinement does not change under a running night, so paying for the probe per rollout
+    would be paying for an answer that cannot have moved. That makes it invisible to a
+    monkeypatched platform unless the cache is dropped, which is exactly what a caller
+    changing platforms mid-process would need — and no caller does.
+    """
+    confinement.cache_clear()
+    monkeypatch.setattr(sys, "platform", "plan9")
+    try:
+        with pytest.raises(UnsupportedPlatform, match="plan9"):
+            run_confined([sys.executable, "-c", ""], scope=tmp_path, timeout=60)
+    finally:
+        confinement.cache_clear()
+
+
+def test_the_mechanism_is_probed_rather_than_inferred_from_a_filename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Presence is not capability, and on Linux that distinction is the whole ballgame.
+
+    Ubuntu 24.04 ships `bwrap` and sets `kernel.apparmor_restrict_unprivileged_userns=1`, which
+    stops an unprivileged user creating the namespaces it needs. The binary is on disk,
+    executable, and confines nothing — measured on a real 24.04 host, where `bwrap` exits with
+    `setting up uid map: Permission denied`. A check that stopped at "the file exists" would
+    hand back a sandbox that fails **open**, and a reward with no boundary behind it still looks
+    verified, which is the one outcome this module exists to prevent.
+
+    So the probe runs the mechanism and requires success. Simulated here by a `bwrap` that
+    exists and always fails, because the real failure needs a host configured to produce it.
+    """
+    import subprocess as sp
+
+    from whetstone.verify import sandbox as module
+
+    broken = tmp_path / "bwrap"
+    broken.write_text("#!/bin/sh\nexit 1\n")
+    broken.chmod(0o755)
+
+    confinement.cache_clear()
     monkeypatch.setattr(sys, "platform", "linux")
-    with pytest.raises(UnsupportedPlatform):
-        run_confined([sys.executable, "-c", ""], scope=tmp_path, timeout=60)
+    monkeypatch.setattr(module, "BWRAP_PATHS", (str(broken),))
+    original = sp.run
+
+    def failing(argv: object, **kwargs: object) -> object:
+        return sp.CompletedProcess(argv, 1, b"", b"setting up uid map: Permission denied")
+
+    monkeypatch.setattr(module.subprocess, "run", failing)
+    try:
+        with pytest.raises(UnsupportedPlatform, match="apparmor_restrict_unprivileged_userns"):
+            module.confinement()
+    finally:
+        monkeypatch.setattr(module.subprocess, "run", original)
+        confinement.cache_clear()
 
 
 def test_the_result_carries_the_profile_that_was_actually_applied(tmp_path: Path) -> None:
     """Not the one we meant to apply — a caller auditing a run reads what the kernel got."""
     result = run_confined([sys.executable, "-c", ""], scope=tmp_path, timeout=60)
     assert isinstance(result, SandboxResult)
-    assert result.profile == build_profile(tmp_path)
+
+    # The spec of whichever mechanism actually ran — an SBPL policy under Seatbelt, the argv
+    # under bubblewrap. Pinning the SBPL text would assert that the *macOS* profile was applied
+    # on a host where it never could be, and the property here is "what the result reports is
+    # what the kernel got", not "the kernel is Apple's".
+    if confinement() == BUBBLEWRAP:
+        binary = bubblewrap_binary()
+        assert binary is not None
+        assert result.profile == " ".join(build_bubblewrap_argv(binary, tmp_path))
+    else:
+        assert result.profile == build_profile(tmp_path)
