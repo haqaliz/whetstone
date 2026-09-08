@@ -554,6 +554,37 @@ def _probe(interpreter: Path) -> str:
     return completed.stdout.strip()
 
 
+#: uv's wording when `--offline` meets a cache that cannot answer. Matched as a substring rather
+#: than parsed: it is a message, not an interface, and a change in its phrasing must cost a
+#: missing hint rather than a crash. `explain_failure` is written so that is the failure mode.
+OFFLINE_MISS = "Network connectivity is disabled"
+
+#: What to do about it. Named here rather than in a runbook because this is where the operator
+#: is standing when they need it — a mint against a cold cache fails once per candidate, and
+#: nobody reads a setup guide after the fact.
+WARM_REMEDY = (
+    "This is the documented precondition for a fresh machine, not a fault: every command here "
+    "carries --offline by design, so uv's cache has to be able to answer the donor's lock "
+    "before any mining starts. Warm it once, with a network, and then mine:\n"
+    "    whetstone warm-cache --donor <path-to-donor>\n"
+    "It syncs one project per DISTINCT uv.lock in the donor's history rather than one per "
+    "commit. Alternatively point UV_FIND_LINKS at a directory of wheels."
+)
+
+
+def explain_failure(args: tuple[str, ...], detail: str) -> str:
+    """uv's own failure, plus the remedy when — and only when — this one is explicable.
+
+    Extended only for the offline cache-miss signature. A remedy stapled to every uv failure is
+    worse than none: an operator learns to skip a sentence that is always there, and the one
+    time it names the actual cause it reads as boilerplate.
+    """
+    message = f"uv {' '.join(args)} failed: {detail}"
+    if OFFLINE_MISS in detail:
+        return f"{message}\n\n{WARM_REMEDY}"
+    return message
+
+
 def _uv(args: tuple[str, ...], *, environment: dict[str, str] | None = None) -> str:
     """uv, with its failure surfaced in full. Raises `NotProvisionable` on a non-zero exit.
 
@@ -573,19 +604,22 @@ def _uv(args: tuple[str, ...], *, environment: dict[str, str] | None = None) -> 
     )
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip()
-        raise NotProvisionable(f"uv {' '.join(args)} failed: {detail}")
+        raise NotProvisionable(explain_failure(args, detail))
     return completed.stdout
 
 
 __all__ = [
     "LOCKFILE",
+    "OFFLINE_MISS",
     "PROJECT_FILE",
     "SETUP_CFG",
+    "WARM_REMEDY",
     "Captured",
     "NoLockfile",
     "NotProvisionable",
     "UnknownImportRoot",
     "capture",
+    "explain_failure",
     "import_roots",
     "pins_from_freeze",
 ]

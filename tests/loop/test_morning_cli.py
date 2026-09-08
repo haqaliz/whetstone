@@ -239,6 +239,52 @@ def test_the_module_docstring_names_every_subcommand_that_exists() -> None:
     )
 
 
+#: How the docstring's opening sentence spells its own count. Written out rather than digits,
+#: which is the house style of that paragraph and the reason the number could drift unnoticed:
+#: a name that is missing shows up in a diff, a word that is one too few does not.
+_NUMBER_WORDS = {
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+}
+
+
+def test_the_module_docstring_counts_the_subcommands_correctly() -> None:
+    """The half the name check cannot see, and it was already wrong when this was written.
+
+    The assertion above walks the parser's names, so a command the docstring forgets to mention
+    fails the build. It says nothing about the *count* in the opening sentence — and that count
+    had drifted to "eight" while the parser defined ten, in the same paragraph that apologises
+    for a previous miscount of exactly this kind. Two commands had been added since anyone last
+    read the first line.
+
+    That is the argument for asserting it rather than proof-reading it again: a missing name is
+    visible in a diff, a number that is two too small is not.
+    """
+    parser = cli.build_parser()
+    defined = len(parser._subparsers._group_actions[0].choices)  # type: ignore[union-attr]
+    docstring = cli.__doc__ or ""
+
+    claimed = [word for word in _NUMBER_WORDS if f"{word} now do" in docstring]
+    assert len(claimed) == 1, (
+        "WHY THIS IS A FAILURE: cli.py's docstring no longer opens by counting its commands in "
+        f"the form '<number> now do', so this guard cannot check the count. Found {claimed}. "
+        "Restore the phrasing or delete this test with the sentence it guards"
+    )
+    assert _NUMBER_WORDS[claimed[0]] == defined, (
+        f"WHY THIS IS A FAILURE: cli.py's docstring says {claimed[0]!r} commands stand behind "
+        f"the parser, which defines {defined}. The front door's first sentence is the first "
+        "thing a reader believes, and this exact sentence has been wrong before"
+    )
+
+
 def test_the_refusal_names_are_the_loops_own(tmp_path: Path) -> None:
     """The handler catches the module's own refusals by identity, never a bare `ValueError`."""
     assert morning.NoRuns in morning.REFUSALS
