@@ -60,6 +60,13 @@ _RUNTIMES: dict[str, tuple[str, str]] = {
     TORCH: ("torch", "torch"),
 }
 
+#: The distribution names every runtime here is installed under. Exported so a record of "what
+#: this was measured under" can drop the runtimes that did **not** run rather than listing one
+#: unconditionally — see `ledger.tool_versions`, and #33 for what listing one costs.
+RUNTIME_DISTRIBUTIONS: tuple[str, ...] = tuple(
+    distribution for _, distribution in _RUNTIMES.values()
+)
+
 
 class NoBackend(RuntimeError):
     """No runtime is installed, or the one asked for is not.

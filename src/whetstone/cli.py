@@ -1,7 +1,7 @@
 """The `whetstone` command line entry point.
 
 The failure this module prevents: a ``--help`` that advertises work the code cannot do.
-Commands appear here only when something stands behind them, and seven now do. ``verify`` runs
+Commands appear here only when something stands behind them, and eight now do. ``verify`` runs
 the execution-grounded reward in `whetstone.verify.strict`: it applies a patch to a task's
 known-broken commit inside a sandbox, restores the operator-held tests from golden, and
 compares what pytest actually executed against what the task declared. ``mine`` is the other
@@ -22,7 +22,12 @@ so what the loop trains is a repository somebody else can load rather than bytes
 project can interpret. And ``fuse`` merges a checkpoint's adapter into its base to emit one
 standalone model — the form llama.cpp converts to GGUF, which is what Ollama and LM Studio load
 on every operating system. Its fuser is chosen by the checkpoint's own recorded backend and
-never by the host's, because the wrong one does not raise, it emits weights.
+never by the host's, because the wrong one does not raise, it emits weights. ``train-arm``
+trains one arm's checkpoint from a night's sealed selection: it detects the runtime before a
+weight is read, derives the capacity ceiling from that machine's own memory, runs the probe
+rather than recording one, and seals through `write_checkpoint`. It exists because the first
+arm run did not go through it — a script on the training box reimplemented the parts of those
+constructors it needed, and every wrong field in the resulting provenance came from that.
 
 An earlier version of this paragraph counted four commands, enumerated four, omitted
 ``check-leakage`` entirely, and closed by saying no report command existed. All three claims
@@ -33,15 +38,16 @@ here deliberately describes the old sentence instead of quoting it: the guard ca
 quotation from a live claim, and a guard that punishes recording a correction would teach people
 to delete their corrections.)
 
-**``run --night``, ``gate``, ``check-leakage``, ``check-probe`` and ``report`` are the commands
-here whose bodies are not in this file, and deliberately.** This module is a guarded root — it
-calls ``verify_strict``, and nothing it imports may reach an inference library. The loop and the
-gate reach ``mlx_lm`` legitimately, so they live in the EXEMPT ``whetstone.loop`` package, and
-``run_night`` below holds a single **function-local** import into it, as do ``run_gate_cli``,
-``run_check_leakage_cli``, ``run_report_cli`` and ``run_check_probe_cli``: running
-``whetstone verify`` never executes those lines and never loads a model. The last three need
-no inference library themselves and are function-local anyway — the argument is about the
-module graph of ``whetstone verify``, not about what one handler happens to need.
+**``run --night``, ``gate``, ``check-leakage``, ``check-probe``, ``report`` and ``train-arm``
+are the commands here whose bodies are not in this file, and deliberately.** This module is a
+guarded root — it calls ``verify_strict``, and nothing it imports may reach an inference
+library. The loop and the gate reach ``mlx_lm`` legitimately, so they live in the EXEMPT
+``whetstone.loop`` package, and ``run_night`` below holds a single **function-local** import
+into it, as do ``run_gate_cli``, ``run_check_leakage_cli``, ``run_report_cli``,
+``run_check_probe_cli`` and ``run_train_arm_cli``: running ``whetstone verify`` never executes
+those lines and never loads a model. Several of them need no inference library themselves and
+are function-local anyway — the argument is about the module graph of ``whetstone verify``, not
+about what one handler happens to need.
 ``tests/test_reward_path_scope_is_partitioned.py`` asserts they are the only such edges and
 that they are function-local.
 
@@ -697,6 +703,65 @@ def build_parser() -> argparse.ArgumentParser:
         help="where the fused model is written. Refused inside the checkpoint or under reports/",
     )
 
+    arm = commands.add_parser(
+        "train-arm",
+        help="train one arm's checkpoint from a night's sealed selection, on this machine",
+        description=(
+            "Probe, train and seal a checkpoint from the examples a night already selected. "
+            "This is the door PREREGISTRATION.md section 10.11's portability arm runs through, "
+            "and it exists because its first run did not: that run was driven by a script "
+            "written onto the training box, which went AROUND sft's constructors and "
+            "reimplemented the parts of each it needed. Every defect in the resulting "
+            "provenance follows from that -- a capacity probe that never ran, a ceiling taken "
+            "from another machine, a versions block naming a runtime the host never had. Here "
+            "the runtime is detected before a weight is read, the ceiling is derived from that "
+            "machine's own memory, the probe is run rather than constructed, and the versions "
+            "block is given the same backend record as the backend block so the two cannot "
+            "disagree. Nothing here scores anything: section 10.11 committed in advance that "
+            "this arm demonstrates the loop off Apple Silicon and claims no delta."
+        ),
+    )
+    arm.add_argument(
+        "--run",
+        required=True,
+        type=Path,
+        metavar="<dir>",
+        help="the night run holding dataset.json and data/. Its selection is what trains",
+    )
+    arm.add_argument(
+        "--base",
+        required=True,
+        type=Path,
+        metavar="<dir>",
+        help="the local base weights to fine-tune. Never a repo id",
+    )
+    arm.add_argument(
+        "--revision",
+        required=True,
+        metavar="<sha>",
+        help="the immutable commit sha those weights were verified against, never a tag",
+    )
+    arm.add_argument(
+        "--repo-id",
+        required=True,
+        metavar="<id>",
+        help="the base's repository id, recorded in the checkpoint's provenance",
+    )
+    arm.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        metavar="<dir>",
+        help="where the adapter and its provenance are written",
+    )
+    arm.add_argument(
+        "--run-seed",
+        required=True,
+        type=int,
+        metavar="<int>",
+        help="the seed recorded in the provenance, matching the night that selected the examples",
+    )
+
     report = commands.add_parser(
         "report",
         help="render last night's morning report from its sealed evidence",
@@ -1114,6 +1179,46 @@ def run_fuse_cli(args: argparse.Namespace) -> int:
     return PASS_EXIT
 
 
+def run_train_arm_cli(args: argparse.Namespace) -> int:
+    """Probe, train and seal one arm's checkpoint, and say what was sealed.
+
+    **The import is function-local, and it is the eighth documented edge from a guarded root
+    into an exempt package.** `whetstone.loop.arm` reaches `sft`, which reaches whichever
+    inference stack the detected runtime names, so the edge must stay inside the handler:
+    `whetstone verify` is the reward's entry point and must never acquire an inference stack,
+    not even transitively. `tests/test_reward_path_scope_is_partitioned.py` asserts these are
+    the only eight edges and that all eight are function-local.
+
+    **The exits are the existing contract, no ninth code**: sealed -> 0, and a refusal an
+    operator can fix by retyping -> `USAGE_ERROR`. A run directory missing its selection, a
+    night that selected nothing, a probe above the machine's ceiling and a run projected past
+    the declared wall-clock limit are all such refusals: nothing is wrong with the command, this
+    machine and this base simply cannot produce the artefact that was asked for.
+    """
+    from whetstone.loop.arm import recorded, run_arm
+
+    try:
+        outcome = run_arm(
+            base=args.base,
+            repo_id=args.repo_id,
+            revision=args.revision,
+            run=args.run,
+            destination=args.out,
+            run_seed=args.run_seed,
+        )
+    except (OSError, ValueError, RuntimeError) as refusal:
+        print(f"whetstone train-arm: {refusal}", file=sys.stderr)
+        return USAGE_ERROR
+
+    document = recorded(outcome)
+    print(f"checkpoint {document['directory']}")
+    print(f"digest     {document['digest']}")
+    print(f"files      {document['files']}")
+    print(f"backend    {document['backend']}")
+    print(f"probe      {document['capacity_probe']}")
+    return PASS_EXIT
+
+
 def run_card_cli(args: argparse.Namespace) -> int:
     """Render a checkpoint's model card from the night that produced it, and say where it went.
 
@@ -1298,6 +1403,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if namespace.command == "fuse":
         return run_fuse_cli(namespace)
+
+    if namespace.command == "train-arm":
+        return run_train_arm_cli(namespace)
 
     # Every input the CLI accepts is handled above. Falling through means a flag or a
     # subcommand was added without a behaviour behind it: report usage and fail rather than

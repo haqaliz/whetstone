@@ -139,6 +139,41 @@ released version until it exists in the code.
   it at a renamed PEFT adapter loads **nothing** and returns a model whose LoRA layers are still
   at their initialisation. It runs, it produces plausible output, and it is untrained.
 
+### Added
+
+- **`whetstone train-arm`** (`whetstone.loop.arm`) — the door an arm's training runs through.
+  Detects the runtime before a weight is read, derives the ceiling from that machine's own memory,
+  runs `probe_capacity` rather than constructing a record, lets `sft.train` decide, and seals with
+  `write_checkpoint`. It is not portability-specific despite the issue it closes: base, revision,
+  dataset and destination are all arguments, so a larger base on a CUDA host is the same call with
+  different ones. The eighth documented edge from `cli.py` into an exempt package, function-local
+  and declared in `tests/test_reward_path_scope_is_partitioned.py`.
+
+### Fixed
+
+- **The arm's driver is in the repository (#34).** The portability arm's first run — this
+  project's only completed training — was driven by a `train_portability.py` written onto the
+  Linux box during the session and never committed. It went **around** `sft`'s constructors and
+  reimplemented the parts of each it needed, and every defect in the resulting provenance follows
+  from that single fact. `reports/portability-arm/report.md` now carries a dated section recording
+  the run and tabling what its four fields get wrong; the checkpoint itself is **not** re-sealed.
+- **`ledger.tool_versions(backend=…)` names the runtime that actually loaded (#33).** It recorded
+  `"mlx-lm": PINNED_MLX_LM` unconditionally, so the arm's checkpoint states `mlx-lm 0.31.3` beside
+  `platform: Linux …` on a host that ran PyTorch and never had MLX installed — the exact
+  inaccuracy `backend.py` was written to close, where the record landed and its reader never
+  changed. Given a backend, every runtime this repository knows is dropped and the one that ran is
+  named at its real version. Left optional so the bake-off's and the miner's published figures do
+  not move.
+- **A night's trainer is chosen by the runtime it detected.** `run_night` defaulted to
+  `sft.mlx_trainer` outright, so a night on a Torch host would detect `torch`, write it into the
+  ledger, and then train with MLX — evidence describing a run that did not happen.
+  `sft.trainer_for` is the one source, and the Torch import stays function-local.
+- **The capacity probe is run rather than constructed (#32).** The arm's record holds the full
+  run's 22602 s against `iters: 8`, because no probe was ever taken; `projected_seconds` reads
+  157 hours off it. `test_arm.py` asserts the shape rather than the values — that the declared
+  step count reaches the trainer *before* the night's — because a test checking only the output
+  would pass against a second hand-built implementation.
+
 ### Changed
 
 - **`test_sandbox.py` is gated on capability, not on a platform name.** Its fourteen assertions
