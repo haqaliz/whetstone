@@ -10,6 +10,42 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The record describes the machine that ran, not the machine that wrote the code — is done**
+(2026-09-08). Found by reading the portability arm's own provenance rather than by a test. The
+arm trained on a Linux box with 15.5 GiB of RAM; its capacity probe recorded
+`headroom_bytes: 32856499814`, which is exactly `0.85 x 36 GiB` — the constant compiled in for
+the author's Mac, and **nearly twice that machine's total memory**. The probe passed: its
+measured peak was 6.84 GiB. It passed on luck. A ceiling that would have approved a run twice the
+size of the machine is not a ceiling, and — this is the part that matters for a project whose
+product is a guard — a substituted ceiling cannot be told apart, in the evidence, from a checked
+one. `HEADROOM_FRACTION` now keeps the part that was ever a decision, `headroom_for` reads the
+machine off the backend record that `describe` fills from the device, and an unknown memory
+raises `UnknownMachine` rather than falling back, because the silent fallback is the defect
+itself.
+
+Three more of the same family landed with it. `backend.TORCH_CUDA` became `TORCH`: the name is
+the comparability key and the accelerator is `Backend.device`'s answer, so the old spelling made
+a CPU-only Linux box and an Apple Silicon Mac both record `cuda` (issue #30). `describe` stopped
+refusing every non-CUDA Torch host — that refusal reasoned, correctly, that a 32B base on a CPU
+"does not finish there in any useful time", and then spelled the worry as a fact about the chip,
+which also refused the small-base arm that finishes 200 steps on a CPU in six hours. It now asks
+`torch_runtime.torch_device()`, the single prober, so the record can no longer disagree with the
+trainer beside it. And the duration worry became a measurement: `projected_seconds` scales the
+probe's own timing to the night's step count, and `train` refuses above a declared 24-hour
+ceiling — the frame the product claims, since a run still training when the next night begins is
+not a nightly loop. Calibrated against the only run this project has completed: x131's measured
+rate projects 6.3 hours and passes.
+
+**What this did not fix, stated because the artifact is on disk either way.** Reading that
+provenance closely turned up three defects in the arm's own record that this unit does not
+touch, because a sealed provenance is never rewritten to agree with later code: the capacity
+probe's `seconds` holds the *full run's* 22602s against `iters: 8` (#32), `tool_versions` names
+`mlx-lm` on a checkpoint produced by Torch on Linux — the exact inaccuracy `backend.py`'s
+docstring says it exists to close, where the record landed and its reader was never changed
+(#33) — and the arm's driver script was never in this repository at all, which is how a run came
+to construct records that `sft` has constructors for (#34). The checkpoint stays as it is; those
+three issues are the record of what its fields get wrong.
+
 **The launch chain's runbooks now run from the primary checkout — is done**
 (2026-09-05). Found while actually running the probe pass: all four sheets the operator still
 has to execute — the night door, the gate, the § 3 baseline measurement and the honest-number

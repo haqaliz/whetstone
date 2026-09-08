@@ -85,10 +85,10 @@ def test_the_fuser_is_chosen_by_the_checkpoint_not_by_the_host(tmp_path: Path) -
     A Mac fusing a Torch-trained checkpoint uses the Torch fuser, and a CUDA box fusing an
     MLX-trained one uses MLX's — the host has no vote.
     """
-    torch_trained = _sealed(tmp_path, runtime=_runtime(name=backend.TORCH_CUDA, library="torch"))
+    torch_trained = _sealed(tmp_path, runtime=_runtime(name=backend.TORCH, library="torch"))
     checkpoint = sft.verify_checkpoint(torch_trained)
 
-    assert fuse.fuser_for(checkpoint) == backend.TORCH_CUDA, (
+    assert fuse.fuser_for(checkpoint) == backend.TORCH, (
         "WHY THIS IS A FAILURE: a checkpoint whose provenance says Torch would be fused by "
         "whatever the host happens to have. The two adapters are different tensor layouts under "
         "one filename, and the wrong fuser does not raise — it emits weights nobody can tell "
@@ -188,3 +188,24 @@ def test_the_fused_model_is_not_the_checkpoint_directory(tmp_path: Path) -> None
 
     with pytest.raises(ValueError, match="checkpoint"):
         fuse.refuse_destination_inside(checkpoint, directory / "fused")
+
+
+@pytest.mark.parametrize("historical", ["torch-cpu", "torch-cuda", "torch-mps"])
+def test_evidence_sealed_under_the_old_backend_name_still_resolves(
+    tmp_path: Path, historical: str
+) -> None:
+    """#30: a constant may be corrected; a checkpoint's provenance may not be rewritten to match.
+
+    This repository's only real checkpoint records `torch-cpu`, sealed inside its digest before
+    the constant was corrected to `torch`. Rewriting it to agree would break the digest that
+    seals it and, worse, would be editing evidence after the fact to match later code — so every
+    `torch-*` spelling has to keep resolving here, permanently.
+    """
+    directory = _sealed(tmp_path, runtime=_runtime(name=historical, library="torch"))
+    checkpoint = sft.verify_checkpoint(directory)
+
+    assert fuse.fuser_for(checkpoint) == backend.TORCH, (
+        f"WHY THIS IS A FAILURE: a checkpoint recording {historical!r} no longer resolves to a "
+        "fuser. That adapter is on disk and cannot be re-sealed; the code has to keep reading "
+        "what was written, not the other way round"
+    )

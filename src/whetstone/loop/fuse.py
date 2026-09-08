@@ -29,7 +29,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from whetstone.loop.backend import MLX, TORCH_CUDA
+from whetstone.loop.backend import MLX, TORCH
 from whetstone.loop.sft import Checkpoint
 
 #: The fused model's own provenance document, in the `weights.py` / `sft.py` shape.
@@ -85,12 +85,17 @@ def fuser_for(checkpoint: Checkpoint) -> str:
             "sealed before schema `whetstone-run/2` carry no backend and cannot be fused"
         )
     name = str(recorded["name"])
-    if name not in {MLX, TORCH_CUDA} and not name.startswith("torch"):
+    # `startswith` rather than equality, and it is not laxity. This repository's only real
+    # checkpoint records `torch-cpu`, sealed inside a digest before the constant was corrected to
+    # `torch` (#30) — and evidence is never rewritten to agree with a later constant, because a
+    # provenance edited after the fact verifies nothing. Every `torch-*` spelling therefore has
+    # to keep resolving here, permanently.
+    if name not in {MLX, TORCH} and not name.startswith("torch"):
         raise UnknownProvenance(
             f"{str(checkpoint.directory)!r} records backend {name!r}, which this repository has "
             "no fuser for. Refused rather than approximated with the nearest one"
         )
-    return MLX if name == MLX else TORCH_CUDA
+    return MLX if name == MLX else TORCH
 
 
 def refuse_published_destination(destination: Path) -> None:

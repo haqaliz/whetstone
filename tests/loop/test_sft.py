@@ -541,3 +541,88 @@ def test_the_pinned_runtime_still_exposes_the_allocator_reading() -> None:
             "cannot read what training actually allocated and falls back to resident bytes — "
             "the 2.6x under-measurement that AC10 closed"
         )
+
+
+def test_the_headroom_is_a_fraction_of_the_machine_that_is_running() -> None:
+    """#30: the fraction is the decision; the machine is a fact to be read, not compiled in.
+
+    The portability arm's probe ran on a 15.5 GiB Linux box and was checked against 30.6 GiB —
+    exactly `0.85 * 36 GiB`, the author's Mac, hardcoded. It passed, because its peak was
+    6.84 GiB, but it passed on luck: the ceiling was nearly twice the machine's total RAM, so
+    that guard would have approved a run the machine could not hold.
+    """
+    x131 = 16637317120  # what `free -b` reports on the box the arm actually trained on
+    assert sft.headroom_for(x131) == int(sft.HEADROOM_FRACTION * x131)
+    assert sft.headroom_for(x131) < sft.CAPACITY_HEADROOM_BYTES, (
+        "WHY THIS IS A FAILURE: the ceiling derived for a 15.5 GiB machine is no tighter than "
+        "the one compiled in for a 36 GiB one, so deriving it changed nothing and a small "
+        "machine is still checked against a large one"
+    )
+
+
+def test_an_unknown_machine_is_refused_rather_than_given_the_declared_ceiling() -> None:
+    """The silent fallback is the defect, so it is the thing that must raise.
+
+    A ceiling substituted from another machine cannot be told, in the evidence, from a ceiling
+    that was checked — which is the property that made the arm's probe look like a passing guard.
+    """
+    with pytest.raises(sft.UnknownMachine) as refused:
+        sft.headroom_for(0)
+    assert str(sft.CAPACITY_HEADROOM_BYTES) in str(refused.value), (
+        "WHY THIS IS A FAILURE: the refusal does not name the fallback it declined to use, so a "
+        "reader cannot tell what the alternative would have been"
+    )
+
+
+def test_a_run_projected_past_the_declared_ceiling_is_refused_before_the_first_step(
+    tmp_path: Path,
+) -> None:
+    """#30: the fear was "how long", so the test is how long — never "which chip".
+
+    `backend` used to refuse every non-CUDA Torch host outright, reasoning that a 32B base "does
+    not finish there in any useful time". True of a 32B, and false of the small base the
+    portability arm trains, which finishes 200 steps on a CPU in about six hours — so that
+    refusal blocked the arm that actually worked while measuring nothing. The projection asks the
+    question the refusal meant to ask, of the base and machine in front of it.
+    """
+    request = _request(tmp_path)
+    slow = sft.CapacityProbe(
+        iters=8,
+        headroom_bytes=sft.CAPACITY_HEADROOM_BYTES,
+        peak_bytes=1024,
+        # Two hours for 8 steps is 900s a step, which is 50 hours over the night's 200.
+        seconds=7200.0,
+    )
+
+    assert slow.fits is True, "the probe fits in memory: only the duration is at issue here"
+    with pytest.raises(sft.TrainingTooLong) as refused:
+        sft.train(request, trainer=_trainer(), capacity=slow, examples=5)
+    assert "hours" in str(refused.value), (
+        "WHY THIS IS A FAILURE: the refusal reports seconds. An operator deciding whether to "
+        "shrink the base needs the number in the unit the decision is made in"
+    )
+
+
+def test_the_measured_rate_of_the_arm_that_worked_is_not_refused(tmp_path: Path) -> None:
+    """The guard has to pass the one real run this project has, or it is not calibrated.
+
+    x131 trained 200 steps in 6h17m. A ceiling that refuses that is a ceiling chosen without
+    reference to anything that happened.
+    """
+    request = _request(tmp_path)
+    observed = sft.CapacityProbe(
+        iters=8,
+        headroom_bytes=sft.headroom_for(16637317120),
+        peak_bytes=7340687360,
+        # 22602s / 200 steps is the arm's measured rate, expressed over the probe's 8.
+        seconds=22602.024 / 200 * 8,
+    )
+
+    assert observed.fits is True
+    projected = sft.projected_seconds(observed, iters=200)
+    assert projected < sft.TRAINING_WALLCLOCK_CEILING_SECONDS, (
+        f"WHY THIS IS A FAILURE: the only training run this project has ever completed "
+        f"({projected / 3600:.1f}h) projects past the declared ceiling, so the guard would have "
+        "refused the night that produced the only checkpoint we have"
+    )
+    sft.train(request, trainer=_trainer(), capacity=observed, examples=5)

@@ -71,6 +71,37 @@ released version until it exists in the code.
   quality. It also states what the last step is most tempting to ignore — every quantisation is a
   *different model* from the one the gate scored.
 
+### Fixed
+
+- **The capacity ceiling is now a fraction of the machine that is running, not of the author's.**
+  `CAPACITY_HEADROOM_BYTES` was `0.85 x MACHINE_BYTES` with `MACHINE_BYTES = 36 GiB` compiled in.
+  The portability arm trained on a Linux box with **15.5 GiB**, and its probe was checked against
+  **30.6 GiB** — nearly twice the machine's total RAM. It passed, on a measured peak of 6.84 GiB,
+  but it passed on luck rather than on fit, and a guard that would have approved a run twice the
+  size of the machine is not a guard. `HEADROOM_FRACTION` keeps the part that was ever a decision;
+  `headroom_for(device_memory_bytes)` reads the machine off the backend record, which `describe`
+  fills from the device itself. An unknown memory raises `UnknownMachine` rather than falling back
+  to the constant, because the silent fallback *is* the defect.
+- **`backend.TORCH_CUDA` is `backend.TORCH`.** The name is the comparability key — which runtime
+  generated this — and the accelerator belongs in `Backend.device`, which is filled from the
+  device. The old spelling made a CPU-only Linux box and an Apple Silicon Mac both record `cuda`.
+  Evidence already sealed is **not** rewritten: `fuse.fuser_for` keeps resolving every `torch-*`
+  spelling, permanently, because this repository's only real checkpoint records `torch-cpu` inside
+  its digest. A guard asserts no declared backend name contains an accelerator.
+- **`describe` no longer refuses every non-CUDA Torch host.** It raised `NoBackend` unless
+  `torch.cuda.is_available()`, on the stated grounds that a 32B base "does not finish there in any
+  useful time" — a worry about *duration* spelled as a fact about *the chip*, which also refused
+  the small-base portability arm that finishes 200 steps on a CPU in about six hours. The device
+  is now asked of `torch_runtime.torch_device()`, the single prober, so the record cannot disagree
+  with the trainer beside it.
+- **The duration worry is now measured.** `projected_seconds` scales the capacity probe's own
+  timing to the night's step count, and `train` raises `TrainingTooLong` above a declared
+  24-hour ceiling — the frame the product itself claims, since a run still training when the next
+  night starts is not a nightly loop. Calibrated against the one run this project has completed:
+  x131's measured rate projects 6.3 hours and is not refused.
+- **`/fused/` is gitignored.** `whetstone fuse` emits a standalone model; the first is 988 MB and a
+  32B base's would be tens of gigabytes. It was untracked and one `git add -A` from the history.
+
 ### Changed
 
 - **`test_sandbox.py` is gated on capability, not on a platform name.** Its fourteen assertions
