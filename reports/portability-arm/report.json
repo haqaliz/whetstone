@@ -1,0 +1,13 @@
+{
+  "declaration": "**No count is measured here: the arm has not trained.**",
+  "measured": false,
+  "recorded_on": "2026-09-08",
+  "schema": "whetstone-portability-arm/1",
+  "base": {
+    "repo_id": "Qwen/Qwen2.5-Coder-0.5B-Instruct",
+    "revision": "ea3f2471cf1b1f0db85067f1ef93848e38e88c25",
+    "license": "apache-2.0"
+  },
+  "runtime": "torch",
+  "amendment": "PREREGISTRATION.md 10.11"
+}

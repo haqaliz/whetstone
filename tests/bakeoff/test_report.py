@@ -1184,7 +1184,7 @@ def _stratum_document() -> StratumReport:
     """The rendered stratum document for the synthetic probe tallies, and its sidecars.
 
     The synthetic tallies' denominators (37 and 41) are chosen to collide with nothing in
-    the eighteen committed artifacts — their own denominators are 1, 20, 62, 63, 64, 189,
+    the twenty-one committed artifacts — their own denominators are 1, 20, 62, 63, 64, 189,
     299 and 300 — so the disjointness guard holds by construction, exactly like
     `_comparison_arms`' denominator 11.
     """
@@ -1322,9 +1322,14 @@ def test_the_two_contract_report_restates_no_baseline_figure() -> None:
 _EXISTING_HOMES = ("baseline", "format-hardening", "easier-stratum", "larger-base")
 
 #: Every committed home, the § 3 baseline's included — the "existing" side of every other
-#: scan, so a new home's figures can never restate a figure from any of the eighteen
-#: committed artifacts.
-_ALL_HOMES = (*_EXISTING_HOMES, "baseline-measurement", "honest-number")
+#: scan, so a new home's figures can never restate a figure from any committed artifact.
+#:
+#: `portability-arm` is the seventh, added by `PREREGISTRATION.md` § 10.11 and declaration-only
+#: until the arm trains. Its non-comparability argument is the strongest of the set: a different
+#: base, a different runtime, different kernels and a different quantisation of the same
+#: architecture each sit between its figures and any other home's, and each alone is enough. The
+#: gate enforces the same separation mechanically (`gate.MismatchedBackend`).
+_ALL_HOMES = (*_EXISTING_HOMES, "baseline-measurement", "honest-number", "portability-arm")
 
 
 def _committed_figures(directories: tuple[str, ...]) -> set[tuple[str, str]]:
@@ -1338,11 +1343,13 @@ def _committed_figures(directories: tuple[str, ...]) -> set[tuple[str, str]]:
 
 
 def test_the_stratum_report_restates_no_figure_from_an_existing_home() -> None:
-    """*(adversarial)* No rendered stratum figure lives in any of the eighteen committed artifacts.
+    """*(adversarial)* No rendered stratum figure lives in any committed artifact.
+
+    The twenty-one artifacts of the seven sanctioned homes are the set.
 
     The changed-task-set home joins the guard on the same rule the earlier homes joined it
     on, asserted the strongest way available: every `N of M` figure the synthetic stratum
-    document renders is disjoint from every `N of M` figure the eighteen committed artifacts
+    document renders is disjoint from every `N of M` figure the twenty-one committed artifacts
     render — the four existing homes, the § 3 baseline's home and the honest-number
     home, each report.md,
     report.json and cost.json. A figure that appears in both is a figure with two homes,
@@ -1357,13 +1364,13 @@ def test_the_stratum_report_restates_no_figure_from_an_existing_home() -> None:
     )
     existing_figures = _committed_figures(_ALL_HOMES)
     assert existing_figures, (
-        "WHY THIS IS A FAILURE: none of the eighteen committed artifacts renders an `N of "
+        "WHY THIS IS A FAILURE: none of the twenty-one committed artifacts renders an `N of "
         "M` figure, so the disjointness guard has nothing to guard against"
     )
     overlap = figures & existing_figures
     assert not overlap, (
         f"WHY THIS IS A FAILURE: the stratum document restates {overlap}, which already "
-        "lives in one of the eighteen committed artifacts. A figure quoted twice is a "
+        "lives in one of the twenty-one committed artifacts. A figure quoted twice is a "
         "figure that can disagree with itself, and the one-home rule exists so that "
         "cannot happen"
     )
@@ -2104,6 +2111,9 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
         "reports/larger-base/cost.json",
         "reports/larger-base/report.json",
         "reports/larger-base/report.md",
+        "reports/portability-arm/cost.json",
+        "reports/portability-arm/report.json",
+        "reports/portability-arm/report.md",
     ], (
         f"WHY THIS IS A FAILURE: reports/ holds {held}. The bake-off's three artifacts, the "
         "format-hardening arm's three, the easier-stratum probe's three, the larger-base "
@@ -2139,8 +2149,8 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
     )
 
 
-def test_the_authoritative_scan_finds_all_six_homes() -> None:
-    """The guard's list holds exactly the six homes' eighteen artifacts — nothing else.
+def test_the_authoritative_scan_finds_all_seven_homes() -> None:
+    """The guard's list holds exactly the seven homes' twenty-one artifacts — nothing else.
 
     **The guard moved a sixth time when the honest-number home landed, and only on the
     delta/final-series argument.** The honest-number report publishes the P4 headline —
@@ -2191,8 +2201,11 @@ def test_the_authoritative_scan_finds_all_six_homes() -> None:
         "reports/larger-base/cost.json",
         "reports/larger-base/report.json",
         "reports/larger-base/report.md",
+        "reports/portability-arm/cost.json",
+        "reports/portability-arm/report.json",
+        "reports/portability-arm/report.md",
     ], (
-        f"WHY THIS IS A FAILURE: reports/ holds {held}. The six homes' eighteen artifacts "
+        f"WHY THIS IS A FAILURE: reports/ holds {held}. The seven homes' twenty-one artifacts "
         "are the sanctioned homes for a figure — each directory its own, on the D6 "
         "argument that the two contracts differ, the changed-task-set argument that the "
         "probe scores a different task set (`PREREGISTRATION.md` § 10.5), the "
@@ -2208,7 +2221,7 @@ def test_the_authoritative_scan_finds_all_six_homes() -> None:
 
 
 def test_the_one_home_guard_catches_a_planted_artifact(tmp_path: Path) -> None:
-    """*(adversarial)* The eighteen-artifact list can see a planted file under `reports/`.
+    """*(adversarial)* The twenty-one-artifact list can see a planted file under `reports/`.
 
     The guard above asserts the sanctioned list by exact equality. The first half of this
     control reproduces the sanctioned state in a synthetic tree — a planted tree that

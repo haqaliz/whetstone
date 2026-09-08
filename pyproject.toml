@@ -29,6 +29,28 @@ whetstone = "whetstone.cli:main"
 # `mlx; platform_system == "Darwin"`, so off Darwin it installs with no engine behind it.
 mlx = ["mlx-lm>=0.31,<0.32"]
 
+# The portability arm's runtime (`PREREGISTRATION.md` § 10.11). Optional for the same reason
+# `mlx` is: the reward path must not acquire an inference stack, and the suite must not depend
+# on one. Bounded at both ends for the reason the mlx pin is — an unbounded floor means "the
+# pinned version" is whatever the index served that morning, which is how night #1 was lost.
+# On a CPU-only Linux host the default `torch` wheel drags in the whole bundled CUDA stack —
+# measured here at roughly 8 GB of `nvidia-*` packages on a machine with no GPU, which is both
+# a long install and a poor first impression for anyone whose Linux box is a laptop. Point uv at
+# the CPU index to skip all of it:
+#
+#     uv sync --extra torch --index-url https://download.pytorch.org/whl/cpu
+#
+# The dependency is deliberately NOT pinned to the CPU build here: a CUDA host wants the CUDA
+# wheel, and encoding one host's answer in the manifest would make the other reinstall to undo
+# it. The index is the caller's choice because the hardware is.
+torch = [
+  "torch>=2.4,<3",
+  "transformers>=4.44,<6",
+  "peft>=0.13,<1",
+  "datasets>=3,<5",
+  "accelerate>=1,<2",
+]
+
 [dependency-groups]
 # `pyyaml` is a DEV dependency, never a runtime one: the model card's frontmatter guard
 # parses the block the way the Hub parses it, and a regex over the text would assert this
@@ -71,7 +93,16 @@ warn_unused_ignores = true
 [[tool.mypy.overrides]]
 # `torch.*` is here before a Torch backend exists: `loop/backend.py` names the runtime it
 # would detect, so the import is type-checked on a machine that has neither runtime.
-module = ["huggingface_hub.*", "mlx.*", "mlx_lm.*", "torch.*"]
+module = [
+    "huggingface_hub.*",
+    "mlx.*",
+    "mlx_lm.*",
+    "torch.*",
+    "transformers.*",
+    "peft.*",
+    "datasets.*",
+    "accelerate.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

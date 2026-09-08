@@ -542,10 +542,33 @@ def write_checkpoint(
     # checkpoint would still verify — the gate would re-hash successfully and then build a
     # different adapter from the one the night trained. The directory is re-hashed rather than
     # the first result reused, so the config is inside the digest that seals it.
-    (directory / ADAPTER_CONFIG).write_text(
-        json.dumps(adapter_config(args, repo_id=repo_id), indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    # MERGED over whatever the trainer already wrote, never overwritten. PEFT's
+    # `save_pretrained` writes its own `adapter_config.json` carrying `target_modules` — which
+    # modules actually got adapters — and that is knowledge only the trainer has: it resolves
+    # them from the model's architecture, and `adapter_config` deliberately does not know them,
+    # because knowing them would be knowing something about the base (§ 10.11). Clobbering would
+    # strip that from every Torch-trained adapter and leave PEFT unable to rebuild it, so the
+    # checkpoint would load under MLX and not under the runtime that produced it.
+    #
+    # The writer still wins on the keys it owns: the LoRA shape recorded here is the one from
+    # `TrainingArgs`, because that is what the provenance publishes, and two sources for one
+    # value is how a checkpoint comes to disagree with its own arguments.
+    document: dict[str, Any] = {}
+    existing = directory / ADAPTER_CONFIG
+    if existing.is_file():
+        try:
+            written = json.loads(existing.read_text(encoding="utf-8"))
+        except ValueError as error:
+            raise CheckpointUnverified(
+                f"{str(existing)!r} is not readable JSON ({error}), so what the trainer recorded "
+                "about this adapter cannot be preserved. Refused rather than overwritten: the "
+                "file names which modules were adapted, and replacing it would silently discard "
+                "the only record of that"
+            ) from error
+        if isinstance(written, dict):
+            document.update(written)
+    document.update(adapter_config(args, repo_id=repo_id))
+    existing.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     files = _hash_directory(directory)
     digest = _digest_of(files)

@@ -39,6 +39,20 @@ released version until it exists in the code.
   a failure. It supersedes `p0-scaffold` decision 2 for the sandbox claim only — the mlx step
   stays macOS-only for exactly the reason that decision gave.
 
+- **A Torch/PEFT trainer beside the MLX one** (`whetstone.loop.torch_runtime`), so the loop is
+  not Apple Silicon's alone. Same `sft.Trainer` seam, same `TrainingRequest`, same
+  `write_checkpoint` — no branch inside the night. The device is probed in a declared order
+  (`cuda`, `mps`, `cpu`) with a stated precision each, because a CUDA-compiled wheel on a
+  GPU-less host answers "CUDA" to what it was built for and `cpu` to what it has.
+- **`write_checkpoint` merges an existing adapter config** instead of overwriting it. PEFT
+  writes `target_modules` — knowledge only the trainer has — and clobbering it would leave every
+  Torch-trained checkpoint loadable under MLX and not under the runtime that produced it.
+- **`reports/portability-arm/`**, the seventh sanctioned home, declaration-only, with its base
+  and revision pinned before the arm trained (`PREREGISTRATION.md` § 10.11).
+- **A documented CPU-only install path.** The default `torch` wheel bundles CUDA: roughly 8 GB
+  of `nvidia-*` packages on a machine with no GPU. `--index-url https://download.pytorch.org/whl/cpu`
+  skips it. The manifest does not pin the CPU build, because a CUDA host wants the CUDA wheel.
+
 ### Changed
 
 - **`test_sandbox.py` is gated on capability, not on a platform name.** Its fourteen assertions

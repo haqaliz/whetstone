@@ -140,6 +140,14 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
     `reports/baseline-measurement/`, and the honest-number report's in
     `reports/honest-number/` — each the only home of its own. A silent list
     extension remains refused: the permission is the argument, in this docstring.
+
+    The seventh is `reports/portability-arm/`, opened by `PREREGISTRATION.md` § 10.11 and
+    declaration-only until the arm trains. Its argument is the strongest of the set rather than
+    the weakest: the arm runs a **different base on a different runtime**, and different weights,
+    different kernels and a different quantisation of the same architecture each sit between its
+    figures and any other home's — each alone sufficient to make the comparison meaningless. The
+    promotion gate refuses to score across that boundary (`gate.MismatchedBackend`), so the
+    separation this list describes is also enforced mechanically rather than only by convention.
     """
     published = _check_ignore("reports/")
     assert published.returncode == 1, (
@@ -171,6 +179,9 @@ def test_the_published_tree_is_not_ignored_and_this_aspect_added_nothing_to_it()
         "reports/larger-base/cost.json",
         "reports/larger-base/report.json",
         "reports/larger-base/report.md",
+        "reports/portability-arm/cost.json",
+        "reports/portability-arm/report.json",
+        "reports/portability-arm/report.md",
     ], (
         f"reports/ holds {held}. The instrumentation aspect publishes nothing: it produces "
         "transcripts and a breakdown, both local. Each report directory holds exactly its own "
