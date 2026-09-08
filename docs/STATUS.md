@@ -10,6 +10,42 @@ carries the current state and the rules that still bind.
 
 ---
 
+**One `adapter_config.json`, one vocabulary — is done** (2026-09-08). Closes #31. The file used
+to carry MLX's keys and PEFT's together, and the reasoning was explicit in its docstring: the two
+loaders dereference disjoint key sets, so one document serves both readers, "which is the
+difference between an adapter only this repository can open and one the ecosystem can." The key
+sets are genuinely disjoint. The conclusion was still wrong, because the config was never the
+thing standing between the two loaders. MLX reads `adapters.safetensors` and PEFT reads
+`adapter_model.safetensors`; MLX's tensors are `…q_proj.lora_a` and PEFT's are
+`base_model.model.…q_proj.lora_A.weight`; MLX's A is `(896, 8)` and PEFT's is `(8, 896)`,
+transposed. Each of those is independently fatal, and all three were measured rather than
+argued — the filename by reading `load_adapters`, PEFT's names and shapes off this project's own
+checkpoint, MLX's by constructing a `LoRALinear` and flattening its parameters.
+
+So the merged document bought nothing, and it cost something: PEFT warns on every MLX key and
+tells the reader to upgrade PEFT — wrong advice, about a problem that does not exist, on the
+first artifact a stranger loads. Each checkpoint now carries the vocabulary of the runtime that
+trained it, `write_checkpoint` strips the other runtime's keys before applying its own so a stale
+config cannot carry them forward, and `tests/loop/test_adapter_vocabulary.py` pins all three
+divergences — the next person to notice that the two runtimes "nearly agree" will find out there
+why they do not.
+
+**The same error was on the model card, which is where it cost most.** `build_model_card` printed
+PEFT's `PeftModel.from_pretrained` snippet unconditionally, including on MLX adapters PEFT cannot
+open, and added a sentence asserting the file was loadable by both. `library_name`, the tag and
+the snippet now dispatch on the recorded backend. Both cards point at `fuse` for running the
+adapter anywhere else, and `docs/RUNNING_ELSEWHERE.md` says why renaming the file is not the
+shortcut it looks like: `load_adapters` ends in `load_weights(..., strict=False)`, so a renamed
+PEFT adapter loads **nothing** and hands back a model whose LoRA layers are at initialisation. It
+runs, it produces plausible output, and it is untrained. An exception would have been kinder.
+
+Two smaller things landed with it. `backend.family` is now the single place a recorded name is
+resolved to a runtime, so `fuse` and `sft` cannot disagree about what a checkpoint is, and it
+keeps tolerating every `torch-*` spelling permanently. And a merge test that claimed to cover
+PEFT's `save_pretrained` was sealing its fixture under the MLX backend — it asserted that a PEFT
+document survives on a checkpoint PEFT cannot open, passed, and described something that never
+happens.
+
 **The record describes the machine that ran, not the machine that wrote the code — is done**
 (2026-09-08). Found by reading the portability arm's own provenance rather than by a test. The
 arm trained on a Linux box with 15.5 GiB of RAM; its capacity probe recorded

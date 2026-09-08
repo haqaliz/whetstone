@@ -31,6 +31,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from whetstone.loop import backend as backend_module
+
 #: The filename the Hub renders as a model card. Not configurable: a repository whose card is
 #: called anything else has no card.
 MODEL_CARD_FILE = "README.md"
@@ -38,9 +40,13 @@ MODEL_CARD_FILE = "README.md"
 #: The project's license, matching `pyproject.toml` and the roadmap's P0 exit criterion.
 LICENSE = "apache-2.0"
 
-#: The library whose loader reads `adapter_config.json` in the vocabulary this project writes.
-#: Declared so the Hub's "how to use" widget points at a loader that actually works.
-LIBRARY = "peft"
+#: The loader that can actually open a checkpoint from each runtime, keyed by backend family.
+#: Declared so the Hub's "how to use" widget points at a loader that works rather than at the
+#: more popular one. An MLX adapter is not a PEFT adapter with different metadata — the weights
+#: file, the tensor names and the orientation of the matrices all differ (#31, and the table in
+#: `docs/RUNNING_ELSEWHERE.md`) — so a card offering `PeftModel.from_pretrained` on an MLX
+#: checkpoint sends every reader into a failure the card itself caused.
+LIBRARY_FOR: dict[str, str] = {backend_module.MLX: "mlx", backend_module.TORCH: "peft"}
 
 
 class NothingToPublish(ValueError):
@@ -67,11 +73,12 @@ def build_model_card(*, night: Any, checkpoint: Any) -> str:
 
     base = checkpoint["base"]
     backend = checkpoint["backend"]
+    library = LIBRARY_FOR[backend_module.family(str(backend["name"]))]
     counts = night.dataset
 
     return "\n".join(
         (
-            *_frontmatter(base_model=base["repo_id"], run_id=night.run_id),
+            *_frontmatter(base_model=base["repo_id"], run_id=night.run_id, library=library),
             "",
             f"# {night.run_id}: a LoRA adapter verified by re-execution",
             "",
@@ -123,16 +130,13 @@ def build_model_card(*, night: Any, checkpoint: Any) -> str:
             "",
             "## Using it",
             "",
-            "```python",
-            "from peft import PeftModel",
-            "from transformers import AutoModelForCausalLM",
+            *_loading_snippet(library=library, repo_id=str(base["repo_id"]), run_id=night.run_id),
             "",
-            f'base = AutoModelForCausalLM.from_pretrained("{base["repo_id"]}")',
-            f'model = PeftModel.from_pretrained(base, "{night.run_id}")',
-            "```",
-            "",
-            "The adapter is also loadable by `mlx-lm`, whose loader reads the same",
-            "`adapter_config.json`; the two vocabularies share the file and do not collide.",
+            "This adapter belongs to the runtime that trained it. The two runtimes disagree on",
+            "the weights filename, the tensor names and the orientation of the matrices, so the",
+            "other one cannot load it — renaming the file makes it load *nothing* rather than",
+            "raise. To run it anywhere else, fuse it into its base first; see",
+            "[RUNNING_ELSEWHERE.md](https://github.com/haqaliz/whetstone/blob/master/docs/RUNNING_ELSEWHERE.md).",
             "",
             "## Limitations",
             "",
@@ -148,7 +152,7 @@ def build_model_card(*, night: Any, checkpoint: Any) -> str:
     )
 
 
-def _frontmatter(*, base_model: str, run_id: str) -> tuple[str, ...]:
+def _frontmatter(*, base_model: str, run_id: str, library: str) -> tuple[str, ...]:
     """The YAML block the Hub parses as metadata.
 
     Emitted by hand rather than through a YAML dumper: the block is a fixed shape with no
@@ -159,15 +163,36 @@ def _frontmatter(*, base_model: str, run_id: str) -> tuple[str, ...]:
         "---",
         f"license: {LICENSE}",
         f"base_model: {base_model}",
-        f"library_name: {LIBRARY}",
+        f"library_name: {library}",
         "pipeline_tag: text-generation",
         "tags:",
         "  - lora",
-        "  - peft",
+        f"  - {library}",
         "  - whetstone",
         "  - verified-self-improvement",
         f"model_name: {run_id}",
         "---",
+    )
+
+
+def _loading_snippet(*, library: str, repo_id: str, run_id: str) -> tuple[str, ...]:
+    """The "how to use" block, in the loader that can open this particular checkpoint."""
+    if library == "mlx":
+        return (
+            "```python",
+            "from mlx_lm import load",
+            "",
+            f'model, tokenizer = load("{repo_id}", adapter_path="{run_id}")',
+            "```",
+        )
+    return (
+        "```python",
+        "from peft import PeftModel",
+        "from transformers import AutoModelForCausalLM",
+        "",
+        f'base = AutoModelForCausalLM.from_pretrained("{repo_id}")',
+        f'model = PeftModel.from_pretrained(base, "{run_id}")',
+        "```",
     )
 
 

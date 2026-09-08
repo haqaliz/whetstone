@@ -117,7 +117,12 @@ def test_the_card_opens_with_the_metadata_the_hub_reads() -> None:
         "WHY THIS IS A FAILURE: the card does not name the base it adapts, so nobody can load it "
         "— a LoRA adapter is meaningless without the weights it attaches to"
     )
-    assert meta["library_name"] == "peft"
+    assert meta["library_name"] == "mlx", (
+        "WHY THIS IS A FAILURE: this provenance records an MLX backend and the card names "
+        f"{meta['library_name']!r}. PEFT cannot open an MLX adapter — different weights "
+        "filename, different tensor names, transposed matrices (#31) — so the Hub's widget "
+        "would hand every reader a snippet that fails on the file it just downloaded"
+    )
 
 
 def test_every_number_on_the_card_comes_from_the_evidence() -> None:
@@ -215,3 +220,39 @@ def test_the_card_states_what_is_unproven_about_it() -> None:
         "WHY THIS IS A FAILURE: the card does not state that this adapter has not been scored by "
         "the promotion gate, so its silence reads as a passing grade"
     )
+
+
+def test_the_card_names_the_loader_that_can_open_this_checkpoint() -> None:
+    """#31: the "how to use" snippet dispatches on the runtime that trained the adapter.
+
+    The card used to print PEFT's snippet unconditionally and add a line saying the adapter was
+    "also loadable by `mlx-lm`, whose loader reads the same `adapter_config.json`". Both halves
+    were wrong in the same way: the config was never what stopped the other loader — the weights
+    filename, the tensor names and the orientation of the matrices all differ. A card is the
+    first thing a stranger reads, so this is the surface where the error costs the most.
+    """
+    mlx_page = card.build_model_card(night=_night(), checkpoint=_provenance())
+    assert "from mlx_lm import load" in mlx_page
+    assert "PeftModel" not in mlx_page, (
+        "WHY THIS IS A FAILURE: an MLX checkpoint's card offers `PeftModel.from_pretrained`, "
+        "which fails on the file it just told the reader to download"
+    )
+
+    torch_page = card.build_model_card(
+        night=_night(),
+        checkpoint=_provenance(
+            backend={
+                "name": "torch-cpu", "library": "torch", "version": "2.14.0+cu130",
+                "device": "cpu", "device_memory_bytes": 16637317120,
+            }
+        ),
+    )
+    assert "from peft import PeftModel" in torch_page
+    assert "from mlx_lm import load" not in torch_page
+
+    for page in (mlx_page, torch_page):
+        assert "fuse it into its base" in page, (
+            "WHY THIS IS A FAILURE: the card does not say how to run this adapter under the "
+            "other runtime. The answer is fusing, and a reader who does not find it here will "
+            "try renaming the file — which loads nothing and raises nothing"
+        )

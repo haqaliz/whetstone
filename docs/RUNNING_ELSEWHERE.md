@@ -67,3 +67,26 @@ is not evidence about itself.
 If you publish it, `whetstone card` renders the model card from the checkpoint and the night's
 ledger — including the unverified count beside the training-set size, because a yield quoted
 without its denominator is the number this project exists not to publish.
+
+## Why you cannot skip the fuse step
+
+The adapter itself belongs to the runtime that trained it, and the two this repository supports
+disagree about everything except the name of one JSON file:
+
+| | MLX | PEFT / Torch |
+|---|---|---|
+| weights file | `adapters.safetensors` | `adapter_model.safetensors` |
+| tensor key | `…self_attn.q_proj.lora_a` | `base_model.model.…self_attn.q_proj.lora_A.weight` |
+| shape of A | `(896, 8)` — `(in, r)` | `(8, 896)` — `(r, in)` |
+| config keys | `fine_tune_type`, `num_layers`, `lora_parameters` | `r`, `lora_alpha`, `target_modules`, … |
+
+So `adapter_config.json` is written in **one** vocabulary — the trainer's — and an MLX adapter is
+not a PEFT adapter with the wrong metadata. It is a different set of tensors, differently named
+and transposed. Fusing is the bridge, and the fused model is a plain `Qwen2ForCausalLM` that
+every runtime loads.
+
+**Do not rename the file to make the other loader accept it.**
+`mlx_lm.tuner.utils.load_adapters` ends with `model.load_weights(..., strict=False)`. Point it at
+a renamed PEFT adapter and it does not raise: none of the keys match, so it loads **nothing** and
+hands back a model whose LoRA layers are still at their initialisation. That model runs, produces
+plausible output, and is untrained. An error would have been the kinder outcome.
