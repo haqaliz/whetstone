@@ -528,7 +528,15 @@ def _train(
     # inside the guard for the reason below.
     capacity: sft.CapacityProbe | None = None
     try:
-        capacity = sft.probe_capacity(request, trainer=trainer)
+        # The ceiling is derived from the machine this night is running on, never from the
+        # constant compiled in on the author's. `runtime` was detected at the top of `run_night`
+        # and carries the device's own report of its memory; deriving here is what stops a probe
+        # on a small box from being checked against a large one and passing.
+        capacity = sft.probe_capacity(
+            request,
+            trainer=trainer,
+            headroom_bytes=sft.headroom_for(runtime.device_memory_bytes),
+        )
         sft.train(request, trainer=trainer, capacity=capacity, examples=len(selected.examples))
     except sft.CapacityExceeded as exceeded:
         return None, str(exceeded), capacity

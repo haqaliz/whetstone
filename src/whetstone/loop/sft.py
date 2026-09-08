@@ -55,15 +55,26 @@ from whetstone.loop.dataset import NO_VALID_SPLIT
 #: one accumulation cycle have all been allocated — which is where the peak actually lives.
 CAPACITY_PROBE_ITERS = 8
 
-#: The machine this project runs on, in bytes. Stated rather than probed, because the headroom
-#: below is a fraction of a declared number and a fraction of a number read from the OS would
-#: move between machines while reading as the same rule.
+#: The machine this project was first written on, in bytes. Kept as the **declared default only**
+#: — see `headroom_for`, which is what a run that knows its own machine should use.
 MACHINE_BYTES = 36 * 1024**3
 
-#: The ceiling a probe must come in under. Not the whole machine: the run is also holding the
-#: verifier's sandboxed subprocesses and the operating system, and a training step that fits with
-#: nothing else running is a training step that swaps at three in the morning.
-CAPACITY_HEADROOM_BYTES = int(0.85 * MACHINE_BYTES)
+#: The fraction of a machine's memory a probe must come in under. Not the whole machine: the run
+#: is also holding the verifier's sandboxed subprocesses and the operating system, and a training
+#: step that fits with nothing else running is a training step that swaps at three in the morning.
+#: This fraction is the part that was ever a decision; the machine it applies to is a fact to be
+#: read off the machine, not declared here.
+HEADROOM_FRACTION = 0.85
+
+#: The ceiling on the declared machine. A default, and increasingly a fallback: on any host whose
+#: backend record names its memory, `headroom_for` supersedes it.
+CAPACITY_HEADROOM_BYTES = int(HEADROOM_FRACTION * MACHINE_BYTES)
+
+#: The longest a night's training may be projected to take. A night that trains past a full day
+#: is no longer the thing this product claims to be — "train overnight" is the frame, and a run
+#: still going when the next night starts cannot be part of a nightly loop. Declared here, ahead
+#: of any projection, so it can never be a number chosen once a run's duration was known.
+TRAINING_WALLCLOCK_CEILING_SECONDS = 24 * 60 * 60
 
 #: The adapter file `mlx_lm`'s LoRA trainer writes, and the name `mlx_lm`'s loader looks for.
 ADAPTER_FILE = "adapters.safetensors"
@@ -78,6 +89,34 @@ CHECKPOINT_SCHEMA = "whetstone-checkpoint/1"
 #: How much is read per digest step, matching `weights._CHUNK`: bound by the disk rather than by
 #: the loop, and never resident in the process that is about to hold a model.
 _CHUNK = 1 << 20
+
+
+class TrainingTooLong(RuntimeError):
+    """The probe's measured rate projects a run past the declared wall-clock ceiling.
+
+    This is the honest form of a refusal that used to be spelled as a fact about the device:
+    `backend` once refused every non-CUDA Torch host on the grounds that a 32B base "does not
+    finish there in any useful time". The worry was real and the test was wrong — it refused by
+    asking *which chip*, when the thing feared was *how long*, and it consequently also refused
+    the small-base portability arm, which finishes 200 steps on a CPU in about six hours.
+
+    Measured rather than assumed, which is this repository's whole idiom: the capacity probe
+    already runs the night's own arguments and times them, so the projection is an observation of
+    this base on this machine, not a rule of thumb about a class of hardware.
+    """
+
+
+class UnknownMachine(RuntimeError):
+    """The running machine's memory is unknown, so no ceiling can be derived for it.
+
+    Raised rather than defaulted to `CAPACITY_HEADROOM_BYTES`, because that silent fallback is
+    precisely the defect this exists to close. The portability arm's probe ran on a 15.5 GiB
+    Linux box and was checked against 30.6 GiB — 0.85 x the author's 36 GiB Mac, compiled in — so
+    the ceiling was nearly twice the machine's total RAM. That probe passed on luck: its measured
+    peak was 6.84 GiB. A guard that would have approved a run twice the size of the machine is
+    not a guard, and one that quietly substitutes another machine's number cannot be told from
+    one that checked.
+    """
 
 
 class CapacityExceeded(RuntimeError):
@@ -319,6 +358,40 @@ class Checkpoint:
     backend: Mapping[str, Any] | None = None
 
 
+def projected_seconds(capacity: CapacityProbe, *, iters: int) -> float:
+    """How long the full run takes at the rate the probe measured.
+
+    Linear in the step count, deliberately, and it will read a little high: the probe pays the
+    model load and the first compile inside its handful of steps and the full run amortises them.
+    Erring long is the right direction for a refusal — the failure it prevents is a run that is
+    still going at noon.
+    """
+    if capacity.iters < 1:
+        raise ValueError(
+            f"the probe records {capacity.iters} steps, so it measured no rate and nothing can "
+            "be projected from it"
+        )
+    return capacity.seconds / capacity.iters * iters
+
+
+def headroom_for(device_memory_bytes: int) -> int:
+    """The ceiling for *this* machine: the declared fraction of the memory it actually has.
+
+    The fraction is the decision and stays declared; the machine is a fact and is read off the
+    backend record, which `describe` fills from the device itself. Splitting them this way is
+    what makes the same rule mean the same thing on a 15.5 GiB Linux box and a 36 GiB Mac,
+    instead of meaning "0.85 x whatever machine the author had".
+    """
+    if device_memory_bytes <= 0:
+        raise UnknownMachine(
+            "the backend record names no device memory, so the fraction "
+            f"{HEADROOM_FRACTION} has nothing to be a fraction *of*. Refused rather than falling "
+            f"back to the declared {CAPACITY_HEADROOM_BYTES} bytes: that fallback is how a probe "
+            "on a 15.5 GiB machine came to be checked against a 30.6 GiB ceiling and pass"
+        )
+    return int(HEADROOM_FRACTION * device_memory_bytes)
+
+
 def probe_capacity(
     request: TrainingRequest,
     *,
@@ -379,6 +452,17 @@ def train(
             "published capacity finding about this machine and this base, not a configuration to "
             "adjust: gradient checkpointing and gradient accumulation were pre-committed and are "
             "already on, so nothing decided in advance remains to try"
+        )
+    projected = projected_seconds(capacity, iters=request.args.iters)
+    if projected > TRAINING_WALLCLOCK_CEILING_SECONDS:
+        raise TrainingTooLong(
+            f"the capacity probe took {capacity.seconds:.1f}s over {capacity.iters} steps, which "
+            f"projects {projected / 3600:.1f} hours for the night's {request.args.iters} — past "
+            f"the declared ceiling of {TRAINING_WALLCLOCK_CEILING_SECONDS / 3600:.0f} hours. "
+            "Refused before the first step rather than discovered at noon: a run still training "
+            "when the next night starts is not a nightly loop. This is a finding about this base "
+            "on this machine, so the responses are a smaller base or a faster machine — never a "
+            "larger ceiling, which would be a threshold chosen from the run it has to judge"
         )
     return trainer(request)
 
@@ -791,8 +875,10 @@ __all__ = [
     "CAPACITY_PROBE_ITERS",
     "CHECKPOINT_FILE",
     "CHECKPOINT_SCHEMA",
+    "HEADROOM_FRACTION",
     "MACHINE_BYTES",
     "NO_VALID_SPLIT",
+    "TRAINING_WALLCLOCK_CEILING_SECONDS",
     "CapacityExceeded",
     "CapacityProbe",
     "Checkpoint",
@@ -803,9 +889,13 @@ __all__ = [
     "TrainingArgs",
     "TrainingRequest",
     "TrainingResult",
+    "TrainingTooLong",
+    "UnknownMachine",
+    "headroom_for",
     "mlx_trainer",
     "peak_bytes",
     "probe_capacity",
+    "projected_seconds",
     "train",
     "verify_checkpoint",
     "write_baseline_checkpoint",

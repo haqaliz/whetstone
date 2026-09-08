@@ -23,6 +23,12 @@ dist/
 /reports/local/
 /_sandbox/
 
+# Fused models — `whetstone fuse` merges an adapter into its base and emits a standalone
+# model. The first one is 988 MB; a 32B base's would be tens of gigabytes, and a blob committed
+# once is in the history for good. Same reasoning as /weights/ below, but this directory is
+# something *we* produce rather than something we fetch, so it is easier to create by accident.
+/fused/
+
 # Model weights — the bake-off loads local MLX checkpoints (13.4 GiB for the
 # three candidates), and a blob committed once is in the history for good.
 # Pre-declared: this directory doesn't exist yet: nothing has been fetched.

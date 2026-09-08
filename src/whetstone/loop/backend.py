@@ -33,22 +33,31 @@ agreed in every field. The operator says which, the same way `run --night` refus
 from __future__ import annotations
 
 import importlib.util
+import os
 from dataclasses import dataclass
 from typing import Any
 
 #: MLX / Metal on Apple Silicon. The runtime the roadmap locked and the only one implemented.
 MLX = "mlx"
 
-#: Torch / CUDA. Named here before it is implemented, deliberately: the refusals, the ledger
-#: field and the gate's cross-backend check are all things that must exist *before* a second
-#: runtime can produce evidence, not after.
-TORCH_CUDA = "torch-cuda"
+#: Torch. The **runtime**, and nothing about the accelerator: the comparability key answers
+#: "which library generated this", and which chip it ran on is `Backend.device`'s answer, not a
+#: second half of this string. The first spelling here was `torch-cuda`, which made a CPU-only
+#: Linux box and an Apple Silicon Mac both record `cuda` — a record read by a human months later
+#: saying the opposite of what happened. Evidence already written keeps its old name (see
+#: `fuse.fuser_for`); nothing rewrites a checkpoint to agree with a later constant.
+TORCH = "torch"
+
+#: The accelerator names that may appear in `Backend.device` and must never appear in a backend
+#: *name*. Guarded rather than merely intended: the previous defect was exactly a name that had
+#: absorbed one of these, and a convention nothing checks is a convention that decays.
+ACCELERATORS = ("cuda", "mps", "cpu", "metal", "rocm", "xpu")
 
 #: The import name each backend is detected by, and the distribution it belongs to. The import
 #: name is what `find_spec` takes; the distribution is what a person types to install it.
 _RUNTIMES: dict[str, tuple[str, str]] = {
     MLX: ("mlx_lm", "mlx-lm"),
-    TORCH_CUDA: ("torch", "torch"),
+    TORCH: ("torch", "torch"),
 }
 
 
@@ -74,7 +83,7 @@ class AmbiguousBackend(RuntimeError):
 class Backend:
     """One runtime, as a run records it. Frozen, so what is passed is what is written."""
 
-    #: `MLX` or `TORCH_CUDA` — the comparability key. Two runs with different names are not
+    #: `MLX` or `TORCH` — the comparability key. Two runs with different names are not
     #: comparable, whatever else they agree on.
     name: str
 
@@ -164,8 +173,8 @@ def choose(*, installed: tuple[str, ...] | None = None, prefer: str | None = Non
     if not present:
         raise NoBackend(
             "no runtime is installed, so there is nothing to run and nothing to record. Install "
-            f"one: `uv sync --extra mlx` for {MLX} on Apple Silicon, or the {TORCH_CUDA} extra "
-            "for a CUDA device. A default here would label a run with a runtime it never loaded"
+            f"one: `uv sync --extra mlx` for {MLX} on Apple Silicon, or the {TORCH} extra for "
+            "CUDA, MPS or CPU. A default here would label a run with a runtime it never loaded"
         )
     if len(present) > 1:
         raise AmbiguousBackend(
@@ -188,7 +197,7 @@ def describe(name: str) -> Backend:
     library = _RUNTIMES[name][1]
     if name == MLX:
         return _describe_mlx(library)
-    return _describe_torch_cuda(library)
+    return _describe_torch(library)
 
 
 def _describe_mlx(library: str) -> Backend:
@@ -207,28 +216,55 @@ def _describe_mlx(library: str) -> Backend:
     )
 
 
-def _describe_torch_cuda(library: str) -> Backend:
-    """Torch's own report of the CUDA device.
+def _describe_torch(library: str) -> Backend:
+    """Torch's own report of whatever it is running on — CUDA, MPS or CPU.
 
-    Present before the Torch backend itself, and deliberately so: a run cannot be labelled by a
-    record that does not exist yet, and the label has to be in the evidence from the first
-    Torch-produced night rather than added to it afterwards.
+    **The device is asked of `torch_runtime.torch_device()` rather than probed again here.** Two
+    functions answering "which device" is how a record comes to disagree with the run it
+    describes: this module once refused every non-CUDA host outright, while the trainer beside it
+    happily trained on the CPU. The refusal was written against a 32B base, where a CPU run really
+    would look like progress for days — but it was spelled as a fact about the device, so it also
+    refused the small-base portability arm (§ 10.11), which then produced this project's only
+    real checkpoint by going around it. A judgement about how long a run will take belongs where
+    the run's cost is measured; see `sft.projected_seconds`.
     """
     from importlib.metadata import version as installed_version
 
     import torch
 
-    if not torch.cuda.is_available():
-        raise NoBackend(
-            "torch is installed and reports no CUDA device, so this would train on the CPU. A "
-            "32B base at the declared arguments does not finish there in any useful time, and a "
-            "run that started anyway would look like progress for days"
-        )
-    properties = torch.cuda.get_device_properties(0)
+    from whetstone.loop.torch_runtime import torch_device
+
+    device = torch_device()
     return Backend(
-        name=TORCH_CUDA,
+        name=TORCH,
         library=library,
         version=installed_version(library),
-        device=str(properties.name),
-        device_memory_bytes=int(properties.total_memory),
+        device=device,
+        device_memory_bytes=_torch_device_memory(torch, device),
     )
+
+
+def _torch_device_memory(torch: Any, device: str) -> int:
+    """How much memory the chosen device has, asked of the device rather than declared.
+
+    Zero is never returned as "unknown but proceed": `sft.headroom_for` refuses a zero, because
+    the alternative is what already happened once — a probe on a 15.5 GiB Linux box checked
+    against a 30.6 GiB ceiling derived from the author's Mac, which passed on luck rather than on
+    fit.
+    """
+    if device == "cuda":
+        return int(torch.cuda.get_device_properties(0).total_memory)
+    if device == "mps":
+        # Unified memory: what MPS will hand out, not what the machine physically holds.
+        recommended = getattr(torch.mps, "recommended_max_memory", None)
+        if recommended is not None:
+            return int(recommended())
+    return _system_memory_bytes()
+
+
+def _system_memory_bytes() -> int:
+    """Physical RAM, from the OS. The CPU's "device memory" is the machine's memory."""
+    try:
+        return int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))
+    except (ValueError, OSError, AttributeError):
+        return 0

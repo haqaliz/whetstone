@@ -87,11 +87,11 @@ def test_two_runtimes_is_a_refusal_rather_than_a_silent_choice() -> None:
     would make the answer depend on the order a tuple happens to be written in, and two runs on
     that machine could then differ in backend while their evidence agreed in every field.
     """
-    both = (backend.MLX, backend.TORCH_CUDA)
+    both = (backend.MLX, backend.TORCH)
 
     with pytest.raises(backend.AmbiguousBackend) as refusal:
         backend.choose(installed=both)
-    assert backend.MLX in str(refusal.value) and backend.TORCH_CUDA in str(refusal.value), (
+    assert backend.MLX in str(refusal.value) and backend.TORCH in str(refusal.value), (
         f"WHY THIS IS A FAILURE: the refusal does not name the candidates it could not choose "
         f"between. Got {str(refusal.value)!r}"
     )
@@ -110,9 +110,9 @@ def test_an_unknown_preference_is_refused_rather_than_ignored() -> None:
     that decides comparability.
     """
     with pytest.raises(backend.NoBackend) as refusal:
-        backend.choose(installed=(backend.MLX,), prefer=backend.TORCH_CUDA)
+        backend.choose(installed=(backend.MLX,), prefer=backend.TORCH)
 
-    assert backend.TORCH_CUDA in str(refusal.value), (
+    assert backend.TORCH in str(refusal.value), (
         f"WHY THIS IS A FAILURE: the refusal does not name what was asked for. Got "
         f"{str(refusal.value)!r}"
     )
@@ -159,7 +159,7 @@ def test_the_record_is_json_plain_and_distinguishes_the_backends() -> None:
         device_memory_bytes=38654705664,
     )
     other = backend.Backend(
-        name=backend.TORCH_CUDA, library="torch", version="2.5.1",
+        name=backend.TORCH, library="torch", version="2.5.1",
         device="NVIDIA A100-SXM4-40GB", device_memory_bytes=42949672960,
     )
 
@@ -285,13 +285,13 @@ def test_the_gate_refuses_to_score_across_backends(tmp_path: Path) -> None:
         device="Apple M4 Max", device_memory_bytes=38654705664,
     ).recorded()
     cuda_side = backend.Backend(
-        name=backend.TORCH_CUDA, library="torch", version="2.5.1",
+        name=backend.TORCH, library="torch", version="2.5.1",
         device="NVIDIA A100-SXM4-40GB", device_memory_bytes=42949672960,
     ).recorded()
 
     with pytest.raises(gate.MismatchedBackend) as refusal:
         gate.refuse_cross_backend(candidate=mlx_side, incumbent=cuda_side)
-    assert backend.MLX in str(refusal.value) and backend.TORCH_CUDA in str(refusal.value), (
+    assert backend.MLX in str(refusal.value) and backend.TORCH in str(refusal.value), (
         f"WHY THIS IS A FAILURE: the refusal does not name the two runtimes it declined to "
         f"compare, so an operator cannot tell what went wrong. Got {str(refusal.value)!r}"
     )
@@ -309,3 +309,22 @@ def _ledger() -> Any:
     from loop.test_run_ledger import _ledger as built
 
     return built()
+
+
+def test_a_backend_name_never_carries_an_accelerator() -> None:
+    """#30: the name says which runtime; `device` says which chip. Guarded, not merely intended.
+
+    `TORCH_CUDA = "torch-cuda"` made a CPU-only Linux box and an Apple Silicon Mac both record
+    `cuda`. Nothing broke — the name's only job is comparability and it did that — but `Backend`
+    exists to be read by a person months later, and a record of a CPU run that says `cuda` is a
+    record that lies about the one thing it was added to state. The convention that replaced it
+    is only worth having if something checks it.
+    """
+    for name in backend._RUNTIMES:
+        assert not any(chip in name for chip in backend.ACCELERATORS), (
+            f"WHY THIS IS A FAILURE: the backend name {name!r} contains an accelerator. The name "
+            "is the comparability key — which runtime generated this — and the chip belongs in "
+            "`Backend.device`, which is filled from the device itself. A name carrying both is "
+            "wrong on every host whose chip is not the one spelled into the constant"
+        )
+    assert backend.TORCH == "torch"
