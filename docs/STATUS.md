@@ -1020,6 +1020,48 @@ behind it and proves nothing. That argument is about **mlx**. The new `sandbox (
 a different claim, the one macOS cannot make — that containment is real under bubblewrap — and
 it touches no engine. The mlx step stays macOS-only for exactly the reason decision 2 gave.
 
+**A second trainer, and the loop leaves Apple Silicon** (2026-09-08). `sft.Trainer` was always
+a seam — a plain callable `run_night` accepts — so `torch_runtime.torch_trainer` is additive
+code rather than a branch in the loop. What it must not be is a second *contract*: a night
+trained here and a night trained under MLX produce the same shaped artefact, are recorded the
+same way, and are refused against each other by the gate. Two runtimes interchangeable in the
+loop but not comparable in the gate would be the worst of both.
+
+**Base size is an input, and a guard enforces it.** `PREREGISTRATION.md` § 10.11 opens the
+portability arm at the smallest base that trains on the hardware to hand and commits it to
+growing, so it requires the trainer, the adapter format and the gate to be indifferent to base
+size — scaling up is an amendment, never a rewrite. `test_the_trainer_names_no_base_and_no_size`
+reads the module's own source, excluding docstrings, and fails on `qwen`, `0.5b`, `32b`,
+`mlx-community` and their like. The failure it catches is somebody writing a model id inline in
+six months, which no config check would see.
+
+**One set of hyper-parameters, two runtimes.** The Torch path *derives* its LoRA configuration
+from `TrainingArgs` rather than keeping a second copy — two copies drift, and provenance would
+then describe the one that did not run. The alpha is a conversion and not a preference: MLX
+applies `scale * (x @ A @ B)`, PEFT applies `(lora_alpha / r) * (x @ A @ B)`, so the equivalent
+alpha is `scale * r`, the same value `adapter_config` already publishes.
+
+**The device is probed, and the case it was built for arrived immediately.** x131 runs a
+CUDA-compiled wheel (`torch 2.14.0+cu130`) on a machine with no GPU. Asking Torch what it was
+*built for* answers CUDA; asking what it *has* answers `cpu`, and `float32` is the declared
+precision for that device rather than an inherited default. A CPU run in fp16 is arithmetic that
+silently produces nothing useful, and a silent fallback is how a large run becomes a job that
+never finishes while looking like it is working.
+
+**`write_checkpoint` merges the adapter config rather than overwriting it.** PEFT's
+`save_pretrained` writes its own, carrying `target_modules` — which modules actually got
+adapters, resolved from the model's architecture. That is knowledge only the trainer has, and
+`adapter_config` deliberately does not have it, because having it would be knowing something
+about the base. Clobbering would strip it from every Torch-trained adapter and leave the
+checkpoint loadable under MLX and *not* under the runtime that produced it. The writer still
+wins on the keys it records, because those are what provenance publishes.
+
+**`reports/portability-arm/` is the seventh sanctioned home**, declaration-only until the arm
+trains, its base and revision pinned before it ran. Adding it was four deliberate acts, which is
+the point: the three artifacts, `_ALL_HOMES`, both hardcoded enumerations, and an argument in
+the locality guard's docstring — that guard says outright that a silent list extension is
+refused and the permission is the argument.
+
 **What is not built.** The nightly loop has now been run once (above), so a training set and
 a yield figure exist — but **no checkpoint does**, because the training step raised before it
 wrote one, and **the gate has therefore still never been run on real checkpoints**. Its three exits, its retry discipline and its refusals are proven against

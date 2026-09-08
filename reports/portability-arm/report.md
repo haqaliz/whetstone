@@ -1,0 +1,67 @@
+# The portability arm — declaration
+
+**No count is measured here: the arm has not trained.** This file exists *before* the training
+it governs, which is the whole of its value. `PREREGISTRATION.md` § 10.11 opens the arm and
+requires its base to be pinned before it runs; a base named afterwards is not a pinned input.
+
+## What this arm is for
+
+Whetstone's runtime was MLX end to end — Apple Silicon only — so the loop trained on exactly one
+class of machine and the adapter it produced was loadable by exactly one runtime. That is a
+property of the implementation, not of the thesis: nothing in the wedge (an execution-grounded
+reward, a never-regress gate, an honest number) depends on Metal.
+
+This arm demonstrates the loop on a second runtime and a second operating system, and emits its
+adapter in the ecosystem's interchange format so that what the loop produces is loadable off the
+machine that produced it.
+
+## The pinned inputs
+
+| | |
+|---|---|
+| Base | `Qwen/Qwen2.5-Coder-0.5B-Instruct` |
+| Revision | `ea3f2471cf1b1f0db85067f1ef93848e38e88c25` |
+| Base license | Apache-2.0 |
+| Runtime | Torch / PEFT (`whetstone.loop.torch_runtime`) |
+| Device | CPU — a Linux host with 16 GB of RAM and no accelerator |
+| Training data | night #1's sealed training set, digest `3416702298c36a9a2ce8bada26295e54ddbd94f9666bff7b8088954ab6e4873b` |
+
+The revision is the immutable commit sha, never a tag: two people resolving the same tag at
+different times do not load the same weights.
+
+## Why this size, and why it is not the arm's ceiling
+
+The arm begins at the smallest base that trains on the hardware to hand, because the question it
+answers first is **does the loop run at all off Apple Silicon** — and that question is answered
+no better by a larger base than by a smaller one. Larger bases on this runtime are expected and
+intended. Each is a further Type 1 amendment naming its base and revision, committed before it
+trains; the trainer, the adapter format and the gate take the base as an input and are required
+to be indifferent to its size, so scaling up is an amendment and not a rewrite. A guard reads
+`torch_runtime`'s own source and fails if it names a model, a parameter count or a quantisation.
+
+## Installing the runtime on a CPU-only host
+
+The default `torch` wheel bundles CUDA. On the Linux host this arm runs on — no GPU — that is
+roughly 8 GB of `nvidia-*` packages that can never be used. Point uv at the CPU index instead:
+
+```
+uv sync --extra torch --index-url https://download.pytorch.org/whl/cpu
+```
+
+The manifest does not pin the CPU build, because a CUDA host wants the CUDA wheel and encoding
+one host's answer there would make the other reinstall to undo it.
+
+## Comparability, stated before any number exists
+
+A figure measured under this arm is **not comparable** to any figure from the main series, and
+not to any other arm's. Different weights, a different runtime, different kernels and a
+different quantisation of the same architecture each sit between them, and each alone is enough
+to make the comparison meaningless. The promotion gate refuses to score a candidate from one
+runtime against an incumbent from another (`gate.MismatchedBackend`), which is the mechanical
+form of this paragraph.
+
+## What will not be claimed
+
+Nothing here will claim the arm's adapter is better than its base. That is the promotion gate's
+question, asked on a held-out set, and this arm does not ask it. The training set is night #1's
+six strict-`PASS` examples — verified by re-execution, and six.

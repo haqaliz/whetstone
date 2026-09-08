@@ -195,3 +195,54 @@ def test_the_config_is_also_a_peft_adapter(tmp_path: Path) -> None:
         f"equivalent alpha is scale * r = {args.lora_scale * args.lora_rank}. Any other value "
         "publishes an adapter that behaves differently from the one that trained"
     )
+
+
+def test_a_config_the_trainer_already_wrote_is_merged_not_clobbered(tmp_path: Path) -> None:
+    """AC5: a trainer that knows more about the adapter than the writer does keeps what it knew.
+
+    PEFT's `save_pretrained` writes its own `adapter_config.json`, and it carries `target_modules`
+    — which modules actually got adapters. That is knowledge only the trainer has: it resolves
+    them from the model's architecture, and `sft.adapter_config` deliberately does not know them,
+    because knowing them would mean knowing something about the base (`PREREGISTRATION.md`
+    § 10.11).
+
+    So the writer must **merge**. Overwriting would strip `target_modules` from every
+    Torch-trained adapter and leave PEFT unable to reconstruct it — the checkpoint would load
+    under MLX and not under the runtime that produced it, which is precisely backwards.
+
+    The writer still wins on the keys it owns: the LoRA shape it records is the one from
+    `TrainingArgs`, because that is the record the provenance publishes and two sources for one
+    value is how a checkpoint comes to disagree with its own arguments.
+    """
+    directory = tmp_path / "checkpoint"
+    directory.mkdir(parents=True)
+    (directory / sft.ADAPTER_FILE).write_bytes(b"not a tensor, deliberately")
+    (directory / sft.ADAPTER_CONFIG).write_text(
+        json.dumps(
+            {
+                "peft_type": "LORA",
+                "target_modules": ["q_proj", "v_proj"],
+                "r": 999,
+                "inference_mode": False,
+            }
+        )
+    )
+
+    _checkpoint(tmp_path)
+
+    merged = json.loads((directory / sft.ADAPTER_CONFIG).read_text())
+    assert merged.get("target_modules") == ["q_proj", "v_proj"], (
+        f"WHY THIS IS A FAILURE: the trainer's `target_modules` was lost. Got "
+        f"{merged.get('target_modules')!r}. PEFT cannot rebuild the adapter without it, so a "
+        "Torch-trained checkpoint would load under MLX and not under the runtime that wrote it"
+    )
+    assert merged.get("inference_mode") is False, (
+        "WHY THIS IS A FAILURE: a key the trainer wrote and the writer knows nothing about was "
+        "dropped. Merging means keeping what it did not put there"
+    )
+    assert merged["r"] == sft.TrainingArgs().lora_rank, (
+        f"WHY THIS IS A FAILURE: the merge kept the trainer's r={merged['r']} over the declared "
+        "arguments. The writer owns the keys it records, because those are what provenance "
+        "publishes — two sources for one value is how a checkpoint disagrees with its own "
+        "arguments"
+    )
