@@ -73,6 +73,20 @@ released version until it exists in the code.
 
 ### Fixed
 
+- **The documented CPU install is one a reader can paste on a clean clone.** `pyproject.toml`
+  and the portability arm's report both published
+  `uv sync --extra torch --index-url https://download.pytorch.org/whl/cpu`, which cannot work:
+  `--index-url` *replaces* PyPI, so `mlx-lm` — locked for the other extra — becomes unresolvable
+  and the sync aborts having installed nothing. The obvious repair is worse, not better:
+  `--extra-index-url` resolves and then fails to *build* this project, because uv's default
+  `first-index` strategy consults the extra index first for build dependencies too and the
+  pytorch index serves `hatchling 1.25.0` against PyPI's 1.32.0 — old enough to reject
+  `license-files` as a list, so the error names this project rather than the index that caused
+  it. Both were executed on a clean clone; what replaces them is the three-command sequence that
+  scopes the CPU index to the one package needing it, run end to end on a clean clone on a
+  CPU-only Ubuntu 24.04 host. The arm's original machine had a hand-assembled environment, which
+  is the whole reason a command that was never executed as written could be published as though
+  it had been — the same root cause as the arm's driver living off-repo (#34).
 - **The capacity ceiling is now a fraction of the machine that is running, not of the author's.**
   `CAPACITY_HEADROOM_BYTES` was `0.85 x MACHINE_BYTES` with `MACHINE_BYTES = 36 GiB` compiled in.
   The portability arm trained on a Linux box with **15.5 GiB**, and its probe was checked against

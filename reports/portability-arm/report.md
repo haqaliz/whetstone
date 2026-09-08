@@ -42,11 +42,28 @@ to be indifferent to its size, so scaling up is an amendment and not a rewrite. 
 ## Installing the runtime on a CPU-only host
 
 The default `torch` wheel bundles CUDA. On the Linux host this arm runs on — no GPU — that is
-roughly 8 GB of `nvidia-*` packages that can never be used. Point uv at the CPU index instead:
+roughly 8 GB of `nvidia-*` packages that can never be used. Three commands, because the CPU
+index has to be scoped to the one package that needs it:
 
 ```
-uv sync --extra torch --index-url https://download.pytorch.org/whl/cpu
+uv sync
+uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+uv pip install transformers peft datasets accelerate
 ```
+
+Run on a clean clone on a CPU-only Ubuntu 24.04 host: `torch 2.14.0+cpu` with
+`torch.cuda.is_available()` False, `transformers 5.16.1`, `peft 0.20.0`, and
+`backend.describe(TORCH)` returning a `cpu` device.
+
+**Neither one-liner works, and the earlier draft of this section published one that does not.**
+`--index-url` *replaces* PyPI rather than adding to it, so `mlx-lm` — locked for the other extra
+— becomes unresolvable and the sync aborts before installing anything. `--extra-index-url`
+resolves and then fails to *build* this project: uv's default `first-index` strategy consults the
+extra index first for build dependencies too, and the pytorch index serves `hatchling 1.25.0`
+where PyPI has 1.32.0, which is old enough to reject `license-files` as a list. Both were
+executed on a clean clone before this paragraph was written; the arm's original host had a
+hand-assembled environment, which is the only reason a command that cannot work was published as
+though it had been run.
 
 The manifest does not pin the CPU build, because a CUDA host wants the CUDA wheel and encoding
 one host's answer there would make the other reinstall to undo it.
