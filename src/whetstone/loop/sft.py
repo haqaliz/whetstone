@@ -46,7 +46,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from whetstone.loop.backend import MLX, TORCH
 from whetstone.loop.backend import Backend as BackendRecord
+from whetstone.loop.backend import family as backend_family
 from whetstone.loop.dataset import NO_VALID_SPLIT
 
 #: How many training steps the capacity probe runs. Declared before the probe, never after: a
@@ -548,38 +550,61 @@ def mlx_trainer(request: TrainingRequest) -> TrainingResult:
     )
 
 
-def adapter_config(args: TrainingArgs, *, repo_id: str) -> dict[str, Any]:
-    """The adapter's own configuration, in both vocabularies that read this filename.
+def adapter_config(args: TrainingArgs, *, repo_id: str, backend_name: str) -> dict[str, Any]:
+    """The adapter's own configuration, in the vocabulary of the runtime that trained it.
 
     Night #1's checkpoint directory held one file — `adapters.safetensors` — and nothing else.
     `mlx_lm.tuner.utils.load_adapters` opens `adapter_config.json` unguarded (`utils.py:127`) and
     `gate.py` hands it a checkpoint directory, so the promotion gate raised `FileNotFoundError`
     on the first real candidate it was given. The never-regress mechanism could not load anything
     this project produced. The suite did not catch it because the gate's fixtures hand-write the
-    file production never wrote.
+    file production never wrote. That is why this function exists.
 
-    **Two readers, one filename, no collision.** MLX dereferences `num_layers` and
-    `lora_parameters`; PEFT reads `r`, `lora_alpha`, `lora_dropout` and `base_model_name_or_path`
-    (https://huggingface.co/docs/peft/developer_guides/checkpoint). The key sets are disjoint, so
-    one document serves both — which is the difference between an adapter only this repository
-    can open and one the ecosystem can.
+    **It used to write both vocabularies into one file, and that was wrong (#31.)** The reasoning
+    was that MLX and PEFT read disjoint keys from the same filename, so one document could serve
+    both readers — an adapter the whole ecosystem could open rather than one only this repository
+    could. The key sets really are disjoint. The conclusion still did not follow, because the
+    config is not the only thing that differs, and every one of the others is independently fatal:
+
+    | | MLX | PEFT |
+    |---|---|---|
+    | weights filename | `adapters.safetensors` | `adapter_model.safetensors` |
+    | tensor key | `…q_proj.lora_a` | `base_model.model.…q_proj.lora_A.weight` |
+    | shape of A | `(in, r)` — `(896, 8)` | `(r, in)` — `(8, 896)` |
+
+    All three measured, not inferred: the filename by reading `load_adapters`, the PEFT names and
+    shapes off this project's own checkpoint, the MLX ones by building a `LoRALinear` and
+    flattening its parameters. So **neither loader could ever read the other's checkpoint**, both
+    vocabularies present or not. The merged document bought nothing and cost a real thing: PEFT
+    warns `Unexpected keyword arguments ['fine_tune_type', 'lora_parameters', 'num_layers']` and
+    tells the reader to upgrade PEFT — advice that is wrong, for a problem that does not exist,
+    on the first artifact a stranger loads.
+
+    **The cross-runtime bridge is `fuse`, and it always was.** A fused model is a plain
+    `Qwen2ForCausalLM` any runtime loads; the adapter is trainer-specific by construction. Making
+    the config bilingual was an attempt to solve at the config layer a problem that lives in the
+    tensors.
 
     **The alpha is derived, not guessed.** `mlx_lm/tuner/lora.py:98` applies
     `y + scale * (x @ lora_a @ lora_b)`; PEFT applies `y + (lora_alpha / r) * (x @ A @ B)`. So
     the equivalent alpha is `scale * r`. Published at any other value it is a different adapter
     from the one that trained.
 
-    `target_modules` is deliberately absent. MLX decides which modules get adapters from the
-    model at load time (`linear_to_lora_layers` computes its own keys), so this writer cannot
-    know them without the weights; they are recoverable from the adapter's own tensor names, and
-    that belongs with the publishing step rather than here, where it would be a guess.
+    `target_modules` is deliberately absent from what this writer produces. MLX decides which
+    modules get adapters from the model at load time (`linear_to_lora_layers` computes its own
+    keys), so this writer cannot know them without the weights. PEFT's own `save_pretrained` does
+    know them, and `write_checkpoint` merges over what the trainer already wrote rather than
+    clobbering it, which is how a Torch adapter keeps them.
     """
+    if backend_family(backend_name) == MLX:
+        # What `mlx_lm.tuner.utils.load_adapters` dereferences, and nothing else.
+        return {
+            "fine_tune_type": "lora",
+            "num_layers": args.lora_layers,
+            "lora_parameters": args.lora_config(),
+        }
+    # What PEFT reads (https://huggingface.co/docs/peft/developer_guides/checkpoint).
     return {
-        # What `mlx_lm.tuner.utils.load_adapters` dereferences.
-        "fine_tune_type": "lora",
-        "num_layers": args.lora_layers,
-        "lora_parameters": args.lora_config(),
-        # What PEFT reads. Same file, disjoint keys.
         "peft_type": "LORA",
         "task_type": "CAUSAL_LM",
         "base_model_name_or_path": repo_id,
@@ -587,6 +612,24 @@ def adapter_config(args: TrainingArgs, *, repo_id: str) -> dict[str, Any]:
         "lora_alpha": args.lora_scale * args.lora_rank,
         "lora_dropout": args.lora_dropout,
     }
+
+
+#: What each runtime's `adapter_config.json` vocabulary consists of — the keys this writer owns
+#: for that runtime, and therefore the keys it removes when sealing a checkpoint for the other.
+#: Derived from the two loaders: MLX's from `mlx_lm.tuner.utils.load_adapters`, PEFT's from
+#: `LoraConfig`'s accepted fields. `target_modules` is in neither, deliberately — the trainer owns
+#: it and this writer never touches it.
+_VOCABULARY: dict[str, frozenset[str]] = {
+    MLX: frozenset({"fine_tune_type", "num_layers", "lora_parameters"}),
+    TORCH: frozenset(
+        {"peft_type", "task_type", "base_model_name_or_path", "r", "lora_alpha", "lora_dropout"}
+    ),
+}
+
+_OTHER_VOCABULARY: dict[str, frozenset[str]] = {
+    MLX: _VOCABULARY[TORCH],
+    TORCH: _VOCABULARY[MLX],
+}
 
 
 def write_checkpoint(
@@ -651,7 +694,17 @@ def write_checkpoint(
             ) from error
         if isinstance(written, dict):
             document.update(written)
-    document.update(adapter_config(args, repo_id=repo_id))
+    ours = adapter_config(args, repo_id=repo_id, backend_name=backend.name)
+    # The OTHER runtime's keys are stripped before ours are applied. A directory can already hold
+    # a config written under the merged-vocabulary scheme this replaced (#31), or by a previous
+    # night under a different backend; merging those forward would leave a Torch adapter still
+    # carrying `num_layers` and still drawing PEFT's "upgrade the library" warning, which is the
+    # whole thing that change removed. Only the keys this writer would have owned under the other
+    # vocabulary are removed — anything the trainer knows and we do not, `target_modules` above
+    # all, is untouched.
+    for stale in _OTHER_VOCABULARY[backend_family(backend.name)]:
+        document.pop(stale, None)
+    document.update(ours)
     existing.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     files = _hash_directory(directory)

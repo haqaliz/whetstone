@@ -102,6 +102,43 @@ released version until it exists in the code.
 - **`/fused/` is gitignored.** `whetstone fuse` emits a standalone model; the first is 988 MB and a
   32B base's would be tens of gigabytes. It was untracked and one `git add -A` from the history.
 
+### Fixed
+
+- **`adapter_config.json` is written in one vocabulary — the trainer's own (#31).** It used to
+  carry MLX's keys and PEFT's together, on the reasoning that the two loaders dereference disjoint
+  key sets so one document could serve both. The key sets are disjoint; the conclusion did not
+  follow. The config was never what stopped the other loader:
+
+  | | MLX | PEFT |
+  |---|---|---|
+  | weights file | `adapters.safetensors` | `adapter_model.safetensors` |
+  | tensor key | `…q_proj.lora_a` | `base_model.model.…q_proj.lora_A.weight` |
+  | shape of A | `(896, 8)` = `(in, r)` | `(8, 896)` = `(r, in)` |
+
+  All three measured rather than inferred — the filename by reading `load_adapters`, PEFT's names
+  and shapes off this project's own checkpoint, MLX's by building a `LoRALinear` and flattening
+  its parameters. So neither loader could ever open the other's checkpoint, both vocabularies
+  present or not. What the merged document did buy was PEFT reporting `Unexpected keyword
+  arguments ['fine_tune_type', 'lora_parameters', 'num_layers'] … It is highly recommended to
+  upgrade the PEFT version` — wrong advice, about a problem that does not exist, on the first
+  artifact a stranger loads. The cross-runtime bridge is `fuse`, and always was.
+- **`write_checkpoint` strips the other runtime's keys before applying its own.** A directory
+  holding a config from the merged-vocabulary scheme would otherwise carry the dead keys forward
+  and keep emitting the warning. Only keys this writer owns under the other vocabulary are
+  removed; `target_modules` and anything else the trainer knows is untouched, as before.
+- **The model card names the loader that can actually open the checkpoint.** It printed PEFT's
+  `PeftModel.from_pretrained` snippet unconditionally — including on MLX adapters, which PEFT
+  cannot load — and stated that the adapter was "also loadable by `mlx-lm`, whose loader reads the
+  same `adapter_config.json`". `library_name`, the tag and the snippet now dispatch on the
+  recorded backend, and both cards say to fuse rather than to reach for the other runtime.
+- **`backend.family` is the one place a recorded backend name is resolved to a runtime**, so
+  `fuse` and `sft` cannot disagree about what a checkpoint is. It keeps tolerating every `torch-*`
+  spelling permanently, and raises `UnknownRuntime` rather than guessing.
+- **`docs/RUNNING_ELSEWHERE.md`** gains the divergence table and one warning worth its space:
+  `mlx_lm.tuner.utils.load_adapters` ends in `model.load_weights(..., strict=False)`, so pointing
+  it at a renamed PEFT adapter loads **nothing** and returns a model whose LoRA layers are still
+  at their initialisation. It runs, it produces plausible output, and it is untrained.
+
 ### Changed
 
 - **`test_sandbox.py` is gated on capability, not on a platform name.** Its fourteen assertions

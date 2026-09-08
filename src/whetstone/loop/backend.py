@@ -70,6 +70,10 @@ class NoBackend(RuntimeError):
     """
 
 
+class UnknownRuntime(ValueError):
+    """A recorded backend name belongs to no runtime this repository implements."""
+
+
 class AmbiguousBackend(RuntimeError):
     """More than one runtime is installed and none was named.
 
@@ -118,6 +122,26 @@ class Backend:
             "device": self.device,
             "device_memory_bytes": self.device_memory_bytes,
         }
+
+
+def family(name: str) -> str:
+    """Which runtime a recorded backend name belongs to — `MLX` or `TORCH`.
+
+    One place, because two places is how a checkpoint comes to be read as MLX's by one caller and
+    Torch's by another. The `torch-*` prefix is tolerated permanently and is not laxity: this
+    repository's only real checkpoint records `torch-cpu`, sealed inside its digest before the
+    constant was corrected (#30), and evidence is never rewritten to agree with later code.
+    """
+    if name == MLX:
+        return MLX
+    if name == TORCH or name.startswith("torch"):
+        return TORCH
+    raise UnknownRuntime(
+        f"the backend name {name!r} belongs to no runtime this repository implements. Refused "
+        "rather than resolved to the nearest one: a Torch adapter and an MLX adapter are "
+        "different tensor layouts behind one filename, and guessing emits weights rather than "
+        "raising"
+    )
 
 
 def _present() -> tuple[str, ...]:

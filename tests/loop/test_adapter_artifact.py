@@ -44,10 +44,12 @@ BASE = "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit"
 REVISION = "d1e3b690c8e225d7795bccddf971ca6be68b2012"
 
 
-def _runtime() -> backend.Backend:
+def _runtime(
+    name: str = backend.MLX, library: str = "mlx-lm"
+) -> backend.Backend:
     return backend.Backend(
-        name=backend.MLX,
-        library="mlx-lm",
+        name=name,
+        library=library,
         version="0.31.3",
         device="Apple M4 Max",
         device_memory_bytes=38654705664,
@@ -166,29 +168,60 @@ def test_the_adapter_config_is_inside_the_checkpoints_own_digest(tmp_path: Path)
         sft.verify_checkpoint(directory)
 
 
-def test_the_config_is_also_a_peft_adapter(tmp_path: Path) -> None:
-    """AC4: the checkpoint is loadable by the ecosystem, not only by the runtime that wrote it.
+def test_the_config_is_written_in_the_vocabulary_of_the_runtime_that_trained_it(
+    tmp_path: Path,
+) -> None:
+    """AC4, corrected by #31: one vocabulary, the trainer's own.
 
-    A published LoRA is `adapter_config.json` plus `adapter_model.safetensors`, the config
-    carrying `base_model_name_or_path`, `r`, `lora_alpha`, `lora_dropout` and `target_modules`
-    (https://huggingface.co/docs/peft/developer_guides/checkpoint). MLX's keys and PEFT's keys do
-    not collide, so one document serves both readers — and a checkpoint that only one runtime can
-    open is not a model anyone can use.
+    This test used to assert the opposite — that the document carried PEFT's keys *as well*, on
+    the reasoning that MLX's and PEFT's key sets are disjoint so one file could serve both
+    readers. The key sets are disjoint. The conclusion did not follow: the two runtimes also
+    disagree on the weights filename, on the tensor names and on the orientation of the matrices,
+    so neither loader could ever open the other's checkpoint whatever the config said. See
+    `test_adapter_vocabulary.py`, which pins all three.
+
+    What the dual document did buy was a warning. PEFT reports `Unexpected keyword arguments
+    ['fine_tune_type', 'lora_parameters', 'num_layers'] … It is highly recommended to upgrade the
+    PEFT version before continuing` — wrong advice, about a problem that does not exist, on the
+    first artifact a stranger loads. The way a checkpoint reaches somebody else's runtime is
+    `fuse`, which emits a plain `Qwen2ForCausalLM`.
     """
     directory = _checkpoint(tmp_path)
     document = json.loads((directory / sft.ADAPTER_CONFIG).read_text())
 
-    for key in ("peft_type", "r", "lora_alpha", "lora_dropout", "base_model_name_or_path"):
+    for key in ("fine_tune_type", "num_layers", "lora_parameters"):
         assert key in document, (
-            f"WHY THIS IS A FAILURE: {key!r} is absent, so PEFT cannot construct a LoraConfig "
-            f"from this adapter and nothing outside MLX can load it. Got {sorted(document)}"
+            f"WHY THIS IS A FAILURE: {key!r} is absent, so `mlx_lm.tuner.utils.load_adapters` "
+            f"raises on this checkpoint and the gate cannot score it. Got {sorted(document)}"
         )
+    for absent in ("peft_type", "r", "lora_alpha", "base_model_name_or_path"):
+        assert absent not in document, (
+            f"WHY THIS IS A FAILURE: {absent!r} is on an MLX-trained adapter. PEFT cannot load "
+            "one — different filename, different tensor names, transposed matrices — so the key "
+            "is read by nobody, and its presence is what makes PEFT tell a reader to upgrade"
+        )
+
+    args = sft.TrainingArgs()
+    assert document["num_layers"] == args.lora_layers
+    assert document["lora_parameters"] == args.lora_config()
+
+
+def test_a_torch_checkpoint_publishes_the_alpha_peft_will_divide(tmp_path: Path) -> None:
+    """The conversion between the two conventions, which survives #31 unchanged.
+
+    MLX applies `scale * (x @ A @ B)` (`lora.py:98`); PEFT applies `(alpha / r) * (x @ A @ B)`.
+    An adapter published at any alpha other than `scale * r` behaves differently from the one
+    that trained, and that is true of every Torch checkpoint this loop emits.
+    """
+    directory = _checkpoint(
+        tmp_path, backend=_runtime(name=backend.TORCH, library="torch")
+    )
+    document = json.loads((directory / sft.ADAPTER_CONFIG).read_text())
 
     args = sft.TrainingArgs()
     assert document["r"] == args.lora_rank
     assert document["lora_dropout"] == args.lora_dropout
     assert document["base_model_name_or_path"] == BASE
-    # MLX applies `scale * (x @ A @ B)` (lora.py:98); PEFT applies `(alpha / r) * (x @ A @ B)`.
     assert document["lora_alpha"] == args.lora_scale * args.lora_rank, (
         f"WHY THIS IS A FAILURE: the adapter trained at MLX scale {args.lora_scale} and is "
         f"published at PEFT alpha {document['lora_alpha']}. PEFT divides alpha by r, so the "
@@ -228,7 +261,11 @@ def test_a_config_the_trainer_already_wrote_is_merged_not_clobbered(tmp_path: Pa
         )
     )
 
-    _checkpoint(tmp_path)
+    # Sealed under the Torch backend, because the config being merged is the one PEFT's
+    # `save_pretrained` writes. The fixture used to seal this under MLX, which asserted that a
+    # PEFT document survives on a checkpoint PEFT cannot open — the test passed and described
+    # something that never happens.
+    _checkpoint(tmp_path, backend=_runtime(name=backend.TORCH, library="torch"))
 
     merged = json.loads((directory / sft.ADAPTER_CONFIG).read_text())
     assert merged.get("target_modules") == ["q_proj", "v_proj"], (
