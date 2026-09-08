@@ -318,6 +318,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-08-27 | The honest-number report measures the delta/final series under the loop's contract; its report has its own non-comparable home (§ 10.9) | 2 — adds a disclosure | No |
 | 2026-09-02 | The fine-tuned base is pinned; § 7.3 is closed by the amendment below (§ 10.10) | 1 — closes an open item | Yes |
 | 2026-09-08 | A portability arm trains a second, smaller base on a second runtime; § 10.10's base is untouched (§ 10.11) | 1 — pins an input for a new arm | Yes |
+| 2026-09-08 | The portability arm asks the gate's question once, on its own base and runtime; § 10.10's base untouched and the § 3 baseline unspent (§ 10.12) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -675,3 +676,58 @@ count has been measured under it and none is claimed here — the amendment prec
 which is the whole of its value. In particular nothing here claims the arm's adapter is better
 than its base: that is the promotion gate's question, on a held-out set, and it is unasked. The
 § 3 baseline remains unspent.
+
+### 10.12 The portability arm asks the gate's question, on its own base and its own runtime — 2026-09-08
+
+**Type 1 (§ 8.1): pins the inputs of a measurement, committed before it runs.** It introduces
+no success threshold, rewords nothing in § 1, § 4, or § 6, and **does not change the base
+§ 10.10 pinned** or spend the § 3 baseline. It extends the arm opened by § 10.11 and nothing
+else.
+
+**What changes, stated exactly.** § 10.11 closed with *"nothing here claims the arm's adapter is
+better than its base: that is the promotion gate's question, on a held-out set, and it is
+unasked."* This amendment asks it — once, under this arm, with the answer published whatever it
+is. The sentence in § 10.11 is not edited; this document is append-only, and an earlier
+commitment that has been superseded is more useful visible than tidied away.
+
+**Why ask it here rather than wait for the main series.** The never-regress promotion gate is
+the mechanism this project's central claim rests on, and **it has never scored a real
+candidate.** Its three exits, its retry discipline and its refusals are proven against fixture
+checkpoints and a stub engine; whether it fires on real weights, on a real machine, is
+unmeasured — `docs/ROADMAP.md` § 12 says so in those words. That is a question about the
+*mechanism*, not about any model, and it is answered no better by a large base than by a small
+one. The main series' gated evaluation should not be the first time the gate has ever run.
+
+**The measurement, pinned.**
+
+| | |
+|---|---|
+| Candidate | a checkpoint from a night drawn **and** trained end to end on the arm's runtime |
+| Incumbent | the untrained arm base that night started from, loaded through `baseline_engine` |
+| Task set | the held-out source-B membership fixed by § 10.7, unchanged |
+| Decoding | greedy on both sides, `sampler_for(1)` by identity |
+| Home | `reports/portability-arm/`, the arm's own, declared by § 10.11 |
+
+The night is drawn on the arm's runtime, which § 10.11's first run was not: that checkpoint was
+trained on Linux from examples night #1 had already drawn on Apple Silicon. A candidate whose
+rollouts came from one runtime and whose training came from another is a hybrid, and the arm's
+question is about a loop that runs in one place.
+
+**What is not claimed, and what a result here does not license.** A figure from this evaluation
+is **not comparable** to the main series or to any other arm — § 10.11's comparability paragraph
+governs unchanged, and the gate's own `MismatchedBackend` is its mechanical form. It is not the
+§ 3 baseline, which remains unspent and whose one home is `reports/baseline-measurement/`. It is
+not the § 1 headline, and it may never be quoted as one.
+
+**The expected outcome is no promotion, and that is written down before the run.** The arm's
+training set is a handful of strict-`PASS` examples on a small base. A gate that rejects is the
+mechanism working, and a rejection is published with the same prominence a promotion would be
+(`CLAUDE.md` #5; P4 carries no pivot signal). **No threshold is introduced here**: the gate's
+promotion rule is the one already fixed in § 2 and § 10.8, and this amendment does not touch it.
+
+**One disclosure it costs.** Scoring the held-out membership under this arm means that set has
+now been looked at by one more candidate. With a single evaluation the selection pressure is
+negligible, but it is not zero, and the honest form of that is to say so here rather than to
+discover it later: every future arm scored against the same 12 tasks adds to it, and a
+membership scored many times stops being held out in the sense § 10.7 intended.
+
