@@ -37,6 +37,7 @@ from whetstone.bakeoff import report as bakeoff_report
 from whetstone.bakeoff import run as bakeoff_run
 from whetstone.bakeoff.report import GenerationContract
 from whetstone.bakeoff.scoring import Rollout
+from whetstone.loop.backend import RUNTIME_DISTRIBUTIONS
 from whetstone.loop.backend import Backend as BackendRecord
 from whetstone.loop.dataset import TRAINABLE, Dataset
 from whetstone.loop.sampling import Applied
@@ -236,13 +237,31 @@ def read(path: Path) -> Mapping[str, Any]:
     return raw
 
 
-def tool_versions() -> dict[str, str]:
+def tool_versions(*, backend: BackendRecord | None = None) -> dict[str, str]:
     """The versions a figure is only interpretable against, from the bake-off's own function.
 
     Imported by identity rather than restated. A second list of tool versions is a second answer
     to "what was this measured under", and the day they disagreed neither document would say so.
+
+    **`backend` names the runtime that actually loaded, and it matters (#33).** The bake-off's
+    function records `"mlx-lm": PINNED_MLX_LM` unconditionally, because when it was written MLX
+    was the only runtime there was. The portability arm's checkpoint therefore states
+    `"mlx-lm": "0.31.3"` beside `"platform": "Linux …"`, on a box that ran PyTorch and never had
+    MLX installed — a provenance naming a library it never loaded, which is exactly the
+    inaccuracy `backend.py` was written to close. Given a backend, every runtime this repository
+    knows is dropped and the one that ran is named at its real version, so the versions block and
+    the backend block cannot disagree.
+
+    Left optional because the bake-off and the miner have no backend record to pass and their
+    published figures must not move; unpassed, the historical behaviour is unchanged.
     """
-    return bakeoff_run._tool_versions()
+    versions = dict(bakeoff_run._tool_versions())
+    if backend is None:
+        return versions
+    for distribution in RUNTIME_DISTRIBUTIONS:
+        versions.pop(distribution, None)
+    versions[backend.library] = backend.version
+    return versions
 
 
 def _payload(ledger: Ledger) -> dict[str, Any]:

@@ -495,6 +495,23 @@ def training_datasets(data: Path, tokenizer: Any) -> tuple[Any, Any]:
     return CacheDataset(datasets[0]), CacheDataset(datasets[1])
 
 
+def trainer_for(backend_name: str) -> Trainer:
+    """The trainer belonging to a runtime, chosen by the record rather than by a default.
+
+    `run_night` used to default to `mlx_trainer` outright, which on any other host would detect
+    the backend correctly, write `torch` into the evidence, and then train with MLX — a ledger
+    describing a run that did not happen. The two facts have one source now.
+
+    The Torch import is function-local, `mlx_trainer`'s own rule: naming a trainer must not pull
+    an inference stack into a process that only wanted to know which one to use.
+    """
+    if backend_family(backend_name) == MLX:
+        return mlx_trainer
+    from whetstone.loop.torch_runtime import torch_trainer
+
+    return torch_trainer
+
+
 def mlx_trainer(request: TrainingRequest) -> TrainingResult:
     """`mlx_lm.lora.train` at the pinned version, with the declared arguments and nothing else.
 
@@ -950,6 +967,7 @@ __all__ = [
     "probe_capacity",
     "projected_seconds",
     "train",
+    "trainer_for",
     "verify_checkpoint",
     "write_baseline_checkpoint",
     "write_checkpoint",

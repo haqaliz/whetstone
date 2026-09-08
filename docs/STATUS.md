@@ -10,6 +10,41 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The arm's driver is a command in this repository — is done** (2026-09-08). Closes #32, #33 and
+#34. The portability arm's first run is this project's only completed training and the source of
+its only loadable checkpoint, and it was driven by a `train_portability.py` written onto the Linux
+box during the session that produced it. That script was never in version control, so the run was
+not reproducible from here, and it went **around** `sft`'s constructors rather than through them —
+it hand-built a `CapacityProbe`, passed the Mac's `CAPACITY_HEADROOM_BYTES` as a 15.5 GiB box's
+ceiling, called `tool_versions()` with no backend, and hardcoded `device_memory_bytes=0`.
+
+Every defect in that checkpoint's provenance follows from the one fact, and that is the finding
+worth keeping: they are not four mistakes, they are four symptoms of a run reimplementing the
+parts of the constructors it needed. `probe_capacity` was never called at all, so the record's
+`iters: 8` sits beside the full run's `seconds: 22602` and `projected_seconds` reads 157 hours off
+it. So the fix is not more care next time; it is that the driver is a command, under test, in the
+tree. `whetstone train-arm` detects the runtime first, derives the ceiling from that machine, runs
+the probe, lets `sft.train` decide, and seals with the versions block given the same backend
+record as the backend block so the two cannot disagree.
+
+`test_arm.py` asserts the **shape** rather than the values — that the declared probe step count
+reaches the trainer before the night's own, that the ceiling equals `headroom_for` of this
+machine, that a zero memory refuses rather than borrows. A test checking only the output would
+pass against a second hand-built implementation, which is precisely what was wrong.
+
+Two things landed beside it. `ledger.tool_versions` takes a backend and names the runtime that
+loaded, closing the inaccuracy `backend.py`'s own docstring said it existed to close and which
+had stood since — the record shipped and its reader never changed. And `run_night`'s trainer,
+which defaulted to `sft.mlx_trainer` regardless of what was detected, is now chosen by
+`sft.trainer_for` from the runtime record: a night on a Torch host would otherwise have written
+`torch` into its ledger and trained with MLX.
+
+**The checkpoint is not re-sealed.** Its digest covers its provenance, defects included, and a
+record corrected after the fact verifies nothing. `reports/portability-arm/report.md` gains a
+dated section — appended, never folded into the declaration above it — recording what the run
+demonstrated and tabling the four fields that are wrong, so the artifact and the statement of its
+faults travel together.
+
 **One `adapter_config.json`, one vocabulary — is done** (2026-09-08). Closes #31. The file used
 to carry MLX's keys and PEFT's together, and the reasoning was explicit in its docstring: the two
 loaders dereference disjoint key sets, so one document serves both readers, "which is the

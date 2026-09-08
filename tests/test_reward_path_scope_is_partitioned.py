@@ -166,6 +166,7 @@ _DOCUMENTED_EDGES: tuple[tuple[Path, str], ...] = (
     (Path("whetstone/cli.py"), "whetstone.loop.check_probe"),
     (Path("whetstone/cli.py"), "whetstone.loop.card"),
     (Path("whetstone/cli.py"), "whetstone.loop.fuse"),
+    (Path("whetstone/cli.py"), "whetstone.loop.arm"),
 )
 
 

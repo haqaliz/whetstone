@@ -191,7 +191,7 @@ def run_night(
     probe: int | None = None,
     retries: bool = True,
     engine: Engine = sampling_engine,
-    trainer: sft.Trainer = sft.mlx_trainer,
+    trainer: sft.Trainer | None = None,
     seeder: Seeder = mlx_seeder,
     runtime: BackendRecord | None = None,
 ) -> Night:
@@ -310,7 +310,10 @@ def run_night(
         checkpoints=checkpoints / run_id,
         run_seed=run_seed,
         probe=probe,
-        trainer=trainer,
+        # Chosen from the runtime that was detected, never defaulted. This argument used to
+        # default to `sft.mlx_trainer`, so a night on a Torch host would record `torch` in its
+        # ledger and then train with MLX — evidence describing a run that did not happen.
+        trainer=sft.trainer_for(runtime.name) if trainer is None else trainer,
     )
 
     ledger = run_ledger.Ledger(
@@ -328,10 +331,11 @@ def run_night(
             probe=probe,
             heldout=heldout_record,
         ),
-        tool_versions=run_ledger.tool_versions(),
-        # Detected, not declared. `tool_versions()` names `mlx-lm` unconditionally, so on any
-        # other runtime it is not merely silent but wrong; this is the field a reader can trust
-        # about which backend actually produced these draws.
+        # Both fields answer "what produced these draws", so both are given the same detected
+        # record. `tool_versions()` alone named `mlx-lm` unconditionally, which on any other
+        # runtime is not merely silent but wrong (#33) — and the two blocks disagreeing is worse
+        # than either being absent, because a reader has no way to tell which one to believe.
+        tool_versions=run_ledger.tool_versions(backend=runtime),
         backend=runtime,
         seeds=_seeds(drawn),
         draws_recorded=_records(drawn),
@@ -568,7 +572,7 @@ def _train(
         dataset_digest=selected.digest,
         run_seed=run_seed,
         args=request.args,
-        tool_versions=run_ledger.tool_versions(),
+        tool_versions=run_ledger.tool_versions(backend=runtime),
         valid_split=chosen.reason,
         capacity=capacity,
         backend=runtime,
