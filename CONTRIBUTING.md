@@ -49,6 +49,36 @@ uv run whetstone --help   # the CLI, from source
 
 All four commands must exit 0 before you open a PR.
 
+### Before the first mine on a new machine: warm the uv cache
+
+This one is a **precondition, not a troubleshooting step**, and skipping it does not degrade
+gracefully — it rejects every candidate.
+
+`tasks/environment.py` provisions each task's environment with `--offline`, deliberately: a
+donor whose wheels cannot be answered from uv's own cache fails loudly rather than a mint
+quietly resolving against whatever an index served at 3am and pinning what came back. The
+consequence on a machine that has never mined is that the cache can answer nothing, so *every*
+candidate is refused — measured on a second host, 45 of 45, minting zero tasks — with a message
+about network connectivity that reads like a broken machine rather than a step nobody took.
+
+Warm it once per machine, per donor, with a network:
+
+```bash
+uv run whetstone warm-cache --donor <path-to-donor> --work /tmp/warm --dry-run  # how many?
+uv run whetstone warm-cache --donor <path-to-donor> --work /tmp/warm
+```
+
+It syncs one project per **distinct** `uv.lock` in the donor's history rather than one per
+commit, which is the difference between dozens of syncs and hundreds: measured on the two donors
+this was written for, 664 commits carried 36 distinct locks, and a second donor's history carried
+6. The walk is newest-first, so an interrupted warm has still covered the locks a mine is most
+likely to draw from. It exits 1 if any lock could not be warmed and names them — a partially
+warmed cache is not a warmed cache, and a setup script that treated it as one would start a mine
+that fails wholesale a step later.
+
+`UV_FIND_LINKS` pointed at a directory of wheels is the alternative, and it is the right one on a
+machine that will never have a network.
+
 ## The workflow
 
 - **Test-first, always.** Whetstone is built strictly RED → GREEN → REFACTOR: no production code

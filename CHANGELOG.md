@@ -13,6 +13,26 @@ released version until it exists in the code.
 
 ### Added
 
+- **`whetstone warm-cache`, so the first mine on a new machine is not a wall of refusals.**
+  `tasks/environment.py` runs every installing command with `--offline` by design, and that
+  design worked exactly as written on a second host: with a cold uv cache it rejected **45 of
+  45** candidates and minted nothing, reporting that network connectivity was disabled — which
+  reads as a fault rather than as a precondition nobody had met. The remedy existed only in a
+  module docstring. It is now three things instead: a command that syncs one project per
+  **distinct** `uv.lock` in a donor's history (664 commits carried 36 distinct locks on the donor
+  this was measured against, and 6 on a second — an order of magnitude less work than warming per
+  commit), a section in `CONTRIBUTING.md` where someone setting up a machine will meet it, and a
+  sentence appended to the failure itself, because nobody reads a setup guide after a command has
+  already failed. The walk is newest-first and continues past a failure, naming what did not
+  warm; a partial warm exits 1. `--offline` is deliberately absent from its sync and asserted
+  absent by a test — copying it from the module next door would produce a warm that exits 0
+  having cached nothing.
+- **The CLI docstring's own command count is guarded, and it was wrong.** The existing check
+  walked the parser's command *names*, so a forgotten name failed the build while the opening
+  sentence's number did not: it read "eight now do" while the parser defined ten. Two commands
+  had been added since anyone read the first line. Both halves are asserted now — in the same
+  paragraph that already records an earlier miscount of exactly this kind.
+
 - **The verifier runs on Linux.** `sandbox.run_confined` dispatches on a probed mechanism —
   Seatbelt on Darwin, bubblewrap on Linux — enforcing the same three properties by different
   means: `--unshare-all` for network denial, `--ro-bind / /` plus **exactly one** `--bind <scope>`

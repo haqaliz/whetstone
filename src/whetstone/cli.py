@@ -1,7 +1,7 @@
 """The `whetstone` command line entry point.
 
 The failure this module prevents: a ``--help`` that advertises work the code cannot do.
-Commands appear here only when something stands behind them, and eight now do. ``verify`` runs
+Commands appear here only when something stands behind them, and eleven now do. ``verify`` runs
 the execution-grounded reward in `whetstone.verify.strict`: it applies a patch to a task's
 known-broken commit inside a sandbox, restores the operator-held tests from golden, and
 compares what pytest actually executed against what the task declared. ``mine`` is the other
@@ -28,10 +28,19 @@ weight is read, derives the capacity ceiling from that machine's own memory, run
 rather than recording one, and seals through `write_checkpoint`. It exists because the first
 arm run did not go through it — a script on the training box reimplemented the parts of those
 constructors it needed, and every wrong field in the resulting provenance came from that.
+And ``warm-cache`` is the step before ``mine`` on a machine that has never mined: it syncs one
+project per **distinct** ``uv.lock`` in a donor's history, with a network, so that mining — which
+runs every installing command with ``--offline`` by design — can be answered from uv's own cache.
+Without it that design fails in the direction it was built to fail in, but wholesale: on a second
+machine every candidate was rejected, and the message named the network rather than the
+precondition.
 
 An earlier version of this paragraph counted four commands, enumerated four, omitted
 ``check-leakage`` entirely, and closed by saying no report command existed. All three claims
-were false, in the file's own first paragraph. ``tests/loop/test_morning_cli.py`` now asserts
+were false, in the file's own first paragraph. The count then went stale a second time — it read
+*"eight"* while the parser defined ten — because the guard below walked the command *names* and
+never the number, so a forgotten name failed the build while a number two too small did not.
+Both are asserted now. ``tests/loop/test_morning_cli.py`` now asserts
 this docstring names every subcommand the parser defines — proof-reading is what produced those
 three, so the check is against the parser rather than against a careful reader. (The phrasing
 here deliberately describes the old sentence instead of quoting it: the guard cannot tell a
@@ -86,6 +95,7 @@ import tempfile
 from pathlib import Path
 
 from whetstone import __version__
+from whetstone.tasks import warm as warm_cache
 from whetstone.tasks.manifest import load_tasks
 from whetstone.tasks.mine import MintFailed, mine
 from whetstone.verify.sandbox import UnsupportedPlatform
@@ -762,6 +772,47 @@ def build_parser() -> argparse.ArgumentParser:
         help="the seed recorded in the provenance, matching the night that selected the examples",
     )
 
+    warm = commands.add_parser(
+        "warm-cache",
+        help="warm this machine's uv cache from a donor's history, before the first mine",
+        description=(
+            "Sync one project per DISTINCT uv.lock in the donor's history, with a network, so "
+            "that mining — which runs every installing command with --offline by design — can "
+            "be answered from uv's own cache. This is the one command in this project that is "
+            "supposed to reach the network, and it is run once per machine before any mining "
+            "starts. Per distinct lock and not per commit: most commits do not move "
+            "dependencies, and on the donors this was written for 664 commits carried 36 "
+            "distinct locks. The walk is newest-first and continues past a failure, naming what "
+            "did not warm; a partial warm exits 1, because a setup script that passed on one "
+            "would start a mine that fails wholesale a step later."
+        ),
+    )
+    warm.add_argument(
+        "--donor",
+        required=True,
+        type=Path,
+        metavar="<path>",
+        help="the local git repository whose history is walked; it is read, never written to",
+    )
+    warm.add_argument(
+        "--work",
+        required=True,
+        type=Path,
+        metavar="<path>",
+        help=(
+            "a scratch directory for the materialised lock/manifest pairs, one per distinct "
+            "lock. Never inside the donor: it is the donor's own tree that must stay untouched"
+        ),
+    )
+    warm.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "report how many distinct locks the donor carries and do no syncing. The number to "
+            "look at before committing a machine to the wait"
+        ),
+    )
+
     report = commands.add_parser(
         "report",
         help="render last night's morning report from its sealed evidence",
@@ -1179,6 +1230,43 @@ def run_fuse_cli(args: argparse.Namespace) -> int:
     return PASS_EXIT
 
 
+def run_warm_cache_cli(args: argparse.Namespace) -> int:
+    """Warm this machine's uv cache from one donor's history. 0 fully warmed, 1 partial.
+
+    A module-scope import, unlike the loop's doors: `whetstone.tasks` is inside the guarded
+    roots (`tests/test_no_inference_on_reward_path.py`), so there is no inference stack behind
+    this edge and nothing to keep out of `whetstone verify`'s module graph.
+
+    The exit code is about the cache and not about the donor. A lock that no index can answer
+    any more is a real answer — it is simply not a warmed cache, and a setup script that treated
+    it as one would start a mine that fails wholesale a step later and further from its cause.
+    """
+    locks = warm_cache.unique_locks(args.donor)
+    if args.dry_run:
+        print(
+            f"{args.donor}: {len(locks)} distinct uv.lock(s) across its history; "
+            f"warming would sync {len(locks)} project(s)"
+        )
+        return PASS_EXIT
+
+    report = warm_cache.warm(args.donor, work=args.work)
+    print(
+        f"{report.donor}: {report.unique} distinct uv.lock(s); "
+        f"warmed {report.warmed}, failed {len(report.failed)}"
+    )
+    for one in report.failed:
+        print(f"  not warmed: lock {one.digest} at commit {one.sha[:12]}", file=sys.stderr)
+    if report.failed:
+        print(
+            "the cache cannot answer every lock this donor recorded, so a mine against it will "
+            "still refuse candidates. Re-run with a network, or point UV_FIND_LINKS at a "
+            "directory of wheels for the locks named above.",
+            file=sys.stderr,
+        )
+        return FAIL_EXIT
+    return PASS_EXIT
+
+
 def run_train_arm_cli(args: argparse.Namespace) -> int:
     """Probe, train and seal one arm's checkpoint, and say what was sealed.
 
@@ -1406,6 +1494,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if namespace.command == "train-arm":
         return run_train_arm_cli(namespace)
+
+    if namespace.command == "warm-cache":
+        return run_warm_cache_cli(namespace)
 
     # Every input the CLI accepts is handled above. Falling through means a flag or a
     # subcommand was added without a behaviour behind it: report usage and fail rather than
