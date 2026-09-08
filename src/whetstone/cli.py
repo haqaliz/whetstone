@@ -19,7 +19,10 @@ night's sealed evidence into a page a person reads, sealed to that evidence and 
 kept the size of what the code checks — not cryptographically signed. ``card`` is the step
 after that: it renders a sealed checkpoint and the night that produced it into a Hub model card,
 so what the loop trains is a repository somebody else can load rather than bytes only this
-project can interpret.
+project can interpret. And ``fuse`` merges a checkpoint's adapter into its base to emit one
+standalone model — the form llama.cpp converts to GGUF, which is what Ollama and LM Studio load
+on every operating system. Its fuser is chosen by the checkpoint's own recorded backend and
+never by the host's, because the wrong one does not raise, it emits weights.
 
 An earlier version of this paragraph counted four commands, enumerated four, omitted
 ``check-leakage`` entirely, and closed by saying no report command existed. All three claims
@@ -643,6 +646,57 @@ def build_parser() -> argparse.ArgumentParser:
         help="where the card is written. Refused inside a published reports/ directory",
     )
 
+    fusion = commands.add_parser(
+        "fuse",
+        help="merge a checkpoint's adapter into its base, emitting one standalone model",
+        description=(
+            "Merge a verified checkpoint's adapter into its base and write a single standalone "
+            "model. A LoRA checkpoint is two small files that mean nothing without the base "
+            "they attach to -- the right shape for a night, the wrong shape for anybody who "
+            "wants to run the thing. A fused model is what llama.cpp converts to GGUF, and GGUF "
+            "is what Ollama, LM Studio and Jan load on every operating system. The fuser is "
+            "chosen by the checkpoint's OWN recorded backend, never by this host's: a Torch "
+            "adapter and an MLX adapter are different tensor layouts behind one filename, and "
+            "the wrong fuser does not raise -- it emits weights nobody can tell from correct "
+            "ones. A checkpoint recording no backend is refused rather than guessed at, an "
+            "untrained one is refused because merging nothing into a base yields the base, and "
+            "the destination is refused inside the checkpoint or under reports/."
+        ),
+    )
+    fusion.add_argument(
+        "--checkpoint",
+        required=True,
+        type=Path,
+        metavar="<dir>",
+        help="the sealed checkpoint. Re-hashed before a tensor is read from it",
+    )
+    fusion.add_argument(
+        "--base",
+        required=True,
+        type=Path,
+        metavar="<dir>",
+        help="the local base weights the adapter attaches to. Never a repo id",
+    )
+    fusion.add_argument(
+        "--revision",
+        required=True,
+        metavar="<sha>",
+        help="the immutable commit sha those weights were verified against, never a tag",
+    )
+    fusion.add_argument(
+        "--repo-id",
+        required=True,
+        metavar="<id>",
+        help="the base's repository id, recorded in the fused model's provenance",
+    )
+    fusion.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        metavar="<dir>",
+        help="where the fused model is written. Refused inside the checkpoint or under reports/",
+    )
+
     report = commands.add_parser(
         "report",
         help="render last night's morning report from its sealed evidence",
@@ -1025,6 +1079,41 @@ def run_check_probe_cli(args: argparse.Namespace) -> int:
     return PASS_EXIT if report.proceed else FAIL_EXIT
 
 
+def run_fuse_cli(args: argparse.Namespace) -> int:
+    """Merge a checkpoint's adapter into its base, and say where the model went.
+
+    **The import is function-local, and it is the seventh documented edge from a guarded root
+    into an exempt package.** `whetstone.loop.fuse` reaches `mlx_lm` and `peft` to perform the
+    merge, which is exactly why the edge must stay inside the handler: `whetstone verify` is the
+    reward's entry point and must never acquire an inference stack, not even transitively.
+    `tests/test_reward_path_scope_is_partitioned.py` asserts these are the only seven edges and
+    that all seven are function-local.
+
+    **The exits are the existing contract, no eighth code**: fused -> 0, and a refusal an
+    operator can fix by retyping -> `USAGE_ERROR`. A checkpoint with no recorded backend, an
+    untrained one, and a destination inside the checkpoint or under `reports/` are all such
+    refusals: nothing is wrong with the command, the artefact simply cannot be built from what
+    was pointed at.
+    """
+    from whetstone.loop.fuse import FUSION_FILE, fuse_checkpoint
+
+    try:
+        written = fuse_checkpoint(
+            checkpoint_path=args.checkpoint,
+            base=args.base,
+            destination=args.out,
+            revision=args.revision,
+            repo_id=args.repo_id,
+        )
+    except (OSError, ValueError, RuntimeError) as refusal:
+        print(f"whetstone fuse: {refusal}", file=sys.stderr)
+        return USAGE_ERROR
+
+    print(f"fused model {written}")
+    print(f"provenance  {written / FUSION_FILE}")
+    return PASS_EXIT
+
+
 def run_card_cli(args: argparse.Namespace) -> int:
     """Render a checkpoint's model card from the night that produced it, and say where it went.
 
@@ -1206,6 +1295,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if namespace.command == "card":
         return run_card_cli(namespace)
+
+    if namespace.command == "fuse":
+        return run_fuse_cli(namespace)
 
     # Every input the CLI accepts is handled above. Falling through means a flag or a
     # subcommand was added without a behaviour behind it: report usage and fail rather than

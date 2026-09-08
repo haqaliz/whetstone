@@ -53,6 +53,24 @@ released version until it exists in the code.
   of `nvidia-*` packages on a machine with no GPU. `--index-url https://download.pytorch.org/whl/cpu`
   skips it. The manifest does not pin the CPU build, because a CUDA host wants the CUDA wheel.
 
+- **`whetstone fuse`** merges a checkpoint's adapter into its base and emits one standalone
+  model — the form llama.cpp converts to GGUF, which is what Ollama, LM Studio, Jan and GPT4All
+  load on every operating system. **The fuser is chosen by the checkpoint's own recorded backend,
+  never by the host's**: a Torch adapter and an MLX adapter are different tensor layouts behind
+  one filename, and the wrong fuser does not raise — it emits weights nobody can tell from
+  correct ones. A checkpoint recording no backend is refused rather than guessed at; an untrained
+  one is refused because merging nothing into a base yields the base while presenting as a
+  trained model; and the destination is refused inside the checkpoint (whose digest covers that
+  directory) or under `reports/`.
+- **`fusion.json`** records the base, the revision, the adapter's digest and the runtime that
+  merged them. Fusing destroys the distinction the checkpoint made — afterwards there is no
+  adapter left to inspect — so the record is written at the one moment it is still knowable.
+- **`docs/RUNNING_ELSEWHERE.md`** — the path from a night's adapter to a model running in Ollama.
+  The GGUF step is **documented, not wrapped**: llama.cpp owns that format and its converter, and
+  a wrapper would mean this repository silently owning its bugs while appearing to own its
+  quality. It also states what the last step is most tempting to ignore — every quantisation is a
+  *different model* from the one the gate scored.
+
 ### Changed
 
 - **`test_sandbox.py` is gated on capability, not on a platform name.** Its fourteen assertions

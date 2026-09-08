@@ -1,0 +1,69 @@
+# Running what a night produced, on somebody else's machine
+
+A night's output is a **LoRA adapter** — two small files that mean nothing without the base they
+attach to. That is the right shape for the loop: a night produces megabytes, not gigabytes, and
+the adapter's provenance can name exactly which base and which revision it belongs to. It is the
+wrong shape for anybody who just wants to *run* the thing.
+
+This is the path from that adapter to a model that loads in Ollama, LM Studio, Jan or GPT4All,
+on macOS, Linux or Windows.
+
+## 1. Fuse the adapter into its base
+
+```
+whetstone fuse \
+  --checkpoint checkpoints/night-001 \
+  --base weights/<the base the adapter names> \
+  --revision <the immutable sha it was verified against> \
+  --repo-id <the base's repository id> \
+  --out fused/night-001
+```
+
+The checkpoint is re-hashed before a tensor is read from it, and the fuser is chosen by the
+checkpoint's **own recorded backend** rather than by whatever runtime this machine happens to
+have. That matters more than it sounds: a Torch adapter and an MLX adapter are different tensor
+layouts behind the same filename, and pointing the wrong fuser at one does not raise — it emits
+weights, and nothing looks wrong until somebody measures a model that was never trained.
+
+The result is a standalone model directory plus a `fusion.json` recording the base, the
+revision, the adapter's digest and the runtime that merged them. Fusing destroys the distinction
+the checkpoint made — afterwards there is no adapter left to inspect — so that record is written
+at the one moment it is still knowable.
+
+## 2. Convert to GGUF
+
+**This step is documented, not wrapped.** `llama.cpp` owns the GGUF format and its converter;
+this repository does not vendor, wrap or version it. A wrapper would mean Whetstone silently
+owning llama.cpp's bugs while appearing to own its quality, and the converter moves on its own
+schedule for reasons that have nothing to do with this project.
+
+```
+git clone https://github.com/ggerganov/llama.cpp
+python llama.cpp/convert_hf_to_gguf.py fused/night-001 --outfile night-001.gguf --outtype f16
+```
+
+Quantise if you want it smaller — `llama.cpp/llama-quantize night-001.gguf night-001-q4.gguf Q4_K_M`
+is the usual choice. Every quantisation is a **different model** from the one the gate scored:
+whatever a promotion decision said about the fused weights, it did not say it about a 4-bit
+requantisation of them.
+
+## 3. Run it
+
+```
+ollama create night-001 -f Modelfile     # FROM ./night-001.gguf
+ollama run night-001
+```
+
+LM Studio, Jan and GPT4All all sit on llama.cpp and load the same file.
+
+## What travels with the model, and what does not
+
+The fused weights carry `fusion.json`, and the checkpoint they came from carries its own
+provenance: the base, the revision, the dataset digest, the training arguments, the runtime and
+the capacity the probe measured. What does **not** travel is any claim that the model is better
+than its base. That is the promotion gate's question, asked on a held-out set, and a fused model
+is not evidence about itself.
+
+If you publish it, `whetstone card` renders the model card from the checkpoint and the night's
+ledger — including the unverified count beside the training-set size, because a yield quoted
+without its denominator is the number this project exists not to publish.
