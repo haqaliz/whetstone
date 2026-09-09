@@ -10,6 +10,25 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The portability arm's report states its own denominator** (2026-09-09). The arm's night
+generated against **42 tasks, and the number a reader would reach for is 62**. `reports/portability-arm/report.md`
+now records the gap rather than leaving it to be reconstructed from a ledger: 62 private tasks on
+the declared Linux host, 12 removed by the held-out document, 50 drawable, plus the single
+eligible public instance — and then **9 of those 51 refused before a token was generated** because
+their source files exceed the 80,000-character oracle budget. That refusal is `bakeoff/sources.py`
+working as designed, refusing a file set whole rather than truncating it, and it costs 72 of the
+night's 408 rollouts, ranked `UNVERIFIED` and never dropped.
+
+Stating it matters because every rate this arm ever publishes divides by 42, not 62, and the
+difference is half again. The same section records why 62 is not 66 either: four donor-B tasks do
+not mint on Linux because their tests already pass before the gold patch, so nothing goes
+red→green (#42). A task is a property of a commit *on a platform* — an uncomfortable consequence
+of defining validity by execution, and better written down than discovered by someone comparing
+two corpora.
+
+No new measurement is introduced and no threshold is set. The counts come from the night's own
+ledger and journals; the report gains the denominator they have to be read against.
+
 **A night's ledger names the runtime that actually sampled — is done** (2026-09-09). Found by
 reading `runs/night-002/ledger.json` rather than by a test. That night ran end to end on a
 CPU-only Linux host — 408 rollouts over ten hours — and recorded `backend.name = "torch"` beside a
