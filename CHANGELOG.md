@@ -11,6 +11,22 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A night's ledger names the runtime that actually sampled.** `night._contract` hardcoded
+  `sampling.SAMPLER` while every sibling — engine, seeder, trainer, `tool_versions` — was
+  dispatched on the detected runtime, so `runs/night-002/ledger.json` recorded 408 rollouts as
+  drawn by `mlx_lm.sample_utils.make_sampler` and seeded with `mx.random.seed`, on a CPU-only
+  Linux host where `mlx_lm` is not installed and every draw went through `transformers` and
+  `torch.manual_seed`. `TORCH_SAMPLER` had been correct and unreachable from this path since M6
+  landed: the bug was a hardcoded string, never a missing one. `sampler_description_for` joins
+  `engine_for` and `seeder_for`, renders rather than returning a template — an unfilled
+  `{temperature}` published as evidence is the same defect one notch quieter — and raises
+  `UnknownRuntime` rather than defaulting, because defaulting is how the wrong string was written
+  down. Asserted negatively on both arms: a Torch contract cannot say `mlx`, an MLX contract
+  cannot say `torch.manual_seed`. The claim already published in night #2's ledger is retracted in
+  `docs/STATUS.md` rather than silently edited.
+
 ### Added
 
 - **`whetstone warm-cache`, so the first mine on a new machine is not a wall of refusals.**
