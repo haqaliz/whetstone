@@ -129,3 +129,49 @@ against a ceiling nearly twice that machine's total RAM, and passed — on a mea
 The driver is now `whetstone train-arm`, in this repository and under test. A re-run through it
 would produce a checkpoint whose four fields are true; this one is left as it is, and this table
 is the record of what it gets wrong.
+
+## Appended 2026-09-09: the arm's night, and its real denominator
+
+The arm ran a full night on the declared host on 2026-09-09 (`runs/night-002`). `docs/STATUS.md`
+carries the engineering account of it. What belongs here, and is recorded here because it belongs
+nowhere else, is **the denominator any future rate under this arm has to be read against** — and
+it is not the corpus size.
+
+**How 62 tasks became 42.** The private corpus on the declared host holds **62** tasks: 45 from
+donor A and 17 from donor B. The held-out document excludes **12** of them, leaving **50** the
+night could draw on, plus the single eligible public instance — **51 tasks, 8 draws each, 408
+rollouts.** Then **9 of those 51 tasks were refused before a token was generated**, each because
+its source files exceed the 80,000-character oracle budget. That refusal is deliberate and is
+`bakeoff/sources.py`'s design: an over-budget file set is refused whole rather than truncated,
+because a truncated oracle silently changes the question the task asks. Those 9 tasks account for
+**72 rollouts**, recorded `NO_ORACLE` and ranked `UNVERIFIED` — never `FAIL`, and never quietly
+dropped from the count.
+
+**And 62 is itself the host's number, not the corpus's.** `CLAUDE.md` says source B holds 66
+tasks; on this arm's Linux host the same two donors at the same recorded heads with the same seeds
+mint **62**. The four that do not mint are refused by the miner for a stated reason — on Linux
+their tests already pass before the gold patch, so nothing goes red→green and there is no task to
+make (#42). Nothing is broken: a task is not a property of a commit but of a commit *on a
+platform*, which is what an execution-grounded definition of "valid task" implies once you take it
+seriously. It is recorded here because a reader holding the number 66 would otherwise assume this
+arm lost four tasks somewhere.
+
+So the night generated against **42 tasks, not 62**. Any rate this arm ever publishes has 42 as
+its honest denominator on this host, and a reader given only "62 tasks" would over-read every
+figure by half again. The 9 refusals are a property of the corpus and the budget, not of the base:
+a larger base will hit exactly the same 9.
+
+**What the 336 generated rollouts did.** 330 produced no well-formed unified diff at all; 6
+produced a patch that reached the verifier and failed to apply. **Zero reached test execution with
+an applied patch, and zero were strict-`PASS`** — so the night wrote no checkpoint and this arm
+still has no measured delta. Generation took 36,844 s (10.2 h) across those 336 draws: mean 110 s,
+median 72 s, longest 498 s. Verification cost is not the constraint and was never close to it —
+only 6 rollouts reached the verifier at all.
+
+**The control arm was `INTACT` on 408 of 408 draws**, including 8 of 8 on the public source. The
+harness could distinguish a fixing patch from a non-fixing one on every single draw of the night.
+That is what makes the zero above a statement about the base rather than about the harness, and it
+is why the pre-registered response is a larger base (§ 10.13) and never a looser verifier.
+
+**Still not claimed.** No delta. The promotion gate has still never scored a real candidate, on
+this arm or any other. The § 3 baseline remains unspent.
