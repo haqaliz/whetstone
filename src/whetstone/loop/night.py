@@ -79,11 +79,11 @@ from whetstone.loop.heldout import (
     read_document,
 )
 from whetstone.loop.sampling import (
-    SAMPLER,
     Applied,
     K,
     Seeder,
     attempt_seed,
+    sampler_description_for,
 )
 from whetstone.tasks.manifest import load_tasks
 from whetstone.verify.verdict import Status, Verdict, reduce
@@ -329,7 +329,16 @@ def run_night(
         run_seed=run_seed,
         draws=draws,
         model=run_ledger.Model(repo_id=candidate.repo_id, revision=candidate.revision),
-        contract=_contract(contract, max_tokens=max_tokens, declared=declared, retries=retries),
+        contract=_contract(
+            contract,
+            max_tokens=max_tokens,
+            declared=declared,
+            retries=retries,
+            # The runtime that was detected, exactly as `engine`, `seeder`, `trainer` and
+            # `tool_versions` above. This argument is the whole of #45: the other four were
+            # dispatched and this one was not, so a Torch night published an MLX sampler.
+            backend_name=runtime.name,
+        ),
         task_set=run_ledger.TaskSet(
             private=len(private_tasks),
             public=len(public_tasks),
@@ -592,7 +601,12 @@ def _train(
 
 
 def _contract(
-    contract: Contract, *, max_tokens: int, declared: Sequence[str], retries: bool
+    contract: Contract,
+    *,
+    max_tokens: int,
+    declared: Sequence[str],
+    retries: bool,
+    backend_name: str,
 ) -> GenerationContract:
     """The night's contract in the bake-off's own published shape, so the two are comparable.
 
@@ -602,7 +616,7 @@ def _contract(
     """
     return GenerationContract(
         prompt_sha256=contract.sha256,
-        sampler=SAMPLER,
+        sampler=sampler_description_for(backend_name),
         max_tokens=max_tokens,
         extractor_version=_extractor_version(),
         dev_subset=tuple(declared),

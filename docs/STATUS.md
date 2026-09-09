@@ -10,6 +10,52 @@ carries the current state and the rules that still bind.
 
 ---
 
+**A night's ledger names the runtime that actually sampled — is done** (2026-09-09). Found by
+reading `runs/night-002/ledger.json` rather than by a test. That night ran end to end on a
+CPU-only Linux host — 408 rollouts over ten hours — and recorded `backend.name = "torch"` beside a
+generation contract stating the draws were taken with `mlx_lm.sample_utils.make_sampler` and
+seeded with `mx.random.seed`. `mlx_lm` is not installed on that machine and `mx.random.seed` was
+never called; every draw went through `transformers` and `torch.manual_seed`.
+
+The cause was one hardcoded constant. M6 dispatched the engine, the seeder, the trainer and
+`tool_versions` on the detected runtime, exactly so a night could not record one runtime and run
+another — and `night._contract` still imported `sampling.SAMPLER` outright. `TORCH_SAMPLER` had
+been correct at `torch_runtime.py:221` since M6 landed, reachable only from the generator's own
+transcript metadata and never from the ledger. So the failure M6 existed to prevent survived in
+the one artefact whose purpose is that a reader can trust it without re-running the night. Nothing
+downstream broke, because the comparability key was right the whole time; that is why it lasted.
+
+`sampling.sampler_description_for(backend_name)` is the third member of the `engine_for` /
+`seeder_for` family, and it renders rather than returning a template — an unfilled
+`{temperature}` in a ledger is the same defect one notch quieter. An unknown runtime raises
+`UnknownRuntime` rather than falling back, because falling back is how the wrong string got
+written down. The tests are deliberately negative on both arms: a Torch contract must not be able
+to say `mlx`, and an MLX contract must not be able to say `torch.manual_seed`.
+
+**The claim in `runs/night-002/ledger.json` is retracted here rather than edited.** That file is
+gitignored operator output and predates this fix; its `generation_contract.sampler` field is
+wrong, and this paragraph is the correction. Its `backend` block, its counts and its verdicts
+stand.
+
+**Night #2, recorded because the run happened** (2026-09-09). The first complete night off Apple
+Silicon: `Qwen/Qwen2.5-Coder-0.5B-Instruct` on `torch 2.14.0+cpu`, 51 tasks (50 source-B after the
+held-out exclusion, plus `pallets__flask-4045`), 8 draws, 408 rollouts, ten hours. The control arm
+was `INTACT` on **408 of 408** draws, including **8 of 8 on source A** — the first time the public
+arm has scored on Linux, and the thing that refused the preceding probe when its clone timed out.
+Both harnesses reported `PASS` on every draw.
+
+It selected **zero** strict-`PASS` rollouts, so no checkpoint was written and the promotion gate
+still has never scored a real candidate. The distribution says why, and it is not luck: **330 of
+408 produced no usable diff at all**, 72 were refused pre-generation on the 80,000-character
+oracle budget, and 6 produced a patch that reached the verifier and did not apply. Retries were
+**on** (`retry_budget: 2`, the hardened contract), so the format-hardening arm was already working
+and a 0.5B base still failed to emit a valid patch four times in five. The pre-registered response
+to a zero is more draws and never a looser verifier; it is recorded here that more draws of *this*
+base is not expected to move it, and that a change of base is a Type 1 amendment.
+
+The ledger was written despite the absence of a checkpoint, which is the 0.14.1 fix doing its job:
+ten hours of verified rollouts survive a night that trained nothing.
+
 **Generation on Torch — is done** (2026-09-08). M3 built a second trainer and stopped, and that
 turned out to be half a runtime. `sampling_engine` and `gate_engine` both reach `mlx_lm` directly,
 so a machine without Metal could train an adapter and could not draw one rollout or score one

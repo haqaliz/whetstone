@@ -371,6 +371,28 @@ def engine_for(backend_name: str) -> Engine:
     return torch_sampling_engine
 
 
+def sampler_description_for(backend_name: str) -> str:
+    """How this runtime draws, in the words the ledger publishes. Dispatched, never defaulted.
+
+    The third member of the `engine_for` / `seeder_for` family, and the one that was missing.
+    Those two route the *behaviour*; this routes the **account** of it, which is the half a
+    reader without the machine actually has. `night-002` recorded 408 rollouts as having been
+    drawn by `mlx_lm.sample_utils.make_sampler` and seeded with `mx.random.seed` on a host where
+    `mlx_lm` is not installed — because the night hardcoded `SAMPLER` while dispatching
+    everything else. `TORCH_SAMPLER` was already correct and simply unreachable from here.
+
+    Rendered rather than returned as a template: an unfilled `{temperature}` in a ledger is the
+    same defect one notch quieter — a decoding parameter published as evidence that nobody can
+    read. An unknown runtime raises out of `backend_family` rather than falling back to either
+    string, because falling back is precisely how the wrong one got written down.
+    """
+    if backend_family(backend_name) == MLX:
+        return SAMPLER
+    from whetstone.loop.torch_runtime import TORCH_SAMPLER
+
+    return TORCH_SAMPLER.format(temperature=TEMPERATURE, top_p=TOP_P)
+
+
 def seeder_for(backend_name: str) -> Seeder:
     """The seeder belonging to a runtime. Separate from `engine_for`, because the seam is.
 
@@ -448,6 +470,7 @@ __all__ = [
     "Seeder",
     "attempt_seed",
     "mlx_seeder",
+    "sampler_description_for",
     "sampler_for",
     "sampling_engine",
 ]
