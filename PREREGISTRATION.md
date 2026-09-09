@@ -319,6 +319,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-09-02 | The fine-tuned base is pinned; § 7.3 is closed by the amendment below (§ 10.10) | 1 — closes an open item | Yes |
 | 2026-09-08 | A portability arm trains a second, smaller base on a second runtime; § 10.10's base is untouched (§ 10.11) | 1 — pins an input for a new arm | Yes |
 | 2026-09-08 | The portability arm asks the gate's question once, on its own base and runtime; § 10.10's base untouched and the § 3 baseline unspent (§ 10.12) | 1 — pins the inputs of a measurement | Yes |
+| 2026-09-09 | The portability arm scales to a 1.5B base on the same runtime; § 10.10's base untouched (§ 10.13) | 1 — pins an input for an existing arm | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -730,4 +731,58 @@ now been looked at by one more candidate. With a single evaluation the selection
 negligible, but it is not zero, and the honest form of that is to say so here rather than to
 discover it later: every future arm scored against the same 12 tasks adds to it, and a
 membership scored many times stops being held out in the sense § 10.7 intended.
+
+
+### 10.13 The portability arm scales to a larger base, on the same runtime — 2026-09-09
+
+**Type 1 (§ 8.1): pins the input of an existing arm, committed before the training it governs
+runs.** It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not
+change the base § 10.10 pinned.** The 32B base and the MLX runtime remain the pinned inputs of
+the main series.
+
+**This amendment is the mechanism § 10.11 described, not a new argument.** That amendment closed
+by saying the arm begins at the smallest base that trains on the hardware, that *"larger bases on
+this runtime are expected and intended"*, and that *"each is a further Type 1 amendment naming its
+base and revision, committed before it trains."* This is that amendment, for the first such step.
+
+**The base.** `Qwen/Qwen2.5-Coder-1.5B-Instruct`, at immutable revision
+`2e1fd397ee46e1388853d2af2c993145b0f1098a`, recorded by per-file SHA-256 in
+`weights/provenance.json` in the same shape the main series uses, and re-hashed before a token is
+generated. The runtime is unchanged from § 10.11: `torch` on a CPU-only Linux host with 16 GB of
+RAM. The arm's previous base, `Qwen/Qwen2.5-Coder-0.5B-Instruct` at
+`ea3f2471cf1b1f0db85067f1ef93848e38e88c25`, remains in that document rather than being replaced,
+so what has already run under it stays attributable.
+
+**Why the step is taken, stated without a number.** The arm's night under the 0.5B base ran to
+completion with the control arm intact on every draw and selected **zero** strict-`PASS` rollouts.
+The binding constraint was not the reward and not the harness: the overwhelming majority of
+rollouts produced no well-formed unified diff at all, under a retry budget that was already on.
+That is a statement about what the base could express, not about what the verifier would accept,
+and the response to it is a base with more capacity — never a looser notion of what counts as a
+win. The counts behind this paragraph live in that night's ledger and in `docs/STATUS.md`; this
+document restates none of them.
+
+**A feasibility check preceded this amendment, and it is not a result.** Before naming this base,
+four draws were taken from it on one task's prompt, off the arm's own engine, and passed to the
+arm's own extractor, solely to establish that the machine could host the base and that the base
+could produce diff-shaped output at all. **It is a feasibility check and not a measurement**: four
+draws, one task, no verifier, no control arm, and no scoring. It is recorded here so that it can
+never be mistaken for a finding or quoted as one. **No count from it is published, it sets no
+threshold, and it decides nothing about what counts as a win.** Had it shown the base could not
+express a patch on this hardware, the honest act would have been to report that and not write this
+amendment — which is why it ran before the amendment rather than after.
+
+**Comparability, unchanged and restated.** A figure measured under this arm is **not comparable**
+to any figure from the main series, to any other arm's, or to the arm's own figures under its
+previous base. A different base is a different candidate; § 10.6 established that a new candidate
+gets its own non-comparable home, and nothing about a base being larger makes it comparable to a
+smaller one. The promotion gate already refuses to score a candidate from one runtime against an
+incumbent from another, and it compares a candidate against the base it was trained from — not
+against the arm's earlier base.
+
+**What is not claimed.** No training has run under this base. No count has been measured under it
+and none is claimed here — the amendment precedes the training, which is the whole of its value.
+Nothing here claims this base will yield a strict-`PASS` rollout, that its adapter will beat its
+base, or that a checkpoint will exist at all; the arm's night under the previous base produced
+none, and that outcome remains entirely possible here. The § 3 baseline remains unspent.
 
