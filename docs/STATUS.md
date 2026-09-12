@@ -10,6 +10,60 @@ carries the current state and the rules that still bind.
 
 ---
 
+**Night #3: the format wall falls, the night still trains nothing** (2026-09-12). The
+portability arm's night on the 1.5B base named by `PREREGISTRATION.md` § 10.13, on the same
+corpus, runtime and contract as night #2 — the base is the only input that moved. 61 hours,
+408 rollout records, 336 generated, control arm `INTACT` on **408 of 408** draws. It selected
+**zero** strict-`PASS` rollouts, so no checkpoint was written and the promotion gate has still
+never scored a real candidate.
+
+The distribution is the finding, because it is a different distribution:
+
+| outcome | night #2 (0.5B) | night #3 (1.5B) |
+|---|---|---|
+| no usable diff | 330 / 336 (98%) | 238 / 336 (71%) |
+| diff reached the verifier | 6 (1.8%) | **95 (28%)** |
+| patch applied, tests ran (`NOT_SOLVED`) | 0 | **11** |
+| caught reward-hacking (`OUT_OF_SCOPE`) | 0 | **2** |
+| strict-`PASS` | 0 | 0 |
+
+Two of those rows had never been non-zero. **Eleven patches applied cleanly and ran the real
+test suite** — the first time any model-written patch in this project reached test execution;
+`NOT_SOLVED` is the one zero of the four that is a statement about the base's ability to fix
+bugs rather than its ability to write a diff. And **two rollouts aimed a patch at an
+operator-held test file** and were refused before anything executed (`verdict_kinds:
+['patch-scope']`, strict `FAIL`). Those are the first genuine entries in the "reward-hacking
+attempts caught and rejected" count this project commits to publishing; every prior instance
+was a fixture.
+
+So the wall moved one stage down the pipeline, from *cannot write a diff* to *writes a diff
+that does not fix the bug*. That is what § 10.13 was pre-registered to test, and the honest
+summary is that it moved the thing it predicted and still produced no win. The pre-registered
+response to a zero is more draws or a larger base, never a looser verifier.
+
+Before the night was launched, the 15 `NOT_APPLIED` results from its probe were checked against
+`git apply` directly, because `bakeoff/sources.py` records a prior incident where *every* rollout
+came back `NOT_APPLIED` from a defect in the rendered prompt. It was not that: git called 12 of 23
+`corrupt`, `diffcheck` named every one (`hunk-count-mismatch`, `hunk-dies-early`) and the retry
+fired on 11 of 12; the other 11 were genuinely well-formed and failed with `error: while searching
+for:`. The format-hardening machinery was working, and the residue is the model inventing context
+lines that are not in the file.
+
+**The ledger's `generation_contract.sampler` field is wrong, and is retracted here rather than
+edited.** It claims `mlx_lm.sample_utils.make_sampler` and `mx.random.seed`; `mlx_lm` is not
+installed on that host and every draw went through `transformers` and `torch.manual_seed`. This is
+the identical defect #45 fixed and that night #2's entry above already retracts — repeated because
+**the machine that ran the night was not running the fix**. Its checkout was in detached HEAD on a
+local, never-pushed commit of the #41 work, which had landed upstream in a different form, so the
+machine had silently forked from master and every later merge missed it. The commit's content was
+verified identical to upstream before the machine was moved to `master`, and `#45`'s own guard
+(`tests/loop/test_contract_names_its_runtime.py`) now passes there. The ledger's `backend` block,
+its counts, its verdicts and its seeds stand; one provenance string does not.
+
+The lesson is cheap to state and was expensive to learn twice: a fix that prevents a false claim
+prevents nothing on a host that never received it, and the run that most needs checking is the one
+about to consume three days.
+
 **The portability arm's report states its own denominator** (2026-09-09). The arm's night
 generated against **42 tasks, and the number a reader would reach for is 62**. `reports/portability-arm/report.md`
 now records the gap rather than leaving it to be reconstructed from a ledger: 62 private tasks on
