@@ -175,3 +175,54 @@ is why the pre-registered response is a larger base (§ 10.13) and never a loose
 
 **Still not claimed.** No delta. The promotion gate has still never scored a real candidate, on
 this arm or any other. The § 3 baseline remains unspent.
+
+## Appended 2026-09-12: the arm's night on the larger base
+
+The arm ran a second full night on the declared host under the base `PREREGISTRATION.md` § 10.13
+names — `Qwen/Qwen2.5-Coder-1.5B-Instruct` at `2e1fd397ee46e1388853d2af2c993145b0f1098a` — with the
+corpus, runtime, contract and held-out document unchanged from the night above. **The base is the
+only input that moved**, which is what makes the two nights' distributions worth setting beside
+each other, and what still does not make either one a published figure.
+
+**The denominator, restated because it moved.** 62 private tasks on this host, 12 removed by the
+held-out document, 50 drawable plus the single eligible public instance — 51 tasks, 8 draws, **408
+rollout records**. Then **nine tasks were refused before a token was generated** on the
+80,000-character oracle budget, costing **72 rollouts** recorded `NO_ORACLE` and ranked
+`UNVERIFIED`. So this night generated against **42 tasks**, the same figure as the night above and
+by the same arithmetic; the skipped nine are a property of the corpus and the budget, not of the
+base, and a larger base hits exactly the same nine.
+
+**What the 336 generated rollouts did.**
+
+| outcome | count | share |
+|---|---|---|
+| `NO_DIFF` — no usable diff | 238 | 71% |
+| `NOT_APPLIED` — diff reached the verifier, would not apply | 82 | 24% |
+| `NOT_SOLVED` — patch applied, tests ran, task still failed | 11 | 3% |
+| `UNVERIFIED` — verifier reached no verdict | 3 | 0.9% |
+| `OUT_OF_SCOPE` — patch aimed at an operator-held test file | 2 | 0.6% |
+| strict-`PASS` | **0** | — |
+
+**The control arm was `INTACT` on 408 of 408 draws.** That is what makes the zero above a statement
+about the base and not about the harness.
+
+**Two rows here had never been non-zero in this project.** Eleven patches applied cleanly and ran
+the real test suite; `NOT_SOLVED` is the only one of the four zeroes that says anything about a
+base's ability to *fix* bugs rather than to *write a diff*, and before this night nothing had ever
+reached it. And two rollouts aimed a patch at an operator-held test file and were refused before
+anything executed — the first genuine caught reward-hacking attempts the arm has produced, as
+opposed to fixtures.
+
+**What changed, and what did not.** Under the previous base, 1.8% of rollouts produced a diff the
+verifier accepted; under this one, 28%. The binding constraint recorded above — that the base could
+not express a patch — is gone. What replaced it is that the diffs it now writes do not fix the
+bugs, and **the arm still has no strict-`PASS`, no checkpoint, and no measured delta.** Nothing here
+is a gain, and the § 3 baseline remains unspent. A figure under this arm remains non-comparable to
+the main series, to any other arm, and to this arm's own figures under its previous base.
+
+**One defect in this night's own ledger, recorded rather than corrected.** Its
+`generation_contract.sampler` names `mlx_lm.sample_utils.make_sampler` and `mx.random.seed`. That
+is false — `mlx_lm` is not installed on this host and every draw went through `transformers` and
+`torch.manual_seed`. The fix for it shipped days earlier; the host running the night had silently
+forked from `master` and never received it. `docs/STATUS.md` carries the retraction and the cause.
+The ledger's `backend` block, counts, verdicts and seeds stand.
