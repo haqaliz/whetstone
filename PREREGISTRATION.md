@@ -320,6 +320,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-09-08 | A portability arm trains a second, smaller base on a second runtime; § 10.10's base is untouched (§ 10.11) | 1 — pins an input for a new arm | Yes |
 | 2026-09-08 | The portability arm asks the gate's question once, on its own base and runtime; § 10.10's base untouched and the § 3 baseline unspent (§ 10.12) | 1 — pins the inputs of a measurement | Yes |
 | 2026-09-09 | The portability arm scales to a 1.5B base on the same runtime; § 10.10's base untouched (§ 10.13) | 1 — pins an input for an existing arm | Yes |
+| 2026-09-13 | The portability arm scales again, to a 3B base on the same runtime; § 10.10's base untouched (§ 10.14) | 1 — pins an input for an existing arm | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -786,3 +787,56 @@ Nothing here claims this base will yield a strict-`PASS` rollout, that its adapt
 base, or that a checkpoint will exist at all; the arm's night under the previous base produced
 none, and that outcome remains entirely possible here. The § 3 baseline remains unspent.
 
+### 10.14 The portability arm scales again, to a 3B base on the same runtime — 2026-09-13
+
+**Type 1 (§ 8.1): pins the input of an existing arm, committed before the training it governs
+runs.** It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not
+change the base § 10.10 pinned.** The 32B base and the MLX runtime remain the pinned inputs of the
+main series.
+
+**This is the second application of the mechanism § 10.11 described**, and § 10.13 was the first.
+That amendment closed by saying larger bases on this runtime are *"expected and intended"* and that
+*"each is a further Type 1 amendment naming its base and revision, committed before it trains."*
+This is that amendment for the next rung.
+
+**The base.** `Qwen/Qwen2.5-Coder-3B-Instruct`, at immutable revision `488639f1ff808d1d3d0ba301aef8c11461451ec5`, recorded by
+per-file SHA-256 in `weights/provenance.json` in the same shape the main series uses, and re-hashed
+before a token is generated. The runtime is unchanged from § 10.11 and § 10.13: `torch` on a
+CPU-only Linux host with 16 GB of RAM. Both previous bases remain in that document rather than
+being replaced, so what has already run under each stays attributable.
+
+**Why the step is taken, stated without a threshold.** The arm's night under the 1.5B base ran to
+completion with the control arm intact on every draw and selected **zero** strict-`PASS` rollouts,
+exactly as the night under the 0.5B base had. What changed between those two nights is *which*
+constraint was binding. Under the smaller base the overwhelming majority of rollouts produced no
+well-formed unified diff at all; under the larger one most of that difficulty was gone and the
+failures moved one stage later — patches that git could parse, that named real files, and that did
+not fix the bug. Two outcomes that had never been reached before were reached: patches that applied
+and ran the task's real tests, and patches refused for aiming at an operator-held test file. The
+counts behind this paragraph live in that night's ledger, in `docs/STATUS.md` and in
+`reports/portability-arm/report.md`; this document restates none of them.
+
+That is the reason for another base and it is worth stating precisely, because it is not *"the
+number went up"*. It is that the failure mode changed in the direction more capacity predicts, and
+the honest next move is more capacity — never a looser notion of what counts as a win.
+
+**What has been checked before naming this base, and what it is not.** That the machine can host
+the base and run the existing chain against it is established by a `--probe` run, whose go/no-go is
+decided by `whetstone check-probe` against the rule pre-committed in the night door's runbook. A
+probe writes no checkpoint and reaches no trainer. **It is a feasibility check and not a
+measurement**: no count from it is published, it sets no threshold, and it decides nothing about
+what counts as a win.
+
+**Comparability, unchanged and restated.** A figure measured under this arm is **not comparable**
+to any figure from the main series, to any other arm's, or to this arm's own figures under either
+previous base. A different base is a different candidate; § 10.6 established that a new candidate
+gets its own non-comparable home, and nothing about a base being larger makes it comparable to a
+smaller one. The promotion gate already refuses to score a candidate from one runtime against an
+incumbent from another, and it compares a candidate against the base it was trained from.
+
+**What is not claimed.** No training has run under this base. No count has been measured under it
+and none is claimed here — the amendment precedes the training, which is the whole of its value.
+Nothing here claims this base will yield a strict-`PASS` rollout, that its adapter will beat its
+base, or that a checkpoint will exist at all. **Two consecutive nights under this arm have produced
+none, and a third such outcome is entirely possible** — a larger base is the pre-registered
+response to a zero, not a prediction that the zero ends. The § 3 baseline remains unspent.
