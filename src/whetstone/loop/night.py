@@ -54,6 +54,9 @@ from whetstone.bakeoff.run import (
     select_candidates,
 )
 from whetstone.bakeoff.scoring import Interpreters, Rollout
+from whetstone.bakeoff.stratum import Stratum, include_stratum
+from whetstone.bakeoff.stratum import document_digest_of as stratum_digest_of
+from whetstone.bakeoff.stratum import read_document as read_stratum_document
 from whetstone.bakeoff.sweep import HarnessNotProven, rankable
 from whetstone.bakeoff.transcript import Transcript
 from whetstone.bakeoff.weights import (
@@ -183,6 +186,7 @@ def run_night(
     run_seed: int,
     dev_subset: Sequence[str] = (),
     heldout: Path | None = None,
+    stratum: Path | None = None,
     draws: int = K,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     only: Sequence[str] = (),
@@ -250,6 +254,29 @@ def run_night(
         private_tasks = tuple(
             task for task in private_tasks if task.task_id not in heldout_membership
         )
+    stratum_record: run_ledger.StratumRecord | None = None
+    if stratum is not None:
+        # AFTER the held-out exclusion, never before. A stratum narrows what survives the
+        # split; it must not be able to restore what the split removed, and the ordering here
+        # is the whole of that guarantee. `include_stratum` resolves the membership against
+        # the loaded private corpus and refuses an id matching nothing by name, because a
+        # membership that selected nothing while the ledger recorded a stratum is the same
+        # dishonesty `UnknownDevSubset` and the held-out loader already refuse.
+        stratum_document, stratum_digest = _read_stratum(stratum)
+        stratum_record = run_ledger.StratumRecord(
+            document_digest=stratum_digest,
+            rule_digest=stratum_document.rule_digest,
+            membership_count=len(stratum_document.membership),
+        )
+        # Resolve against the FULL loaded corpus, exactly as the held-out exclusion above
+        # does and for the same reason: a band member that the split has already removed is
+        # an *exclusion*, never an unresolvable id. Resolving against the post-exclusion set
+        # would turn "this band member is held out" — the correct and expected case — into a
+        # refusal, and would push an operator toward narrowing the loaded corpus instead,
+        # which is precisely what makes a held-out document unresolvable.
+        include_stratum(stratum_document.membership, private_root_tasks)
+        band = frozenset(stratum_document.membership)
+        private_tasks = tuple(task for task in private_tasks if task.task_id in band)
     if probe is not None:
         private_tasks = private_tasks[:probe]
     if not private_tasks:
@@ -346,6 +373,7 @@ def run_night(
             dev_subset=declared,
             probe=probe,
             heldout=heldout_record,
+            stratum=stratum_record,
         ),
         # Both fields answer "what produced these draws", so both are given the same detected
         # record. `tool_versions()` alone named `mlx-lm` unconditionally, which on any other
@@ -442,6 +470,22 @@ def _read_heldout(path: Path) -> tuple[Heldout, str]:
         ) from exc
     raw = json.loads(location.read_text(encoding="utf-8"))
     return loaded, document_digest_of(raw)
+
+
+def _read_stratum(path: Path) -> tuple[Stratum, str]:
+    """Load the stratum document by identity and return it with the digest its payload seals.
+
+    The `_read_heldout` shape, for the `_read_heldout` reason: `stratum.Stratum` deliberately
+    does not carry its own digest, because a consumer that re-checked it would be a second
+    answer to "is this document trustworthy" with only one of the two reviewed. Recording it is
+    a different act — the ledger carries it so a reader can tell the band drawn is the band
+    committed — so the digest is recomputed through the module's own function from the file the
+    loader has just accepted, never trusted from the file as written.
+    """
+    location = Path(path)
+    loaded = read_stratum_document(location)
+    raw = json.loads(location.read_text(encoding="utf-8"))
+    return loaded, stratum_digest_of(raw)
 
 
 def _select(
