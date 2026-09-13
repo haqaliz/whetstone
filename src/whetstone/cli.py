@@ -386,6 +386,21 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     night.add_argument(
+        "--stratum",
+        type=Path,
+        metavar="<path>",
+        help=(
+            "a committed stratum document (schema whetstone-stratum/1, "
+            "tasks/stratum/easier.json) whose band membership this night narrows its source-B "
+            "draw to. docs/ROADMAP.md P2 pre-commits this as a response to a corpus whose "
+            "strict-PASS yield is ~0 -- stratify by difficulty or raise the draw count, never "
+            "weaken the check. The band is applied AFTER the held-out exclusion, so a band "
+            "member inside the split stays excluded; the corpus is still loaded in full, which "
+            "is what keeps the held-out document resolvable. Off by default: without the flag "
+            "the night draws the whole corpus and records no stratum"
+        ),
+    )
+    night.add_argument(
         "--dev-subset",
         action="append",
         default=[],
@@ -1057,6 +1072,7 @@ def run_night(args: argparse.Namespace) -> int:
             heldout=args.heldout,
             only=args.only,
             probe=args.probe,
+            stratum=args.stratum,
             retries=not args.no_retries,
         )
     except REFUSALS as refusal:

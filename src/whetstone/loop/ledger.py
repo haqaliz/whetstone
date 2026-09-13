@@ -86,6 +86,33 @@ class HeldoutRecord:
 
 
 @dataclass(frozen=True)
+class StratumRecord:
+    """The stratum a run narrowed its draw to: the document's digests and its band size.
+
+    Counts and digests only, never membership — the same discipline `HeldoutRecord` keeps, and
+    for the same reason: a reader holding the digest can open the committed document to see the
+    ids, while a ledger that listed them would publish the user's own task ids for no gain.
+
+    Both digests are recorded because they answer different questions. `document_digest` seals
+    *this* document's payload, so a reader can tell that the band drawn is the band committed.
+    `rule_digest` seals the **band rule** — at most so many changed lines, hunks and non-test
+    files — so a reader can tell the band was defined by the patch rather than by an observed
+    outcome. A stratum chosen after a zero would be tuning; the rule digest is the check on that
+    claim, and it is worth a field of its own.
+    """
+
+    #: The digest the document's payload seals (`stratum.document_digest_of`).
+    document_digest: str
+
+    #: The digest of the band rule itself (`stratum.rule_digest`), fixed before any night ran.
+    rule_digest: str
+
+    #: How many tasks the document's band holds, as the document declares it — not the
+    #: post-exclusion count, so a reader can check the night against the document.
+    membership_count: int
+
+
+@dataclass(frozen=True)
 class TaskSet:
     """Which tasks the night actually drew against — the pinned input, as counts and ids.
 
@@ -115,6 +142,11 @@ class TaskSet:
     #: carry no such record; `read` tolerates the absence, and the default keeps every
     #: construction written before the field existed compiling.
     heldout: HeldoutRecord | None = None
+
+    #: The stratum narrowing (`--stratum`), or `None` when none was applied. Applied *after*
+    #: the held-out exclusion, never before: a narrowing flag must not be able to restore what
+    #: the split removed. Older ledgers carry no such record and `read` tolerates the absence.
+    stratum: StratumRecord | None = None
 
 
 @dataclass(frozen=True)
@@ -300,6 +332,13 @@ def _payload(ledger: Ledger) -> dict[str, Any]:
             else {
                 "document_digest": ledger.task_set.heldout.document_digest,
                 "membership_count": ledger.task_set.heldout.membership_count,
+            },
+            "stratum": None
+            if ledger.task_set.stratum is None
+            else {
+                "document_digest": ledger.task_set.stratum.document_digest,
+                "rule_digest": ledger.task_set.stratum.rule_digest,
+                "membership_count": ledger.task_set.stratum.membership_count,
             },
         },
         "environment_pins": ENVIRONMENT_PINS,
