@@ -321,6 +321,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-09-08 | The portability arm asks the gate's question once, on its own base and runtime; § 10.10's base untouched and the § 3 baseline unspent (§ 10.12) | 1 — pins the inputs of a measurement | Yes |
 | 2026-09-09 | The portability arm scales to a 1.5B base on the same runtime; § 10.10's base untouched (§ 10.13) | 1 — pins an input for an existing arm | Yes |
 | 2026-09-13 | The portability arm scales again, to a 3B base on the same runtime; § 10.10's base untouched (§ 10.14) | 1 — pins an input for an existing arm | Yes |
+| 2026-09-14 | The portability arm draws one night from the easiest stratum band, on its 1.5B base; § 10.10's base untouched (§ 10.15) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -840,3 +841,55 @@ Nothing here claims this base will yield a strict-`PASS` rollout, that its adapt
 base, or that a checkpoint will exist at all. **Two consecutive nights under this arm have produced
 none, and a third such outcome is entirely possible** — a larger base is the pre-registered
 response to a zero, not a prediction that the zero ends. The § 3 baseline remains unspent.
+
+
+### 10.15 The portability arm draws one night from the easiest stratum band — 2026-09-14
+
+**Type 1 (§ 8.1): pins the inputs of a measurement, committed before the training it governs
+runs.** It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not
+change the base § 10.10 pinned.**
+
+**This amendment follows the roadmap's own instruction rather than a new idea.** `docs/ROADMAP.md`
+§ 4, P2, pre-commits the response to exactly the situation this arm is in: *"if strict-PASS yield
+is ~0 across the corpus there is no training data. **Stratify by difficulty or raise k** — do not
+weaken the check to manufacture wins."* Three nights under this arm have now selected zero
+strict-`PASS` rollouts. Two responses were pre-committed; the arm has so far taken neither, having
+instead climbed base sizes under § 10.11. This takes the first of them.
+
+**The task set.** The **easiest band** of the stratum document already committed at
+`tasks/stratum/easier.json` — schema `whetstone-stratum/1`, document digest `62c54acba417`, rule
+digest `d7a29a142d53` — whose band is defined **by the patch, never by an observed outcome**: at
+most 30 changed lines, at most 2 hunks, at most 1 non-test file. That band holds **19** of the 66
+scored tasks. The night's own held-out exclusion removes the 3 that are members of
+`tasks/heldout/source-b.json`, leaving **16 drawable**. The exclusion is performed by the night,
+not by hand, so the held-out set is protected by the code that is under test.
+
+**The stratum document is not new and is not being chosen now.** It was committed on 2026-08-14 and
+disclosed at § 10.5, its band rule fixed before any night ran against it. Selecting the easiest band
+*after* three zeroes would be tuning if the band were drawn now; it is not, and the digests above
+are the check on that claim.
+
+**The base and runtime.** `Qwen/Qwen2.5-Coder-1.5B-Instruct` at
+`2e1fd397ee46e1388853d2af2c993145b0f1098a`, the base § 10.13 pinned, on the `torch` CPU-only Linux
+host of § 10.11. **The 3B base of § 10.14 is deliberately not used here**, so that exactly one input
+moves from night #3: the task set. A night that changed both the base and the task set would answer
+neither question.
+
+**Comparability, and it is the sharp point.** A figure from this night is **not comparable to
+anything** — not to the main series, not to any other arm, not to this arm's own three previous
+nights. § 10.5 established that a changed task set gets its own non-comparable home, and this is a
+changed task set *and* a deliberately easier one. **An easier corpus must never be reported as the
+arm improving.** Any count from it is a statement about what this base can do on small patches, and
+nothing else.
+
+**Why it is run at all, stated plainly.** Three nights have produced no training example, so the
+loop's second half — select, train, gate — has never executed on real data. This night asks
+whether the smallest patches in the corpus yield a strict-`PASS` at all. A zero here is more
+informative than a fourth zero on the full corpus, because it would say the barrier is not patch
+size. A non-zero would produce the first checkpoint the promotion gate has ever had to score.
+
+**What is not claimed.** No count is claimed here and no threshold is set. Nothing claims this band
+will yield a strict-`PASS` rollout, that a checkpoint will exist, or that the gate will fire. **If
+this night yields a checkpoint, the gain it is scored for is a gain on the easiest band and must be
+published as such** — the § 3 baseline remains unspent, and no figure from this night may ever be
+quoted as the arm's headline.
