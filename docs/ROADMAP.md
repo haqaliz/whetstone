@@ -747,3 +747,57 @@ review fixed the path to it:
 > failed on its first command. The sheets now run from the primary checkout, and their guards pin
 > that no worktree is named rather than that exactly one is. The dependency order above is
 > unchanged; only the commands were broken, and only in a way nobody could see until one was run.
+
+---
+
+## 13. Where the plan stands — appended 2026-09-14
+
+Appended rather than folded into the phases above, for the reason every correction in this
+repository is appended: the sections above were written before the nights ran, and a plan edited
+to match its outcome stops being a plan. **No counts appear here** — they live in
+`docs/STATUS.md` and `reports/portability-arm/report.md`, which is where a figure belongs.
+
+**P2's pivot signal has now fired on four nights, and one of its two responses is spent.**
+§ 4, P2 pre-commits: *"if strict-PASS yield is ~0 across the corpus there is no training data.
+Stratify by difficulty or raise k — do not weaken the check to manufacture wins."* Night #4 took
+the first. The easiest band of the committed stratum document — a rule fixed 2026-08-14 and
+defined by the patch, never by an observed outcome — produced the same outcome distribution as
+the full corpus within noise. **Patch size is not the barrier**, so stratification is tested and
+exhausted. Raising *k* remains untried: `K = 8` is a declared constant and never a flag, so a
+change is a Type 1 amendment rather than an operator's choice.
+
+**That response had no code behind it until 2026-09-13, which is why nobody took it.**
+`tasks/stratum/easier.json` was committed 2026-08-14 and nothing in the loop could consume it —
+the night had no way to stratify anything. `whetstone run --night --stratum` closes that. It is
+recorded here because a pre-committed response no one can execute is not a plan, and three nights
+passed before anyone discovered the gap.
+
+**The portability arm is at its hardware ceiling, and that bounds what it can still answer.**
+The Torch runtime loads `float32` on CPU by declaration. The 3B base already occupies most of the
+declared host's memory; a 7B would need roughly twice what the machine has and cannot be loaded at
+all. So **3B is the largest base this runtime supports as written**, and if the 3B night yields
+nothing the arm has three moves, none free: raise *k*; change the CPU dtype to `bfloat16`, which
+is a code change *and* an amendment *and* alters what every earlier figure was measured under; or
+accept the finding. **That a small base on a CPU-only host cannot solve these tasks is itself a
+result** — it is the portability question, answered — and it must not be dressed up as a failure
+of the harness, whose control arm has been `INTACT` on every draw of every night.
+
+**The corpus does not grow, and that is a gap in the thesis rather than a missing feature.**
+`whetstone mine` mints tasks from real donor commits, but a night reads a frozen directory and
+never re-mines. Expert iteration against a fixed task set converges by construction: a night can
+only ever exhaust what the base can already do. *"A model that gets better over time"* needs new
+verified tasks arriving, and the honest source of those is the user's own new commits — not a
+generator. **Moving "the night re-mines before it draws" out of post-horizon is what makes the
+thesis mechanical instead of aspirational**, and it is named here so it reads as sequenced.
+
+**What this project is, in the field's own vocabulary.** The 2026 survey literature on recursive
+self-improvement classifies loops by what they improve and by how closed the loop is, and ranks
+improvement signals in a verification hierarchy from formal verifiers down to intrinsic
+self-assessment. Whetstone improves **policy through training** and nothing else — not its own
+evaluator, not its own research process — and its loop is **closed by a human**, who launches the
+night and merges the amendments. That is **bounded self-refinement**, not open-ended RSI, and the
+distinction should be stated rather than blurred. Its reward sits at the strong end of that
+hierarchy by construction, which is the whole bet. A proposer/solver loop that generates its own
+tasks is **declined for the same reason an LLM judge is**: a model that invents its own tasks is
+one step from inventing easy ones, and the guardrail in § 8 does not care which door the soft
+reward comes through.
