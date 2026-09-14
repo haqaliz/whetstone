@@ -10,6 +10,48 @@ carries the current state and the rules that still bind.
 
 ---
 
+**Night #4: the easiest band answers the roadmap's own question, and the answer is no**
+(2026-09-14). `docs/ROADMAP.md` P2 pre-committed two responses to a corpus whose strict-`PASS` yield
+is ~0 — *"stratify by difficulty or raise k"* — and three nights had taken neither. This night took
+the first. 16.3 hours, 136 rollout records, 120 generated, control arm `INTACT` throughout, and
+**zero strict-`PASS`**: no checkpoint, and the promotion gate still has never scored a real
+candidate.
+
+**The finding is the comparison, and it is a negative result worth more than the night cost.** The
+band is the easiest sixth of the corpus by a rule fixed in 2026-08-14 and defined by the patch
+rather than by any observed outcome: at most 30 changed lines, 2 hunks, 1 non-test file.
+
+| outcome | night #4 (easiest band, n=120) | night #3 (full corpus, n=336) |
+|---|---|---|
+| `NO_DIFF` | 69% | 71% |
+| `NOT_APPLIED` | 28% | 24% |
+| `NOT_SOLVED` | 3.3% | 3.3% |
+| strict-`PASS` | 0 | 0 |
+
+Within noise, **the same distribution**. The 1.5B base performs on the easiest tasks in the corpus
+almost exactly as it does on all of them, so **patch size was not the barrier** and the first of
+P2's two pre-committed responses is now tested and spent. What remains is more draws or a larger
+base. The early readings misled — 56% of rollouts reached the verifier at n=16 — and decayed
+monotonically to 31% as the sample grew; that decay is recorded because it is the shape a small
+sample makes, and it was reported as a trend before it was one.
+
+**The response had no code behind it, which is why nobody had taken it.** `tasks/stratum/easier.json`
+has existed since 2026-08-14 (§ 10.5) and nothing in the loop could consume it; the night had no way
+to stratify. `--stratum` closes that (#52), reusing `bakeoff.stratum`'s own loader and inclusion by
+identity. Two ordering decisions came out of its tests rather than from reasoning: the band applies
+**after** the held-out exclusion, so it cannot restore what the split removed; but the membership
+resolves against the **full** loaded corpus, because resolving it against the post-exclusion set
+turned "this band member is held out" — the correct case — into an `UnknownStratumId` refusal. The
+first attempt to narrow by hand hit the held-out loader's own guard, which refused a task directory
+of 19 because 9 of the 12 held-out ids resolved nowhere: the night would have recorded excluding 12
+while excluding 3. The guard caught it before a token was generated.
+
+**A defect closed rather than repeated.** Night #4's ledger records
+`multinomial: temperature 0.8, top-p 0.95 (transformers.GenerationConfig do_sample=True)`. Night
+#3's claimed `mlx_lm` on a host with no MLX installed, and that claim had to be retracted; the cause
+was a checkout that had silently forked from `master` and never received #45. With the host back on
+`master`, the fix is live and the ledger names the runtime that actually sampled.
+
 **Night #3: the format wall falls, the night still trains nothing** (2026-09-12). The
 portability arm's night on the 1.5B base named by `PREREGISTRATION.md` § 10.13, on the same
 corpus, runtime and contract as night #2 — the base is the only input that moved. 61 hours,
