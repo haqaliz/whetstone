@@ -226,3 +226,37 @@ is false — `mlx_lm` is not installed on this host and every draw went through 
 `torch.manual_seed`. The fix for it shipped days earlier; the host running the night had silently
 forked from `master` and never received it. `docs/STATUS.md` carries the retraction and the cause.
 The ledger's `backend` block, counts, verdicts and seeds stand.
+
+## Appended 2026-09-14: the easiest band, and what it rules out
+
+The arm drew one night from the easiest band of the stratum document, under `PREREGISTRATION.md`
+§ 10.15. Base, runtime, contract and held-out document are night-003's exactly; **the task set is
+the only input that moved**, which is what makes the two nights' distributions worth setting beside
+each other and what still makes neither a published figure.
+
+**The denominator.** The band holds **19** of the 66 scored tasks. The night's own held-out
+exclusion removed the **3** that are members of `tasks/heldout/source-b.json`, leaving **16**
+drawn, plus the single eligible public instance — 17 tasks, 8 draws, **136 rollout records**. Two
+of those tasks were then refused before a token was generated on the 80,000-character oracle
+budget, costing 16 rollouts recorded `NO_ORACLE` and ranked `UNVERIFIED`. So the night generated
+**120 rollouts against 14 tasks**.
+
+**What they did, beside the full-corpus night above.**
+
+| outcome | this night (n=120) | the full-corpus night (n=336) |
+|---|---|---|
+| `NO_DIFF` | 69% | 71% |
+| `NOT_APPLIED` | 28% | 24% |
+| `NOT_SOLVED` | 3.3% | 3.3% |
+| strict-`PASS` | **0** | **0** |
+
+**These are the same distribution within noise, and that is the result.** The band was chosen by a
+rule fixed before any night ran against it — at most 30 changed lines, 2 hunks, 1 non-test file —
+and the base performs on it as it does on everything else. **Patch size is not what stands between
+this base and a strict-`PASS`.** That rules out one of the two responses the roadmap pre-committed
+to a zero, and it is the whole of what this night establishes.
+
+**Nothing here is a gain and none of it is comparable.** An easier corpus must never be reported as
+the arm improving; a figure from this night is non-comparable to the main series, to any other arm,
+and to this arm's own figures under the full corpus. The arm still has no strict-`PASS`, no
+checkpoint from a night, and no measured delta, and the § 3 baseline remains unspent.

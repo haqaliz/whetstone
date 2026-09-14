@@ -893,3 +893,15 @@ will yield a strict-`PASS` rollout, that a checkpoint will exist, or that the ga
 this night yields a checkpoint, the gain it is scored for is a gain on the easiest band and must be
 published as such** — the § 3 baseline remains unspent, and no figure from this night may ever be
 quoted as the arm's headline.
+
+
+**Correction appended 2026-09-14: this section's own date is wrong.** The heading above and the
+amendment-log row both read *2026-09-14*. The section was written, committed and merged on
+**2026-09-13** — commit `53d70d2`, whose author date git will state on request. The error is
+clerical and errs in the safe direction: this document's discipline exists to stop an amendment
+claiming it landed **earlier** than it did, and a date one day **later** than the commit cannot
+manufacture precedence it did not have. The property § 10.15 asserts — committed before the
+training it governs — still holds and is checkable from git, since night-004 began after the merge.
+
+It is corrected here rather than edited above, for the reason every retraction in this project is:
+an append-only document whose dates can be quietly fixed is a document whose dates mean nothing.
