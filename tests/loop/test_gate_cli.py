@@ -22,6 +22,7 @@ other test in this package does.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -251,3 +252,56 @@ def test_a_doctored_held_out_document_exits_two(
 
     assert cli.main(_argv(fixtures)) == cli.USAGE_ERROR
     assert "document" in capsys.readouterr().err.lower(), capsys.readouterr().err
+
+
+def _record_backend(checkpoint: Any, name: str) -> None:
+    """Name the runtime that trained a fixture checkpoint, leaving its seal alone.
+
+    A checkpoint's digest is taken over its files and never over the rest of this document
+    (`sft.write_checkpoint`), so recording the backend does not re-seal it and
+    `verify_checkpoint` still accepts what is on disk.
+    """
+    document = Path(checkpoint) / "provenance.json"
+    raw = json.loads(document.read_text(encoding="utf-8"))
+    raw["backend"] = {
+        "device": "cpu",
+        "library": "torch",
+        "name": name,
+        "version": "2.14.0+cpu",
+    }
+    document.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def test_the_door_dispatches_the_engine_on_the_checkpoints_own_recorded_backend(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The door must reach `gate_engine_for`, never hand `run_gate` an engine chosen here.
+
+    `test_torch_engine.py` proves the dispatch itself; this proves the command uses it, which
+    is a different claim and the one that was false. A door that passes `engine=gate_engine`
+    makes `run_gate`'s `if engine is None` branch unreachable, so a Torch-trained candidate is
+    loaded through MLX's loader — and that does not raise, it emits weights, so the gate would
+    publish a promotion decision about a model nobody trained (#55).
+
+    The stub is injected on `torch_runtime` rather than on `gate`, deliberately: injecting it
+    through `gate.gate_engine`, as every other test here does, is exactly what hid the defect.
+    """
+    from whetstone.loop import torch_runtime
+
+    fixtures = _gate_fixtures(tmp_path, incumbent_solve=6)
+    _record_backend(fixtures["candidate"], "torch-cpu")
+    _record_backend(fixtures["incumbent"], "torch-cpu")
+
+    def _mlx_engine_refused(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError(
+            "the MLX engine was reached for a checkpoint whose provenance records Torch"
+        )
+
+    monkeypatch.setattr(gate, "gate_engine", _mlx_engine_refused)
+    monkeypatch.setattr(torch_runtime, "torch_gate_engine", fixtures["engine"])
+
+    assert cli.main(_argv(fixtures)) == cli.PASS_EXIT, (
+        "WHY THIS IS A FAILURE: the door did not dispatch on the candidate's own backend. "
+        "`gate_engine_for` is unreachable from the command, so the runtime that scores a "
+        "candidate is whichever one the CLI names rather than the one that trained it"
+    )

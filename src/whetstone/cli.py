@@ -1105,6 +1105,14 @@ def run_gate_cli(args: argparse.Namespace) -> int:
     `tests/test_reward_path_scope_is_partitioned.py`; a sixth such import, or any one moved to
     module scope, fails the build.
 
+    **No engine is named here, and that is the point (#55).** `run_gate` dispatches on the
+    candidate's own recorded backend through `gate_engine_for`; this door passed
+    `engine=gate_engine` and so made that branch unreachable, pinning every gated evaluation to
+    MLX's loader whatever trained the checkpoint. An adapter trained under Torch and one trained
+    under MLX are different tensor layouts behind one filename, and the wrong loader does not
+    raise — it emits weights — so the door chose the runtime and the gate would have published a
+    promotion decision about a model nobody trained. The engine follows the artefact.
+
     **The exit codes are the roadmap's three, mapped onto the existing four-code contract**
     (`cli.py:64-84`, no fifth): `promoted` → 0, `rejected` → 1, `UNVERIFIED` → 3. UNVERIFIED
     is deliberately not 0 — a caller that checks only `rc == 0` must never read an eval that
@@ -1113,7 +1121,7 @@ def run_gate_cli(args: argparse.Namespace) -> int:
     held-out set of zero, weights whose provenance does not match the disk — is 2, never a
     traceback.
     """
-    from whetstone.loop.gate import REFUSALS, Exit, disclosure, gate_engine, run_gate
+    from whetstone.loop.gate import REFUSALS, Exit, disclosure, run_gate
 
     exit_codes = {
         Exit.PROMOTED: PASS_EXIT,
@@ -1134,7 +1142,6 @@ def run_gate_cli(args: argparse.Namespace) -> int:
             timeout=args.timeout,
             recorded_on=args.recorded_on,
             run_id=args.run_id,
-            engine=gate_engine,
         )
     except REFUSALS as refusal:
         print(f"whetstone gate: {refusal}", file=sys.stderr)
