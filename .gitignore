@@ -37,3 +37,9 @@ dist/
 # Dashboard
 node_modules/
 .next/
+
+# Local tooling artifacts — a code-graph index and an MCP server's cache, both
+# derived from the tree and rebuilt on demand. Neither is evidence and neither is
+# reproducible across machines, so they belong nowhere near a commit.
+/graphify-out/
+/.serena/

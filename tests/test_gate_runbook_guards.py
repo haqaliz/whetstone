@@ -105,6 +105,26 @@ FLAG = re.compile(r"--[a-z][a-z0-9-]*")
 RETRY = re.compile(r"\bR\s*=\s*(\d+)\b")
 
 
+#: A path the sheet can be run verbatim from: either literally absolute, or anchored to `$REPO`,
+#: which the sheet exports to an absolute path before the first door runs. The distinction the
+#: 2026-08-12 failure turns on is not the leading slash but **what the subprocess receives**: an
+#: exported variable is expanded by the shell before the command starts, so the provisioner is
+#: handed an absolute path either way. A bare relative path is not, and that is what produced a
+#: night of `UNPROVISIONED`. The operator's own absolute path is deliberately not written into a
+#: committed sheet — that publishes a home directory, and a reader re-deriving the run has a
+#: different one.
+_ANCHOR = "$REPO/"
+
+
+def _is_anchored(value: str) -> bool:
+    return value.startswith("/") or value.startswith(_ANCHOR)
+
+
+def _exports_repo(text: str) -> bool:
+    """The sheet must define `$REPO` as an absolute path, or the anchor anchors nothing."""
+    return "export REPO=/" in text
+
+
 def _runbook() -> str:
     text = RUNBOOK.read_text(encoding="utf-8")
     assert text.strip(), (
@@ -217,7 +237,7 @@ def test_every_path_the_commands_name_is_absolute() -> None:
                 for flag, given in values.items()
                 if flag in PATH_FLAGS
                 for value in given
-                if not value.startswith("/")
+                if not _is_anchored(value)
             )
             assert not relative, (
                 f"WHY THIS IS A FAILURE: `{door}` is given relative path(s) {relative}. The "
@@ -403,7 +423,7 @@ def _assert_untrained_base_incumbent(text: str) -> None:
         "leaves it implicit cannot be the incumbent the sheet resolves"
     )
     base_path = match.group(1)
-    assert base_path.startswith("/"), (
+    assert _is_anchored(base_path), (
         "WHY THIS IS A FAILURE: the materialization block names the relative checkpoint path "
         f"{base_path!r}. The sheet is run from a stated CWD, and a relative path materializes "
         "the incumbent somewhere the gate never reads"
@@ -417,7 +437,7 @@ def _assert_untrained_base_incumbent(text: str) -> None:
         "beat something, and the only thing it may beat is the untrained base"
     )
     incumbent = incumbents[0]
-    assert incumbent.startswith("/"), (
+    assert _is_anchored(incumbent), (
         f"WHY THIS IS A FAILURE: the gate command's `--incumbent` is the relative path "
         f"{incumbent!r}. A relative incumbent resolves against the sheet's stated CWD, so the "
         "gate compares the candidate with whatever happens to sit there"
@@ -466,3 +486,19 @@ def test_the_sheet_names_the_untrained_base_as_the_first_incumbent() -> None:
     failed with its intended message before the real sheet was edited.
     """
     _assert_untrained_base_incumbent(_runbook())
+
+
+def test_the_sheet_exports_the_anchor_every_path_depends_on() -> None:
+    """`$REPO/...` is absolute only because the sheet makes it so.
+
+    Every path-valued flag here is anchored to `$REPO` rather than written as one operator's
+    own absolute path, which keeps a home directory out of a committed file. That trade is
+    only sound while the sheet still defines the anchor: an unset `REPO` expands to nothing,
+    every path silently becomes relative, and this sheet is back to the shape that killed the
+    measured arm on 2026-08-12 — with no leading slash left for the other guards to catch.
+    """
+    assert _exports_repo(_runbook()), (
+        "WHY THIS IS A FAILURE: the sheet anchors its paths to `$REPO` and never exports it. "
+        "An unset variable expands to the empty string, so every anchored path resolves "
+        "against whatever directory the operator happened to be in"
+    )

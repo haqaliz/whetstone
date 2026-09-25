@@ -78,6 +78,26 @@ _dev_subset_values = guards._dev_subset_values
 ARM_MODULE = guards.ARM_MODULE
 
 
+#: A path the sheet can be run verbatim from: either literally absolute, or anchored to `$REPO`,
+#: which the sheet exports to an absolute path before the first door runs. The distinction the
+#: 2026-08-12 failure turns on is not the leading slash but **what the subprocess receives**: an
+#: exported variable is expanded by the shell before the command starts, so the provisioner is
+#: handed an absolute path either way. A bare relative path is not, and that is what produced a
+#: night of `UNPROVISIONED`. The operator's own absolute path is deliberately not written into a
+#: committed sheet — that publishes a home directory, and a reader re-deriving the run has a
+#: different one.
+_ANCHOR = "$REPO/"
+
+
+def _is_anchored(value: str) -> bool:
+    return value.startswith("/") or value.startswith(_ANCHOR)
+
+
+def _exports_repo(text: str) -> bool:
+    """The sheet must define `$REPO` as an absolute path, or the anchor anchors nothing."""
+    return "export REPO=/" in text
+
+
 def _runbook() -> str:
     text = RUNBOOK.read_text(encoding="utf-8")
     assert text.strip(), (
@@ -158,7 +178,7 @@ def test_the_arm_commands_writable_paths_are_absolute() -> None:
     for flag in ("--out", "--workspace", "--journal", "--transcript"):
         value = values.get(flag)
         assert value, f"the arm command does not pass {flag}, so its path is unstated"
-        assert value.startswith("/"), (
+        assert _is_anchored(value), (
             f"the arm command passes {flag} a relative path {value!r}: the environment "
             "builder and its subprocesses do not share the run's CWD, so the path does not "
             "resolve there and every task is UNPROVISIONED — a night that proves nothing"
@@ -480,3 +500,19 @@ def test_the_preanalysis_extension_covers_all_five_autopsy_documents() -> None:
             f"the pre-analysis extension does not name {stem}.json: the comparison's per-run "
             "decisions assertion needs every stored run's document plus this arm's"
         )
+
+
+def test_the_sheet_exports_the_anchor_every_path_depends_on() -> None:
+    """`$REPO/...` is absolute only because the sheet makes it so.
+
+    Every path-valued flag here is anchored to `$REPO` rather than written as one operator's
+    own absolute path, which keeps a home directory out of a committed file. That trade is
+    only sound while the sheet still defines the anchor: an unset `REPO` expands to nothing,
+    every path silently becomes relative, and this sheet is back to the shape that killed the
+    measured arm on 2026-08-12 — with no leading slash left for the other guards to catch.
+    """
+    assert _exports_repo(_runbook()), (
+        "WHY THIS IS A FAILURE: the sheet anchors its paths to `$REPO` and never exports it. "
+        "An unset variable expands to the empty string, so every anchored path resolves "
+        "against whatever directory the operator happened to be in"
+    )

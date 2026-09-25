@@ -123,7 +123,7 @@ is not weakened by anything this aspect adds.
 - Depends on `generation` (the model boundary; the runner takes a `Generator`, and every test here
   passes a stub — this aspect never needs `mlx` installed).
 - Blocks `report` (which consumes the records) and `the-run`.
-- The corpus lives outside this worktree at `/Users/aliz/dev/at/whetstone/tasks/local/` (gitignored
+- The corpus lives outside this worktree at `$REPO/tasks/local/` (gitignored
   user data). The runner takes a **path argument**; manifests are not copied in.
 - Source-A verification `git clone`s from GitHub on every run (`repo.py:66-84`, no cache), so tests
   covering source A must use local fixture repos, never the network.

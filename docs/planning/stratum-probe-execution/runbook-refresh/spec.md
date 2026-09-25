@@ -30,7 +30,7 @@ anything.
    measured-arm pin) is byte-untouched; the AC2 pins hold.
 5. The sheet is executable against the unit's worktree project: `--help` exits 0 for
    `run`, `attribution`, `autopsy`, `preanalysis`, `comparison` via
-   `uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution`.
+   `uv run --project $REPO/.claude/worktrees/feat-stratum-probe-execution`.
 
 ## Out of scope
 

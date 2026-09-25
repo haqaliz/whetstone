@@ -1,7 +1,16 @@
 # Runbook — the first night (`whetstone run --night`)
 
 **Unit:** `p2-rollouts` · **Aspect:** `night-door` · **Branch:** `feat/p2-rollouts/aliz` ·
-**Run from:** `/Users/aliz/dev/at/whetstone` (the primary checkout)
+**Run from:** the primary checkout. Every path below is anchored to `$REPO`, so export it
+first — an exported variable expands before the command runs, which is what makes the path the
+subprocess receives absolute:
+
+```bash
+export REPO=/absolute/path/to/whetstone   # the primary checkout, not a worktree
+```
+
+The operator's own path is not written here: a committed sheet that names one publishes a
+home directory, and a reader re-deriving this run has a different one.
 
 The operator's sheet for the first night of the improvement loop. Every command here is run
 verbatim. A command sheet that disagrees with the code it runs fails at three in the morning, in a
@@ -32,7 +41,7 @@ could name, and the door refuses both (`ManyCandidates`).
    constraint and deliberately not a code fix: run one night at a time, and no other MLX work
    beside it. The determinism claim (same seed → byte-identical training set) is scoped to a
    machine running one night.
-2. **Empty the workspace.** `/Users/aliz/dev/at/whetstone/runs/night-001-workspace` must not
+2. **Empty the workspace.** `$REPO/runs/night-001-workspace` must not
    exist or must be empty. The run is not resumable from a partially deleted workspace.
 3. **Declare the inputs.** `--run-id`, `--run-seed` and `--recorded-on` are typed by the operator
    before the run and written down here in the operator's own log. None of them is read from a
@@ -43,20 +52,20 @@ could name, and the door refuses both (`ManyCandidates`).
 
 ## The probe pass
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
+**Run with CWD at the primary checkout (`$REPO`):**
 
 ```bash
 uv run whetstone run --night \
   --probe 2 \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
-  --public /Users/aliz/dev/at/whetstone/tasks/public/instances \
-  --pool /Users/aliz/dev/at/whetstone/tasks/public/pool.json \
-  --weights /Users/aliz/dev/at/whetstone/weights \
+  --tasks $REPO/tasks/local/donor-b \
+  --tasks $REPO/tasks/local/donor-a \
+  --public $REPO/tasks/public/instances \
+  --pool $REPO/tasks/public/pool.json \
+  --weights $REPO/weights \
   --only mlx-community/Qwen2.5-Coder-32B-Instruct-4bit \
-  --runs /Users/aliz/dev/at/whetstone/runs/night-probe \
-  --checkpoints /Users/aliz/dev/at/whetstone/checkpoints/night-probe \
-  --workspace /Users/aliz/dev/at/whetstone/runs/night-probe-workspace \
+  --runs $REPO/runs/night-probe \
+  --checkpoints $REPO/checkpoints/night-probe \
+  --workspace $REPO/runs/night-probe-workspace \
   --timeout 900 \
   --recorded-on <declared-at-run-time> \
   --run-id probe-001 \
@@ -75,7 +84,7 @@ per-draw journals and transcripts, the selection, and the ledger.
 
 ```bash
 uv run whetstone check-probe \
-  --run /Users/aliz/dev/at/whetstone/runs/night-probe/probe-001
+  --run $REPO/runs/night-probe/probe-001
 ```
 
 The decision is the command's exit: `whetstone check-probe` reads the run directory the probe
@@ -92,15 +101,15 @@ restart it fresh under a new `--run-id`; a killed **night** still resumes unchan
 
 ```bash
 uv run whetstone run --night \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
-  --public /Users/aliz/dev/at/whetstone/tasks/public/instances \
-  --pool /Users/aliz/dev/at/whetstone/tasks/public/pool.json \
-  --weights /Users/aliz/dev/at/whetstone/weights \
+  --tasks $REPO/tasks/local/donor-b \
+  --tasks $REPO/tasks/local/donor-a \
+  --public $REPO/tasks/public/instances \
+  --pool $REPO/tasks/public/pool.json \
+  --weights $REPO/weights \
   --only mlx-community/Qwen2.5-Coder-32B-Instruct-4bit \
-  --runs /Users/aliz/dev/at/whetstone/runs/nights \
-  --checkpoints /Users/aliz/dev/at/whetstone/checkpoints \
-  --workspace /Users/aliz/dev/at/whetstone/runs/night-001-workspace \
+  --runs $REPO/runs/nights \
+  --checkpoints $REPO/checkpoints \
+  --workspace $REPO/runs/night-001-workspace \
   --timeout 900 \
   --recorded-on <declared-at-run-time> \
   --run-id night-001 \
@@ -195,7 +204,7 @@ Read, in this order:
 Then re-verify the candidate's bytes before anything else reads them:
 
 ```bash
-uv run python -c "from pathlib import Path; from whetstone.loop.sft import verify_checkpoint; print(verify_checkpoint(Path('/Users/aliz/dev/at/whetstone/checkpoints/night-001')).digest)"
+uv run python -c "from pathlib import Path; from whetstone.loop.sft import verify_checkpoint; print(verify_checkpoint(Path('$REPO/checkpoints/night-001')).digest)"
 ```
 
 **Nothing here is published.** The night's counts live in its own gitignored run directory, which

@@ -4,6 +4,17 @@
 Plan: `plan_20260809.md` Phase 2. Executed by the **operator** (aliz), on the primary
 checkout's machine; the post-run analysis is deterministic and agent-verifiable (D-arm3).
 
+
+Every path below is anchored to `$REPO`, so export it first — an exported variable expands
+before the command runs, which is what makes the path the subprocess receives absolute:
+
+```bash
+export REPO=/absolute/path/to/whetstone   # the primary checkout, not a worktree
+```
+
+The operator's own path is not written here: a committed sheet that names one publishes a home
+directory, and a reader re-deriving this run has a different one.
+
 **Before this runbook was written, the ceiling was measured** (Phase 1, `preanalysis.py`):
 retry-eligible **118**, inferred-truncation **5**, ceiling **113** across the two stored arms
 (per candidate: arm-a 14B 37/34, 3B 43/42, 7B 0/0; budget-2048 14B 38/37 — the gitignored
@@ -22,7 +33,7 @@ intersection), so the tuning corpus covered their failure shapes. The ids are ex
 **both** sources before anything runs (`conduct` partitions first, `run.py:540-542`), an id
 matching no task is refused (`UnknownDevSubset`), and the report's `ScoredDevSubset` backstop
 refuses the publication if any dev id ever reached a scored set. All five are verified present
-in the corpus (`tasks/local/belay/*.json`).
+in the corpus (`tasks/local/donor-b/*.json`).
 
 ## Before you run
 
@@ -30,29 +41,29 @@ in the corpus (`tasks/local/belay/*.json`).
    run dies at first generation with `MlxUnavailable`, whose message names the fix
    (`src/whetstone/bakeoff/mlx_runtime.py:261-270`).
 2. **The workspace must be empty at start** — delete
-   `/Users/aliz/dev/at/whetstone/runs/format-hardening-workspace` and let the run recreate it;
+   `$REPO/runs/format-hardening-workspace` and let the run recreate it;
    the rule is documentation-only in code (`run.py:753-759`), and a reused or partially-deleted
    workspace degrades silently into `UNVERIFIED`/`UNPROVISIONED`, never loudly.
 3. **Evidence is machine-level** — the run's outputs live under the primary's gitignored
    `runs/`; evidence is never copied between checkouts.
-4. **The five dev-subset ids are verified present in `tasks/local/belay/` before launch**, so
+4. **The five dev-subset ids are verified present in `tasks/local/donor-b/` before launch**, so
    the `UnknownDevSubset` refusal cannot fire at launch time.
 
 ## The command
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`), executing the branch code via its project (`uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run`):**
+**Run with CWD at the primary checkout (`$REPO`), executing the branch code via its project (`uv run --project $REPO/.claude/worktrees/feat-measured-arm-run`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
+uv run --project $REPO/.claude/worktrees/feat-measured-arm-run \
   python -m whetstone.bakeoff.run \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
-  --public /Users/aliz/dev/at/whetstone/tasks/public/instances \
-  --pool /Users/aliz/dev/at/whetstone/tasks/public/pool.json \
-  --funnel /Users/aliz/dev/at/whetstone/tasks/public/ineligible.json \
-  --weights /Users/aliz/dev/at/whetstone/weights \
-  --out /Users/aliz/dev/at/whetstone/runs/format-hardening-arm \
-  --workspace /Users/aliz/dev/at/whetstone/runs/format-hardening-workspace \
+  --tasks $REPO/tasks/local/donor-b \
+  --tasks $REPO/tasks/local/donor-a \
+  --public $REPO/tasks/public/instances \
+  --pool $REPO/tasks/public/pool.json \
+  --funnel $REPO/tasks/public/ineligible.json \
+  --weights $REPO/weights \
+  --out $REPO/runs/format-hardening-arm \
+  --workspace $REPO/runs/format-hardening-workspace \
   --timeout 900 \
   --recorded-on <declared-at-run-time> \
   --retries \
@@ -61,8 +72,8 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-ar
   --dev-subset belay-3e3051c4192a \
   --dev-subset belay-844db07ed482 \
   --dev-subset belay-9dba3ea557f5 \
-  --journal /Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence/journal.jsonl \
-  --transcript /Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence/transcript.jsonl
+  --journal $REPO/runs/format-hardening-arm-evidence/journal.jsonl \
+  --transcript $REPO/runs/format-hardening-arm-evidence/transcript.jsonl
 ```
 
 Every flag verified against `run.py`'s parser (`build_parser`, `run.py:691-839`) at write time.
@@ -78,9 +89,9 @@ Notes on the choices:
   forms above are the correction, and `tests/test_runbook_guards.py` refuses a relative
   writable path from now on. The post-run commands keep relative `runs/` paths: those tools
   run in-process from the primary CWD, which the stored runs' analysis already proved.
-- **The donor roots are `belay/` (21 tasks) and `contig/` (45 tasks)** — the miner's
+- **The donor roots are `donor-b/` (21 tasks) and `donor-a/` (45 tasks)** — the miner's
   per-donor directories, verified on disk. The plan draft's `donor-a`/`donor-b` placeholder
-  names do not exist; the pseudonymous names are `belay` (donor B, 21) and `contig`
+  names do not exist; the pseudonymous names are `donor-b` (donor B, 21) and `donor-a`
   (donor A, 45), 66 tasks total. `load_tasks` refuses the parent directory, so each donor is
   named separately.
 - **`--public` is the instances directory** (`tasks/public/instances/`, holding
@@ -102,7 +113,7 @@ Notes on the choices:
   private donor code staged for publication by a path default (`TranscriptNotPrivate`,
   `run.py:939-960`, asserted end-to-end in `test_run_transcript.py`). The report lands in
   `runs/format-hardening-arm/` (gitignored), the evidence in the sibling gitignored root.
-- **Workspace rules:** `/Users/aliz/dev/at/whetstone/runs/format-hardening-workspace` must be
+- **Workspace rules:** `$REPO/runs/format-hardening-workspace` must be
   **empty** at start (delete it and let the run recreate it; the run is not resumable from a
   partially deleted workspace), and it is never inside `--out`. The run is **not** resumable
   across a deleted workspace.
@@ -136,12 +147,12 @@ it as corruption, never repaired (`src/whetstone/bakeoff/transcript.py:190-198`)
 procedure:
 
 1. **Quarantine the dead evidence directory by name** — e.g. move
-   `/Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence/` to
-   `/Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence-dead-<date>/`.
-2. **Fresh empty workspace** — delete `/Users/aliz/dev/at/whetstone/runs/format-hardening-workspace`;
+   `$REPO/runs/format-hardening-arm-evidence/` to
+   `$REPO/runs/format-hardening-arm-evidence-dead-<date>/`.
+2. **Fresh empty workspace** — delete `$REPO/runs/format-hardening-workspace`;
    a fresh run is a fresh empty workspace (halt 4).
 3. **Fresh journal and transcript paths** — the restart's `--journal`/`--transcript` name a
-   new evidence directory (e.g. `/Users/aliz/dev/at/whetstone/runs/format-hardening-arm-evidence-2/`);
+   new evidence directory (e.g. `$REPO/runs/format-hardening-arm-evidence-2/`);
    never append to the
    dead transcript, never reuse the dead paths.
 4. Re-run the arm command unchanged apart from the paths above.
@@ -156,7 +167,7 @@ procedure:
 
 ## Post-run analysis (agent-verifiable, offline)
 
-**Run with CWD at the primary checkout** (`/Users/aliz/dev/at/whetstone`), not the worktree
+**Run with CWD at the primary checkout** (`$REPO`), not the worktree
 root: the primary owns the gitignored store, and the analysis tooling refuses an `--out`
 outside the documented gitignored roots — `autopsy`, `preanalysis` and `comparison` gate
 (`IGNORED_OUT_ROOTS`, `src/whetstone/bakeoff/autopsy.py:716`, imported by identity);
@@ -165,27 +176,27 @@ operator discipline — so a relative `runs/` path must resolve to the primary's
 worktree's branch code via its project:
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
+uv run --project $REPO/.claude/worktrees/feat-measured-arm-run \
   python -m whetstone.bakeoff.attribution \
   --transcript runs/format-hardening-arm-evidence/transcript.jsonl \
   --out runs/format-hardening-arm-evidence/attribution.json \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig
+  --tasks $REPO/tasks/local/donor-b \
+  --tasks $REPO/tasks/local/donor-a
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
+uv run --project $REPO/.claude/worktrees/feat-measured-arm-run \
   python -m whetstone.bakeoff.autopsy \
   --transcript runs/format-hardening-arm-evidence/transcript.jsonl \
   --attribution runs/format-hardening-arm-evidence/attribution.json \
   --out runs/diff-autopsy/format-hardening-arm-evidence.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
+uv run --project $REPO/.claude/worktrees/feat-measured-arm-run \
   python -m whetstone.bakeoff.preanalysis \
   --autopsy runs/diff-autopsy/arm-a.json \
   --autopsy runs/diff-autopsy/budget-2048.json \
   --autopsy runs/diff-autopsy/format-hardening-arm-evidence.json \
   --out runs/format-hardening-preanalysis/ceiling-with-arm.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
+uv run --project $REPO/.claude/worktrees/feat-measured-arm-run \
   python -m whetstone.bakeoff.comparison \
   --journal runs/arm-a/journal.jsonl \
   --journal runs/budget-2048/journal.jsonl \
@@ -196,7 +207,7 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-ar
   --preanalysis runs/format-hardening-preanalysis/ceiling-with-arm.json \
   --out runs/format-hardening-preanalysis/comparison.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-measured-arm-run \
+uv run --project $REPO/.claude/worktrees/feat-measured-arm-run \
   python -m whetstone.bakeoff.comparison --render-report \
   --arm baseline --journal runs/arm-a/journal.jsonl \
     --contract reports/baseline/report.json \

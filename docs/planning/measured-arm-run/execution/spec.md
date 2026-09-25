@@ -71,7 +71,7 @@ codes, never narratives.
 ## Dependencies & sequencing
 
 - The dig verified all prerequisites: every runbook flag exists in `build_parser`
-  (`run.py:691-839`), the five dev-subset ids exist, the corpus (belay 21, contig 45) and
+  (`run.py:691-839`), the five dev-subset ids exist, the corpus (donor-b 21, donor-a 45) and
   weights (three candidates) are in the primary, and the evidence directory does not exist.
 - Sequencing: refresh → guard test (RED→GREEN) → operator run → post-run chain → report/finding.
   The operator run is the human checkpoint (D-arm3: the analysis after it is agent-verifiable).

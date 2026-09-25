@@ -600,7 +600,7 @@ def test_a_hand_edited_membership_breaks_the_document_digest_and_is_refused(
 
 def test_the_loader_refuses_an_unknown_field_by_name(tmp_path: Path) -> None:
     """A field this module does not read would be trusted by nobody and read by no one."""
-    out = _resealed(_written(tmp_path), donor_heads={"belay": "0" * 40})
+    out = _resealed(_written(tmp_path), donor_heads={"donor-b": "0" * 40})
 
     with pytest.raises(heldout.HeldoutSchemaError) as caught:
         heldout.read_document(out)

@@ -48,7 +48,7 @@ STRATUM_DOCUMENT = REPO_ROOT / "tasks" / "stratum" / "easier.json"
 
 #: The machine-level corpus roots: the two donor directories under the primary checkout's
 #: gitignored `tasks/local/` (`tasks/README.md:63-64`).
-_CORPUS_ROOTS = ("tasks/local/belay", "tasks/local/contig")
+_CORPUS_ROOTS = ("tasks/local/donor-b", "tasks/local/donor-a")
 
 #: The frozen reward path, byte-identical to `origin/master` (spec AC 7). The pin lives in
 #: `test_format_hardening_frozen.py` too; it is restated here because this aspect's claim is
@@ -320,6 +320,6 @@ def test_the_recomputation_reaches_zero_skips_on_this_machine() -> None:
     """
     tasks, _ = _machine_corpus()
     assert len(tasks) == 66, (
-        "the machine-level source-B corpus is the declared set: 21 belay + 45 contig "
+        "the machine-level source-B corpus is the declared set: 21 donor-b + 45 donor-a "
         f"manifests, got {len(tasks)}"
     )

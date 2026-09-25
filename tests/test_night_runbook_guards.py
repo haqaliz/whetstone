@@ -96,6 +96,26 @@ WRITABLE = ("--runs", "--checkpoints", "--workspace")
 FLAG = re.compile(r"--[a-z][a-z0-9-]*")
 
 
+#: A path the sheet can be run verbatim from: either literally absolute, or anchored to `$REPO`,
+#: which the sheet exports to an absolute path before the first door runs. The distinction the
+#: 2026-08-12 failure turns on is not the leading slash but **what the subprocess receives**: an
+#: exported variable is expanded by the shell before the command starts, so the provisioner is
+#: handed an absolute path either way. A bare relative path is not, and that is what produced a
+#: night of `UNPROVISIONED`. The operator's own absolute path is deliberately not written into a
+#: committed sheet — that publishes a home directory, and a reader re-deriving the run has a
+#: different one.
+_ANCHOR = "$REPO/"
+
+
+def _is_anchored(value: str) -> bool:
+    return value.startswith("/") or value.startswith(_ANCHOR)
+
+
+def _exports_repo(text: str) -> bool:
+    """The sheet must define `$REPO` as an absolute path, or the anchor anchors nothing."""
+    return "export REPO=/" in text
+
+
 def _runbook() -> str:
     text = RUNBOOK.read_text(encoding="utf-8")
     assert text.strip(), (
@@ -266,7 +286,7 @@ def test_the_night_commands_writable_paths_are_absolute() -> None:
                 "required, and a command that omits it does not run at all"
             )
             for value in named:
-                assert value.startswith("/"), (
+                assert _is_anchored(value), (
                     f"WHY THIS IS A FAILURE: {flag} is relative ({value!r}). The measured arm "
                     "died exactly this way on 2026-08-12 — a relative workspace does not resolve "
                     "in the provisioning subprocesses, so every rollout came back UNPROVISIONED "
@@ -428,7 +448,7 @@ def test_the_probe_decision_is_commanded_before_the_night() -> None:
         "without the run directory it must decide"
     )
     run_dir = run_values[0]
-    assert run_dir.startswith("/"), (
+    assert _is_anchored(run_dir), (
         f"WHY THIS IS A FAILURE: --run is relative ({run_dir!r}). The decision must name the "
         "probe run directory outright, independent of CWD"
     )
@@ -492,4 +512,20 @@ def test_a_probe_is_never_resumed() -> None:
     assert "Restart the **same command, unchanged**" in text, (
         "WHY THIS IS A FAILURE: the killed-night restart sentence is gone. A night is resumed "
         "unchanged with the same --run-id and --run-seed; the sheet must still say so"
+    )
+
+
+def test_the_sheet_exports_the_anchor_every_path_depends_on() -> None:
+    """`$REPO/...` is absolute only because the sheet makes it so.
+
+    Every path-valued flag here is anchored to `$REPO` rather than written as one operator's
+    own absolute path, which keeps a home directory out of a committed file. That trade is
+    only sound while the sheet still defines the anchor: an unset `REPO` expands to nothing,
+    every path silently becomes relative, and this sheet is back to the shape that killed the
+    measured arm on 2026-08-12 — with no leading slash left for the other guards to catch.
+    """
+    assert _exports_repo(_runbook()), (
+        "WHY THIS IS A FAILURE: the sheet anchors its paths to `$REPO` and never exports it. "
+        "An unset variable expands to the empty string, so every anchored path resolves "
+        "against whatever directory the operator happened to be in"
     )

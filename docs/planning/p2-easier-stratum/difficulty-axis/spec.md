@@ -117,7 +117,7 @@ verdict (`PREREGISTRATION.md:171-177`).
 1. `uv run pytest tests/bakeoff/test_stratum_rule.py tests/bakeoff/test_stratum_document.py
    tests/bakeoff/test_stratum_corpus.py` green; the rule's no-inference walk green.
 2. **Membership recomputation == committed document.** The corpus test loads all 66 manifests
-   from `tasks/local/{belay,contig}/` (gitignored, machine-level) against the donors at
+   from `tasks/local/{donor-b,donor-a}/` (gitignored, machine-level) against the donors at
    `task.repo_url` (read-only), re-runs the rule, and asserts recomputed difficulty, refusals,
    membership, corpus ids and digest equal the committed document field by field. In CI the
    machine-level state is absent (plain `uv sync` and no donors, `.github/workflows/ci.yml`), so

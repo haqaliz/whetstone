@@ -2,7 +2,18 @@
 
 **Unit:** `honest-number-report` · **Aspect:** `report-runbook` · **Branch:**
 `feat/honest-number-report/aliz` · **Run from:**
-`/Users/aliz/dev/at/whetstone` (the primary checkout)
+`$REPO` (the primary checkout)
+
+
+Every path below is anchored to `$REPO`, so export it first — an exported variable expands
+before the command runs, which is what makes the path the subprocess receives absolute:
+
+```bash
+export REPO=/absolute/path/to/whetstone   # the primary checkout, not a worktree
+```
+
+The operator's own path is not written here: a committed sheet that names one publishes a home
+directory, and a reader re-deriving this run has a different one.
 
 The operator's sheet for the report render — the last step of the operator chain
 (`docs/ROADMAP.md:652-656`): § 7.3 amendment → baseline spend → night #1 → night #2 → first
@@ -62,7 +73,7 @@ costs no GPU and takes a few minutes. **Halt if this is not green**: a red fixtu
 means the door is not the door this sheet describes, and no render it produces on the real
 evidence may be recorded.
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
+**Run with CWD at the primary checkout (`$REPO`):**
 
 ```bash
 uv run pytest tests/loop/test_honest_report_door.py tests/bakeoff/test_honest_number_report.py tests/loop/test_promotion_record_n.py -q
@@ -70,17 +81,17 @@ uv run pytest tests/loop/test_honest_report_door.py tests/bakeoff/test_honest_nu
 
 ## Step 2 — the render
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
+**Run with CWD at the primary checkout (`$REPO`):**
 
 ```bash
 uv run python -m whetstone.loop.honest_report \
   --render \
-  --baseline /Users/aliz/dev/at/whetstone/reports/baseline-measurement/report.json \
-  --record /Users/aliz/dev/at/whetstone/runs/promotions/<run-id>.json \
-  --checkpoint-candidate /Users/aliz/dev/at/whetstone/checkpoints/<candidate> \
-  --checkpoint-incumbent /Users/aliz/dev/at/whetstone/checkpoints/<incumbent> \
-  --heldout /Users/aliz/dev/at/whetstone/tasks/heldout/source-b.json \
-  --out /Users/aliz/dev/at/whetstone/reports/honest-number \
+  --baseline $REPO/reports/baseline-measurement/report.json \
+  --record $REPO/runs/promotions/<run-id>.json \
+  --checkpoint-candidate $REPO/checkpoints/<candidate> \
+  --checkpoint-incumbent $REPO/checkpoints/<incumbent> \
+  --heldout $REPO/tasks/heldout/source-b.json \
+  --out $REPO/reports/honest-number \
   --recorded-on <declared-at-run-time> \
   --run-id <run-id>
 ```

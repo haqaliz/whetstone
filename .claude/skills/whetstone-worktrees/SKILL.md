@@ -20,9 +20,9 @@ Don't use this for one-off file edits that finish in a single session — a work
 Whetstone is a **single repo**. Worktrees live **inside it** at `.claude/worktrees/<name>/`. `.claude/worktrees/` must be in `.gitignore` so worktree contents never show up as untracked files in the primary.
 
 ```
-/Users/aliz/dev/at/whetstone/                                   ← primary (master)
-/Users/aliz/dev/at/whetstone/.claude/worktrees/bug-12/          ← bug #12 worktree
-/Users/aliz/dev/at/whetstone/.claude/worktrees/feat-task-verifier/
+$REPO/                                   ← primary (master)
+$REPO/.claude/worktrees/bug-12/          ← bug #12 worktree
+$REPO/.claude/worktrees/feat-task-verifier/
 ```
 
 This is the layout documented at https://code.claude.com/docs/en/worktrees. Older sibling layouts (`whetstone.12` next to the repo) work but make `cd` paths awkward and don't auto-trigger `.worktreeinclude` for `claude --worktree`.
@@ -113,7 +113,7 @@ npm run dev -- -p 3001
 ## Switching between worktrees
 
 ```bash
-git -C /Users/aliz/dev/at/whetstone worktree list
+git -C $REPO worktree list
 ```
 
 To jump into a worktree's Claude session, `cd` into the worktree dir and run `claude`. Resuming a session started in the primary on the same branch isn't supported — start a fresh session in the worktree.
@@ -123,8 +123,8 @@ To jump into a worktree's Claude session, `cd` into the worktree dir and run `cl
 After the PR merges and you no longer need the branch locally (see `whetstone-end-fast`):
 
 ```bash
-git -C /Users/aliz/dev/at/whetstone worktree remove .claude/worktrees/feat-task-verifier
-git -C /Users/aliz/dev/at/whetstone branch -d feat/task-verifier/aliz
+git -C $REPO worktree remove .claude/worktrees/feat-task-verifier
+git -C $REPO branch -d feat/task-verifier/aliz
 ```
 
 `worktree remove` refuses if there are uncommitted or untracked changes. Either commit them first, or pass `--force` only if you're sure they should be discarded. Check for run artifacts before forcing — a discarded `runs/` directory is a discarded night of evidence.

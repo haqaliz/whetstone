@@ -64,7 +64,7 @@ what the read reveals.
 Two further constraints from the worktree skill and the transcript precedent:
 
 - **Run state is never copied between worktrees.** The transcripts are read by absolute path
-  from the primary checkout (`/Users/aliz/dev/at/whetstone/runs/`); the worktree keeps none.
+  from the primary checkout (`$REPO/runs/`); the worktree keeps none.
 - **Completions quote private donor code.** Test fixtures must be **synthetic** replicas of
   observed shapes, never verbatim completions; raw output and derived breakdowns stay in
   gitignored roots and never reach a committed file.

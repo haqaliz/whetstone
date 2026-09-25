@@ -25,7 +25,7 @@ These counts are stated under the contract's fields above: a count and the contr
 
 **Token spend.** Generation 2808.4 seconds, summed over the probe's rollouts from the run's own cost records.
 
-**The stratum document.** The pre-committed difficulty stratum this probe scores is declared in `/Users/aliz/dev/at/whetstone/tasks/stratum/easier.json` — its rule digest and its membership — and the probe's runbook names it before anything runs. This document points at it and never restates a count from it, so the stratum's membership has exactly one home.
+**The stratum document.** The pre-committed difficulty stratum this probe scores is declared in `$REPO/tasks/stratum/easier.json` — its rule digest and its membership — and the probe's runbook names it before anything runs. This document points at it and never restates a count from it, so the stratum's membership has exactly one home.
 
 **The breakdowns.** The classifier counts behind these figures live in the gitignored home `runs/easier-stratum-preanalysis/comparison.md`; this document points at them and never restates them, so a classifier count has exactly one home.
 

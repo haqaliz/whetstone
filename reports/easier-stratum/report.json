@@ -44,5 +44,5 @@
   ],
   "recorded_on": "2026-08-15",
   "schema": "whetstone-stratum-report/1",
-  "stratum_doc": "/Users/aliz/dev/at/whetstone/tasks/stratum/easier.json"
+  "stratum_doc": "$REPO/tasks/stratum/easier.json"
 }

@@ -261,7 +261,7 @@ wholesale** (`sandbox.py:12-18`) — which is cheat 6's mechanism and why a memo
 special-cased one are indistinguishable.
 
 **Corpus location.** The 66 manifests exist only in the primary checkout
-(`/Users/aliz/dev/at/whetstone/tasks/local/`, gitignored, absent here). The runner takes a path
+(`$REPO/tasks/local/`, gitignored, absent here). The runner takes a path
 argument; manifests are **not** copied into the worktree (`whetstone-worktrees` discourages copying
 user data between worktrees).
 
