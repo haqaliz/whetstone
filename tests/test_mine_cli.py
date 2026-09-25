@@ -148,6 +148,36 @@ def test_the_recipe_names_the_donor_by_label_and_never_by_path(donor: Path, mine
     assert "/Users/" not in written, "an absolute home path appears in the committed recipe"
 
 
+def test_the_minted_task_id_carries_the_label_and_never_the_donors_own_name(mined: Path) -> None:
+    """The identifier is the leak the recipe's fix left behind (#57).
+
+    `--label` is documented as "a non-identifying name for this donor ... the donor's own name
+    is private and must not be used", and `mine()`'s own docstring says why it carries no
+    default: "the only default available is the donor's own directory name -- which is the
+    user's private repository name". The recipe honoured that. The task id did not, and the id
+    is what reaches every manifest, every ledger, the held-out document and every published
+    report -- so a corpus whose directories are gitignored still published the name.
+
+    The fixture donor's directory is `donor` and its label is `donor-x`, which is what makes the
+    two distinguishable here: the defect mints `donor-<sha>`, the fix `donor-x-<sha>`.
+    """
+    task = load_tasks(mined / "local" / "donor")[0]
+
+    assert task.task_id.startswith("donor-x-"), (
+        f"WHY THIS IS A FAILURE: the task id is {task.task_id!r}, which is minted from the "
+        "donor's own directory name rather than from the operator's label. That id is copied "
+        "into committed evidence, so the private name is published by every night that draws "
+        "the task"
+    )
+    assert task.provenance["donor"] == "donor-x", (
+        f"the manifest's provenance records {task.provenance['donor']!r}; the donor's own name "
+        "is private and the label is what the recipe already records"
+    )
+    # No bare-name sweep of the document, for the reason the recipe's own test records: this
+    # suite's fixture donor is *called* `donor`, which is also the field's name, so a substring
+    # check would fail on the correct output. The two assertions above are exact.
+
+
 def test_the_ledger_entry_is_the_hash_of_the_manifest_that_was_written(mined: Path) -> None:
     """The evidence has to be about the file that is actually there.
 

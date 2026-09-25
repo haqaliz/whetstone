@@ -203,6 +203,7 @@ def mine(
                     location,
                     candidate,
                     destination,
+                    label=label,
                     scratch=workspace / candidate.sha[:_ID_SHA_LENGTH],
                     timeout=timeout,
                     clock=clock,
@@ -238,6 +239,7 @@ def _mint(
     candidate: Candidate,
     out: Path,
     *,
+    label: str,
     scratch: Path,
     timeout: float,
     clock: Clock,
@@ -285,7 +287,12 @@ def _mint(
     # Written to scratch and proved there. Only a task that has passed liveness is copied into
     # the corpus, because `load_tasks` refuses to skip anything it finds — an unproven manifest
     # sitting in the corpus directory would be verified as though somebody had vouched for it.
-    task_id = f"{donor.name}-{candidate.sha[:_ID_SHA_LENGTH]}"
+    # The label, never `donor.name` (#57). `mine()`'s docstring states the reason this
+    # parameter has no default: the only default available is the donor's own directory name,
+    # which is the user's private repository name. The recipe honoured that from the start; the
+    # id did not, and the id is what reaches every manifest, ledger, held-out document and
+    # published report -- so a gitignored corpus directory published the name anyway.
+    task_id = f"{label}-{candidate.sha[:_ID_SHA_LENGTH]}"
     staged = scratch / f"{task_id}.json"
     staged.write_text(
         json.dumps(
@@ -294,6 +301,7 @@ def _mint(
                 candidate,
                 derived,
                 captured,
+                label=label,
                 held=held,
                 task_id=task_id,
                 minted_at=clock(),
@@ -326,6 +334,7 @@ def manifest_for(
     derived: Derived,
     captured: Captured,
     *,
+    label: str,
     held: Sequence[str],
     task_id: str,
     minted_at: str,
@@ -353,7 +362,7 @@ def manifest_for(
         for path in held
     }
     provenance = {
-        "donor": donor.name,
+        "donor": label,
         "commit": candidate.sha,
         "parent": candidate.parent,
         "pass_to_pass_scope": PASS_TO_PASS_SCOPE,
