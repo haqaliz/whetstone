@@ -265,6 +265,7 @@ def _record_backend(checkpoint: Any, name: str) -> None:
     raw = json.loads(document.read_text(encoding="utf-8"))
     raw["backend"] = {
         "device": "cpu",
+        "device_memory_bytes": 16637317120,
         "library": "torch",
         "name": name,
         "version": "2.14.0+cpu",
@@ -304,4 +305,41 @@ def test_the_door_dispatches_the_engine_on_the_checkpoints_own_recorded_backend(
         "WHY THIS IS A FAILURE: the door did not dispatch on the candidate's own backend. "
         "`gate_engine_for` is unreachable from the command, so the runtime that scores a "
         "candidate is whichever one the CLI names rather than the one that trained it"
+    )
+
+
+def test_the_promotion_record_names_the_runtime_that_actually_ran(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The record must not name a library the comparison never loaded (#61).
+
+    `ledger.tool_versions()` records `mlx-lm` unconditionally unless it is given a backend —
+    the #33 inaccuracy — and the gate called it bare, so a Torch comparison on a host without
+    MLX wrote `"mlx-lm": "0.31.3"` into `runs/promotions/<id>.json`. That document is evidence:
+    it is what says which runtime a gated comparison was measured under.
+
+    The gate already knows. It selects its engine from the candidate's own recorded backend
+    (`gate_engine_for`, #56), so the same record is what the versions block should follow —
+    and then the two cannot disagree.
+    """
+    from whetstone.loop import torch_runtime
+
+    fixtures = _gate_fixtures(tmp_path, incumbent_solve=6)
+    _record_backend(fixtures["candidate"], "torch-cpu")
+    _record_backend(fixtures["incumbent"], "torch-cpu")
+    monkeypatch.setattr(torch_runtime, "torch_gate_engine", fixtures["engine"])
+
+    assert cli.main(_argv(fixtures)) == cli.PASS_EXIT
+
+    record = json.loads(
+        fixtures["runs"].joinpath("promotions", "gate-001.json").read_text(encoding="utf-8")
+    )
+    versions = record["tool_versions"]
+
+    assert "mlx-lm" not in versions, (
+        "WHY THIS IS A FAILURE: the promotion record names `mlx-lm` for a comparison whose "
+        f"candidate records Torch. The record says what the comparison ran under: {versions}"
+    )
+    assert versions.get("torch") == "2.14.0+cpu", (
+        f"the record does not name the runtime the candidate was trained under: {versions}"
     )

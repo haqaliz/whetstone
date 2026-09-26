@@ -73,6 +73,7 @@ from whetstone.bakeoff.weights import (
     WeightsUnverified,
     load_weights,
 )
+from whetstone.loop.backend import Backend as BackendRecord
 from whetstone.loop.heldout import (
     EmptyHeldout,
     HeldoutDigestMismatch,
@@ -812,7 +813,7 @@ def run_gate(
         retries=retries,
         retryable=retryable,
         retry_count=RETRY_COUNT,
-        tool_versions=tool_versions(),
+        tool_versions=tool_versions(backend=_runtime_of(candidate_checkpoint)),
     )
     return GateOutcome(
         decision=decision,
@@ -1416,6 +1417,32 @@ def _heldout_tasks(membership: Sequence[str], tasks: Sequence[Task]) -> tuple[Ta
     members = set(membership)
     return tuple(task for task in tasks if task.task_id in members)
 
+
+
+def _runtime_of(checkpoint: Checkpoint) -> BackendRecord | None:
+    """The runtime a checkpoint records it was trained under, for the versions block (#61).
+
+    `ledger.tool_versions()` names `mlx-lm` unconditionally unless it is given a backend — the
+    #33 inaccuracy — so a Torch comparison on a host that never had MLX wrote that library into
+    its own promotion record. The record is evidence: it is what says which runtime a gated
+    comparison was measured under, and naming one it never loaded makes the versions block and
+    the backend block disagree.
+
+    Read from the **candidate**, for `gate_engine_for`'s reason: the candidate is always trained
+    (an untrained one is refused), so it is the side that carries the answer, and the incumbent
+    either agrees or is untrained and has no runtime of its own. A checkpoint recording no
+    backend yields `None`, which leaves the historical behaviour exactly as it was rather than
+    guessing at a runtime the provenance does not name.
+    """
+    recorded = checkpoint.backend
+    if not recorded:
+        return None
+    try:
+        return BackendRecord(**recorded)
+    except TypeError:
+        # A provenance whose backend block is not this dataclass's shape is a record from
+        # another version, not a reason to refuse a comparison that has already been scored.
+        return None
 
 def _base_for(checkpoint: Checkpoint, fetched: Sequence[Weights], label: str) -> Weights:
     """The base a checkpoint names, resolved against the verified weights provenance."""
