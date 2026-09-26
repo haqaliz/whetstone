@@ -33,7 +33,7 @@ The two skills use slightly different type vocabularies — map before invoking:
 | `feat` | `feature` |
 | `feature` | `feature` |
 
-Example: `we bug 12` → invoke `whetstone-report` with `bug` + `12` → writes `/Users/aliz/Desktop/bug-12-completion.md`.
+Example: `we bug 12` → invoke `whetstone-report` with `bug` + `12` → writes `~/Desktop/bug-12-completion.md`.
 
 `whetstone-report` fetches the issue via `gh` when reachable (otherwise works from the merged PR / what we just did) and produces the standard template. If it asks for a screenshot/video, provide one (or hand it to the user to attach), then confirm the file landed on Desktop.
 

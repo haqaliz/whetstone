@@ -4,6 +4,17 @@
 `plan_20260814.md`. Executed by the **operator** (aliz), on the primary checkout's machine;
 the post-run analysis is deterministic and agent-verifiable (A5).
 
+
+Every path below is anchored to `$REPO`, so export it first — an exported variable expands
+before the command runs, which is what makes the path the subprocess receives absolute:
+
+```bash
+export REPO=/absolute/path/to/whetstone   # the primary checkout, not a worktree
+```
+
+The operator's own path is not written here: a committed sheet that names one publishes a home
+directory, and a reader re-deriving this run has a different one.
+
 ## The candidate resolution (A2, resolved before this run, never at execution time)
 
 Read from the stored pre-analysis document `runs/format-hardening-preanalysis/ceiling.json`
@@ -48,7 +59,7 @@ reached a scored set.
    run dies at first generation with `MlxUnavailable`, whose message names the fix
    (`src/whetstone/bakeoff/mlx_runtime.py:261-270`).
 2. **The workspace must be empty at start** — delete
-   `/Users/aliz/dev/at/whetstone/runs/easier-stratum-workspace` and let the run recreate it;
+   `$REPO/runs/easier-stratum-workspace` and let the run recreate it;
    the rule is documentation-only in code (`run.py:753-759`), and a reused or partially-deleted
    workspace degrades silently into `UNVERIFIED`/`UNPROVISIONED`, never loudly.
 3. **Evidence is machine-level** — the run's outputs live under the primary's gitignored
@@ -59,7 +70,7 @@ reached a scored set.
    at launch time (it fired once, on 2026-08-15, against the sheet that still declared
    them).
 5. **The stratum document is verified present and committed at its path** —
-   `/Users/aliz/dev/at/whetstone/tasks/stratum/easier.json`, the aspect-1 document (schema
+   `$REPO/tasks/stratum/easier.json`, the aspect-1 document (schema
    `whetstone-stratum/1`). The loader refuses by name a document whose digest no longer
    matches (`StratumDigestMismatch`), and a degenerate or tiny stratum is a usage error or a
    finding, never a widened band (`prd.md:218-221`).
@@ -69,27 +80,27 @@ reached a scored set.
 
 ## The command
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`), executing the branch code via its project (`uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution`):**
+**Run with CWD at the primary checkout (`$REPO`), executing the branch code via its project (`uv run --project $REPO/.claude/worktrees/feat-stratum-probe-execution`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution \
+uv run --project $REPO/.claude/worktrees/feat-stratum-probe-execution \
   python -m whetstone.bakeoff.run \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
-  --public /Users/aliz/dev/at/whetstone/tasks/public/instances \
-  --pool /Users/aliz/dev/at/whetstone/tasks/public/pool.json \
-  --funnel /Users/aliz/dev/at/whetstone/tasks/public/ineligible.json \
-  --stratum /Users/aliz/dev/at/whetstone/tasks/stratum/easier.json \
-  --weights /Users/aliz/dev/at/whetstone/weights \
+  --tasks $REPO/tasks/local/donor-b \
+  --tasks $REPO/tasks/local/donor-a \
+  --public $REPO/tasks/public/instances \
+  --pool $REPO/tasks/public/pool.json \
+  --funnel $REPO/tasks/public/ineligible.json \
+  --stratum $REPO/tasks/stratum/easier.json \
+  --weights $REPO/weights \
   --only mlx-community/Qwen2.5-Coder-14B-Instruct-4bit \
   --only mlx-community/Qwen2.5-Coder-3B-Instruct-4bit \
-  --out /Users/aliz/dev/at/whetstone/runs/easier-stratum \
-  --workspace /Users/aliz/dev/at/whetstone/runs/easier-stratum-workspace \
+  --out $REPO/runs/easier-stratum \
+  --workspace $REPO/runs/easier-stratum-workspace \
   --timeout 900 \
   --recorded-on <declared-at-run-time> \
   --retries \
-  --journal /Users/aliz/dev/at/whetstone/runs/easier-stratum-evidence/journal.jsonl \
-  --transcript /Users/aliz/dev/at/whetstone/runs/easier-stratum-evidence/transcript.jsonl
+  --journal $REPO/runs/easier-stratum-evidence/journal.jsonl \
+  --transcript $REPO/runs/easier-stratum-evidence/transcript.jsonl
 ```
 
 Every flag verified against `run.py`'s parser (`build_parser`, `run.py:691-901`) at write
@@ -113,7 +124,7 @@ time. Notes on the choices:
 - **`--only` is passed exactly twice, with the retained pair from the resolution block** —
   the excluded candidate's share is not spent. The two names share no prefix, so the
   containment match (`run.py:396`) cannot collide.
-- **The donor roots are `belay/` (21 tasks) and `contig/` (45 tasks)** — the miner's
+- **The donor roots are `donor-b/` (21 tasks) and `donor-a/` (45 tasks)** — the miner's
   per-donor directories, verified on disk; `load_tasks` refuses the parent directory, so
   each donor is named separately.
 - **`--public` is the instances directory** (`tasks/public/instances/`, holding
@@ -128,7 +139,7 @@ time. Notes on the choices:
   `--out` is the published directory, and a transcript inside it is private donor code staged
   for publication by a path default (`TranscriptNotPrivate`, `run.py:939-960`). The report
   lands in `runs/easier-stratum/` (gitignored), the evidence in the sibling gitignored root.
-- **Workspace rules:** `/Users/aliz/dev/at/whetstone/runs/easier-stratum-workspace` must be
+- **Workspace rules:** `$REPO/runs/easier-stratum-workspace` must be
   **empty** at start (delete it and let the run recreate it; the run is not resumable from a
   partially deleted workspace), and it is never inside `--out`.
 - **`--recorded-on` is an input, never the clock**: the operator types the date the run
@@ -158,13 +169,13 @@ refuses it as corruption, never repaired (`src/whetstone/bakeoff/transcript.py:1
 `ContractChanged` abort voids the run with no recovery. Restart procedure:
 
 1. **Quarantine the dead evidence directory by name** — move
-   `/Users/aliz/dev/at/whetstone/runs/easier-stratum-evidence/` to
-   `/Users/aliz/dev/at/whetstone/runs/easier-stratum-evidence-dead-<date>/`; never delete it
+   `$REPO/runs/easier-stratum-evidence/` to
+   `$REPO/runs/easier-stratum-evidence-dead-<date>/`; never delete it
    (the 2026-08-12 precedent keeps its dead directory in place).
-2. **Fresh empty workspace** — delete `/Users/aliz/dev/at/whetstone/runs/easier-stratum-workspace`;
+2. **Fresh empty workspace** — delete `$REPO/runs/easier-stratum-workspace`;
    a fresh run is a fresh empty workspace (halt 3).
 3. **Fresh journal and transcript paths** — the restart's `--journal`/`--transcript` name a
-   new evidence directory (e.g. `/Users/aliz/dev/at/whetstone/runs/easier-stratum-evidence-2/`);
+   new evidence directory (e.g. `$REPO/runs/easier-stratum-evidence-2/`);
    never append to the dead transcript, never reuse the dead paths.
 4. Re-run the arm command unchanged apart from the paths above.
 
@@ -181,7 +192,7 @@ refuses it as corruption, never repaired (`src/whetstone/bakeoff/transcript.py:1
 
 ## Post-run analysis (agent-verifiable, offline)
 
-**Run with CWD at the primary checkout** (`/Users/aliz/dev/at/whetstone`), not the worktree
+**Run with CWD at the primary checkout** (`$REPO`), not the worktree
 root: the primary owns the gitignored store, and the analysis tooling refuses an `--out`
 outside the documented gitignored roots — `autopsy`, `preanalysis` and `comparison` gate
 (`IGNORED_OUT_ROOTS`, `src/whetstone/bakeoff/autopsy.py:716`, imported by identity);
@@ -189,20 +200,20 @@ outside the documented gitignored roots — `autopsy`, `preanalysis` and `compar
 operator discipline. Execute the worktree's branch code via its project:
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution \
+uv run --project $REPO/.claude/worktrees/feat-stratum-probe-execution \
   python -m whetstone.bakeoff.attribution \
   --transcript runs/easier-stratum-evidence/transcript.jsonl \
   --out runs/easier-stratum-evidence/attribution.json \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig
+  --tasks $REPO/tasks/local/donor-b \
+  --tasks $REPO/tasks/local/donor-a
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution \
+uv run --project $REPO/.claude/worktrees/feat-stratum-probe-execution \
   python -m whetstone.bakeoff.autopsy \
   --transcript runs/easier-stratum-evidence/transcript.jsonl \
   --attribution runs/easier-stratum-evidence/attribution.json \
   --out runs/diff-autopsy/easier-stratum-evidence.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution \
+uv run --project $REPO/.claude/worktrees/feat-stratum-probe-execution \
   python -m whetstone.bakeoff.preanalysis \
   --autopsy runs/diff-autopsy/arm-a.json \
   --autopsy runs/diff-autopsy/budget-2048.json \
@@ -210,19 +221,19 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-pro
   --autopsy runs/diff-autopsy/easier-stratum-evidence.json \
   --out runs/easier-stratum-preanalysis/ceiling-with-probe.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution \
+uv run --project $REPO/.claude/worktrees/feat-stratum-probe-execution \
   python -m whetstone.bakeoff.comparison \
   --journal runs/easier-stratum-evidence/journal.jsonl \
   --autopsy runs/diff-autopsy/easier-stratum-evidence.json \
   --preanalysis runs/easier-stratum-preanalysis/ceiling-with-probe.json \
   --out runs/easier-stratum-preanalysis/comparison.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-stratum-probe-execution \
+uv run --project $REPO/.claude/worktrees/feat-stratum-probe-execution \
   python -m whetstone.bakeoff.comparison --render-stratum-report \
   --arm easier-stratum \
   --journal runs/easier-stratum-evidence/journal.jsonl \
   --contract runs/easier-stratum/report.json \
-  --stratum-doc /Users/aliz/dev/at/whetstone/tasks/stratum/easier.json \
+  --stratum-doc $REPO/tasks/stratum/easier.json \
   --breakdown-home runs/easier-stratum-preanalysis/comparison.md \
   --recorded-on <declared-at-run-time> \
   --out reports/easier-stratum

@@ -27,7 +27,7 @@ shipped parser and the replacement wording held by the guard.
    `sft.write_baseline_checkpoint` **before** the gate (mirror the baseline measurement
    runbook's Step 2 command shape —
    `docs/planning/baseline-measurement/measurement-run/runbook.md:66-78` — its own path, e.g.
-   `/Users/aliz/dev/at/whetstone/checkpoints/incumbent-base-001`; the § 3 checkpoint may not
+   `$REPO/checkpoints/incumbent-base-001`; the § 3 checkpoint may not
    exist yet, since the baseline spend now runs *after* the first gated evaluation). The gate
    command's `--incumbent` (runbook.md:88-89) names that path.
 3. **The "needs two nights" paragraph (runbook.md:45-47) is replaced.** New wording states:

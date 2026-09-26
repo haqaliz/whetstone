@@ -23,12 +23,12 @@ Usage: `/whetstone-report bug 12` or `/whetstone-report feature task-verifier`.
 
 ## Output
 
-Markdown file saved to `/Users/aliz/Desktop/{type}-{id}-completion.md`.
+Markdown file saved to `~/Desktop/{type}-{id}-completion.md`.
 
 Examples:
-- `/Users/aliz/Desktop/bug-12-completion.md`
-- `/Users/aliz/Desktop/task-pin-uv-version-completion.md`
-- `/Users/aliz/Desktop/feature-task-verifier-completion.md`
+- `~/Desktop/bug-12-completion.md`
+- `~/Desktop/task-pin-uv-version-completion.md`
+- `~/Desktop/feature-task-verifier-completion.md`
 
 ## The template
 
@@ -86,7 +86,7 @@ Whetstone's whole product promise is that a reported gain is real and the model 
 3. **Check whether there's a real number.** If the work produced a measured delta or a caught-hack count, use the actual figure and say what it was measured on. If it didn't, say what the work enables instead. Never split the difference with a vague "notable improvement".
 4. **Pick the "See it live" target** that fits the work: the merged PR link, the dashboard page (e.g. `http://localhost:3000/...`) once it exists, or the exact CLI command a teammate would run (`uv run whetstone ...`). For loop-internal work with no visible surface yet, the PR is the honest answer — don't invent a demo that doesn't run.
 5. **Ask the user for a screenshot or short video** if one isn't already on hand.
-6. **Write** the note to `/Users/aliz/Desktop/{type}-{id}-completion.md` and tell the user it's ready.
+6. **Write** the note to `~/Desktop/{type}-{id}-completion.md` and tell the user it's ready.
 
 ## Optional: cross-check
 

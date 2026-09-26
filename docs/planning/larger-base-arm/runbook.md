@@ -5,6 +5,17 @@
 **operator** (aliz), on the primary checkout's machine; the post-run analysis is
 deterministic and agent-verifiable.
 
+
+Every path below is anchored to `$REPO`, so export it first — an exported variable expands
+before the command runs, which is what makes the path the subprocess receives absolute:
+
+```bash
+export REPO=/absolute/path/to/whetstone   # the primary checkout, not a worktree
+```
+
+The operator's own path is not written here: a committed sheet that names one publishes a home
+directory, and a reader re-deriving this run has a different one.
+
 ## The candidate resolution (A2, resolved before this run, never at execution time)
 
 The fork rule pre-committed by the easier-stratum unit routes the pivot's next response to a
@@ -64,7 +75,7 @@ members, so the overlay is declared, not dropped.
    run dies at first generation with `MlxUnavailable`, whose message names the fix
    (`src/whetstone/bakeoff/mlx_runtime.py:261-270`).
 3. **The workspace must be empty at start** — delete
-   `/Users/aliz/dev/at/whetstone/runs/larger-base-arm-workspace` and let the run recreate it;
+   `$REPO/runs/larger-base-arm-workspace` and let the run recreate it;
    the rule is documentation-only in code (`run.py:753-759`), and a reused or partially-deleted
    workspace degrades silently into `UNVERIFIED`/`UNPROVISIONED`, never loudly.
 4. **Evidence is machine-level** — the run's outputs live under the primary's gitignored
@@ -78,22 +89,22 @@ members, so the overlay is declared, not dropped.
 
 ## The probe pass (D7, before the arm)
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`), executing the branch code via its project (`uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base-arm`):**
+**Run with CWD at the primary checkout (`$REPO`), executing the branch code via its project (`uv run --project $REPO/.claude/worktrees/feat-larger-base-arm`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base-arm \
+uv run --project $REPO/.claude/worktrees/feat-larger-base-arm \
   python \
   -m whetstone.bakeoff.run \
   --probe <N-declared-at-run-time> \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
-  --public /Users/aliz/dev/at/whetstone/tasks/public/instances \
-  --pool /Users/aliz/dev/at/whetstone/tasks/public/pool.json \
-  --funnel /Users/aliz/dev/at/whetstone/tasks/public/ineligible.json \
-  --weights /Users/aliz/dev/at/whetstone/weights \
+  --tasks $REPO/tasks/local/donor-b \
+  --tasks $REPO/tasks/local/donor-a \
+  --public $REPO/tasks/public/instances \
+  --pool $REPO/tasks/public/pool.json \
+  --funnel $REPO/tasks/public/ineligible.json \
+  --weights $REPO/weights \
   --only mlx-community/Qwen2.5-Coder-32B-Instruct-4bit \
-  --out /Users/aliz/dev/at/whetstone/runs/larger-base-probe \
-  --workspace /Users/aliz/dev/at/whetstone/runs/larger-base-probe-workspace \
+  --out $REPO/runs/larger-base-probe \
+  --workspace $REPO/runs/larger-base-probe-workspace \
   --timeout 900 \
   --recorded-on <declared-at-run-time>
 ```
@@ -115,20 +126,20 @@ weights' 18.4 GB is the ROADMAP § 10 open question; the probe settles it by mea
 
 ## The arm command
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`), executing the branch code via its project (`uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base-arm`):**
+**Run with CWD at the primary checkout (`$REPO`), executing the branch code via its project (`uv run --project $REPO/.claude/worktrees/feat-larger-base-arm`):**
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base-arm \
+uv run --project $REPO/.claude/worktrees/feat-larger-base-arm \
   python -m whetstone.bakeoff.run \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
-  --public /Users/aliz/dev/at/whetstone/tasks/public/instances \
-  --pool /Users/aliz/dev/at/whetstone/tasks/public/pool.json \
-  --funnel /Users/aliz/dev/at/whetstone/tasks/public/ineligible.json \
-  --weights /Users/aliz/dev/at/whetstone/weights \
+  --tasks $REPO/tasks/local/donor-b \
+  --tasks $REPO/tasks/local/donor-a \
+  --public $REPO/tasks/public/instances \
+  --pool $REPO/tasks/public/pool.json \
+  --funnel $REPO/tasks/public/ineligible.json \
+  --weights $REPO/weights \
   --only mlx-community/Qwen2.5-Coder-32B-Instruct-4bit \
-  --out /Users/aliz/dev/at/whetstone/runs/larger-base-arm \
-  --workspace /Users/aliz/dev/at/whetstone/runs/larger-base-arm-workspace \
+  --out $REPO/runs/larger-base-arm \
+  --workspace $REPO/runs/larger-base-arm-workspace \
   --timeout 900 \
   --recorded-on <declared-at-run-time> \
   --retries \
@@ -137,8 +148,8 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base
   --dev-subset belay-3e3051c4192a \
   --dev-subset belay-844db07ed482 \
   --dev-subset belay-9dba3ea557f5 \
-  --journal /Users/aliz/dev/at/whetstone/runs/larger-base-arm-evidence/journal.jsonl \
-  --transcript /Users/aliz/dev/at/whetstone/runs/larger-base-arm-evidence/transcript.jsonl
+  --journal $REPO/runs/larger-base-arm-evidence/journal.jsonl \
+  --transcript $REPO/runs/larger-base-arm-evidence/transcript.jsonl
 ```
 
 Every flag verified against `run.py`'s parser (`build_parser`, `run.py:691-901`) at write
@@ -162,7 +173,7 @@ time. Notes on the choices:
   proved.
 - **`--only` is passed exactly once, with the retained candidate from the resolution block** —
   the excluded candidate's share is not spent.
-- **The donor roots are `belay/` (21 tasks) and `contig/` (45 tasks)** — the miner's
+- **The donor roots are `donor-b/` (21 tasks) and `donor-a/` (45 tasks)** — the miner's
   per-donor directories, verified on disk; `load_tasks` refuses the parent directory, so
   each donor is named separately.
 - **`--public` is the instances directory** (`tasks/public/instances/`, holding
@@ -177,7 +188,7 @@ time. Notes on the choices:
   `--out` is the published directory, and a transcript inside it is private donor code staged
   for publication by a path default (`TranscriptNotPrivate`, `run.py:939-960`). The report
   lands in `runs/larger-base-arm/` (gitignored), the evidence in the sibling gitignored root.
-- **Workspace rules:** `/Users/aliz/dev/at/whetstone/runs/larger-base-arm-workspace` must be
+- **Workspace rules:** `$REPO/runs/larger-base-arm-workspace` must be
   **empty** at start (delete it and let the run recreate it; the run is not resumable from a
   partially deleted workspace), and it is never inside `--out`.
 - **`--recorded-on` is an input, never the clock**: the operator types the date the run
@@ -213,13 +224,13 @@ refuses it as corruption, never repaired (`src/whetstone/bakeoff/transcript.py:1
 `ContractChanged` abort voids the run with no recovery. Restart procedure:
 
 1. **Quarantine the dead evidence directory by name** — move
-   `/Users/aliz/dev/at/whetstone/runs/larger-base-arm-evidence/` to
-   `/Users/aliz/dev/at/whetstone/runs/larger-base-arm-evidence-dead-<date>/`; never delete it
+   `$REPO/runs/larger-base-arm-evidence/` to
+   `$REPO/runs/larger-base-arm-evidence-dead-<date>/`; never delete it
    (the 2026-08-12 precedent keeps its dead directory in place).
-2. **Fresh empty workspace** — delete `/Users/aliz/dev/at/whetstone/runs/larger-base-arm-workspace`;
+2. **Fresh empty workspace** — delete `$REPO/runs/larger-base-arm-workspace`;
    a fresh run is a fresh empty workspace (halt 3).
 3. **Fresh journal and transcript paths** — the restart's `--journal`/`--transcript` name a
-   new evidence directory (e.g. `/Users/aliz/dev/at/whetstone/runs/larger-base-arm-evidence-2/`);
+   new evidence directory (e.g. `$REPO/runs/larger-base-arm-evidence-2/`);
    never append to the dead transcript, never reuse the dead paths.
 4. Re-run the arm command unchanged apart from the paths above.
 
@@ -239,7 +250,7 @@ refuses it as corruption, never repaired (`src/whetstone/bakeoff/transcript.py:1
 
 ## Post-run analysis (agent-verifiable, offline)
 
-**Run with CWD at the primary checkout** (`/Users/aliz/dev/at/whetstone`), not the worktree
+**Run with CWD at the primary checkout** (`$REPO`), not the worktree
 root: the primary owns the gitignored store, and the analysis tooling refuses an `--out`
 outside the documented gitignored roots — `autopsy`, `preanalysis` and `comparison` gate
 (`IGNORED_OUT_ROOTS`, `src/whetstone/bakeoff/autopsy.py:716`, imported by identity);
@@ -247,20 +258,20 @@ outside the documented gitignored roots — `autopsy`, `preanalysis` and `compar
 operator discipline. Execute the worktree's branch code via its project:
 
 ```bash
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base-arm \
+uv run --project $REPO/.claude/worktrees/feat-larger-base-arm \
   python -m whetstone.bakeoff.attribution \
   --transcript runs/larger-base-arm-evidence/transcript.jsonl \
   --out runs/larger-base-arm-evidence/attribution.json \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig
+  --tasks $REPO/tasks/local/donor-b \
+  --tasks $REPO/tasks/local/donor-a
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base-arm \
+uv run --project $REPO/.claude/worktrees/feat-larger-base-arm \
   python -m whetstone.bakeoff.autopsy \
   --transcript runs/larger-base-arm-evidence/transcript.jsonl \
   --attribution runs/larger-base-arm-evidence/attribution.json \
   --out runs/diff-autopsy/larger-base-arm-evidence.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base-arm \
+uv run --project $REPO/.claude/worktrees/feat-larger-base-arm \
   python -m whetstone.bakeoff.preanalysis \
   --autopsy runs/diff-autopsy/arm-a.json \
   --autopsy runs/diff-autopsy/budget-2048.json \
@@ -269,14 +280,14 @@ uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base
   --autopsy runs/diff-autopsy/larger-base-arm-evidence.json \
   --out runs/larger-base-preanalysis/ceiling-with-arm.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base-arm \
+uv run --project $REPO/.claude/worktrees/feat-larger-base-arm \
   python -m whetstone.bakeoff.comparison \
   --journal runs/larger-base-arm-evidence/journal.jsonl \
   --autopsy runs/diff-autopsy/larger-base-arm-evidence.json \
   --preanalysis runs/larger-base-preanalysis/ceiling-with-arm.json \
   --out runs/larger-base-preanalysis/comparison.json
 
-uv run --project /Users/aliz/dev/at/whetstone/.claude/worktrees/feat-larger-base-arm \
+uv run --project $REPO/.claude/worktrees/feat-larger-base-arm \
   python -m whetstone.bakeoff.comparison --render-larger-base-report \
   --arm larger-base-arm \
   --journal runs/larger-base-arm-evidence/journal.jsonl \

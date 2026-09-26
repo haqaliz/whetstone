@@ -10,6 +10,57 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The donor's identity leaves the committed tree — most of it** (2026-09-26). `whetstone mine
+--label` has always been documented as *"a non-identifying name for this donor ... the donor's
+own name is private and must not be used"*, and `mine()`'s docstring explains why the parameter
+carries no default: *"the only default available is the donor's own directory name — which is
+the user's private repository name."* Two lines used it anyway. `_mint` built the task id as
+`f"{donor.name}-{sha}"` and `manifest_for` recorded `provenance["donor"] = donor.name`, where
+`donor` is a `Path` to the repository. The recipe honoured the label from the start and has a
+test guarding it; the **identifier** was missed, and the identifier is what propagates — into
+every manifest, every ledger, the held-out document and every published report. `tasks/local/`
+being gitignored never helped, because the leak was never the directory. Fixed in #58.
+
+**What this change removes.** Every absolute home path in the tree: 44 tracked files carried
+`/Users/<operator>/...`, including three `.claude/skills/*.md`, both operator runbooks, and
+`reports/easier-stratum/report.json`'s `stratum_doc` field. **Zero remain.** The two donor
+repositories' own paths, the `tasks/local/<private>` directory references, and the prose in this
+file, `CHANGELOG.md` and three planning documents that named the donors outright are now the
+operator's labels, `donor-a` and `donor-b`. No figure moved: the substitutions are naming only,
+and the counts they sit beside (21 and 45, 4 and 15) are unchanged.
+
+**The runbooks needed a guard change to make that safe, not a guard waiver.** Both sheets are
+required to pass absolute paths, because *"a relative path is the failure that killed the
+measured arm on 2026-08-12"* — a relative workspace does not resolve in the provisioning
+subprocesses and a whole night came back `UNPROVISIONED`. Replacing one operator's absolute path
+with `$REPO/...` would have read to those guards as exactly that failure. So the sheets now
+**export** `REPO` before the first door runs, and the guards accept a value that is either
+literally absolute or anchored to it — the distinction the 2026-08-12 failure actually turns on
+is not the leading slash but what the subprocess receives, and an exported variable is expanded
+by the shell before the command starts. A new guard in each sheet asserts the export is still
+there, because an unset `REPO` expands to nothing and would put every path back to relative with
+no leading slash left for the other guards to catch. It was confirmed to fail when the export is
+removed.
+
+**What this change does NOT remove, and why.** **66 task identifiers of the form
+`<private>-<sha>` remain** in `tasks/heldout/source-b.json`, `tasks/stratum/easier.json`,
+`tasks/local-ledger.json`, three sealed `reports/*/report.json`, and the documents that quote
+them. They were left deliberately. `membership` is inside `_DIGESTED_FIELDS`, so renaming those
+ids changes `document_digest` — and the loader refuses a mismatch *by design*, which is the
+guard against a hand-edited membership. `tasks/local-ledger.json` binds each id to a
+`manifest_sha256` over a manifest whose content *is* that id. Renaming does not redact a label;
+it **forks the corpus identity** and breaks the chain tying every published figure to the inputs
+it was measured on. Doing it honestly means re-minting from the donors under `--label` and
+accepting that all prior figures describe a superseded corpus. That is a corpus decision, not a
+redaction, and it is not taken here.
+
+**The history is not rewritten.** Roughly 29 commits, earliest `213d5e8`, contain the old
+identifiers. Removing them needs a force-push that invalidates every commit sha — and this log,
+`CHANGELOG.md` and the planning documents cite their own shas throughout. The exposure is two
+repository names, weighed against breaking every citation in the tree and every existing clone.
+Recorded here rather than quietly left, so a reader who finds the old names in `git log` knows
+it was a decision.
+
 **Night #4: the easiest band answers the roadmap's own question, and the answer is no**
 (2026-09-14). `docs/ROADMAP.md` P2 pre-committed two responses to a corpus whose strict-`PASS` yield
 is ~0 — *"stratify by difficulty or raise k"* — and three nights had taken neither. This night took
@@ -685,7 +736,8 @@ candidate's ceiling is **zero**, its `im-start-loop` wall, which is a per-candid
 rather than a tie (the dig predicted exactly that shape). The ceiling is material, so the
 arm's halt condition did not fire and the runbook is written: `--retries` is now a real CLI
 flag (the switch existed in `conduct` but was unreachable — exposed, with the parser and
-wiring tests watched failing first), the donor roots are the real names (`belay`, `contig`),
+wiring tests watched failing first), the donor roots are the operator's own labels
+(`donor-b`, `donor-a`),
 and the journal and transcript live in a sibling evidence directory because the harness
 refuses a transcript under `--out` — exactly as it should. **The post-run read is now a
 measurement too** (`src/whetstone/bakeoff/comparison.py`, schema `whetstone-comparison/1`,
@@ -737,7 +789,7 @@ document is committed at `tasks/stratum/easier.json` (schema `whetstone-stratum/
 probe's pinned input: rule digest (rule source + band, so any rule edit invalidates the
 document by design), band, the 66-task corpus, per-task difficulty (files/hunks/
 added/deleted plus the manifest tie-breaks f2p/pins/blobs), refusals, a **19-task
-membership** (4 belay, 15 contig), and a `document_digest` the loader refuses a hand-edit
+membership** (4 donor-b, 15 donor-a), and a `document_digest` the loader refuses a hand-edit
 of. The loader is fail-closed by name — `UnknownStratumId`, `EmptyStratum` (empty or
 whole-corpus, in the writer as well), `StratumSchemaError`, `StratumDigestMismatch` — and
 the membership recomputation test re-derives the document from the machine corpus field by

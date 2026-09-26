@@ -2,7 +2,18 @@
 
 **Unit:** `baseline-measurement` · **Aspect:** `measurement-run` · **Branch:**
 `feat/baseline-measurement/aliz` · **Run from:**
-`/Users/aliz/dev/at/whetstone` (the primary checkout)
+`$REPO` (the primary checkout)
+
+
+Every path below is anchored to `$REPO`, so export it first — an exported variable expands
+before the command runs, which is what makes the path the subprocess receives absolute:
+
+```bash
+export REPO=/absolute/path/to/whetstone   # the primary checkout, not a worktree
+```
+
+The operator's own path is not written here: a committed sheet that names one publishes a home
+directory, and a reader re-deriving this run has a different one.
 
 The operator's sheet for the single GPU pass that spends the `PREREGISTRATION.md` § 3 baseline —
 the untrained open base scored on the held-out split, **measured once, re-measured never**
@@ -20,7 +31,7 @@ base the night runbook retained on its evidence
 first nonzero strict-PASS yield this harness has ever measured, and the fork rule
 pre-committed in the larger-base arm's PRD routed to the rollouts slice on exactly that
 result (`docs/planning/larger-base-arm/finding.md`). The revision is the one recorded in the
-weights root's provenance (`/Users/aliz/dev/at/whetstone/weights/provenance.json`).
+weights root's provenance (`$REPO/weights/provenance.json`).
 
 **§ 7.3 stays open.** This measurement fixes the series the § 3 baseline is measured over;
 it is not a base selection, and nothing in this sheet closes the pre-registration's "which
@@ -35,13 +46,13 @@ measurement it governs runs.
    (`src/whetstone/bakeoff/mlx_runtime.py:261-270`).
 2. **Verify the machinery first** (Step 1 below). A machinery regression must be found
    before the single spend is committed to it.
-3. **Empty the workspace.** `/Users/aliz/dev/at/whetstone/runs/baseline-001-workspace`
+3. **Empty the workspace.** `$REPO/runs/baseline-001-workspace`
    must not exist or must be empty. The measurement resumes nothing.
 4. **Materialize the untrained checkpoint** (Step 2 below) — the aspect-1 writer, from the
    weights root's provenance.
 5. **Evidence is machine-level.** The measurement's outputs live under the primary's
    gitignored `runs/`; evidence is never copied between checkouts. The weights root is
-   `/Users/aliz/dev/at/whetstone/weights`.
+   `$REPO/weights`.
 6. **Declare the inputs.** `--recorded-on` and `--run-id` are typed by the operator and
    written down in the operator's own log. Neither is read from a clock or generated: a
    record that dated or named itself would differ between two renders of the same documented
@@ -55,7 +66,7 @@ stub engine, on fixtures. This costs no GPU and takes a few minutes. **Halt if t
 green**: a red fixture suite means the door is not the door this sheet describes, and no
 result it produces on the real pass may be recorded.
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
+**Run with CWD at the primary checkout (`$REPO`):**
 
 ```bash
 uv run pytest tests/loop/test_baseline_door.py tests/loop/test_baseline_document.py tests/bakeoff/test_baseline_report.py -q
@@ -68,7 +79,7 @@ untrained base as a `whetstone-checkpoint/1` provenance over no adapter, from th
 root's provenance — the 32B's `repo_id` and its immutable revision:
 
 ```bash
-uv run python -c "from pathlib import Path; from whetstone.loop.ledger import tool_versions; from whetstone.loop.sft import write_baseline_checkpoint; write_baseline_checkpoint(Path('/Users/aliz/dev/at/whetstone/checkpoints/baseline-001'), repo_id='mlx-community/Qwen2.5-Coder-32B-Instruct-4bit', revision='<the revision recorded in /Users/aliz/dev/at/whetstone/weights/provenance.json>', tool_versions=tool_versions())"
+uv run python -c "from pathlib import Path; from whetstone.loop.ledger import tool_versions; from whetstone.loop.sft import write_baseline_checkpoint; write_baseline_checkpoint(Path('$REPO/checkpoints/baseline-001'), repo_id='mlx-community/Qwen2.5-Coder-32B-Instruct-4bit', revision='<the revision recorded in $REPO/weights/provenance.json>', tool_versions=tool_versions())"
 ```
 
 The directory must be empty at materialization — the writer refuses a checkpoint that would
@@ -76,20 +87,20 @@ record an adapter beside a base that never trained.
 
 ## Step 3 — the measurement
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
+**Run with CWD at the primary checkout (`$REPO`):**
 
 ```bash
 uv run python -m whetstone.loop.baseline \
-  --weights /Users/aliz/dev/at/whetstone/weights \
-  --checkpoint /Users/aliz/dev/at/whetstone/checkpoints/baseline-001 \
-  --heldout /Users/aliz/dev/at/whetstone/tasks/heldout/source-b.json \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
-  --public /Users/aliz/dev/at/whetstone/tasks/public/instances \
-  --pool /Users/aliz/dev/at/whetstone/tasks/public/pool.json \
-  --runs /Users/aliz/dev/at/whetstone/runs \
-  --workspace /Users/aliz/dev/at/whetstone/runs/baseline-001-workspace \
-  --out /Users/aliz/dev/at/whetstone/reports/baseline-measurement \
+  --weights $REPO/weights \
+  --checkpoint $REPO/checkpoints/baseline-001 \
+  --heldout $REPO/tasks/heldout/source-b.json \
+  --tasks $REPO/tasks/local/donor-b \
+  --tasks $REPO/tasks/local/donor-a \
+  --public $REPO/tasks/public/instances \
+  --pool $REPO/tasks/public/pool.json \
+  --runs $REPO/runs \
+  --workspace $REPO/runs/baseline-001-workspace \
+  --out $REPO/reports/baseline-measurement \
   --timeout 900 \
   --recorded-on <declared-at-run-time> \
   --run-id baseline-001
@@ -161,9 +172,9 @@ Read, in this order:
 
 ```bash
 uv run python -m whetstone.loop.baseline \
-  --render /Users/aliz/dev/at/whetstone/runs/baseline-001/evidence.json \
-  --checkpoint /Users/aliz/dev/at/whetstone/checkpoints/baseline-001 \
-  --out /Users/aliz/dev/at/whetstone/reports/baseline-measurement \
+  --render $REPO/runs/baseline-001/evidence.json \
+  --checkpoint $REPO/checkpoints/baseline-001 \
+  --out $REPO/reports/baseline-measurement \
   --recorded-on <declared-at-run-time>
 ```
 

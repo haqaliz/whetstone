@@ -35,7 +35,7 @@ INVOCATION = [
     "run",
     "--night",
     "--tasks",
-    "/tmp/tasks/belay",
+    "/tmp/tasks/donor-b",
     "--public",
     "/tmp/tasks/public",
     "--pool",
@@ -135,7 +135,7 @@ def test_the_door_passes_every_declared_input_through_to_the_loop(
     assert len(calls) == 1, calls
     passed = calls[0]
     assert passed["run_seed"] == 20260820 and passed["run_id"] == "night-001"
-    assert passed["tasks"] == [Path("/tmp/tasks/belay")]
+    assert passed["tasks"] == [Path("/tmp/tasks/donor-b")]
     assert passed["runs"] == Path("/tmp/runs") and passed["checkpoints"] == Path("/tmp/checkpoints")
     assert passed["recorded_on"] == "2026-08-20" and passed["timeout"] == 900.0
     assert passed["retries"] is True, (

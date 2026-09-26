@@ -19,9 +19,9 @@ pin.
 
 - The runbook's probe-pass section:
   - the third bash block invokes `uv run --project <worktree> whetstone check-probe --run
-    /Users/aliz/dev/at/whetstone/runs/night-probe/probe-001` — the same worktree, absolute
+    $REPO/runs/night-probe/probe-001` — the same worktree, absolute
     `--run`, naming the probe run dir the preceding block wrote (`--runs
-    /Users/aliz/dev/at/whetstone/runs/night-probe`, `--run-id probe-001`);
+    $REPO/runs/night-probe`, `--run-id probe-001`);
   - the block appears **before** the night's block in the sheet;
   - the decision-rule paragraph states the two conditions in the pre-committed words (control
     arm `PASS` on every draw; non-empty seed map) and what each exit means (0 → proceed;
@@ -49,7 +49,7 @@ pin.
 ## Acceptance criteria (testable, written first)
 
 1. The runbook contains a `check-probe` bash block before the night block, with `--run` only,
-   absolute, pointing at `/Users/aliz/dev/at/whetstone/runs/night-probe/probe-001`.
+   absolute, pointing at `$REPO/runs/night-probe/probe-001`.
 2. The decision-rule paragraph states both conditions in the pre-committed words and the
    exit meaning (0 proceed / 1 no night / 2 not a verdict); a paragraph that drops a condition
    or the exit meaning fails the pin.

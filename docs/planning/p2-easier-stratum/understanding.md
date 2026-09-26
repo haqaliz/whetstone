@@ -32,9 +32,9 @@ PRD R9), and the larger-base arm is the named next response if the premise is re
   that is both discriminating and not outcome-derived. Census of all 66 source-B manifests
   (`tasks/local/`, gitignored, in the primary): `fail_to_pass` cardinality `{1: 23, 2: 16, 3: 7,
   4: 3, 5: 6, 6: 4, 8: 4, 10: 2, 15: 1}`; `pass_to_pass` 0 (2 tasks) to 227; `test_blobs`
-  `{1: 38, 2: 23, 3: 3, 4: 2}`; `environment.pins` `{16: 8, 19: 37, 40: 21}` (belay 40, contig
-  16/19); `import_roots` exactly 1 in all 66; donors split belay 21 / contig 45 (21 belay
-  manifests carry the `tests/conftest.py` floor blob, contig none). Manifest schema is **closed**
+  `{1: 38, 2: 23, 3: 3, 4: 2}`; `environment.pins` `{16: 8, 19: 37, 40: 21}` (donor-b 40, donor-a
+  16/19); `import_roots` exactly 1 in all 66; donors split donor-b 21 / donor-a 45 (21 donor-b
+  manifests carry the `tests/conftest.py` floor blob, donor-a none). Manifest schema is **closed**
   (`src/whetstone/verify/task.py:77-90`): a new per-task field is a contract change; `provenance`
   is the only free-form slot (str→str).
 - **The reference (gold) patch is not stored** in source-B manifests, recipes, or the ledger.

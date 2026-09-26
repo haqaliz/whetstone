@@ -1,7 +1,16 @@
 # Runbook — the first gated evaluation (`whetstone gate`)
 
 **Unit:** `p3-promotion-gate` · **Aspect:** `gate-runbook` · **Branch:** `feat/gate-untrained-incumbent/aliz` ·
-**Run from:** `/Users/aliz/dev/at/whetstone` (the primary checkout)
+**Run from:** the primary checkout. Every path below is anchored to `$REPO`, so export it
+first — an exported variable expands before the command runs, which is what makes the path the
+subprocess receives absolute:
+
+```bash
+export REPO=/absolute/path/to/whetstone   # the primary checkout, not a worktree
+```
+
+The operator's own path is not written here: a committed sheet that names one publishes a
+home directory, and a reader re-deriving this run has a different one.
 
 The operator's sheet for the first evaluation that decides whether a night's candidate may
 replace the incumbent. Every command here is run verbatim. A sheet that disagrees with the code
@@ -34,10 +43,10 @@ symlink or a `latest/` directory would make the promotion record's provenance de
 state of a filesystem rather than on what the operator chose.
 
 - **Candidate:** the checkpoint written by the night under evaluation —
-  `/Users/aliz/dev/at/whetstone/checkpoints/night-002`.
+  `$REPO/checkpoints/night-002`.
 - **Incumbent:** the checkpoint the candidate must beat — the **untrained base** the night
   started from, materialized by the checkpoint writer in Step 2 below —
-  `/Users/aliz/dev/at/whetstone/checkpoints/incumbent-base-001`.
+  `$REPO/checkpoints/incumbent-base-001`.
 
 **§ 7.3 stays open.** The incumbent is the 32B (`mlx-community/Qwen2.5-Coder-32B-Instruct-4bit`),
 the runbook-resolved candidate the night runbook retained on its evidence
@@ -61,7 +70,7 @@ never reconciled.
    `mlx-lm`, which samples from process-global `mx.random` state. Run nothing else on the device
    beside it. The gate is greedy (`sampler_for(1)`), so this is about throughput and about not
    perturbing a concurrent night, not about the gate's own determinism.
-2. **Empty the workspace.** `/Users/aliz/dev/at/whetstone/runs/gate-001-workspace` must not exist
+2. **Empty the workspace.** `$REPO/runs/gate-001-workspace` must not exist
    or must be empty. The gate resumes nothing.
 3. **Declare the inputs.** `--recorded-on` and `--run-id` are typed by the operator and written
    down in the operator's own log. Neither is read from a clock or generated: a record that dated
@@ -78,7 +87,7 @@ path — `verify_checkpoint`, the held-out loader, the scoring harness, the retr
 the three exits — under the stub engine, on fixture checkpoints built by `write_checkpoint`
 itself. This costs no GPU and takes a few minutes.
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
+**Run with CWD at the primary checkout (`$REPO`):**
 
 ```bash
 uv run pytest tests/loop/test_gate.py tests/loop/test_gate_cli.py tests/loop/test_gate_retry.py -q
@@ -94,7 +103,7 @@ untrained base as a `whetstone-checkpoint/1` provenance over no adapter, from th
 root's provenance — the 32B's `repo_id` and its immutable revision:
 
 ```bash
-uv run python -c "from pathlib import Path; from whetstone.loop.ledger import tool_versions; from whetstone.loop.sft import write_baseline_checkpoint; write_baseline_checkpoint(Path('/Users/aliz/dev/at/whetstone/checkpoints/incumbent-base-001'), repo_id='mlx-community/Qwen2.5-Coder-32B-Instruct-4bit', revision='<the revision recorded in /Users/aliz/dev/at/whetstone/weights/provenance.json>', tool_versions=tool_versions())"
+uv run python -c "from pathlib import Path; from whetstone.loop.ledger import tool_versions; from whetstone.loop.sft import write_baseline_checkpoint; write_baseline_checkpoint(Path('$REPO/checkpoints/incumbent-base-001'), repo_id='mlx-community/Qwen2.5-Coder-32B-Instruct-4bit', revision='<the revision recorded in $REPO/weights/provenance.json>', tool_versions=tool_versions())"
 ```
 
 The directory must be empty at materialization — the writer refuses a checkpoint that would
@@ -102,20 +111,20 @@ record an adapter beside a base that never trained.
 
 ## Step 3 — the gated evaluation
 
-**Run with CWD at the primary checkout (`/Users/aliz/dev/at/whetstone`):**
+**Run with CWD at the primary checkout (`$REPO`):**
 
 ```bash
 uv run whetstone gate \
-  --candidate /Users/aliz/dev/at/whetstone/checkpoints/night-002 \
-  --incumbent /Users/aliz/dev/at/whetstone/checkpoints/incumbent-base-001 \
-  --heldout /Users/aliz/dev/at/whetstone/tasks/heldout/source-b.json \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/belay \
-  --tasks /Users/aliz/dev/at/whetstone/tasks/local/contig \
-  --public /Users/aliz/dev/at/whetstone/tasks/public/instances \
-  --pool /Users/aliz/dev/at/whetstone/tasks/public/pool.json \
-  --weights /Users/aliz/dev/at/whetstone/weights \
-  --runs /Users/aliz/dev/at/whetstone/runs \
-  --workspace /Users/aliz/dev/at/whetstone/runs/gate-001-workspace \
+  --candidate $REPO/checkpoints/night-002 \
+  --incumbent $REPO/checkpoints/incumbent-base-001 \
+  --heldout $REPO/tasks/heldout/source-b.json \
+  --tasks $REPO/tasks/local/donor-b \
+  --tasks $REPO/tasks/local/donor-a \
+  --public $REPO/tasks/public/instances \
+  --pool $REPO/tasks/public/pool.json \
+  --weights $REPO/weights \
+  --runs $REPO/runs \
+  --workspace $REPO/runs/gate-001-workspace \
   --timeout 900 \
   --recorded-on 2026-08-25 \
   --run-id promote-001
@@ -175,8 +184,8 @@ Run it over the night that produced the **candidate**:
 
 ```bash
 uv run whetstone check-leakage \
-  --run /Users/aliz/dev/at/whetstone/runs/night-002 \
-  --heldout /Users/aliz/dev/at/whetstone/tasks/heldout/source-b.json
+  --run $REPO/runs/night-002 \
+  --heldout $REPO/tasks/heldout/source-b.json
 ```
 
 Exit 0 is required. Exit 1 names the leaked task and is **evidence of a regression in the
@@ -187,7 +196,7 @@ promotion whose leakage was never checked is a promotion nobody may quote.
 ## Step 5 — read the record back
 
 ```bash
-cat /Users/aliz/dev/at/whetstone/runs/promotions/promote-001.json
+cat $REPO/runs/promotions/promote-001.json
 ```
 
 Into the operator's log, from the record itself and never from memory:

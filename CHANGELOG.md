@@ -1076,7 +1076,7 @@ released version until it exists in the code.
   the flag is exposed with parser and wiring tests watched failing first, off by default so
   an unflagged re-run stays the baseline contract.
 - **The hardened-arm runbook** (`docs/planning/p2-format-hardening/measured-arm/runbook.md`):
-  the operator's command for the arm — the real donor roots (`belay`, `contig`), five
+  the operator's command for the arm — the donor roots (`donor-b`, `donor-a`), five
   declared dev-subset ids verified against the corpus, the journal and transcript in a
   sibling evidence directory (the harness refuses a transcript under `--out`), the halt
   conditions, and the post-run attribution/autopsy commands. The arm itself has not run;
