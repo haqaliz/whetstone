@@ -26,7 +26,10 @@ Stdlib only. No model, no network, and nothing under `verify/` or `tasks/` may i
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum
+from pathlib import PurePosixPath
 
 #: The prefixes the walk recognises inside a hunk body.
 _CONTEXT = " "
@@ -114,4 +117,131 @@ def _body(lines: list[str], index: int) -> tuple[str, int]:
     return "\n".join(old), end
 
 
-__all__ = ["Hunk", "walk"]
+class NotText(ValueError):
+    """A file the classifier was asked to read is not valid UTF-8.
+
+    Raised by a `Reader` rather than answered as absent, because "the file is not there" and "the
+    file could not be read as text" are different facts, and only the first is `NO_FILE`.
+    """
+
+
+#: Path -> the file's text at `base_commit`, or `None` if it does not exist there. Raises
+#: `NotText` for a file that is not UTF-8. Injected, so the pure layer never touches disk.
+Reader = Callable[[str], "str | None"]
+
+
+class HunkClass(str, Enum):
+    """What one hunk's quote was, against the file it named."""
+
+    #: The path is absent at `base_commit`, absolute, or climbs out with `..`.
+    NO_FILE = "NO_FILE"
+    #: A pure insertion: it quotes nothing, so it can be neither located nor invented.
+    EMPTY = "EMPTY"
+    #: The quote occurs nowhere in the file.
+    INVENTED = "INVENTED"
+    #: The quote occurs more than once, so a representation keyed on it could not choose.
+    AMBIGUOUS = "AMBIGUOUS"
+    #: The quote occurs exactly once.
+    LOCATABLE = "LOCATABLE"
+
+
+class RolloutClass(str, Enum):
+    """One refused rollout's class: the worst of its hunks. Declared worst first."""
+
+    #: The question could not be asked — no task, no checkout, no graded record, or a file that is
+    #: not text. Kept in the denominator by name, never folded into a neighbour.
+    UNCLASSIFIED = "UNCLASSIFIED"
+    NO_FILE = "NO_FILE"
+    #: No diff was located, or no hunk quoted anything.
+    UNREADABLE = "UNREADABLE"
+    INVENTED = "INVENTED"
+    AMBIGUOUS = "AMBIGUOUS"
+    LOCATABLE = "LOCATABLE"
+
+
+#: Worst first: the order a rollout's class is chosen in (spec, "Per-rollout class").
+_SEVERITY = tuple(RolloutClass)
+
+
+@dataclass(frozen=True)
+class Classified:
+    """One rollout's answer: its class, its drift tag, and the per-hunk classes behind them."""
+
+    klass: RolloutClass
+    #: Every invented hunk would be found exactly once if whitespace were forgiven. Reported beside
+    #: the class and never moving it: the converter this finding decides on forgives nothing.
+    drift: bool
+    hunks: tuple[HunkClass, ...]
+    #: Why, when the class alone does not say — the unreadable file, for `UNCLASSIFIED`.
+    detail: str = ""
+
+
+def classify_hunk(hunk: Hunk, read: Reader) -> HunkClass:
+    """Class one hunk by the spec's line-aligned, overlap-counting rule."""
+    if not hunk.old_side:
+        return HunkClass.EMPTY
+    if _escapes(hunk.path):
+        return HunkClass.NO_FILE
+    text = read(hunk.path)
+    if text is None:
+        return HunkClass.NO_FILE
+    found = _occurrences(hunk.old_side.split("\n"), text.split("\n"))
+    if found == 0:
+        return HunkClass.INVENTED
+    return HunkClass.AMBIGUOUS if found > 1 else HunkClass.LOCATABLE
+
+
+def classify_rollout(diff: str | None, read: Reader) -> Classified:
+    """Class one refused rollout from the diff the extractor located in it, or `None` if none."""
+    hunks = walk(diff) if diff is not None else ()
+    try:
+        classes = tuple(classify_hunk(hunk, read) for hunk in hunks)
+    except NotText as exc:
+        return Classified(RolloutClass.UNCLASSIFIED, False, (), f"not UTF-8: {exc}")
+
+    quoted = [klass for klass in classes if klass is not HunkClass.EMPTY]
+    if not quoted:
+        return Classified(RolloutClass.UNREADABLE, False, classes)
+    klass = min((RolloutClass(one.value) for one in quoted), key=_SEVERITY.index)
+    invented = [h for h, c in zip(hunks, classes, strict=True) if c is HunkClass.INVENTED]
+    drift = klass is RolloutClass.INVENTED and all(_drifted(hunk, read) for hunk in invented)
+    return Classified(klass, drift, classes)
+
+
+def _escapes(path: str) -> bool:
+    """Absolute, or climbing out of the repository. Refused before any reader sees it."""
+    pure = PurePosixPath(path)
+    return pure.is_absolute() or ".." in pure.parts
+
+
+def _occurrences(needle: list[str], haystack: list[str]) -> int:
+    """Start lines at which `needle` equals `haystack`'s lines in order — overlaps counted."""
+    width = len(needle)
+    return sum(
+        1 for start in range(len(haystack) - width + 1) if haystack[start : start + width] == needle
+    )
+
+
+def _drifted(hunk: Hunk, read: Reader) -> bool:
+    """Would this invented quote occur exactly once with whitespace forgiven?"""
+    text = read(hunk.path)
+    if text is None:
+        return False
+    return _occurrences(_folded(hunk.old_side), _folded(text)) == 1
+
+
+def _folded(text: str) -> list[str]:
+    return [" ".join(line.split()) for line in text.split("\n")]
+
+
+__all__ = [
+    "Classified",
+    "Hunk",
+    "HunkClass",
+    "NotText",
+    "Reader",
+    "RolloutClass",
+    "classify_hunk",
+    "classify_rollout",
+    "walk",
+]
