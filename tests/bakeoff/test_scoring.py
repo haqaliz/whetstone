@@ -44,7 +44,9 @@ from fixtures.pool import write_pool
 from fixtures.repos import CALC_FIXED, build_task, make_patch
 from fixtures.repos.mined import MINED_CALC_BUGGY, MINED_CALC_FIXED, build_mined_task
 
+from whetstone.bakeoff.control import Control, Origin, Probe
 from whetstone.bakeoff.generator import StubGenerator
+from whetstone.bakeoff.journal import Journal, Step
 from whetstone.bakeoff.rendering import render_prompt
 from whetstone.bakeoff.scoring import Interpreters, Outcome, Rollout, score
 from whetstone.bakeoff.sources import ORACLE_BUDGET_CHARS, oracle_sources
@@ -165,6 +167,134 @@ def test_the_three_zeroes_are_told_apart(tmp_path: Path) -> None:
         "WHY THIS IS A FAILURE: a patch that applied and left the declared test failing is the "
         "one zero of the three that is genuinely about the base's ability, and it has to carry "
         f"the verifier's own FAIL. Got {records['wrote-a-wrong-fix'].strict!r}"
+    )
+
+
+#: A diff git cannot even read: the hunk header promises five old lines and the body carries two,
+#: so git dies at "corrupt patch" before it looks at the checkout. The other half of `NOT_APPLIED`
+#: from `WRONG_CONTEXT`, which git reads and then refuses to apply.
+CORRUPT_COUNTS = """\
+```diff
+--- a/calc.py
++++ b/calc.py
+@@ -1,5 +1,5 @@
+ def add(a, b):
+-    return a - b
++    return a + b
+```
+"""
+
+
+@pytest.mark.parametrize(
+    ("answer", "git_says"),
+    [(WRONG_CONTEXT, "did not apply"), (CORRUPT_COUNTS, "could not be parsed")],
+    ids=["read-then-refused", "unreadable"],
+)
+def test_a_refused_diff_records_why_git_refused_it(
+    tmp_path: Path, answer: str, git_says: str
+) -> None:
+    """`NOT_APPLIED` carries git's own reason, not an empty string.
+
+    The verifier already has the sentence — `patch-apply`'s message wraps git's report — and a
+    record that drops it leaves every later question about a night's refusals to be answered by
+    joining transcripts to journals by hand, which is what night-006's 279 refusals cost (#64).
+    """
+    fixture = build_mined_task(tmp_path / "task")
+    record = score(
+        candidate="wrote-a-refused-diff",
+        task=fixture.task,
+        generator=StubGenerator({posed(fixture.task): answer}),
+        sandbox_root=tmp_path / "runs",
+        timeout=TIMEOUT,
+        interpreters=Interpreters(workspace=tmp_path / "envs"),
+    )
+
+    assert (record.outcome, record.verdict_kinds) == (Outcome.NOT_APPLIED, ("patch-apply",)), (
+        f"the fixture must reach STRICT's patch-apply refusal to test anything; got "
+        f"{record.outcome!r} {record.verdict_kinds!r}"
+    )
+    assert git_says in record.detail, (
+        "WHY THIS IS A FAILURE: a NOT_APPLIED record has to say why git refused the patch — "
+        "the reason exists in STRICT's verdict and was dropped on the way to the record, so a "
+        f"night's refusals cannot be diagnosed from its journal. Got detail={record.detail!r}"
+    )
+
+
+def test_the_reason_survives_the_journal(tmp_path: Path) -> None:
+    """A refused diff's reason is on disk after a replay, not only in memory.
+
+    The journal is what outlives the process, and it is what a night is diagnosed from. A reason
+    that reached the record but not the file would be the #64 gap moved one step later.
+    """
+    fixture = build_mined_task(tmp_path / "task")
+    record = score(
+        candidate="wrote-a-refused-diff",
+        task=fixture.task,
+        generator=StubGenerator({posed(fixture.task): WRONG_CONTEXT}),
+        sandbox_root=tmp_path / "runs",
+        timeout=TIMEOUT,
+        interpreters=Interpreters(workspace=tmp_path / "envs"),
+    )
+    probe = Probe(
+        candidate=record.candidate,
+        task_id=record.task_id,
+        control=Control.INTACT,
+        without_patch=Status.FAIL,
+        with_reference=Status.PASS,
+        origin=Origin.DONOR,
+        detail="",
+        seconds=0.0,
+    )
+    journal = Journal(path=tmp_path / "journal.jsonl")
+    journal.append(Step(probe=probe, rollout=record))
+
+    replayed = journal.replay()[(record.candidate, record.task_id)].rollout
+
+    assert record.detail and replayed == record, (
+        "WHY THIS IS A FAILURE: the refused diff's reason must survive the journal byte for "
+        f"byte; recorded {record.detail!r}, replayed {replayed.detail!r}"
+    )
+
+
+def test_only_a_refused_diff_gains_a_reason(tmp_path: Path) -> None:
+    """The verdicts stay the explanation for every other verifier-reached outcome.
+
+    A solved task, a wrong fix and a caught edit of the held tests keep `detail == ""`: the
+    change is scoped to the one outcome whose verdict kind alone does not say what happened.
+    Re-describing a `patch-scope` refusal here in particular would put a second account of a
+    caught hack beside the verifier's own.
+    """
+    fixture = build_mined_task(tmp_path / "task")
+    prompt = posed(fixture.task)
+    answers = {
+        "solved": make_patch(fixture.donor, {"calc.py": MINED_CALC_FIXED}, at=fixture.parent),
+        "wrong-fix": make_patch(fixture.donor, {"calc.py": STILL_BROKEN}, at=fixture.parent),
+        "edited-the-test": make_patch(
+            fixture.donor, {"tests/test_addition.py": NEUTERED_TESTS}, at=fixture.parent
+        ),
+    }
+    records = {
+        name: score(
+            candidate=name,
+            task=fixture.task,
+            generator=StubGenerator({prompt: answer}),
+            sandbox_root=tmp_path / "runs" / name,
+            timeout=TIMEOUT,
+            interpreters=Interpreters(workspace=tmp_path / "envs"),
+        )
+        for name, answer in answers.items()
+    }
+
+    assert {name: record.outcome for name, record in records.items()} == {
+        "solved": Outcome.SOLVED,
+        "wrong-fix": Outcome.NOT_SOLVED,
+        "edited-the-test": Outcome.OUT_OF_SCOPE,
+    }
+    assert {name: record.detail for name, record in records.items()} == dict.fromkeys(
+        answers, ""
+    ), (
+        "WHY THIS IS A FAILURE: only NOT_APPLIED gains a reason; every other verifier-reached "
+        "outcome is explained by its verdict kinds, and a second account beside them can drift"
     )
 
 

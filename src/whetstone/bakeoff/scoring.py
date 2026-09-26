@@ -183,8 +183,10 @@ class Rollout:
     #: empty string would be a well-formed hash of a question nobody was asked.
     prompt_sha256: str
 
-    #: A sentence for whoever is reading a zero: the extractor's reason, or the provisioning
-    #: error. Empty when the verifier ran and its own verdicts are the explanation.
+    #: A sentence for whoever is reading a zero: the extractor's reason, the provisioning error,
+    #: or — for `NOT_APPLIED` — git's own reason for refusing the patch, from STRICT's
+    #: `patch-apply` verdict. Otherwise empty when the verifier ran and its own verdicts are the
+    #: explanation.
     detail: str
 
     #: Wall-clock seconds asking the base for text. Separate from the two below because a base
@@ -497,9 +499,14 @@ def _verify(
     weak_seconds = time.perf_counter() - started
 
     kinds = tuple(verdict.kind for verdict in strict.verdicts)
+    outcome = _classify(strict.status, kinds)
     return replace(
         record,
-        outcome=_classify(strict.status, kinds),
+        outcome=outcome,
+        # `patch-apply` is the one sole verdict whose kind does not say what happened: git read
+        # the patch and refused it, or could not read it at all. Its message carries git's own
+        # report, and dropping it left a night's refusals diagnosable only by hand (#64).
+        detail=strict.verdicts[0].message if outcome is Outcome.NOT_APPLIED else record.detail,
         strict=strict.status,
         weak=weak.observed_status,
         verdict_kinds=kinds,
