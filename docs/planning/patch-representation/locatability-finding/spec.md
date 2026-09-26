@@ -37,8 +37,13 @@ record for that key (`Transcript.replay()` returns the last record, which is the
 - `AMBIGUOUS` — more than once.
 - `LOCATABLE` — exactly once.
 
-Occurrence is `str.count` over the whole file after nothing but splitting on `"\n"` and rejoining —
-no whitespace folding, no line-ending normalisation.
+**Occurrence is line-aligned and counts overlaps.** The file is split on `"\n"` (nothing else — a
+`"\r"` stays part of its line); the old side is split the same way; an occurrence is a start line
+from which the old side's lines equal the file's lines exactly and in order. Every start is
+counted, so a repeated block that overlaps itself is `AMBIGUOUS`, not `LOCATABLE`. No whitespace
+folding, no line-ending normalisation. *(Clarified 2026-09-27, before any run: the earlier wording,
+`str.count`, would have matched a quoted line inside a longer one — `a = 1` inside `data = 1` — and
+would have missed overlapping repeats.)*
 
 **Per-rollout class** — the worst over its non-`EMPTY` hunks, in the order
 `UNCLASSIFIED` > `NO_FILE` > `UNREADABLE` > `INVENTED` > `AMBIGUOUS` > `LOCATABLE`:
@@ -49,8 +54,9 @@ no whitespace folding, no line-ending normalisation.
 - `UNREADABLE` — no diff was located, or the walk found no hunk with a non-empty old side.
 
 **`DRIFT` sub-tag** (PRD M5a) — on an `INVENTED` rollout, set when every `INVENTED` hunk's old side
-would occur exactly once after, on both sides, stripping each line's leading whitespace and
-collapsing internal whitespace runs to one space. Reported beside the partition; never moves a
+would occur exactly once, by the same line-aligned rule, after normalising every line on both
+sides to `" ".join(line.split())` (leading and trailing whitespace dropped, internal runs collapsed
+to one space). Reported beside the partition; never moves a
 rollout.
 
 **Decision.** `GO` iff `count(LOCATABLE) * 2 > population`; else `NO-GO`. Exit 0 GO, 1 NO-GO,
