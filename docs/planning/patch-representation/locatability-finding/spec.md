@@ -97,5 +97,8 @@ rollout.
 7. Exit codes 0/1/2 per the decision rule; refusals print a reason to stderr and write nothing.
 8. Output is byte-identical across two runs and across `PYTHONHASHSEED` values.
 9. Only `NOT_APPLIED` journal rows enter the population; a `NOT_SOLVED` row with a diff is ignored.
-10. The module imports nothing from `mlx`, `torch`, `run`, `scoring`, and nothing under `verify/`
-    or `tasks/` imports it (added to the package's existing import guards).
+10. The module imports nothing from `mlx`, `torch` or `run` (no inference, no driver), and nothing
+    under `verify/` or `tasks/` imports it (added to the package's existing import guards).
+    *(Amended 2026-09-27: `scoring` was dropped from the exclusion — reading a journal is reading
+    `scoring.Rollout`, and `journal.py` already imports it. The exclusion was copied from
+    `retry.py`, whose reason — staying off the driver path — an offline reader does not share.)*
