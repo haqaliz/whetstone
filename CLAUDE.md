@@ -24,7 +24,11 @@ This file orients a coding agent working in this repository. Read it first.
 > **probe decision gate** (2026-09-05): `whetstone check-probe --run <runs/id>` turns the
 > night door's pre-committed go/no-go into a command exit — read-only over one probe run,
 > 0 the rule holds, 1 a named violation, 2 a refusal — so night #1's decision is a process
-> exit rather than an operator reading a ledger by eye.
+> exit rather than an operator reading a ledger by eye. Then the **patch-representation
+> finding** (2026-09-27): `NOT_APPLIED` records git's own reason, and
+> `python -m whetstone.bakeoff.locatability` asks a finished run whether its refused diffs quoted
+> the file exactly — **NO-GO** on the pinned 32B base, so search/replace was measured and **not
+> built** (`docs/planning/patch-representation/finding.md`).
 >
 > **The corpus, stated precisely.** Source B (private, pre-registered headline):
 > **66 tasks**, each proven live rather than asserted. Source A (public SWE-bench-Lite):
