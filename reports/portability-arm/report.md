@@ -260,3 +260,63 @@ to a zero, and it is the whole of what this night establishes.
 the arm improving; a figure from this night is non-comparable to the main series, to any other arm,
 and to this arm's own figures under the full corpus. The arm still has no strict-`PASS`, no
 checkpoint from a night, and no measured delta, and the § 3 baseline remains unspent.
+
+## Appended 2026-09-26: the checkpoint re-sealed, and the gate's first real candidate
+
+Two things happened on the declared host that this arm has been unable to report since it began:
+a checkpoint whose provenance is true in every field, and **the first gated evaluation this
+project has ever run on a real candidate**. Neither produces a delta. Both are recorded because
+the arm's question was never "is it better" — it was "does the loop run, and can what it produces
+be checked".
+
+**The four defects above are closed, and a fifth nobody had listed.** The table two sections up
+records what the arm's first checkpoint gets wrong, and says a re-run through `whetstone train-arm`
+would produce one whose fields are true. That re-run happened: 200 iterations on the same pinned
+base, from night #1's same sealed selection (dataset digest `3416702298c3`, six strict-`PASS`
+examples), 6 h 18 m, loss 2.681 → 2.239.
+
+| Field | The first checkpoint | The re-sealed one |
+|---|---|---|
+| `capacity_probe.seconds` | `22602.024` — the whole run, for a probe that never ran | **`852.746`**, eight iterations actually timed |
+| `capacity_probe.headroom_bytes` | `32856499814` — a machine twice this one | **`14141719552`** = 0.85 × this host's own 16,637,317,120 |
+| `tool_versions` | `mlx-lm: 0.31.3` on a host without MLX | **`torch: 2.14.0+cpu`**, no MLX named |
+| `backend.device_memory_bytes` | `0` | **`16637317120`** |
+| `backend.version` | `2.14.0+cu130` — a CUDA build string on a CPU-only box | **`2.14.0+cpu`** |
+
+The probe now fits on a measured peak of 6.47 GiB against a real 13.2 GiB ceiling — fit, rather
+than the luck the earlier section records. The first checkpoint is **not** deleted or rewritten;
+it stays on disk with its digest and its table, and the re-sealed one sits beside it at digest
+`aebae11f5c4b`.
+
+**The gate ran, and the verdict is `UNVERIFIED`.** Candidate: the re-sealed adapter. Incumbent:
+the untrained base it started from, through the gate's untrained-incumbent dispatch, so one
+night's candidate can be scored without waiting for a second night.
+
+| | candidate `aebae11f5c4b` | incumbent `e3b0c44298fc` |
+|---|---|---|
+| source B (held-out), solved | **0 of 12** | **0 of 12** |
+| coverage | 10 of 12 | 10 of 12 |
+| unverified | 2 | 2 |
+| source A (public), solved | 0 of 1 | 0 of 1 |
+
+`solved_new` 0, `solved_old` 0, `regressed` 0, `unverified` 2. **The adapter did not beat the base
+it started from, and did not lose to it.** The gate declines to say either, and its own words are
+the honest summary: *"2 of 12 tasks reached no verdict, so no comparison was actually made and the
+whole evaluation reduces to `UNVERIFIED` — not promoted and not rejected."* `UNVERIFIED` is not a
+win and is not reported as one.
+
+**The retry budget went untouched, and that is the finding underneath the verdict.** `R = 3`, zero
+spent. The two tasks without a verdict — `10476d50e5e8` and `16213e62eae1` — are `NO_ORACLE` on
+both sides: their file sets exceed the 80,000-character oracle budget, so no generation contract
+can be built. That outcome is **deterministic**, and retrying reproduces it. Promotion requires
+`unverified == 0`, so **no candidate, however good, can be promoted against this held-out document
+on this host.** The gate is structurally unable to fire, which is a fact about the held-out set and
+the budget rather than about the base, the harness or the sandbox. It is tracked as an open defect
+rather than fixed by loosening anything.
+
+**What is still not claimed.** No delta, on this arm or any other. The § 3 baseline remains
+unspent. The training set is still night #1's six strict-`PASS` examples — verified by
+re-execution, and six. What the arm has now demonstrated is narrower and worth stating exactly: the
+loop trains off Apple Silicon, seals a checkpoint whose provenance is true, and that checkpoint can
+be put through the promotion gate against a real incumbent and receive a real verdict. The verdict
+was `UNVERIFIED`.

@@ -10,6 +10,43 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The gate scores a real candidate for the first time, and returns `UNVERIFIED`** (2026-09-26).
+Three things had to be fixed before it could run at all, and the order they surfaced in is the
+record.
+
+**The door hardcoded MLX (#55, closed by #56).** `run_gate` dispatches on the candidate's own
+recorded backend — `chosen = gate_engine_for(candidate) if engine is None else engine` — and
+`cli.py` passed `engine=gate_engine`, making that branch unreachable. Every gated evaluation used
+MLX's loader whatever trained the checkpoint. The Linux host is the lucky case: it has no MLX, so
+the first real gated evaluation died with `ModuleNotFoundError` instead of succeeding wrongly. On a
+machine with MLX it would have loaded a Torch-trained adapter through MLX's loader — which, as
+`gate_engine_for`'s own docstring says, *"does not raise, it produces weights"* — and published a
+promotion decision about a model nobody trained. Every door test injected its stub through
+`monkeypatch.setattr(gate, "gate_engine", ...)`, the very seam that was hardcoded, so the dispatch
+was proven at the function by `test_torch_engine.py` and at the command by nothing.
+
+**The checkpoint was re-sealed through `train-arm`.** `reports/portability-arm/report.md` carries
+the run and the five provenance fields now true; nothing about it is restated here.
+
+**The gate ran: `UNVERIFIED`, 0 solved of 12 on both sides.** The candidate neither beat nor lost
+to the untrained base it started from. Zero of the three retries were spent, because the two tasks
+without a verdict are `NO_ORACLE` — over the 80,000-character oracle budget, deterministic, and
+unaffected by retrying. Promotion requires `unverified == 0`, so **no candidate can ever be
+promoted against this held-out document on this host** (#60). `docs/ROADMAP.md` P3 pre-committed a
+response to a gate that cannot fire — *"the fix is a more reliable sandbox, never a looser gate"* —
+but that assumes unverified is transient, and this is not. A perfect sandbox changes nothing.
+
+**Two smaller records.** The promotion record's `tool_versions` names `mlx-lm` on a host that never
+had it, the #33 inaccuracy reappearing in a new document (#61). And the held-out split is keyed on
+the task id, so the donor's *arbitrary, documented-as-non-identifying* label decides which tasks are
+held out (#62) — re-minting the corpus under `--label` produces a provably identical commit set
+whose held-out draw nonetheless changes in 10 of 12 members, dropping one of the two `NO_ORACLE`
+tasks that are the whole evidence for #60. The re-mint is complete and faithful in a gitignored
+staging directory and was **deliberately not applied**: swapping it in would re-roll a
+pre-registered input immediately after discovering that input is what stops the gate firing, and
+no reader could later tell that apart from cherry-picking. The donors' names therefore remain in 66
+task identifiers.
+
 **The donor's identity leaves the committed tree — most of it** (2026-09-26). `whetstone mine
 --label` has always been documented as *"a non-identifying name for this donor ... the donor's
 own name is private and must not be used"*, and `mine()`'s docstring explains why the parameter
