@@ -20,7 +20,10 @@ record for that key (`Transcript.replay()` returns the last record, which is the
   one leading `b/` stripped; if that side is `/dev/null`, the `---` side with `a/` stripped.
 - A hunk opens at any line starting `@@`. Its counts are **ignored**.
 - Inside a hunk: a line starting `' '` is context, `'-'` removed, `'+'` added; `\` lines
-  (`\ No newline at end of file`) are skipped; **an empty line is read as an empty context line**.
+  (`\ No newline at end of file`) are skipped; **an empty line is read as an empty context line**
+  *only when a later line of the same hunk follows it* — a run of empty lines that ends the hunk
+  (trailing blank lines before prose, a new header, or the end of the text) is not part of it.
+  *(Clarified 2026-09-27 while writing the walk's tests, before any run.)*
   Any other line ends the hunk (and the file section, unless it is a new `@@`/`---`/`diff --git`).
 - A hunk's **old side** is its context and removed lines, in order, each without its prefix,
   joined with `"\n"`.
