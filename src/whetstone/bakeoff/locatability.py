@@ -26,10 +26,12 @@ Stdlib only. No model, no network, and nothing under `verify/` or `tasks/` may i
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
+
+from whetstone.bakeoff.scoring import Outcome, Rollout
 
 #: The prefixes the walk recognises inside a hunk body.
 _CONTEXT = " "
@@ -234,14 +236,66 @@ def _folded(text: str) -> list[str]:
     return [" ".join(line.split()) for line in text.split("\n")]
 
 
+class Decision(str, Enum):
+    """The pre-committed go/no-go (spec, "Decision"). Exit codes follow `check-probe`'s."""
+
+    GO = "GO"
+    NO_GO = "NO-GO"
+
+
+def decide(classes: Sequence[RolloutClass]) -> Decision:
+    """GO iff more than half of the population is `LOCATABLE`. Every class counts in the total.
+
+    An empty population is refused, not decided: "no refusals to classify" is a join bug or the
+    wrong candidate, never a result.
+    """
+    if not classes:
+        raise ValueError("the population is empty, so there is nothing to decide over")
+    located = sum(1 for klass in classes if klass is RolloutClass.LOCATABLE)
+    return Decision.GO if located * 2 > len(classes) else Decision.NO_GO
+
+
+def checkout_reader(root: Path) -> Reader:
+    """A `Reader` over a checkout at `base_commit`. Reads only; refuses to leave `root`.
+
+    The path is resolved before it is read, so a symlink pointing out of the checkout is answered
+    as absent rather than followed onto the host.
+    """
+    base = root.resolve()
+
+    def read(path: str) -> str | None:
+        target = (base / path).resolve()
+        if not target.is_relative_to(base) or not target.is_file():
+            return None
+        try:
+            return target.read_bytes().decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise NotText(path) from exc
+
+    return read
+
+
+def population(rows: Iterable[Rollout], *, candidate: str) -> tuple[tuple[str, str], ...]:
+    """The (candidate, task) keys the decision is over: this candidate's `NOT_APPLIED` rollouts."""
+    return tuple(
+        (row.candidate, row.task_id)
+        for row in rows
+        if row.candidate == candidate and row.outcome is Outcome.NOT_APPLIED
+    )
+
+
 __all__ = [
     "Classified",
+    "Decision",
     "Hunk",
     "HunkClass",
     "NotText",
     "Reader",
     "RolloutClass",
+    "checkout_reader",
     "classify_hunk",
     "classify_rollout",
+    "decide",
+    "population",
     "walk",
 ]
