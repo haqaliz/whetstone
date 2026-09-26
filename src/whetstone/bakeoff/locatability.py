@@ -26,12 +26,23 @@ Stdlib only. No model, no network, and nothing under `verify/` or `tasks/` may i
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+import argparse
+import json
+import sys
+import tempfile
+from collections import Counter
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
 
+from whetstone.bakeoff.journal import Journal
+from whetstone.bakeoff.patch import Extracted, extract_patch
 from whetstone.bakeoff.scoring import Outcome, Rollout
+from whetstone.bakeoff.transcript import Transcribed, Transcript
+from whetstone.tasks.manifest import load_tasks
+from whetstone.verify.repo import materialise
+from whetstone.verify.task import Task
 
 #: The prefixes the walk recognises inside a hunk body.
 _CONTEXT = " "
@@ -284,6 +295,163 @@ def population(rows: Iterable[Rollout], *, candidate: str) -> tuple[tuple[str, s
     )
 
 
+#: The output document's schema. Bumped on any change to a field's meaning.
+SCHEMA = "whetstone-locatability/1"
+
+#: The rule, written into every document so a reader never has to find the spec to know it.
+RULE = "GO iff count(LOCATABLE) * 2 > population; every class, UNCLASSIFIED included, counts"
+
+#: Exit codes, `check-probe`'s shape: the decision is the process exit.
+_EXIT = {Decision.GO: 0, Decision.NO_GO: 1}
+_REFUSED = 2
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Classify one candidate's refused rollouts in a finished run, and exit with the decision.
+
+    Offline: no model, no network. Checkouts are materialised into a temporary directory, read,
+    and discarded; the run's evidence is never written to. A refusal writes nothing, because an
+    empty or partial document would read as a measurement.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m whetstone.bakeoff.locatability",
+        description=(
+            "Ask whether the code a candidate's refused diffs quoted is in the file at the task's "
+            "base commit, and exit 0 GO / 1 NO-GO / 2 refused by the pre-committed rule."
+        ),
+    )
+    parser.add_argument("--transcript", required=True, type=Path, help="the run's transcript")
+    parser.add_argument("--journal", required=True, type=Path, help="the run's journal")
+    parser.add_argument("--candidate", required=True, help="the one candidate to classify")
+    parser.add_argument(
+        "--tasks",
+        action="append",
+        default=[],
+        type=Path,
+        metavar="DIR",
+        help="a corpus root, repeatable; a task not offered here is UNCLASSIFIED by name",
+    )
+    parser.add_argument("--out", required=True, type=Path, help="where the document is written")
+    namespace = parser.parse_args(argv)
+
+    for label, path in (("transcript", namespace.transcript), ("journal", namespace.journal)):
+        if not Path(path).is_file():
+            return _refuse(f"the {label} {str(path)!r} is not a file; nothing was classified")
+
+    rows = [step.rollout for step in Journal(Path(namespace.journal)).replay().values()]
+    if not any(row.candidate == namespace.candidate for row in rows):
+        return _refuse(
+            f"the journal holds no rollout for {namespace.candidate!r}; a misspelt candidate "
+            "must not read as a candidate with nothing to classify"
+        )
+    keys = population(rows, candidate=namespace.candidate)
+    if not keys:
+        return _refuse(
+            f"{namespace.candidate!r} has no NOT_APPLIED rollout, so there is no population "
+            "to decide over"
+        )
+
+    wanted = {task_id for _, task_id in keys}
+    try:
+        tasks = {
+            task.task_id: task
+            for root in namespace.tasks
+            for task in load_tasks(Path(root))
+            if task.task_id in wanted
+        }
+    except (OSError, ValueError) as exc:
+        return _refuse(f"a corpus root could not be loaded: {exc}")
+
+    records = Transcript(Path(namespace.transcript)).replay()
+    with tempfile.TemporaryDirectory(prefix="whetstone-locatability-") as scratch:
+        checkouts: dict[str, Path | str] = {}
+        classified = {
+            key: _classify_key(key, records, tasks, checkouts, Path(scratch)) for key in keys
+        }
+
+    decision = decide([one.klass for one in classified.values()])
+    document = _document(namespace, keys, classified, decision)
+    out = Path(namespace.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"{namespace.candidate}: {decision.value} over {len(keys)} ({document['counts']})")
+    print(f"wrote {out}")
+    return _EXIT[decision]
+
+
+def _classify_key(
+    key: tuple[str, str],
+    records: Mapping[tuple[str, str], Transcribed],
+    tasks: Mapping[str, Task],
+    checkouts: dict[str, Path | str],
+    scratch: Path,
+) -> Classified:
+    """One key's answer, or `UNCLASSIFIED` with the reason the question could not be asked."""
+    record = records.get(key)
+    if record is None:
+        return _unclassified("the transcript holds no graded record for this rollout")
+    task = tasks.get(key[1])
+    if task is None:
+        return _unclassified("the task was not offered under any --tasks root")
+    checkout = checkouts.get(task.task_id)
+    if checkout is None:
+        checkout = _materialised(task, scratch / task.task_id)
+        checkouts[task.task_id] = checkout
+    if isinstance(checkout, str):
+        return _unclassified(checkout)
+    extraction = extract_patch(record.completion)
+    diff = extraction.diff if isinstance(extraction, Extracted) else None
+    return classify_rollout(diff, checkout_reader(checkout))
+
+
+def _materialised(task: Task, destination: Path) -> Path | str:
+    """The task's tree at `base_commit`, or the sentence saying why there is none."""
+    try:
+        materialise(task, destination)
+    except (OSError, RuntimeError, ValueError) as exc:
+        return f"the task's checkout could not be materialised: {exc}"
+    return destination
+
+
+def _unclassified(detail: str) -> Classified:
+    return Classified(RolloutClass.UNCLASSIFIED, False, (), detail)
+
+
+def _document(
+    namespace: argparse.Namespace,
+    keys: Sequence[tuple[str, str]],
+    classified: Mapping[tuple[str, str], Classified],
+    decision: Decision,
+) -> dict[str, object]:
+    counts = Counter(one.klass.value for one in classified.values())
+    return {
+        "schema": SCHEMA,
+        "candidate": namespace.candidate,
+        "transcript": str(namespace.transcript),
+        "journal": str(namespace.journal),
+        "rule": RULE,
+        "population": len(keys),
+        "counts": dict(sorted(counts.items())),
+        "drift": sum(1 for one in classified.values() if one.drift),
+        "decision": decision.value,
+        "rollouts": [
+            {
+                "task_id": key[1],
+                "class": classified[key].klass.value,
+                "drift": classified[key].drift,
+                "hunks": [klass.value for klass in classified[key].hunks],
+                "detail": classified[key].detail,
+            }
+            for key in sorted(keys)
+        ],
+    }
+
+
+def _refuse(reason: str) -> int:
+    print(f"whetstone locatability: {reason}", file=sys.stderr)
+    return _REFUSED
+
+
 __all__ = [
     "Classified",
     "Decision",
@@ -296,6 +464,11 @@ __all__ = [
     "classify_hunk",
     "classify_rollout",
     "decide",
+    "main",
     "population",
     "walk",
 ]
+
+
+if __name__ == "__main__":
+    sys.exit(main())
