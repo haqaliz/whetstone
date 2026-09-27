@@ -11,6 +11,25 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-27
+
+### Added
+
+- **`python -m whetstone.bakeoff.locatability`: does a refused diff quote the file it patches?**
+  Offline, no model. For one candidate's `NOT_APPLIED` rollouts in a finished run, it checks
+  each hunk's quoted text against the file at `base_commit` (line-aligned, overlap-counting,
+  byte-exact) and exits 0 GO / 1 NO-GO / 2 refused by a rule fixed before it ran: GO only if more
+  than half are `LOCATABLE`. Over the pinned 32B base it exits **NO-GO**, so the search/replace
+  edit format proposed in #64 was measured and **not built**
+  (`docs/planning/patch-representation/finding.md`). Counts stay in gitignored `runs/`.
+
+### Fixed
+
+- **`NOT_APPLIED` records why git refused the patch.** STRICT's `patch-apply` verdict already
+  carried git's report; `scoring._verify` kept only the verdict's kind, so a night's refusals had
+  to be diagnosed by joining transcripts to journals by hand. The reason now reaches
+  `Rollout.detail` and survives the journal. Nothing on the reward path changed.
+
 ### Fixed
 
 - **A night's ledger names the runtime that actually sampled.** `night._contract` hardcoded
@@ -269,6 +288,8 @@ released version until it exists in the code.
   "darwin")` would have shipped Linux with the reward's boundary unproven while CI went green.
 
 ## [0.14.1] - 2026-09-07
+
+> Never tagged or published: its fixes first ship in 0.15.0.
 
 ### Fixed
 
