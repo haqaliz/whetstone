@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import inspect
 import json
 import math
 from collections.abc import Mapping, Sequence
@@ -26,6 +27,7 @@ from pathlib import Path
 
 import pytest
 
+from whetstone.bakeoff import sources as sources_module
 from whetstone.bakeoff import stratum
 from whetstone.loop import heldout
 from whetstone.verify.task import Task, load_task
@@ -458,6 +460,110 @@ def test_main_refuses_a_degenerate_split_by_name(
 
     assert rc == 2
     assert not out.exists()
+
+
+def test_the_scorable_filter_reaches_the_predicate_by_identity() -> None:
+    """The filter is the bakeoff's own predicate, reached by identity, never a second rule.
+
+    A copied budget check inside `heldout.py` would be a second rule with a different digest:
+    the module's digest covers this wrapper's source, so the one thing that must be the
+    bakeoff's own object is the predicate the wrapper calls. `__globals__` is where the
+    wrapper's body resolves the name, so the pin is that resolution — the very object the
+    bakeoff enforces (the aspect-1 pin pattern, `test_oracle_sources.py`).
+    """
+    assert heldout.scorable.__globals__["oracle_fittable"] is sources_module.oracle_fittable, (
+        "the scorable filter resolves a predicate that is not `bakeoff.sources.oracle_fittable`"
+        " itself, so a second implementation of the budget rule exists and the held-out rule "
+        "could classify on a boundary the bakeoff does not enforce"
+    )
+
+
+def test_the_rule_digest_covers_the_scorable_filter_and_the_budget_parameter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC2: the filter's source and the budget value are digest input, so an edit refuses.
+
+    Two halves of one pin. First, the digest is not the same rule without the filter: a
+    re-derivation over `_RULE_FUNCTIONS` minus `scorable` and `_RULE_PARAMETERS` minus
+    `oracle_budget_chars` must differ from the module's, so each is covered. Second, moving
+    the parameter's value moves the digest — the budget is input, not a bystander.
+    """
+    assert heldout.scorable in heldout._RULE_FUNCTIONS, (
+        "the scorable filter is not in `_RULE_FUNCTIONS`, so its source is not digest-covered"
+    )
+    assert "oracle_budget_chars" in heldout._RULE_PARAMETERS, (
+        "the oracle budget is not in `_RULE_PARAMETERS`, so the sealed budget is not "
+        "digest-covered"
+    )
+    digest_before = heldout.rule_digest()
+
+    hasher = hashlib.sha256()
+    for function in heldout._RULE_FUNCTIONS:
+        if function is not heldout.scorable:
+            hasher.update(inspect.getsource(function).encode("utf-8"))
+    hasher.update(
+        json.dumps(
+            {k: v for k, v in heldout._RULE_PARAMETERS.items() if k != "oracle_budget_chars"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    assert hasher.hexdigest() != digest_before, (
+        "the digest is identical to the rule without the scorable filter and its budget, so an "
+        "edit to either would not invalidate the committed document"
+    )
+
+    monkeypatch.setitem(heldout._RULE_PARAMETERS, "oracle_budget_chars", 1)
+    assert heldout.rule_digest() != digest_before, (
+        "the digest does not move when the sealed budget parameter moves, so the budget value "
+        "is not part of the rule"
+    )
+
+
+def test_the_writer_refuses_when_the_bakeoff_budget_drifts_from_the_seal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC3: a budget the bakeoff enforces but the rule does not seal is refused by name.
+
+    The bakeoff side is the one the module's own digest cannot see: `rule_digest()` covers
+    `_RULE_PARAMETERS`, not `bakeoff.sources.ORACLE_BUDGET_CHARS`, so a budget change there
+    would leave every committed document loadable while the draw classifies under a seal the
+    bakeoff no longer enforces. `compose_document` refuses that shape by name.
+    """
+    tasks, document = _corpus(tmp_path, _STANDARD_MEASURED, _STANDARD_REFUSED)
+
+    monkeypatch.setattr(sources_module, "ORACLE_BUDGET_CHARS", 1)
+
+    with pytest.raises(heldout.HeldoutRuleDrift) as caught:
+        heldout.compose_document(tasks, document)
+
+    assert "oracle_budget_chars" in str(caught.value), (
+        f"the refusal must name the drifting budget parameter: {caught.value}"
+    )
+    assert str(sources_module.ORACLE_BUDGET_CHARS) in str(caught.value), (
+        f"the refusal must name the bakeoff budget that no longer matches: {caught.value}"
+    )
+
+
+def test_the_writer_refuses_when_the_sealed_budget_drifts_from_the_bakeoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC3 (mirror): a budget the rule seals but the bakeoff does not enforce is refused.
+
+    The seal side is already digest-covered — moving the parameter refuses every committed
+    document at load — and `compose_document` refuses it at write time too, by name, so the
+    operator hears the contradiction before any document is produced.
+    """
+    tasks, document = _corpus(tmp_path, _STANDARD_MEASURED, _STANDARD_REFUSED)
+
+    monkeypatch.setitem(heldout._RULE_PARAMETERS, "oracle_budget_chars", 1)
+
+    with pytest.raises(heldout.HeldoutRuleDrift) as caught:
+        heldout.compose_document(tasks, document)
+
+    assert "oracle_budget_chars" in str(caught.value), (
+        f"the refusal must name the drifting budget parameter: {caught.value}"
+    )
 
 
 # --------------------------------------------------------------------------------------------

@@ -5,8 +5,11 @@ a dated amendment committed **before the split is used to score anything**, with
 small for a non-degenerate split being the published finding rather than a worked-around number
 (`PREREGISTRATION.md:242-247`). This module is the split's machinery, and its whole value is
 the order of events: the rule lives here in code — `HELDOUT_BANDS`, `MIN_HELDOUT`,
-`MIN_PER_BAND`, and the `SPLIT_SEED` — so it is fixed before any split is computed, and the
-document it writes is committed before any scoring touches it.
+`MIN_PER_BAND`, the `SPLIT_SEED`, and the scorable filter over the corpus, whose oracle must
+fit the budget the rule seals (`bakeoff.sources.oracle_fittable`, reached by identity) — so
+it is fixed before any split is computed, and the document it writes is committed before any
+scoring touches it. The sealed oracle budget and the budget the bakeoff enforces must be one
+number, or `compose_document` refuses by name (the drift guard).
 
 **The difficulty axis is the stratum document's, never a new one.** The 66 source-B tasks are
 ordered into terciles by the per-task difficulty the committed stratum document already
@@ -56,6 +59,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from whetstone.bakeoff import sources
+from whetstone.bakeoff.sources import oracle_fittable
 from whetstone.bakeoff.stratum import (
     _LOCAL_OUT_ROOTS,
     Difficulty,
@@ -90,11 +95,15 @@ STRATUM_DOCUMENT = Path("tasks/stratum/easier.json")
 
 #: The rule's declared parameters, as the document carries them and the `rule_digest` hashes
 #: them — any edit to a constant invalidates every committed document by design (spec AC1).
+#: `oracle_budget_chars` is the bakeoff's own budget, referenced by identity rather than
+#: copied: the rule the document seals and the budget the bakeoff enforces must be one number,
+#: and `compose_document` refuses (the drift guard) if they ever disagree.
 _RULE_PARAMETERS = {
     "bands": HELDOUT_BANDS,
     "min_heldout": MIN_HELDOUT,
     "min_per_band": MIN_PER_BAND,
     "split_seed": SPLIT_SEED,
+    "oracle_budget_chars": sources.ORACLE_BUDGET_CHARS,
 }
 
 
@@ -162,10 +171,27 @@ def select_band(ids: Sequence[str]) -> tuple[str, ...]:
     return tuple(ordered[:_PER_BAND_TAKE])
 
 
+def scorable(task: Task, *, budget: int) -> bool:
+    """Whether `task`'s oracle fits `budget`: the predicate's verdict, reached by identity.
+
+    The one statement of "can this task's oracle be built" is `bakeoff.sources.oracle_fittable`
+    — imported here and called, never re-implemented. A copied budget check would be a second
+    rule with a different digest: this wrapper's source is digest-covered through
+    `_RULE_FUNCTIONS`, and the budget value is separately sealed through
+    `_RULE_PARAMETERS["oracle_budget_chars"]`, so an edit to either invalidates every
+    committed document by design. The predicate's own machine-state raises — an unreadable
+    donor, a missing commit, the `GitFailed`/`SubprocessError`/`OSError` family — propagate
+    unchanged: derivation-time machine state is a refusal of the derivation by name (aspect
+    AC7, wired by the draw), never a classification.
+    """
+    return oracle_fittable(task, budget=budget).fits
+
+
 #: The functions whose source IS the rule, for the drift guard. Scoped to the rule rather
 #: than the module's I/O: a loader-only edit (an error-message change) must not refuse the
-#: committed document, while any edit to the ordering, the banding or the selection must.
-_RULE_FUNCTIONS = (difficulty_key, band_of, select_band)
+#: committed document, while any edit to the ordering, the banding, the selection or the
+#: scorable filter must.
+_RULE_FUNCTIONS = (difficulty_key, band_of, select_band, scorable)
 
 
 def rule_digest() -> str:
@@ -224,6 +250,12 @@ class EmptyHeldout(ValueError):
 
 class HeldoutDigestMismatch(ValueError):
     """The document's digest does not match its payload, or the rule's has moved on."""
+
+
+class HeldoutRuleDrift(ValueError):
+    """The rule's sealed parameters contradict the bakeoff: the oracle budget the rule seals is
+    not the budget `bakeoff.sources` enforces, so a draw under the rule would classify on a
+    boundary the bakeoff refuses."""
 
 
 class UnknownHeldoutId(ValueError):
@@ -315,8 +347,18 @@ def compose_document(tasks: Sequence[Task], stratum_document: Stratum) -> dict[s
     which is the recomputation test's premise. A task the stratum document refused carries a
     refusal here — never a guessed band — and an empty corpus, an empty membership, a
     whole-corpus membership or an unmet floor is refused by name: the vacuous-pass lie
-    (`manifest.py:70-75`), each wearing its own spelling.
+    (`manifest.py:70-75`), each wearing its own spelling. A rule whose sealed oracle budget
+    is not the budget the bakeoff enforces is refused by name first — the drift guard (AC3):
+    the document can never seal a budget the bakeoff does not use.
     """
+    if _RULE_PARAMETERS["oracle_budget_chars"] != sources.ORACLE_BUDGET_CHARS:
+        raise HeldoutRuleDrift(
+            f"the rule seals oracle_budget_chars={_RULE_PARAMETERS['oracle_budget_chars']}, "
+            f"but the bakeoff enforces sources.ORACLE_BUDGET_CHARS="
+            f"{sources.ORACLE_BUDGET_CHARS}; the draw classifies under the sealed budget, and "
+            "a seal that names a budget the bakeoff does not enforce would hold out tasks the "
+            "bakeoff refuses. Make the two one number before recomposing the document"
+        )
     ids = [task.task_id for task in tasks]
     if not ids:
         raise ValueError(
@@ -768,6 +810,7 @@ __all__ = [
     "EmptyHeldout",
     "Heldout",
     "HeldoutDigestMismatch",
+    "HeldoutRuleDrift",
     "HeldoutSchemaError",
     "Rule",
     "UnknownHeldoutId",
@@ -781,6 +824,7 @@ __all__ = [
     "read_stratum_document",
     "refuse_committed_out",
     "rule_digest",
+    "scorable",
     "select_band",
     "write_document",
 ]
