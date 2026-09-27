@@ -1,68 +1,85 @@
-# Card: feat/patch-representation
+# feat heldout-scorable — make the promotion gate able to fire
+
+**Core loop element:** ③ never-regress promotion gate (`CLAUDE.md` § *The core loop*).
+**Roadmap:** P3 (`docs/ROADMAP.md:428-465`), § 12 launch path, § 13 where the plan stands.
+**Source:** GitHub issue #60 (open, 2026-09-26) + the `whetstone-next` handoff brief.
 
 ## Brief
 
-83% of night-006's rollouts died at patch application, most of them well-formed diffs whose context lines didn't match the file (GitHub #64, ROADMAP § 14 M1 in PR #66). Search/replace was withdrawn as D3 in `p2-yield-probe` because at the time it addressed only a minority failure. The PRD must show, with evidence, that the failure pattern has since changed — not just revive D3. **Slice 1 (read-only, no compute):** over night-006's stored transcripts, classify each well-formed-but-refused diff's context as found-verbatim-elsewhere (offset error) or not-found (invented), and record `NOT_APPLIED` `detail` the way `NO_ORACLE` does. If most are invented, the pick changes. **Slice 2:** a new edit format (search/replace blocks, or whole-function replacement) that the harness turns into a unified diff against the task's source files. A missing or non-unique anchor is refused, never guessed. The verifier and reward path are unchanged. **Acceptance criteria, as tests first:** each format → diff conversion is deterministic and byte-identical across processes; a missing or non-unique anchor is refused with a named reason; `NOT_APPLIED` carries a non-empty `detail`; the new `prompt_sha256` and `extractor_version` are pinned by a `PREREGISTRATION.md` § 10.16 Type 1 amendment committed before any night uses the new format, and that arm's report is declared non-comparable; the reward-path AST guard and control-arm `INTACT` tests still pass.
+The handoff brief from `whetstone-next` (2026-09-27), verbatim:
 
-## Source issue #64
+> Re-derive the held-out source-B document so the promotion gate can fire (issue #60, open
+> since gate-001 returned UNVERIFIED: 2 of 12 held-out tasks are permanently NO_ORACLE over the
+> 80,000-char oracle budget, R=3 deterministic, unverified==0 unreachable — no candidate can
+> ever be promoted and P4's report reduces to no headline). Scope: a dated Type 1 amendment
+> pre-committing a derivation rule that excludes oracle-unfittable members by class (never by
+> hand), re-derived and committed before any candidate is scored against it, paired with the
+> completed-but-unapplied --label re-mint (issue #62) so the document is re-derived exactly
+> once; extend src/whetstone/loop/heldout.py's fail-closed derivation (rule digest covering
+> the filter, floors unmet = the published finding, never a loosened floor), re-commit
+> tasks/heldout/source-b.json under the new rule, keep check-leakage and the loader's digest
+> guards green, and rewrite the gate runbook code-first. Acceptance criteria, written first:
+> the derivation refuses by name a population whose scorable members cannot meet the floors;
+> the committed document contains zero oracle-unfittable members under the declared budget; a
+> hand-edited or stale-rule document is still refused by the loader; the gate's decision
+> table, unverified==0 term, R=3 retry and NO_ORACLE-in-denominator semantics are
+> byte-identical to master; and the series consequence (prior figures keyed to the old
+> document are non-comparable) is stated in the amendment. Caveat the dig will not be
+> surprised by: this is a pre-registered-input change — the rule must be fixed and committed
+> before the draw, and the two NO_ORACLE tasks are not removed from the corpus, only from the
+> held-out selection.
 
-### 83% of night-006's rollouts died on patch application, and over half were well-formed diffs whose context did not match
+## Issue #60 — The promotion gate cannot fire while the held-out set holds a permanently NO_ORACLE task
 
-Labels: 
+**State:** OPEN · **Created:** 2026-09-26 · **Author:** haqaliz
+**Link:** https://github.com/haqaliz/whetstone/issues/60 · **Comments:** none.
 
-The 3B night (`night-006`, 336 rollouts) ended with **279 `NOT_APPLIED` — 83% of every rollout generated.** Only 13 were `NO_DIFF`. The base writes a diff 96% of the time; almost none of them land.
+Body (verbatim):
 
-`NOT_APPLIED` carries an empty `detail` in the journal, so the reason is not in the run record. It is recoverable, because the night stored transcripts — exactly what `transcript.py` exists for: *"re-running the night to get them costs another night of compute per question asked. So the completion is kept."* No new compute was needed.
+> The first real gated evaluation (`gate-001`, 2026-09-26) returned `UNVERIFIED`. Its record:
+>
+> ```
+> solved_new 0, solved_old 0, regressed 0, unverified 2 of 12
+> retries: R=3, 0 spent over 0 (side, task) pair(s)
+> unverified_after_retries: contig-10476d50e5e8 NO_ORACLE (both sides)
+>                           contig-16213e62eae1 NO_ORACLE (both sides)
+> ```
+>
+> **Zero retries were spent**, and that is the finding. `NO_ORACLE` means the task's source files exceed `ORACLE_BUDGET_CHARS = 80,000`, so no generation contract can be built — refused whole rather than truncated, by `sources.py`'s design. It is **deterministic**: retrying produces it again, which is why the retry budget went untouched.
+>
+> Promotion requires `unverified == 0`. Two of the twelve members of `tasks/heldout/source-b.json` are permanently `NO_ORACLE` on this host. **Therefore no candidate, however good, can ever be promoted against this held-out document.** The gate is structurally unable to fire.
+>
+> `docs/ROADMAP.md` P3 anticipated a gate that cannot fire and pre-committed the response — *"the fix is a more reliable sandbox, never a looser gate"* — but that prescription assumes unverified is **transient**. This is not. A perfect sandbox changes nothing. The retry discipline was built for flaky tests and sandbox timeouts and has no answer for a task whose oracle does not fit the budget.
+>
+> **What must not happen:** the gate must not be loosened, `NO_ORACLE` must not be excluded from the denominator (`counts_of` keeps unverified outcomes in deliberately — *"coverage is reported, never silently excluded"*), and the budget must not be raised to make a specific document pass.
+>
+> **Plausible direction:** a held-out set is a *chosen* set. Choosing members that can build an oracle is a property of the selection, not a weakening of the check — the same way the stratum document selects by a rule fixed in advance. That would be a change to how the held-out document is derived, made before any candidate is scored against it, and it pairs naturally with re-deriving the document for other reasons.
 
-## Classifying the 279 final (graded) completions
+## Issue #62 — The held-out split is keyed on the task id, so an arbitrary donor label decides what is held out
 
-`autopsy.classify_completion` over the final completion of each `NOT_APPLIED` rollout:
+**State:** OPEN · **Created:** 2026-09-26 · **Link:** https://github.com/haqaliz/whetstone/issues/62
 
-| cause | count | share |
-|---|---|---|
-| **WELL_FORMED** | **154** | **55%** |
-| HUNK_DIES_EARLY | 76 | 27% |
-| HUNK_COUNT_MISMATCH | 44 | 16% |
-| UNRECOGNISED_SHAPE | 5 | 2% |
+Body (verbatim):
 
-Markers across the same set: STACKED_FENCE 278, REPEATED_DIFFS 129, NOOP_HUNKS 93, INDEX_GARBAGE 5.
-
-**Over half the failures are structurally valid unified diffs.** The extractor accepted them; git refused them.
-
-## Why git refused them
-
-149 of the 154 yielded an extractable diff. Sampling 60 and running `git apply --check` against a real checkout at the task's `base_commit`:
-
-- **58 of 60: `error: patch failed: <file>:<line>`** — git's message for *the context at that line does not match*
-- 2 of 60: `corrupt patch at line N`
-- **0 of 60 would have applied cleanly** — so none are false negatives
-
-The paths are real, the files exist, the diff parses. **The model's context lines and line numbers do not match the file it is patching.**
-
-## Why this matters
-
-Unified diff requires the model to reproduce exact surrounding lines and correct line offsets from memory. That is a transcription task, not a reasoning task, and it is where 55% of this night's work was lost — after the model had already decided what to change.
-
-**This has never been tested.** The arms tried so far moved other inputs: `reports/format-hardening/` is a **retry-augmented** contract, not a different patch representation; `reports/larger-base/` moved base size; `reports/easier-stratum/` moved the task set. The patch *representation* has been unified diff throughout, and the same wall is visible in the format-hardening figures (patch apply 43/64, 50/64, 8/64).
-
-Raising *k* or the base size does not touch this class: a bigger model writes a better-reasoned diff whose context still has to match exactly.
-
-## Proposed direction
-
-A representation that does not require reproducing context or computing offsets — search/replace blocks keyed on a unique anchor, or whole-function replacement. The verifier is unaffected: it still re-executes and the reward stays execution-grounded. What changes is only how an edit is expressed.
-
-This is a **Type 1 amendment** — `prompt_sha256` and `extractor_version` are pinned parts of the generation contract — and it must be declared before the night that tests it, with the arm's figures non-comparable to the existing series.
-
-## Secondary
-
-`NOT_APPLIED` should carry a `detail` the way `NO_ORACLE` does. The outcome accounting for 83% of a nine-day run recorded no reason, and recovering it required joining transcripts to journals by hand.
-
-### Comments
-
-
+> `select_band` orders candidates by `sha256(SPLIT_SEED + "\n" + task_id)` and takes the first `_PER_BAND_TAKE`. A task id is `<label>-<sha12>`, and `--label` is documented as *"a non-identifying name for this donor"* — an arbitrary operator choice.
+>
+> **So an arbitrary naming decision determines which tasks are held out.** Relabelling a donor re-rolls the project's most safety-critical pre-registered input.
+>
+> **Measured, not argued.** Re-minting the corpus under `--label` (#57/#58) produces a provably identical commit set — all 66 tasks, same donor heads, same seeds, differing only in `task_id`, `provenance.donor` and `repo_url`. Re-deriving the held-out document over it gives 12 members again, but **10 of the 12 change. Only 2 survive.**
+>
+> **Why this is more than cosmetic.** One of the two tas… (truncated in capture; full body fetched to the worktree dump)
 
 ## Related
 
-- #60 The promotion gate cannot fire while the held-out set holds a permanently NO_ORACLE task
-- #62 The held-out split is keyed on the task id, so an arbitrary donor label decides what is held out
-- PR #66 Record what has to be true before a model of ours is published (ROADMAP § 14) (open; adds ROADMAP § 14, names this M1)
+- **PR #63 (MERGED):** "Record the gate's first real candidate, and its UNVERIFIED verdict" — the commit (`72cd175`) that recorded gate-001, the run this issue describes.
+- **Issue #66 (OPEN):** "Record what has to be true before a model of ours is published (ROADMAP § 14)" — proposes a ROADMAP § 14; cross-references #60. Note: `docs/ROADMAP.md` has **no § 14 today** (ends at § 13).
+
+## Evidence trail (from the repo, not the issues)
+
+- `docs/STATUS.md` (2026-09-26): gate-001 record; *"no candidate can ever be promoted against this held-out document on this host."*
+- `reports/portability-arm/report.md` appended 2026-09-26: the gate table and the retry-budget finding.
+- `src/whetstone/bakeoff/sources.py:150` — `ORACLE_BUDGET_CHARS = 80_000`; `:465-497` — refusal whole, never truncation.
+- `src/whetstone/loop/heldout.py` — the split's rule machinery (`SPLIT_SEED`, bands, floors, rule digest).
+- `PREREGISTRATION.md` § 10.7 (held-out rule, committed 2026-08-24 before it scored anything), § 10.8 (`R = 3`).
+- `docs/ROADMAP.md:451-453` — P3's pre-committed response ("a more reliable sandbox, never a looser gate"); `docs/STATUS.md` 2026-09-26 shows it inapplicable.
+- `docs/STATUS.md` (2026-09-26, #62): the `--label` re-mint is complete and faithful in a gitignored staging directory and was **deliberately not applied**.
