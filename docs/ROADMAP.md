@@ -801,3 +801,117 @@ hierarchy by construction, which is the whole bet. A proposer/solver loop that g
 tasks is **declined for the same reason an LLM judge is**: a model that invents its own tasks is
 one step from inventing easy ones, and the guardrail in § 8 does not care which door the soft
 reward comes through.
+
+## 14. The path to a first published model — appended 2026-09-27
+
+Appended, not folded in, for the reason § 13 gives: the sections above were written before the
+nights ran. This one exists to answer a single operational question — **what has to be true before
+a model of ours can be published** — and to be the ranked candidate set a later session reads
+first. No counts appear here; they live in `docs/STATUS.md` and `reports/portability-arm/report.md`.
+
+**What it is called matters before it is published.** § 13 states the classification and it binds
+the model card: Whetstone improves **policy through training** and nothing else, and its loop is
+**closed by a human** who launches the night and merges the amendments. That is **bounded
+self-refinement, never open-ended RSI**. A card that says "self-improving" or "RSI" overclaims
+exactly what § 8's guardrails forbid, and the distinction is to be stated on the page rather than
+blurred. The honest description is: *a small open base, LoRA-tuned on rollouts that a
+deterministic verifier accepted by re-execution.*
+
+**The binding constraint is not packaging.** `whetstone card` refuses a night that wrote no
+checkpoint, and `sft.NothingToTrain` means a night writes no checkpoint unless it selected at
+least one strict-`PASS`. **So a publishable model requires a night with a nonzero strict-`PASS`
+yield, and five nights across three base sizes have produced zero.** Every milestone below is
+ordered by that fact. Nothing about fusing, carding or uploading is on the critical path; they are
+hours of work waiting behind a result that does not exist yet.
+
+### M1 — Make a strict-`PASS` possible: the patch representation (issue #64)
+
+**Highest priority, and the only identified lever on the zero.** The 3B night's rollouts died
+overwhelmingly at patch application, not at reasoning: the majority of those failures were
+*well-formed* unified diffs that git refused because their context lines and offsets did not match
+the file. Sampling them against real checkouts produced `error: patch failed` and not one that
+would have applied. The model decides what to change and then fails to transcribe it.
+
+Unified diff makes every edit require reproducing surrounding lines exactly and computing line
+offsets from memory. **This representation has never been varied.** `reports/format-hardening/` is
+a *retry-augmented* contract; `reports/larger-base/` moved base size; `reports/easier-stratum/`
+moved the task set. All three left the representation alone, and the same wall shows in the
+format-hardening figures. Raising *k* or the base does not touch this class: a better-reasoned
+diff still has to match exactly.
+
+**Direction:** a representation needing neither context reproduction nor offset arithmetic —
+search/replace keyed on a unique anchor, or whole-function replacement. The reward is untouched:
+still deterministic re-execution, still execution-grounded. Only how an edit is *expressed* moves.
+
+**This is a Type 1 amendment** — `prompt_sha256` and `extractor_version` are pinned generation-contract
+fields — declared before the night that tests it, and its figures are non-comparable to the
+existing series.
+
+**Exit criterion:** a night selects at least one strict-`PASS`, and therefore writes **both** a
+ledger and a checkpoint. That single outcome unblocks `check-leakage`, `card`, and every milestone
+below it.
+
+**Cheap and worth doing inside M1:** `NOT_APPLIED` records an empty `detail`. The outcome that
+accounted for most of a nine-day run carried no reason, and recovering it meant joining stored
+transcripts to journals by hand. `NO_ORACLE` already carries its reason; this should too.
+
+### M2 — Make the gate able to answer: the held-out set (issues #60, #62)
+
+The first real gated evaluation returned `UNVERIFIED`, and it will return `UNVERIFIED` for **every
+future candidate**, because two held-out members can never build an oracle and promotion requires
+`unverified == 0`. A gate that cannot fire teaches nothing about a candidate, however good.
+
+**Three routes are closed, and each is closed by evidence rather than by taste.** Raising
+`ORACLE_BUDGET_CHARS` is refused in `sources.py`'s own measurement — the remaining files "do not fit
+in the window at any bound this contract could honestly set". Rebuilding a smaller oracle does not
+reach them: the blocking file is a single large module. And relaxing the predicate is forbidden
+outright — `PREREGISTRATION.md` § 2 fixes that *"if any task is still unverified after its
+deterministic retries, the whole evaluation reduces to `UNVERIFIED`"*, and § 8.3 forbids amendments
+that narrow it.
+
+**The one honest route is selection.** A held-out set is a *chosen* set, and requiring its members
+to be able to build an oracle is a property of the choice — fixed in advance, exactly as the
+stratum document's rule is — not a weakening of any check. It must be declared before anything is
+scored against the result.
+
+**It arrives coupled to #62, and that coupling is the reason to do them together.** The split is
+keyed on the task id, so the donor's *arbitrary, documented-as-non-identifying* label decides which
+tasks are held out. Any re-derivation therefore re-rolls the membership, and a re-derivation done
+for its own declared reason is the only honest moment to absorb that. **It is also the moment the
+corpus can be re-minted under `--label`**, which is what finally takes the donors' names out of the
+task identifiers — a complete and provably faithful re-mint already exists and was deliberately not
+applied, because applying it alone would have re-rolled the split and silently dropped half the
+evidence for #60.
+
+**Exit criterion:** `whetstone gate` returns `promoted` or `rejected` on a real pair, and
+`whetstone check-leakage` exits 0. No structural `UNVERIFIED` remains.
+
+### M3 — Publish: the artifact and its page
+
+Only reachable with M1 and M2 done, and short once they are.
+
+- `whetstone check-leakage` exits 0 on the night that trained the candidate
+- `whetstone card --run <runs/id> --checkpoint <dir>` renders the page from the ledger's own
+  figures — never hand-written, which is what `card.py` exists to prevent
+- `whetstone fuse` merges the adapter into its base for a standalone model, chosen by the
+  checkpoint's **own** recorded backend and never the host's
+- Published under the project's own account, Apache-2.0, matching the base's license
+
+**What the page may claim is fixed before it exists**, so a result cannot tempt a later editor:
+the verified yield with its denominator and its unverified count, the gate's verdict whatever it
+was, the caught reward-hacking count, and the bounded-self-refinement framing above. A zero or
+negative delta is publishable — `CLAUDE.md` #5 requires the honest number either way — and
+`UNVERIFIED` is never rendered as a win.
+
+### What is explicitly *not* on this path
+
+- **Raising *k*.** The roadmap's other pre-committed response to a zero yield. It buys more samples
+  from a pipeline where most patches never apply; M1 is the same compute spent on the cause.
+- **A larger base on rented or borrowed compute.** § 13 records that 3B is this runtime's ceiling on
+  the declared host, so the question is real — but it is *a different question* from M1, it needs its
+  own amendment, and any answer on public tasks only says nothing about the private corpus. It is
+  also the one place a free GPU would genuinely earn its keep, which is why it is named rather than
+  forgotten.
+- **Any egress of the private corpus.** `CLAUDE.md` #3. Generation needs donor source files and up
+  to the full oracle budget per task; running that anywhere but the user's machine contradicts the
+  product's central promise.
