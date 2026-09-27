@@ -25,7 +25,9 @@ step as five functions, each of which returns the state it changed:
    to the declared real donor path the pre-swap corpus used (the staging donors are copies
    at the same heads; the corpus's convention is the real path). The rewrite is read back
    and asserted to have changed nothing else; a declared donor path that does not exist is
-   a named refusal.
+   a named refusal. The paths themselves are never typed: `real_donors` recovers them from
+   the snapshot — the pre-swap manifests' own `repo_url` values, paired per sha12 — so a
+   committed sheet publishes no operator's home directory.
 5. **`regenerate_ledger`** re-hashes the applied manifests into the staged ledger's evidence
    through `tasks.ledger`'s own `read_ledger`/`write_ledger` by identity — a hand-rolled
    JSON emit would be a second ledger contract. The regenerated entries differ from the
@@ -440,6 +442,86 @@ def rewrite_repo_url(corpus: Sequence[Path], donors: Mapping[str, Path]) -> int:
     return rewritten
 
 
+def real_donors(snapshot: Path, corpus: Sequence[Path]) -> Mapping[str, Path]:
+    """The real donor paths the pre-swap corpus declared, per staged label.
+
+    The staged manifests' `repo_url` values point at the staging donors; the real donor
+    paths are a property of the pre-swap corpus — the `repo_url` values its own manifests
+    carried — recorded in the snapshot. Each applied manifest's sha12 (the first twelve
+    hex of its `base_commit`) resolves to the snapshot's task of the same sha12, and that
+    task's manifest copy in the snapshot names the donor path the corpus used for it, so
+    the rewrite step never types an operator's absolute path. A label whose manifests
+    resolve to more than one path is refused — the bakeoff would resolve one name to two
+    repositories — and a sha12 the snapshot does not carry is refused: the real donor path
+    is recovered, never guessed.
+    """
+    old_tasks = _read_snapshot(snapshot)
+    by_sha12 = {task.sha12: task for task in old_tasks}
+    paths_by_label: dict[str, set[str]] = {}
+    for root in corpus:
+        root_dir = Path(root)
+        for entry in sorted(root_dir.iterdir()):
+            if not entry.is_file():
+                raise RemintRefusal(
+                    f"the corpus root {str(root_dir)!r} contains {entry.name!r}, which is "
+                    "not a manifest file; nothing is skipped"
+                )
+            try:
+                raw = json.loads(entry.read_text())
+            except (OSError, json.JSONDecodeError) as exc:
+                raise RemintRefusal(
+                    f"the applied manifest {str(entry)!r} could not be read: {exc}"
+                ) from exc
+            sha12 = raw["base_commit"][:12]
+            record = by_sha12.get(sha12)
+            if record is None:
+                raise RemintRefusal(
+                    f"the applied manifest {entry.name!r} carries sha12 {sha12!r}, which "
+                    "the snapshot does not record; the real donor path for a commit the "
+                    "pre-swap corpus never held cannot be recovered, and a rewritten "
+                    "repo_url must point at a real donor, never a guess"
+                )
+            copy = _snapshot_manifest(Path(snapshot), record.id)
+            try:
+                repo_url = json.loads(copy.read_text())["repo_url"]
+            except (OSError, json.JSONDecodeError, KeyError) as exc:
+                raise RemintRefusal(
+                    f"the snapshot's copy of {record.id!r} could not be read: {exc}"
+                ) from exc
+            label = raw.get("provenance", {}).get("donor")
+            if not isinstance(label, str) or not label:
+                raise RemintRefusal(
+                    f"the applied manifest {entry.name!r} carries no donor label; a label "
+                    "is what the rewrite resolves"
+                )
+            paths_by_label.setdefault(label, set()).add(repo_url)
+
+    donors: dict[str, Path] = {}
+    for label, paths in paths_by_label.items():
+        if len(paths) != 1:
+            raise RemintRefusal(
+                f"the {label!r} label resolves to more than one real donor path "
+                f"({sorted(paths)!r}); one label must name one donor, or the bakeoff "
+                "would resolve two repositories under one name"
+            )
+        donors[label] = Path(next(iter(paths)))
+    return donors
+
+
+def _snapshot_manifest(snapshot: Path, task_id: str) -> Path:
+    """The snapshot's copy of one recorded manifest, or a named refusal."""
+    manifests = Path(snapshot) / "manifests"
+    if manifests.is_dir():
+        for root in sorted(manifests.iterdir()):
+            candidate = root / f"{task_id}.json"
+            if candidate.is_file():
+                return candidate
+    raise RemintRefusal(
+        f"the snapshot at {str(snapshot)!r} holds no copy of {task_id!r}; a real donor "
+        "path read from a snapshot that lost the manifest would be a guess"
+    )
+
+
 def regenerate_ledger(corpus: Sequence[Path], staged: Path, out: Path) -> Path:
     """Regenerate the committed ledger from the staged ledger's evidence and the applied manifests.
 
@@ -572,12 +654,13 @@ def re_derive_heldout(corpus: Sequence[Path], out: Path) -> Path:
 
 __all__ = [
     "DONOR_LABELS",
-    "RemintRefusal",
     "SNAPSHOT_SCHEMA",
+    "RemintRefusal",
     "SwapRecord",
     "VerifyRecord",
     "re_derive_heldout",
     "re_derive_stratum",
+    "real_donors",
     "regenerate_ledger",
     "rewrite_repo_url",
     "snapshot_corpus",

@@ -22,7 +22,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from fixtures.repos import _git
 from fixtures.repos.mined import (
     MINED_BULK_LINE,
@@ -31,6 +30,7 @@ from fixtures.repos.mined import (
     MINED_TESTS_AFTER,
     MINED_TESTS_BEFORE,
 )
+
 from whetstone.bakeoff import stratum
 from whetstone.loop import heldout
 from whetstone.tasks import ledger, remint_apply
@@ -466,6 +466,66 @@ def test_rewrite_refuses_a_declared_donor_path_that_does_not_exist(tmp_path: Pat
     assert "does not exist" in str(caught.value), caught.value
 
 
+def test_real_donors_recovers_the_pre_swap_donor_paths_per_label(tmp_path: Path) -> None:
+    """The real donor paths are the pre-swap corpus's own, recovered from the snapshot.
+
+    The runbook never types an operator's absolute path; the rewrite step recovers the real
+    donor paths from the snapshot (the pre-swap manifests' `repo_url` values, paired per
+    sha12) instead. Each staged label must resolve to exactly one path.
+    """
+    layout = _old_layout(tmp_path)
+    snapshot = remint_apply.snapshot_corpus(
+        [layout["donor-a"], layout["donor-b"]], _old_ledger(tmp_path), tmp_path / "snapshot"
+    )
+    staged = _staged_layout(tmp_path)
+    remint_apply.swap_manifests([layout["donor-a"], layout["donor-b"]], staged["staged"])
+
+    donors = remint_apply.real_donors(
+        snapshot, [layout["donor-a"], layout["donor-b"]]
+    )
+
+    assert donors == {
+        "donor-a": Path("/real/donor/contig"),
+        "donor-b": Path("/real/donor/belay"),
+    }, donors
+
+
+def test_real_donors_refuses_a_sha12_the_snapshot_does_not_carry(tmp_path: Path) -> None:
+    """A commit the pre-swap corpus never held has no recoverable donor path: refused."""
+    layout = _old_layout(tmp_path)
+    snapshot = remint_apply.snapshot_corpus(
+        [layout["donor-a"], layout["donor-b"]], _old_ledger(tmp_path), tmp_path / "snapshot"
+    )
+    staged = _staged_layout(tmp_path)
+    remint_apply.swap_manifests([layout["donor-a"], layout["donor-b"]], staged["staged"])
+    stranger = layout["donor-b"] / "donor-b-b1b1b1b1b1b1.json"
+    raw = json.loads(stranger.read_text())
+    raw["base_commit"] = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    stranger.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(remint_apply.RemintRefusal) as caught:
+        remint_apply.real_donors(snapshot, [layout["donor-a"], layout["donor-b"]])
+    assert "deadbeef" in str(caught.value), caught.value
+
+
+def test_real_donors_refuses_a_label_that_resolves_to_mixed_donor_paths(tmp_path: Path) -> None:
+    """One label must name one donor; a mixed label would send the bakeoff to two repos."""
+    layout = _old_layout(tmp_path)
+    snapshot = remint_apply.snapshot_corpus(
+        [layout["donor-a"], layout["donor-b"]], _old_ledger(tmp_path), tmp_path / "snapshot"
+    )
+    staged = _staged_layout(tmp_path)
+    remint_apply.swap_manifests([layout["donor-a"], layout["donor-b"]], staged["staged"])
+    doctored = snapshot / "manifests" / "donor-a" / "contig-a2a2a2a2a2a2.json"
+    raw = json.loads(doctored.read_text())
+    raw["repo_url"] = "/real/donor/elsewhere"
+    doctored.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(remint_apply.RemintRefusal) as caught:
+        remint_apply.real_donors(snapshot, [layout["donor-a"], layout["donor-b"]])
+    assert "donor-a" in str(caught.value) and "more than one" in str(caught.value), caught.value
+
+
 # --------------------------------------------------------------------------------------------
 # AC6 — the regenerated ledger: staged evidence, re-hashed manifests, tasks.ledger by identity.
 # --------------------------------------------------------------------------------------------
@@ -716,7 +776,9 @@ def test_the_heldout_rederivation_excludes_the_class_and_never_draws_an_excluded
     must never draw it: `membership ∩ excluded = ∅`, 12 members (AC8's shape over a
     synthetic corpus).
     """
-    staged_root, staged_ids, bulk_id = _mined_corpus(tmp_path, staged=True, count=15, bulk=200_000)
+    staged_root, _, bulk_id = _mined_corpus(
+        tmp_path, staged=True, count=15, bulk=200_000
+    )
     assert bulk_id is not None
 
     stratum_doc = tmp_path / "tasks" / "stratum" / "easier.json"
