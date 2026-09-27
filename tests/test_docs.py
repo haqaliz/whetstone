@@ -944,6 +944,37 @@ def test_the_scorable_rule_amendment_re_derives_the_split_before_any_scoring() -
     )
 
 
+def test_the_roadmap_records_the_re_derived_split_by_dated_correction() -> None:
+    """AC8. § 12 referenced the § 10.7 split as live; the correction records the re-derivation.
+
+    The roadmap's operator chain and "same split" sentence point at the held-out split § 10.7
+    fixed. That document is re-derived by § 10.16, and the roadmap records the supersession
+    the way it records every supersession: a dated correction blockquote naming the amendment
+    and the non-comparability consequence, never an edit of the old text.
+    """
+    lines = _read("docs/ROADMAP.md").splitlines()
+    quoted = _flat("\n".join(line for line in lines if line.lstrip().startswith(">")))
+    assert "Corrected 2026-09-27" in quoted, (
+        "docs/ROADMAP.md no longer carries the 2026-09-27 dated correction recording the "
+        "held-out split's re-derivation. The roadmap records every supersession as a dated "
+        "correction blockquote, never as an edit of the old text."
+    )
+    assert "the held-out source-B split is re-derived" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer states that the held-out source-B "
+        "split is re-derived. The correction must say what changed or it records nothing."
+    )
+    assert "10.16" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer names § 10.16. The correction must "
+        "point at the amendment that records the re-derivation, or a reader cannot find "
+        "the rule."
+    )
+    assert "non-comparable" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer states the non-comparability "
+        "consequence. Prior figures keyed to the old document may not be compared with "
+        "figures on the re-derived one (§ 3), and the correction must say so."
+    )
+
+
 def test_a_report_without_its_preregistration_is_reported_as_an_offender(
     tmp_path: Path,
 ) -> None:

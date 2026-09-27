@@ -748,6 +748,15 @@ review fixed the path to it:
 > that no worktree is named rather than that exactly one is. The dependency order above is
 > unchanged; only the commands were broken, and only in a way nobody could see until one was run.
 
+> **Corrected 2026-09-27, when the held-out split was re-derived.** The operator chain
+> above and the "same split" sentence point at the held-out source-B split § 10.7 fixed,
+> committed at `tasks/heldout/source-b.json`; the held-out source-B split is re-derived by
+> `PREREGISTRATION.md` § 10.16: it is now drawn under the scorable rule (a member is held
+> out only if its oracle can be built under the sealed budget), over the re-minted
+> `donor-a-*`/`donor-b-*` label-form corpus, and prior figures keyed to the old document —
+> the night denominators, `gate-001` — are **non-comparable** and are never extended. The
+> operator chain above now consumes the re-derived document.
+
 ---
 
 ## 13. Where the plan stands — appended 2026-09-14
