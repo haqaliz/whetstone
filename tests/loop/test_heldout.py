@@ -8,7 +8,10 @@ cannot meet the rule is the § 7.1 published finding — never a criterion tuned
 half of that contract: the constants are the spec's, the banding reuses the stratum document's
 per-task difficulty measurement as the ordering key (never a new axis), the per-band selection
 is `sha256(split_seed, task_id)` — deterministic across processes, unlike the builtin `hash` —
-and the writer refuses a degenerate split by name instead of writing one.
+and the writer refuses a degenerate split by name instead of writing one. Since the
+oracle-predicate aspect, the draw runs over the scorable members only — the rule's own filter,
+reached by identity — and the document records every task it excluded (`excluded`, digested)
+while `corpus`/`difficulty`/`bands` keep covering the measured corpus entire.
 
 The difficulty source is the **committed stratum document**, consumed through its own
 fail-closed loader by identity: a second implementation of "how hard is this task" would be a
@@ -22,50 +25,75 @@ import hashlib
 import inspect
 import json
 import math
+import shutil
+import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
+from fixtures.repos.mined import MINED_TESTS_AFTER, Mined, build_mined_task
 
 from whetstone.bakeoff import sources as sources_module
 from whetstone.bakeoff import stratum
 from whetstone.loop import heldout
 from whetstone.verify.task import Task, load_task
 
-#: A value that only exists inside a task's held test file. If it turns up anywhere in the
-#: document, a file's contents did — which is the one thing the document may never carry
-#: (the ledger-walk canary, `test_ledger.py:45-47`).
-_CANARY = "canary-9f2c1e-the-users-own-source-line"
-
 #: A string no legitimate field can contain: paths are the excluded class, and a committed
 #: document carrying one has leaked a fact about the donor's layout.
 _PATH_SHAPED = "src/calc.py"
 
 
-def _task(root: Path, task_id: str) -> Task:
-    """One manifest-only task: valid for `load_task`, no donor repository needed.
+def _mined(root: Path, *, task_id: str = "synthetic-mined-adder", bulk_chars: int = 0) -> Mined:
+    """One materialised mined fixture under `root`: a two-commit donor and its task.
 
-    The held-out writer reads exactly `task_id`; the fixture is the smallest manifest
-    `whetstone.verify.task.load_task` accepts (the `fixtures/repos` shapes, minus the
-    two-commit donor these tests never touch).
+    The aspect-1 pattern (`test_oracle_fittable.py`): a donor with a parent and a child,
+    and a manifest naming both — the smallest repository `oracle_fittable` can read.
+    `bulk_chars` puts a non-test source file of roughly that many characters into the donor,
+    so the task's oracle exceeds any budget smaller than it.
+    """
+    return build_mined_task(root, task_id=task_id, bulk_chars=bulk_chars)
+
+
+def _manifest_for(root: Path, task_id: str, donor: Mined) -> Task:
+    """A manifest naming `donor`'s repository, at `root/{task_id}.json`, loaded like `mine` would.
+
+    The mined manifest shape (`fixtures/repos/mined.py`), with the task id and the donor's
+    paths substituted. Several manifests can name one donor: the fixture's commits are
+    deterministic, so a shared repository reads identically behind every manifest.
     """
     manifest = {
         "task_id": task_id,
         "source": "private",
-        "repo_url": str(root / "donor"),
-        "base_commit": "0" * 40,
+        "repo_url": str(donor.donor),
+        "base_commit": donor.parent,
         "environment": {"python": "3.12", "pins": [], "import_roots": ["."]},
-        "problem_statement": "Fix the bug",
+        "problem_statement": "Fix addition",
         "fail_to_pass": ["tests/test_addition.py::test_add_is_addition"],
         "pass_to_pass": ["tests/test_addition.py::test_adding_zero_is_the_identity"],
         "test_blobs": {
-            "tests/test_addition.py": base64.b64encode(_CANARY.encode("utf-8")).decode("ascii")
+            "tests/test_addition.py": base64.b64encode(MINED_TESTS_AFTER.encode("utf-8")).decode(
+                "ascii"
+            )
         },
-        "provenance": {"donor": "donor", "commit": "0" * 40, "parent": "0" * 40},
+        "provenance": {"donor": donor.donor.name, "commit": donor.commit, "parent": donor.parent},
     }
     path = root / f"{task_id}.json"
     path.write_text(json.dumps(manifest))
     return load_task(path)
+
+
+def _task(root: Path, task_id: str, *, bulk_chars: int = 0) -> Task:
+    """One mined task with a dedicated two-commit donor, under `root`.
+
+    The draw's filter reads each task's donor, so a fixture task needs a real repository
+    (the aspect-1 pattern, `test_oracle_fittable.py`). `bulk_chars` makes its oracle exceed
+    the sealed budget — the unfittable class.
+    """
+    return _manifest_for(
+        root,
+        task_id,
+        _mined(root / "donors" / task_id, task_id=task_id, bulk_chars=bulk_chars),
+    )
 
 
 def _difficulty(files: int, hunks: int, added: int, deleted: int) -> dict[str, int]:
@@ -114,11 +142,35 @@ def _corpus(
     root: Path,
     measured: Mapping[str, tuple[int, int, int, int]],
     refused: Sequence[str] = (),
+    *,
+    unfittable: Sequence[str] = (),
+    dedicated: Sequence[str] = (),
 ) -> tuple[tuple[Task, ...], stratum.Stratum]:
-    """A task corpus plus a stratum document measuring (or refusing) exactly those tasks."""
+    """A task corpus plus a stratum document measuring (or refusing) exactly those tasks.
+
+    The scorable tasks share one fit donor — the fixture's two-commit repository is
+    deterministic, so a shared repository reads identically behind every manifest —
+    `unfittable` ids get the bulk donor whose oracle exceeds the sealed budget, and
+    `dedicated` ids get donors of their own (the shapes a test must remove or replace).
+    """
     keys = {task_id: _difficulty(*counts) for task_id, counts in measured.items()}
-    tasks = tuple(_task(root, task_id) for task_id in [*measured, *refused])
-    return tasks, _parse_stratum(root, measured=keys, refused=refused)
+    fit = _mined(root / "donors" / "fit")
+    bulk = None
+    if unfittable:
+        bulk = _mined(
+            root / "donors" / "bulk", bulk_chars=sources_module.ORACLE_BUDGET_CHARS + 1_000
+        )
+    tasks = []
+    for task_id in [*measured, *refused]:
+        if task_id in dedicated:
+            donor = _mined(root / "donors" / task_id, task_id=task_id)
+        elif task_id in unfittable:
+            assert bulk is not None
+            donor = bulk
+        else:
+            donor = fit
+        tasks.append(_manifest_for(root, task_id, donor))
+    return tuple(tasks), _parse_stratum(root, measured=keys, refused=refused)
 
 
 #: The standard rule-meeting corpus: 12 measured tasks in three clear difficulty terciles
@@ -151,11 +203,17 @@ def _seed_sorted(ids: Sequence[str]) -> list[str]:
 
 
 def _manifest_dir(root: Path, ids: Sequence[str]) -> Path:
-    """A directory of manifests the door's `--corpus` can load."""
+    """A directory of manifests the door's `--corpus` can load — one shared donor behind them.
+
+    The donor lives outside the directory: `load_task_directory` refuses a non-manifest
+    entry, and the fixture's commits are deterministic, so every manifest in the directory
+    can name the same repository.
+    """
     directory = root / "corpus"
     directory.mkdir()
+    donor = _mined(root / "donors" / "fit")
     for task_id in ids:
-        _task(directory, task_id)
+        _manifest_for(directory, task_id, donor)
     return directory
 
 
@@ -394,6 +452,7 @@ def test_the_digest_algorithm_is_the_stratum_shape() -> None:
         "corpus": ["a"],
         "difficulty": {"a": _difficulty(1, 1, 1, 0)},
         "bands": {"a": 0},
+        "excluded": {},
         "refusals": {},
         "membership": ["a"],
     }
@@ -403,6 +462,34 @@ def test_the_digest_algorithm_is_the_stratum_shape() -> None:
     ).hexdigest()
 
     assert heldout.document_digest_of(raw) == expected
+
+
+def test_a_document_predating_excluded_still_seals_its_own_digest() -> None:
+    """A pre-amendment document (no `excluded`) re-seals: a digest of what it carries, not a crash.
+
+    `_DIGESTED_FIELDS` gained `excluded`, and documents written before the field existed — the
+    synthetic fixtures other consumers build, and the committed document until it is
+    regenerated — carry no such key. The digest covers the fields the document has, so such a
+    document is still a document; a written document stripped of `excluded` still moves the
+    digest, which is the fail-closed half.
+    """
+    raw = {
+        "schema": heldout.HELDOUT_SCHEMA,
+        "rule_digest": "f" * 64,
+        "rule": {"bands": 3, "min_heldout": 10, "min_per_band": 2, "split_seed": "seed"},
+        "corpus": ["a"],
+        "difficulty": {"a": _difficulty(1, 1, 1, 0)},
+        "bands": {"a": 0},
+        "refusals": {},
+        "membership": ["a"],
+    }
+    predating = heldout.document_digest_of(raw)
+
+    raw["excluded"] = {}
+    assert heldout.document_digest_of(raw) != predating, (
+        "the presence of a digested field does not move the digest, so stripping `excluded` "
+        "from a written document would be invisible"
+    )
 
 
 def test_main_writes_the_document(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -567,14 +654,186 @@ def test_the_writer_refuses_when_the_sealed_budget_drifts_from_the_bakeoff(
 
 
 # --------------------------------------------------------------------------------------------
+# The draw excludes the class: membership over scorable members, `excluded` on the record.
+# --------------------------------------------------------------------------------------------
+
+
+def test_the_draw_never_contains_an_excluded_id_and_the_document_records_it(
+    tmp_path: Path,
+) -> None:
+    """AC1/AC5: a task the predicate refuses is never drawn, and the document says so.
+
+    One synthetic corpus task has a donor whose oracle exceeds the sealed budget — the class
+    `oracle_fittable` refuses with the bakeoff's sentence. The derived membership must not
+    contain it, `excluded` must record it with the predicate's own reason, and the
+    corpus-wide fields must still cover it: only the draw changes.
+    """
+    measured = {**_STANDARD_MEASURED, "t-15": (1, 1, 1, 0)}
+    tasks, document = _corpus(tmp_path, measured, _STANDARD_REFUSED, unfittable=("t-15",))
+    out = tmp_path / "heldout" / "source-b.json"
+
+    heldout.write_document(out, tasks, document)
+
+    raw = json.loads(out.read_text())
+    assert "t-15" not in raw["membership"], (
+        f"the draw included t-15, whose oracle the predicate refused: {raw['membership']}"
+    )
+    assert set(raw["membership"]) & set(raw["excluded"]) == set(), (
+        "the membership and the exclusion overlap: an excluded task was drawn"
+    )
+    reason = raw["excluded"]["t-15"]
+    assert "bulk.py" in reason and str(sources_module.ORACLE_BUDGET_CHARS) in reason, (
+        f"the exclusion must carry the predicate's own reason, naming the file and the "
+        f"budget: {reason!r}"
+    )
+    for key in ("corpus", "difficulty", "bands"):
+        assert "t-15" in raw[key], (
+            f"{key} no longer covers the excluded task: only the draw is allowed to change"
+        )
+    assert set(raw["refusals"]) == set(_STANDARD_REFUSED), (
+        "refusals kept its stratum meaning; an exclusion is not a refusal"
+    )
+
+
+def test_a_band_with_fewer_scorable_members_than_the_take_draws_fewer(
+    tmp_path: Path,
+) -> None:
+    """AC4: a band of three scorable members draws three — the take is a cap, never a quota.
+
+    The standard twelve arrange as 4/4/4; making one band-0 member unfittable leaves three
+    scorable members, and the draw takes the three without error while the floors still bind
+    (11 >= MIN_HELDOUT, 3/4/4 >= MIN_PER_BAND).
+    """
+    tasks, document = _corpus(
+        tmp_path, _STANDARD_MEASURED, _STANDARD_REFUSED, unfittable=("t-03",)
+    )
+    out = tmp_path / "heldout" / "source-b.json"
+
+    heldout.write_document(out, tasks, document)
+
+    raw = json.loads(out.read_text())
+    membership = raw["membership"]
+    per_band = [
+        sum(1 for task_id in membership if raw["bands"][task_id] == band)
+        for band in range(heldout.HELDOUT_BANDS)
+    ]
+    assert per_band == [3, 4, 4], (
+        f"band 0 drew {per_band[0]} with three scorable members: {per_band}"
+    )
+    assert set(raw["excluded"]) == {"t-03"}, raw["excluded"]
+    assert len(membership) >= heldout.MIN_HELDOUT
+    assert all(count >= heldout.MIN_PER_BAND for count in per_band)
+
+
+def test_the_draw_refuses_when_the_scorable_population_cannot_meet_a_band_floor(
+    tmp_path: Path,
+) -> None:
+    """AC4: floors over the filtered population — one scorable member in a band is the finding.
+
+    Fourteen measured tasks arrange as 5/5/4 across the terciles; four of band 0's five
+    members are unfittable, leaving one scorable member. The draw can then hold out at most
+    1+4+4 = 9 tasks — below `MIN_HELDOUT`, with band 0 also below `MIN_PER_BAND` — and the
+    response is the published § 7.1 finding, never a loosened floor. Unfiltered, the same
+    corpus draws twelve; the refusal is the filter's doing.
+    """
+    measured = {
+        **{f"t-{i:02d}": (1, 1, 1, 0) for i in range(5)},
+        **{f"t-{i:02d}": (2, 2, 2, 0) for i in range(5, 10)},
+        **{f"t-{i:02d}": (3, 3, 3, 0) for i in range(10, 14)},
+    }
+    tasks, document = _corpus(
+        tmp_path, measured, unfittable=tuple(f"t-{i:02d}" for i in range(4))
+    )
+
+    with pytest.raises(heldout.EmptyHeldout) as caught:
+        heldout.compose_document(tasks, document)
+
+    assert "floor" in str(caught.value).lower(), (
+        f"the refusal must name the unmet floor: {caught.value}"
+    )
+
+
+def test_the_draw_refuses_by_name_when_a_donor_cannot_be_read(tmp_path: Path) -> None:
+    """AC7: machine state is a named refusal of the derivation, never an exclusion.
+
+    One measured task's donor is removed after the corpus is built — the shape
+    `oracle_fittable` raises on, not classifies. The derivation must refuse by name, and
+    because it refuses, no document exists for the task to be excluded from.
+    """
+    measured = {**_STANDARD_MEASURED, "t-15": (1, 1, 1, 0)}
+    tasks, document = _corpus(tmp_path, measured, _STANDARD_REFUSED, dedicated=("t-15",))
+    shutil.rmtree(tmp_path / "donors" / "t-15" / "donor")
+
+    with pytest.raises(heldout.HeldoutUnscorable) as caught:
+        heldout.compose_document(tasks, document)
+
+    assert "t-15" in str(caught.value), (
+        f"the refusal must name the task whose oracle could not be decided: {caught.value}"
+    )
+
+
+def test_a_corpus_with_an_exclusion_derives_byte_identically_twice(tmp_path: Path) -> None:
+    """AC9: the exclusion is part of the derivation, so it is byte-identical too.
+
+    Two derivations over one corpus — including the excluded task's reason, which must come
+    back byte for byte — produce one document. The predicate is a pure function of the
+    manifest and git objects, so the reason cannot depend on when the draw ran.
+    """
+    measured = {**_STANDARD_MEASURED, "t-15": (1, 1, 1, 0)}
+    tasks, document = _corpus(tmp_path, measured, _STANDARD_REFUSED, unfittable=("t-15",))
+    first, second = tmp_path / "one.json", tmp_path / "two.json"
+
+    heldout.write_document(first, tasks, document)
+    heldout.write_document(second, tasks, document)
+
+    assert first.read_bytes() == second.read_bytes()
+
+
+def test_the_document_records_the_exclusion_in_a_digested_field(tmp_path: Path) -> None:
+    """The `excluded` field is required, sorted, and inside the digest.
+
+    A change to an excluded entry must move `document_digest` — the exclusion is part of the
+    rule's output, so a hand-edit to it is exactly the tampering the digest exists to catch.
+    """
+    assert "excluded" in heldout._DIGESTED_FIELDS, (
+        "the exclusion is not digest-covered, so an edit to it would not invalidate the "
+        "committed document"
+    )
+    assert "excluded" in heldout._KNOWN_FIELDS, (
+        "a document carrying `excluded` would be refused as carrying an unknown field"
+    )
+    measured = {**_STANDARD_MEASURED, "t-15": (1, 1, 1, 0)}
+    tasks, document = _corpus(tmp_path, measured, _STANDARD_REFUSED, unfittable=("t-15",))
+    out = tmp_path / "heldout" / "source-b.json"
+
+    heldout.write_document(out, tasks, document)
+
+    raw = json.loads(out.read_text())
+    assert list(raw["excluded"]) == sorted(raw["excluded"]), "excluded ids must be sorted"
+
+    doctored = json.loads(out.read_text())
+    doctored["excluded"]["t-15"] = "a hand-edited reason"
+    assert heldout.document_digest_of(doctored) != raw["document_digest"], (
+        "the digest does not move when an excluded entry changes, so the exclusion is not "
+        "part of the sealed rule output"
+    )
+
+
+# --------------------------------------------------------------------------------------------
 # The loader: fail-closed by name, so the gate and the night can consume the document.
 # --------------------------------------------------------------------------------------------
 
 
 def _written(tmp_path: Path) -> Path:
-    """A written held-out document over the standard corpus, for the loader tests."""
-    tasks, document = _corpus(tmp_path, _STANDARD_MEASURED, _STANDARD_REFUSED)
-    out = tmp_path / "heldout" / "source-b.json"
+    """A written held-out document over the standard corpus, for the loader tests.
+
+    Each call builds its own corpus root: the loader tests re-derive a written document
+    several times over one `tmp_path`, and the donors are real repositories that cannot be
+    built twice in one place.
+    """
+    root = Path(tempfile.mkdtemp(dir=tmp_path))
+    tasks, document = _corpus(root, _STANDARD_MEASURED, _STANDARD_REFUSED)
+    out = root / "heldout" / "source-b.json"
     heldout.write_document(out, tasks, document)
     return out
 
