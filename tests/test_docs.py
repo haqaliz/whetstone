@@ -43,6 +43,9 @@ import pytest
 from adversarial.corpus import BOTH_ACCEPT, CHEATS
 from test_night_runbook_guards import RETAINED
 
+from whetstone.bakeoff import sources
+from whetstone.loop import heldout
+
 # A concrete working branch, e.g. `feat/p0-scaffold/aliz`. The angle-bracket template
 # `<type>/<id>/aliz` that documents the naming convention deliberately does not match.
 CONCRETE_BRANCH = re.compile(r"\b(?:feat|bug|chore|task)/[a-z0-9][a-z0-9-]*/aliz\b")
@@ -808,6 +811,136 @@ def test_the_base_amendment_closes_section_7_3_and_claims_no_count_measured_here
     ), (
         f"{PREREGISTRATION}'s amendment log no longer records the § 10.10 row closing "
         "an open item. A closure that is not in the log is a silent edit (§ 8.4)."
+    )
+
+
+def test_the_scorable_rule_amendment_re_derives_the_split_before_any_scoring() -> None:
+    """§ 10.16 re-derives the held-out split under the scorable rule, in the § 10.7 shape.
+
+    A gate pointed at a split whose members' oracles cannot be built under the sealed
+    budget can never fire (`unverified == 0`), so the split is re-derived before any
+    candidate scores against it. The pre-registration must record that as a dated Type 1
+    amendment committed before the measurement it governs runs (§ 8.1), naming the rule
+    and the re-minted corpus identity, stating the § 3 series consequence, and editing
+    nothing silently. Asserted in the § 10.7/§ 10.10 shape, sentence by sentence, with
+    the budget figure cross-pinned against the code by identity.
+    """
+    flat = _flat(_read(PREREGISTRATION))
+    budget = heldout._RULE_PARAMETERS["oracle_budget_chars"]
+    assert budget == sources.ORACLE_BUDGET_CHARS, (
+        f"the held-out rule seals oracle_budget_chars={budget}, but the bakeoff enforces "
+        f"sources.ORACLE_BUDGET_CHARS={sources.ORACLE_BUDGET_CHARS}. The two code constants "
+        "must be one number, or the amendment's figure is pinned to a rule the bakeoff "
+        "does not use."
+    )
+    assert "10.16" in flat, (
+        f"{PREREGISTRATION} no longer carries a § 10.16 amendment. The held-out split is "
+        "re-derived under the scorable rule, and the re-derivation must be recorded as a "
+        "dated amendment committed before any candidate scores against the new document "
+        "(§ 8.1); without it the gate would consume a split the pre-registration never "
+        "named."
+    )
+    assert (
+        "Type 1 (§ 8.1): pins the inputs of a measurement, committed before any candidate "
+        "scores against the re-derived split" in flat
+    ), (
+        f"{PREREGISTRATION} § 10.16 no longer states the Type 1 pin of the measurement's "
+        "inputs. The amendment must be committed before the measurement it governs runs "
+        "(§ 8.1), and the sentence must name the split it re-derives."
+    )
+    assert f"oracle_budget_chars = {budget}" in flat, (
+        f"{PREREGISTRATION} § 10.16 no longer states the sealed budget figure "
+        f"oracle_budget_chars = {budget}. The amendment pins the budget the rule applies, "
+        "and this assertion derives the figure from heldout._RULE_PARAMETERS so a drift "
+        "between the amendment and the code fails by name."
+    )
+    assert "donor-a-" in flat and "donor-b-" in flat, (
+        f"{PREREGISTRATION} § 10.16 no longer names the re-minted corpus identity. The "
+        "re-derived split is drawn over the `donor-a-*`/`donor-b-*` label-form ids, and "
+        "the amendment must name them or the new corpus cannot be told from the old one."
+    )
+    assert "the #62 pairing" in flat and "one re-derivation" in flat, (
+        f"{PREREGISTRATION} § 10.16 no longer records the pairing with the #62 re-mint. "
+        "The corpus is swapped once, by a scripted step, and the amendment must say so or "
+        "the re-derivation reads as a repeatable re-roll."
+    )
+    assert "by class" in flat and "never a hand-picked membership" in flat, (
+        f"{PREREGISTRATION} § 10.16 no longer states the exclusion's class property. The "
+        "rule excludes oracle-unfittable members as a class — a digest-sealed function in "
+        "heldout.py — never a hand-picked membership, and dropping the property is the "
+        "cherry-picking optics issue #60 warns about."
+    )
+    assert "described the take, not the floor" in flat, (
+        f"{PREREGISTRATION} § 10.16 no longer records that § 10.7's \"4 tasks per band\" "
+        "sentence described the take, not the floor. The floors bind over the scorable "
+        "members, and the supersession must be stated, never quietly edited."
+    )
+    assert "night denominators" in flat and "gate-001" in flat and "non-comparable" in flat, (
+        f"{PREREGISTRATION} § 10.16 no longer states the § 3 series consequence. Prior "
+        "figures keyed to the old document — the night denominators, gate-001 — are "
+        "non-comparable, and a reader who could still compare them would read a delta "
+        "across a changed pinned input."
+    )
+    assert "the old series is never extended" in flat, (
+        f"{PREREGISTRATION} § 10.16 no longer states that the old series is never "
+        "extended. § 3 treats a change to a pinned input as starting over, and the "
+        "amendment must say so in words."
+    )
+    assert "the old series is superseded" in flat, (
+        f"{PREREGISTRATION} § 10.16 no longer states what a decision on the new document "
+        "means: the old series is superseded."
+    )
+    assert "the document's `excluded` field names them" in flat and "never hidden" in flat, (
+        f"{PREREGISTRATION} § 10.16 no longer states that the oracle-unfittable tasks stay "
+        "in the corpus with their status reported. The excluded class is named by the "
+        "document's `excluded` field and never hidden, or the record would silently lose "
+        "a denominator."
+    )
+    assert "`rejected` 0-0 is a valid first decision" in flat and "never dressed as a win" in (
+        flat
+    ), (
+        f"{PREREGISTRATION} § 10.16 no longer states that a rejected 0-0 is a valid first "
+        "decision. The re-derivation is a liveness fix, not a yield fix, and the amendment "
+        "must not imply otherwise."
+    )
+    assert "does not change" in flat and "all stand unchanged" in flat, (
+        f"{PREREGISTRATION} § 10.16 no longer carries the does-not-change clause. The base "
+        "§ 10.10 pinned, the verifier, the gate's terms and the budget value all stand "
+        "unchanged, and the amendment must say so or a reader could misread the re-derived "
+        "split as a loosening."
+    )
+    assert "introduces no success threshold" in flat, (
+        f"{PREREGISTRATION} § 10.16 no longer states the no-threshold invariance. § 8.3 "
+        "forbids an amendment introducing a success threshold, and the amendment must "
+        "carry that sentence or the exclusion reads as a threshold in disguise."
+    )
+    assert "No measurement has been run against the re-derived split" in flat and (
+        "and none is claimed here" in flat
+    ), (
+        f"{PREREGISTRATION} § 10.16 does not state that no count has been measured under "
+        "the re-derived split and that none is claimed here. The sentence is the disclosure "
+        "shape § 10.7 pins, and its absence would let the new document's first figures "
+        "appear without a record of when the claim began."
+    )
+    assert (
+        "2026-09-27 | The held-out source-B split is re-derived under the scorable rule "
+        "(§ 10.16) | 1 — pins the inputs of a measurement" in flat
+    ), (
+        f"{PREREGISTRATION}'s amendment log no longer records the § 10.16 row as a Type 1 "
+        "pin of a measurement's inputs. A re-derivation that is not in the log is a silent "
+        "edit (§ 8.4)."
+    )
+    assert "The split § 10.7 fixed is re-derived by the dated amendment below (§ 10.16)" in (
+        flat
+    ), (
+        f"{PREREGISTRATION}'s open-items status sentence no longer records that the split "
+        "§ 10.7 fixed is re-derived by § 10.16. The status paragraph is the one live "
+        "sentence above § 10 and must track the supersession."
+    )
+    assert "No amendment has introduced a success threshold" in flat, (
+        f"{PREREGISTRATION}'s standing integrity sentence no longer holds. After the "
+        "§ 10.16 edit the document must still state that no amendment has introduced a "
+        "success threshold."
     )
 
 
