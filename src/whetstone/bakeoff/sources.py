@@ -258,11 +258,19 @@ def changed_paths(task: Task, *, pool: Path | None = None) -> Changed:
 
 
 def _from_donor(task: Task) -> Changed:
-    """Source B's route: the paths the mined commit itself touched, read from git now."""
-    commit = task.provenance[_COMMIT]
+    """Source B's route: the paths the mined commit itself touched, read from git now.
+
+    The catch lives here and only here. `_structural_paths` — the derivation this route and the
+    held-out predicate (aspect 2) share by identity — raises when the machine says no: git
+    failed, the subprocess could not run, the filesystem refused. This function is the
+    bakeoff's boundary, where that raise becomes a recorded skip with a sentence, because a
+    missing donor is an ordinary property of a corpus rather than a defect. The predicate must
+    see the raise and refuse by name, never classify — so nothing else in this module may
+    swallow these exceptions on the donor route.
+    """
     donor = Path(task.repo_url)
     try:
-        touched = _touched_paths(donor, commit)
+        return _structural_paths(task)
     except (GitFailed, subprocess.SubprocessError, OSError) as exc:
         return Changed(
             paths=None,
@@ -273,6 +281,23 @@ def _from_donor(task: Task) -> Changed:
             origin=Origin.NONE,
         )
 
+
+def _structural_paths(task: Task) -> Changed:
+    """The donor route's path derivation: touched paths, less test paths, vouched.
+
+    One statement of "which non-test files does this task's commit touch", shared by identity
+    with the held-out derivation's predicate (aspect 2), so the scope a task is drawn under
+    cannot be derived a second way by the thing that refuses it. The machine is never
+    classified here: a git failure or an unreadable donor raises (the
+    `GitFailed`/`SubprocessError`/`OSError` family), and the caller decides what a raise means
+    — `_from_donor` records it as a skip, the predicate refuses by name. The structural
+    refusals are returned, not raised: a commit that touched no non-test path and a path the
+    operator holds are permanent properties of the task and its commit, and the predicate must
+    be able to say `fits=False` about them without the machine having anything to do with it.
+    """
+    commit = task.provenance[_COMMIT]
+    donor = Path(task.repo_url)
+    touched = _touched_paths(donor, commit)
     paths = tuple(sorted(path for path in touched if not is_test_path(path)))
     if not paths:
         return Changed(
