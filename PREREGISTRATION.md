@@ -322,10 +322,12 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-09-09 | The portability arm scales to a 1.5B base on the same runtime; § 10.10's base untouched (§ 10.13) | 1 — pins an input for an existing arm | Yes |
 | 2026-09-13 | The portability arm scales again, to a 3B base on the same runtime; § 10.10's base untouched (§ 10.14) | 1 — pins an input for an existing arm | Yes |
 | 2026-09-14 | The portability arm draws one night from the easiest stratum band, on its 1.5B base; § 10.10's base untouched (§ 10.15) | 1 — pins the inputs of a measurement | Yes |
+| 2026-09-27 | The held-out source-B split is re-derived under the scorable rule (§ 10.16) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
 dated amendment below (§ 10.10). § 7.1 and § 7.2 are closed by the dated amendments below (§ 10.7, § 10.8).
+The split § 10.7 fixed is re-derived by the dated amendment below (§ 10.16).
 
 ## 10. Amendments
 
@@ -905,3 +907,45 @@ training it governs — still holds and is checkable from git, since night-004 b
 
 It is corrected here rather than edited above, for the reason every retraction in this project is:
 an append-only document whose dates can be quietly fixed is a document whose dates mean nothing.
+
+### 10.16 The held-out source-B split is re-derived under the scorable rule — 2026-09-27
+
+**Type 1 (§ 8.1): pins the inputs of a measurement, committed before any candidate scores
+against the re-derived split.** It introduces no success threshold and rewords nothing in
+§ 1, § 4, or § 6.
+
+**The re-derivation.** § 10.7 fixed a held-out split of the 66 declared source-B tasks,
+committed at `tasks/heldout/source-b.json`. That document carried members whose oracles
+could not be built under the oracle budget the rule seals, and the promotion gate requires
+`unverified == 0` — so no candidate, however good, could ever be promoted against it
+(issue #60; `gate-001` reduced to `UNVERIFIED`). The fix is a property of the selection,
+not of the check: the split is re-derived under the scorable rule, a member being held out
+only if its oracle can be built under `oracle_budget_chars = 80000` — the budget the held-out
+rule seals (`heldout._RULE_PARAMETERS`, by identity) and the bakeoff enforces
+(`sources.ORACLE_BUDGET_CHARS`), refused by name if the two ever disagree. The exclusion is
+by class, never a hand-picked membership: the rule lives as a digest-sealed function in
+`heldout.py`, its `rule_digest` covering it, so an edit to the rule invalidates the document
+by design. The corpus is re-minted under `--label`, its ids taking the
+`donor-a-*`/`donor-b-*` label form over a provably identical commit set — the same sha12s,
+the same heads, the #62 pairing, one re-derivation. The pre-committed floors bind over the
+scorable members only: at least 10 held-out tasks and at least 2 from each band. § 10.7's
+sentence *"The membership is 4 tasks per band, 12 in total"* described the take, not the
+floor, and is superseded.
+
+**The series consequence.** The held-out document is a pinned input (§ 3), and a change to
+a pinned input invalidates a series and starts a new one. Prior figures keyed to the old
+document — the night denominators, `gate-001` — are **non-comparable**, and the old series
+is never extended. The new series stands on the re-derived document alone.
+
+**What a decision on the new document means.** The re-derived split starts a new series:
+the old series is superseded, the oracle-unfittable tasks stay in the corpus with their
+status reported — the document's `excluded` field names them — never hidden, and a
+`rejected` 0-0 is a valid first decision, never dressed as a win.
+
+**What does not change.** § 10.10's base (`mlx-community/Qwen2.5-Coder-32B-Instruct-4bit`),
+the verifier, the gate's terms (`unverified == 0`, `R = 3`, the three exits) and the budget
+value all stand unchanged.
+
+**What is not claimed.** No measurement has been run against the re-derived split, and none
+is claimed here: this amendment precedes any scoring of it, which is the whole of its value,
+and the § 3 baseline remains unspent.
