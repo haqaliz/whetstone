@@ -26,7 +26,10 @@ different way of quietly running a different experiment from the one that gets p
    to any base — a source published under `PREREGISTRATION.md:142-143` beside source B while
    contributing no scored result. Which route produced a set is recorded on it, because "derived
    from the user's own commit, now" and "read out of a committed dataset nobody here re-derived"
-   are different provenance.
+   are different provenance;
+6. **the budget has exactly one statement**, shared by identity with the held-out derivation's
+   predicate (aspect 2 of this unit), so "does this set fit the oracle budget" cannot be
+   answered two ways.
 
 No model, no `mlx`, no network. Donors are two-commit synthetic repositories built with real git,
 the "public" tasks are ordinary local fixture repositories with a pool written beside them, and
@@ -307,6 +310,64 @@ def test_an_oracle_within_the_budget_is_shown_whole(tmp_path: Path) -> None:
     assert sum(len(text) for text in sources.files.values()) <= ORACLE_BUDGET_CHARS, (
         "WHY THIS IS A FAILURE: the returned oracle is itself over the budget, so the check "
         "measures something other than what it returns"
+    )
+
+
+def test_the_budget_rule_is_one_function_shared_by_identity() -> None:
+    """The budget's one statement is an object, and `_read` reaches that object.
+
+    The held-out derivation (aspect 2 of this unit) must classify tasks on the same budget rule
+    the bakeoff enforces — "one rule by identity, asserted `is`" is the aspect's spec. A second
+    implementation of "does this set fit the budget" would be a second definition of what is
+    posable, and the one that disagreed would be the one nobody looked at. `_read`'s globals are
+    where its body resolves the name, so the pin is: that resolution is this module's object.
+    """
+    assert sources_module._read.__globals__["_budget_rule"] is sources_module._budget_rule, (
+        "WHY THIS IS A FAILURE: `_read` resolves a budget rule that is not the module's own "
+        "object, so a second implementation of the rule exists and the held-out predicate could "
+        "classify on a boundary the bakeoff does not enforce"
+    )
+
+
+def test_the_budget_boundary_is_exact_on_both_sides(tmp_path: Path) -> None:
+    """`==` the budget fits and one character more refuses — the boundary `_read` enforces.
+
+    The budget is a bound, not a round number: a set totalling exactly `ORACLE_BUDGET_CHARS`
+    characters is posable, and the same set plus one character is refused, naming the file that
+    tipped it. The pin is on the shared rule directly, with synthetic per-path entries, because
+    the rule is the single statement of the check both readers feed.
+    """
+    fixture = build_mined_task(tmp_path / "task")
+    exact = "x" * ORACLE_BUDGET_CHARS
+    entries: list[tuple[str, int | None, str | None]] = [
+        ("bulk.py", len(exact.encode("utf-8")), exact)
+    ]
+
+    files, reason = sources_module._budget_rule(entries, fixture.task, budget=ORACLE_BUDGET_CHARS)
+
+    assert files == {"bulk.py": exact}, (
+        "WHY THIS IS A FAILURE: a set totalling exactly the budget was refused, so the budget "
+        "is not a bound but something smaller, and the held-out derivation would exclude tasks "
+        f"the bakeoff can pose. Got {files!r} with reason {reason!r}"
+    )
+    assert reason == "", (
+        f"WHY THIS IS A FAILURE: a set inside the budget carries a reason, so a fit and a "
+        f"refusal cannot be told apart on the record. Got {reason!r}"
+    )
+
+    one_over = exact + "y"
+    entries = [("bulk.py", len(one_over.encode("utf-8")), one_over)]
+
+    files, reason = sources_module._budget_rule(entries, fixture.task, budget=ORACLE_BUDGET_CHARS)
+
+    assert files is None, (
+        "WHY THIS IS A FAILURE: a set one character over the budget was accepted, so the "
+        "cumulative check measures something other than what the bakeoff refuses, and the "
+        "held-out derivation could draw a task whose oracle cannot be built"
+    )
+    assert "bulk.py" in reason and str(ORACLE_BUDGET_CHARS) in reason, (
+        f"WHY THIS IS A FAILURE: the refusal names neither the file that tipped it nor the "
+        f"budget it enforced, so it cannot be told from any other refusal. Got {reason!r}"
     )
 
 

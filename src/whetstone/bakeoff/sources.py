@@ -90,7 +90,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -440,6 +440,58 @@ def oracle_sources(task: Task, *, pool: Path | None = None) -> Sources:
         shutil.rmtree(workspace, ignore_errors=True)
 
 
+def _budget_rule(
+    entries: Sequence[tuple[str, int | None, str | None]],
+    task: Task,
+    *,
+    budget: int,
+) -> tuple[Mapping[str, str] | None, str]:
+    """The oracle budget's one statement: does this path set fit, and if not, why.
+
+    `entries` is one `(path, byte_size, text)` triple per path of the derived set, in order:
+    `byte_size` is the path's size at `base_commit` — `None` when the path is not there (created
+    by the fix) or is not a file — and `text` is its decoded UTF-8 contents, or `None` when the
+    bytes were not UTF-8. The caller reads; this function decides, and it never touches the
+    filesystem. The held-out derivation's predicate will feed it from `git cat-file` the same
+    way `_read` feeds it from a checkout, which is the point: one rule, two readers, and the
+    rule is shared by identity rather than restated.
+
+    The checks run in `_read`'s order, byte for byte. A path whose `byte_size` exceeds
+    `budget * _MAX_BYTES_PER_CHARACTER` is refused by that fact alone — a pathological blob is
+    never loaded into memory to be measured and discarded. A path with no decodable text is
+    omitted. The cumulative character total, once over `budget`, refuses with the path that
+    tipped it. Each refusal returns immediately on the first offending path, and the reason is
+    `_over`'s sentence, which names the limit and the file. If no path yields text, the refusal
+    is the nothing-readable sentence. On a fit, the map is returned with an empty reason.
+
+    `budget` is an argument rather than a read of `ORACLE_BUDGET_CHARS` so the held-out
+    derivation can classify under a parameter the bakeoff never sees; `_read` passes the module
+    constant, which is how the two keep the same boundary.
+    """
+    files: dict[str, str] = {}
+    total = 0
+    for path, byte_size, text in entries:
+        if byte_size is None:
+            continue
+        if byte_size > budget * _MAX_BYTES_PER_CHARACTER:
+            return None, _over(task, path, byte_size)
+        if text is None:
+            continue
+        total += len(text)
+        if total > budget:
+            return None, _over(task, path, total)
+        files[path] = text
+
+    if not files:
+        return None, (
+            f"none of the {len(entries)} non-test paths of task {task.task_id!r} could be read "
+            f"at {task.base_commit}: every one is either created by the fix or not UTF-8 "
+            f"text, so there is no source to show and the prompt would ask for a diff against "
+            f"files the base has never seen"
+        )
+    return files, ""
+
+
 def _read(task: Task, checkout: Path, paths: tuple[str, ...], origin: Origin) -> Sources:
     """Read `paths` out of `checkout`, refusing the whole set if it is over the budget.
 
@@ -453,41 +505,30 @@ def _read(task: Task, checkout: Path, paths: tuple[str, ...], origin: Origin) ->
     base would be patching around a file it was told nothing about, and the rollout would be
     scored beside ones that saw the whole picture.
 
-    A file whose size on disk cannot possibly fit — even at one character per byte — is refused
-    without being read, so a vendored blob is not loaded into memory to be measured and discarded.
+    This function only reads the checkout; the budget itself is decided by `_budget_rule`, shared
+    by identity with the held-out derivation's predicate. A path whose size cannot possibly fit —
+    even at one character per byte — is not read at all here, so a vendored blob is not loaded
+    into memory to be measured and discarded.
     """
-    files: dict[str, str] = {}
-    total = 0
+    entries: list[tuple[str, int | None, str | None]] = []
     for path in paths:
         target = checkout / path
         if not target.is_file():
+            entries.append((path, None, None))
             continue
-        if target.stat().st_size > ORACLE_BUDGET_CHARS * _MAX_BYTES_PER_CHARACTER:
-            return Sources(
-                files=None,
-                reason=_over(task, path, target.stat().st_size),
-                origin=Origin.NONE,
-            )
+        size = target.stat().st_size
+        if size > ORACLE_BUDGET_CHARS * _MAX_BYTES_PER_CHARACTER:
+            entries.append((path, size, None))
+            continue
         try:
             text = target.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
-            continue
-        total += len(text)
-        if total > ORACLE_BUDGET_CHARS:
-            return Sources(files=None, reason=_over(task, path, total), origin=Origin.NONE)
-        files[path] = text
+            text = None
+        entries.append((path, size, text))
 
-    if not files:
-        return Sources(
-            files=None,
-            reason=(
-                f"none of the {len(paths)} non-test paths of task {task.task_id!r} could be read "
-                f"at {task.base_commit}: every one is either created by the fix or not UTF-8 "
-                f"text, so there is no source to show and the prompt would ask for a diff against "
-                f"files the base has never seen"
-            ),
-            origin=Origin.NONE,
-        )
+    files, reason = _budget_rule(entries, task, budget=ORACLE_BUDGET_CHARS)
+    if files is None:
+        return Sources(files=None, reason=reason, origin=Origin.NONE)
     return Sources(files=files, reason="", origin=origin)
 
 
