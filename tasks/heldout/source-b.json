@@ -731,28 +731,43 @@
       "pins": 19
     }
   },
-  "document_digest": "fc84acab0aedc0eb796dec55b6fb0b0f6d6268d2af9dc988b529aaf8e220d194",
+  "document_digest": "6dd9109fd45fff2b22fbd3fdcc7da91313e30e7dd1faed4107b187426e7bc6d8",
+  "excluded": {
+    "belay-45740535725b": "the source files of task 'belay-45740535725b' exceed the 80000-character oracle budget at 'src/belay/cli.py' (80594 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "belay-bffecd967c60": "the source files of task 'belay-bffecd967c60' exceed the 80000-character oracle budget at 'uv.lock' (305740 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "belay-d900ada906a3": "the source files of task 'belay-d900ada906a3' exceed the 80000-character oracle budget at 'src/belay/sandbox/seatbelt.py' (90148 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "contig-10476d50e5e8": "the source files of task 'contig-10476d50e5e8' exceed the 80000-character oracle budget at 'CHANGELOG.md' (180097 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "contig-128bcb99b701": "the source files of task 'contig-128bcb99b701' exceed the 80000-character oracle budget at 'src/contig/cli.py' (105118 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "contig-1586c793159c": "the source files of task 'contig-1586c793159c' exceed the 80000-character oracle budget at 'src/contig/cli.py' (92908 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "contig-16213e62eae1": "the source files of task 'contig-16213e62eae1' exceed the 80000-character oracle budget at 'src/contig/cli.py' (103409 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "contig-289854d0a7a2": "the source files of task 'contig-289854d0a7a2' exceed the 80000-character oracle budget at 'src/contig/cli.py' (124739 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "contig-45f7e64b5e5a": "the source files of task 'contig-45f7e64b5e5a' exceed the 80000-character oracle budget at 'src/contig/cli.py' (113912 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "contig-4a1771d5c305": "the source files of task 'contig-4a1771d5c305' exceed the 80000-character oracle budget at 'src/contig/cli.py' (93321 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "contig-51127e8a50a5": "the source files of task 'contig-51127e8a50a5' exceed the 80000-character oracle budget at 'src/contig/cli.py' (124733 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "contig-8d599d32ab31": "the source files of task 'contig-8d599d32ab31' exceed the 80000-character oracle budget at 'src/contig/reference_harmonize.py' (85775 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which"
+  },
   "membership": [
     "contig-69dce0ca21e9",
     "contig-f100a90e47f2",
     "contig-2f4e497580ff",
-    "contig-16213e62eae1",
+    "contig-ec3af08b913d",
     "belay-624a42175dda",
     "contig-68bdebd875f1",
     "contig-b5f840cdf71d",
     "contig-3326ca8a116d",
     "belay-afd096a4b2ea",
-    "contig-10476d50e5e8",
     "contig-6d35bb3a4d17",
-    "belay-ce6425d3101a"
+    "belay-ce6425d3101a",
+    "contig-99c0e0464c21"
   ],
   "refusals": {},
   "rule": {
     "bands": 3,
     "min_heldout": 10,
     "min_per_band": 2,
+    "oracle_budget_chars": 80000,
     "split_seed": "whetstone-heldout-source-b-v1"
   },
-  "rule_digest": "862568462b8401ece44287df67ac5d988b24ae4508d7aa615206fa5225c3b83c",
+  "rule_digest": "6be05f1c2fbc83f3b73c165a3fbccbe9e71994eb824b6f35aa5a77d2d1113f86",
   "schema": "whetstone-heldout/1"
 }

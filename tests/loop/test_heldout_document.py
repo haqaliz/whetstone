@@ -151,6 +151,7 @@ def test_the_recomputed_document_equals_the_committed_one_field_by_field() -> No
         "difficulty",
         "bands",
         "refusals",
+        "excluded",
         "membership",
         "document_digest",
     ):
@@ -220,9 +221,14 @@ def test_the_document_carries_counts_only() -> None:
     """No path-shaped, no content-shaped, no line-spanning value anywhere (spec AC5).
 
     Task ids are already committed in the ledger (`tasks/README.md:24-27`); file paths are
-    not, and the walk below is the assertion that they never start being.
+    not, and the walk below is the assertion that they never start being. The one deliberate
+    exception is `excluded`'s reasons: they are the predicate's own sentences (spec AC5),
+    naming the file that tipped the sealed budget — evidence about the class, never content —
+    and their provenance is pinned by the recomputation test, which re-derives them from the
+    predicate and compares them field by field.
     """
     raw = json.loads(HELDOUT_DOCUMENT.read_text())
+    excluded_reasons = set(raw.get("excluded", {}).values())
 
     found = _strings(raw)
     assert found, "the walk found no strings at all, so it is asserting over nothing"
@@ -230,6 +236,10 @@ def test_the_document_carries_counts_only() -> None:
         if value == heldout.HELDOUT_SCHEMA:
             # The schema is a versioned format name (`whetstone-heldout/1`), not a path: it
             # is the one slash that names the file's shape, and it is pinned by the loader.
+            continue
+        if value in excluded_reasons:
+            # The predicate's own sentences, exempted above; the recomputation test pins
+            # them, so a planted reason would fail the field-by-field comparison there.
             continue
         assert "\n" not in value, f"{value!r} spans lines, so it is not a count or a digest"
         assert "/" not in value, (
@@ -324,3 +334,42 @@ def test_the_module_runs_as_python_m_for_the_runbook(tmp_path: Path) -> None:
         "then believe a split exists where none does."
     )
     assert json.loads(out.read_text())["schema"] == heldout.HELDOUT_SCHEMA
+
+
+def test_the_pre_amendment_shape_is_refused_by_name(tmp_path: Path) -> None:
+    """AC6: a document without `excluded` is the pre-amendment shape, refused by name.
+
+    The committed document carried no `excluded` field until the scorable-filter amendment;
+    a gate pointed at a copy of that shape must halt by name rather than consume a draw that
+    was never filtered. The stale shape is rebuilt from the committed document with the
+    field stripped and the rule digest re-sealed, so the refusal that fires is about the
+    missing field rather than about a rule that moved on.
+    """
+    raw = json.loads(HELDOUT_DOCUMENT.read_text())
+    raw.pop("excluded", None)
+    raw["rule_digest"] = heldout.rule_digest()
+    raw["document_digest"] = heldout.document_digest_of(raw)
+    stale = tmp_path / "stale.json"
+    stale.write_text(json.dumps(raw))
+
+    with pytest.raises(heldout.HeldoutSchemaError) as caught:
+        heldout.read_document(stale)
+    assert "excluded" in str(caught.value), caught.value
+
+
+def test_the_committed_document_loads_under_its_own_loader() -> None:
+    """AC8: the gate's pinned input round-trips through `read_document` on this machine.
+
+    `gate.py` and `check-leakage` consume the committed document through this loader by
+    identity; a committed document the loader refuses would halt the gate at exit 2. The
+    current committed document predates the scorable-filter amendment — no `excluded` field,
+    and a rule digest the module has moved on from — so this test is the regeneration's
+    gate: it stays red until the regenerated document lands in the same commit as the loader.
+    """
+    loaded = heldout.read_document(HELDOUT_DOCUMENT)
+
+    assert loaded.schema == heldout.HELDOUT_SCHEMA
+    assert loaded.rule_digest == heldout.rule_digest()
+    assert len(loaded.membership) == len(set(loaded.membership)), (
+        "a membership that cannot be read as a set is not the set the rule selected"
+    )

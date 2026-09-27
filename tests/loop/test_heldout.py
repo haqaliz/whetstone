@@ -1050,3 +1050,79 @@ def test_the_loader_refuses_unmet_floors_by_name(tmp_path: Path) -> None:
     assert "floor" in str(caught.value).lower(), (
         f"the refusal must name the unmet floor: {caught.value}"
     )
+
+
+def test_the_loader_refuses_a_membership_naming_an_excluded_id_by_name(tmp_path: Path) -> None:
+    """AC6: a doctored membership that smuggles an excluded id back into the draw refuses.
+
+    The document over the standard corpus plus one unfittable task records the exclusion;
+    adding that id to the membership is exactly the edit a hand would make to put a task the
+    scorable filter refused back into the draw, and the loader names the task.
+    """
+    measured = {**_STANDARD_MEASURED, "t-15": (1, 1, 1, 0)}
+    root = Path(tempfile.mkdtemp(dir=tmp_path))
+    tasks, document = _corpus(root, measured, _STANDARD_REFUSED, unfittable=("t-15",))
+    out = root / "heldout" / "source-b.json"
+    heldout.write_document(out, tasks, document)
+    raw = json.loads(out.read_text())
+    assert "t-15" in raw["excluded"]
+
+    doctored = _resealed(out, membership=[*raw["membership"], "t-15"])
+
+    with pytest.raises(heldout.HeldoutSchemaError) as caught:
+        heldout.read_document(doctored)
+    assert "t-15" in str(caught.value), caught.value
+
+
+def test_the_loader_refuses_an_excluded_id_unknown_to_the_corpus(tmp_path: Path) -> None:
+    """AC6: an exclusion of a task the corpus never names is a classification of nothing.
+
+    `excluded` is the record of what the scorable filter refused *here*; an id that matches
+    no corpus task excludes nothing and would be trusted by nobody — refused by name.
+    """
+    out = _resealed(_written(tmp_path), excluded={"synthetic-ghost": "a hand-written reason"})
+
+    with pytest.raises(heldout.HeldoutSchemaError) as caught:
+        heldout.read_document(out)
+    assert "synthetic-ghost" in str(caught.value), caught.value
+
+
+def test_the_loader_refuses_an_exclusion_that_blurs_into_refusals(tmp_path: Path) -> None:
+    """AC6: `excluded` and `refusals` are two meanings, and a task cannot carry both.
+
+    `refusals` records the stratum's verdict (no difficulty measured); `excluded` records
+    the scorable filter's. A document that puts one task in both has blurred the record the
+    rule sealed, and the loader names the task.
+    """
+    out = _resealed(_written(tmp_path), excluded={"t-12": "a hand-written reason"})
+
+    with pytest.raises(heldout.HeldoutSchemaError) as caught:
+        heldout.read_document(out)
+    assert "t-12" in str(caught.value), caught.value
+    assert "refusal" in str(caught.value).lower(), (
+        f"the refusal must name the blur with `refusals`: {caught.value}"
+    )
+
+
+def test_the_loader_refuses_unmet_per_band_floors_by_name(tmp_path: Path) -> None:
+    """A loaded membership that meets the total floor but starves a band refuses by name.
+
+    The degenerate shapes hit the total-floor refusal first; this is the shape that reaches
+    the per-band sentence — a doctored membership of ten drawn entirely from two of three
+    bands leaves the third with none, and the loader names the starved band.
+    """
+    root = Path(tempfile.mkdtemp(dir=tmp_path))
+    measured = {f"t-{i:02d}": (1, 1, 1, 0) for i in range(20, 35)}
+    tasks, document = _corpus(root, measured, _STANDARD_REFUSED)
+    out = root / "heldout" / "source-b.json"
+    heldout.write_document(out, tasks, document)
+    raw = json.loads(out.read_text())
+    assert raw["excluded"] == {}
+    starved = [task_id for task_id, band in raw["bands"].items() if band in (0, 1)]
+
+    doctored = _resealed(out, membership=starved)
+
+    with pytest.raises(heldout.EmptyHeldout) as caught:
+        heldout.read_document(doctored)
+    assert "floor" in str(caught.value).lower(), caught.value
+    assert "band 2" in str(caught.value), caught.value

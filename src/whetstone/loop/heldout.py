@@ -34,12 +34,14 @@ whole-corpus, and floors-unmet memberships are `EmptyHeldout` — the § 7.1 fin
 response, never a loosened floor (`spec.md` AC1). A task whose oracle cannot be decided at
 derivation time — an unreadable donor, machine state — is `HeldoutUnscorable`, a refusal naming
 the task: never a classification, and never an exclusion (AC7). The loader is fail-closed like
-the stratum loader's: unknown schema, an unknown field, a rule whose digest moved on, a
-hand-edited payload that breaks the `document_digest`, a duplicated membership, a membership
-naming a task the document refused rather than measured, and the two degenerate memberships are
-each a named refusal. A fully regenerated doctored document passes by construction — the layered
-defence is git history plus ordering plus the recomputation test (`test_heldout_document.py`),
-stated, never reconciled.
+the stratum loader's: unknown schema, an unknown field, a document predating the
+scorable-filter amendment (no `excluded`), a rule whose digest moved on, a hand-edited payload
+that breaks the `document_digest`, a membership naming a task the document excluded, an
+exclusion of a task the corpus never names, an exclusion that blurs into `refusals`, a
+duplicated membership, a membership naming a task the document refused rather than measured,
+and the two degenerate memberships are each a named refusal. A fully regenerated doctored
+document passes by construction — the layered defence is git history plus ordering plus the
+recomputation test (`test_heldout_document.py`), stated, never reconciled.
 
 The document is evidence about the data, never the data (`tasks/README.md:126-128`): counts,
 band indices and membership ids only — never paths, never patch content, never donor code. The
@@ -495,10 +497,12 @@ def read_document(path: Path) -> Heldout:
 
     Fail-closed like the stratum loader (`stratum.py:478-649`): a document that half-parsed
     would let the gate score a membership the document's own fields do not support. The
-    checks are the named refusals — unknown schema, an unknown field, digest mismatches (the
-    rule's, then the document's), a duplicated membership, a membership naming a refused
-    task, an id the document neither measured nor refused, and a degenerate membership —
-    plus `ValueError` for a file that cannot be read at all.
+    checks are the named refusals — unknown schema, an unknown field, the pre-amendment shape
+    (no `excluded`), digest mismatches (the rule's, then the document's), a membership naming
+    an excluded task, an exclusion of a task the corpus never names, an exclusion that blurs
+    into `refusals`, a duplicated membership, a membership naming a refused task, an id the
+    document neither measured nor refused, and a degenerate membership — plus `ValueError`
+    for a file that cannot be read at all.
     """
     location = Path(path)
     try:
@@ -537,6 +541,14 @@ def read_document(path: Path) -> Heldout:
             "document by design; regenerate it in the same commit as the edit"
         )
 
+    if "excluded" not in raw:
+        raise HeldoutSchemaError(
+            f"held-out document {str(location)!r} predates the scorable-filter amendment: it "
+            "carries no `excluded` field, so its membership cannot be checked against the "
+            "scorable class the rule seals. A gate pointed at the pre-amendment shape must "
+            "halt; regenerate the document under the current rule"
+        )
+    _require(raw, "excluded", dict, location)
     _require(raw, "rule", dict, location)
     _require(raw, "corpus", list, location)
     _require(raw, "difficulty", dict, location)
@@ -596,8 +608,18 @@ def read_document(path: Path) -> Heldout:
             )
         refusals[task_id] = reason
 
+    excluded: dict[str, str] = {}
+    for task_id, reason in raw["excluded"].items():
+        if not isinstance(task_id, str) or not isinstance(reason, str):
+            raise HeldoutSchemaError(
+                f"held-out document {str(location)!r} has a malformed exclusion; each entry "
+                "must be a task id mapping to a reason string"
+            )
+        excluded[task_id] = reason
+
     ids = set(corpus)
     measured_ids = set(difficulty)
+    excluded_ids = set(excluded)
     for task_id in membership:
         if task_id not in ids:
             raise HeldoutSchemaError(
@@ -605,17 +627,38 @@ def read_document(path: Path) -> Heldout:
                 "but the corpus never names that task; an unknown id is refused rather than "
                 "silently scored by the gate"
             )
+    drawn_excluded = sorted(excluded_ids & set(membership))
+    if drawn_excluded:
+        raise HeldoutSchemaError(
+            f"held-out document {str(location)!r} lists {drawn_excluded!r} in its membership "
+            "while excluding them; the draw never holds out a task the scorable filter "
+            "refused, so a membership that names one was edited or miswritten"
+        )
     for task_id in measured_ids | set(refusals):
         if task_id not in ids:
             raise HeldoutSchemaError(
                 f"held-out document {str(location)!r} records difficulty or a refusal for "
                 f"{task_id!r}, which is not in its corpus"
             )
+    unknown_excluded = sorted(excluded_ids - ids)
+    if unknown_excluded:
+        raise HeldoutSchemaError(
+            f"held-out document {str(location)!r} excludes {unknown_excluded!r}, which its "
+            "corpus never names; an exclusion of a task the document does not carry is a "
+            "classification of nothing"
+        )
     overlap = measured_ids & set(refusals)
     if overlap:
         raise HeldoutSchemaError(
             f"held-out document {str(location)!r} both measures and refuses "
             f"{sorted(overlap)!r}; a task cannot carry both"
+        )
+    blurred = excluded_ids & set(refusals)
+    if blurred:
+        raise HeldoutSchemaError(
+            f"held-out document {str(location)!r} both excludes and refuses "
+            f"{sorted(blurred)!r}; `excluded` records the scorable filter's verdict and "
+            "`refusals` records the stratum's, and the two meanings must never blur"
         )
     uncovered = ids - measured_ids - set(refusals)
     if uncovered:
