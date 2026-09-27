@@ -111,11 +111,17 @@ class SwapRecord:
 
 @dataclass(frozen=True)
 class _SnapshotTask:
-    """One manifest's record in the snapshot's verification manifest."""
+    """One manifest's record in the snapshot's verification manifest.
+
+    `sha12` is the first twelve hex of the **mined commit** (`provenance.commit`) — the
+    value a `donor-a-<sha12>` id embeds — while `base` records the parent the task checks
+    out, so the verification can prove both halves of the commit set identical.
+    """
 
     id: str
     sha12: str
     commit: str
+    base: str
     sha256: str
 
 
@@ -170,12 +176,20 @@ def snapshot_corpus(
                 raise RemintRefusal(
                     f"the pre-swap corpus refused to load {entry.name!r}: {exc}"
                 ) from exc
+            commit = task.provenance.get("commit")
+            if not isinstance(commit, str) or not commit:
+                raise RemintRefusal(
+                    f"the pre-swap manifest {entry.name!r} carries no provenance commit; "
+                    "the id's sha12 resolves against the mined commit, and a manifest "
+                    "without one cannot be verified"
+                )
             shutil.copy2(entry, target_dir / entry.name)
             recorded.append(
                 _SnapshotTask(
                     id=task.task_id,
-                    sha12=task.base_commit[:12],
-                    commit=task.base_commit,
+                    sha12=commit[:12],
+                    commit=commit,
+                    base=task.base_commit,
                     sha256=hashlib.sha256(entry.read_bytes()).hexdigest(),
                 )
             )
@@ -220,7 +234,7 @@ def _read_snapshot(snapshot: Path) -> tuple[_SnapshotTask, ...]:
         )
     tasks = raw.get("tasks")
     if not isinstance(tasks, list) or not all(
-        isinstance(task, dict) and {"id", "sha12", "commit", "sha256"} <= task.keys()
+        isinstance(task, dict) and {"id", "sha12", "commit", "base", "sha256"} <= task.keys()
         for task in tasks
     ):
         raise RemintRefusal(
@@ -234,17 +248,19 @@ def verify_staged(snapshot: Path, staged: Path) -> VerifyRecord:
     """Verify the staged re-mint against the snapshot, or refuse by name — before any move.
 
     The checks are each asserted: the staged manifest count equals the snapshot's; every
-    staged id is `donor-a-*` / `donor-b-*` **and** embeds its own manifest's sha12 (the
-    label-form id is the re-mint's claim about which commit it carries); the staged commit
-    set is *identical* to the snapshot's, not merely overlapping — a single changed commit
-    breaks the "provably identical commit set" claim; and the staged ledger carries the same
-    count and the same id set as the staged manifests, read through `tasks.ledger`'s own
-    loader by identity. Any mismatch is a `RemintRefusal` naming the offending id or count,
-    raised before any file moves.
+    staged id is `donor-a-*` / `donor-b-*` **and** embeds its own manifest's sha12 — the
+    first twelve hex of the mined commit (`provenance.commit`), the value the label-form
+    id names; the staged commit set is *identical* to the snapshot's, not merely
+    overlapping, and each sha12's `base_commit` (the tree the task checks out) matches the
+    snapshot's — a single changed commit breaks the "provably identical commit set"
+    claim; and the staged ledger carries the same count and the same id set as the staged
+    manifests, read through `tasks.ledger`'s own loader by identity. Any mismatch is a
+    `RemintRefusal` naming the offending id or count, raised before any file moves.
     """
     raw = _read_snapshot(snapshot)
     old_tasks = raw
     old_commits = {task.commit for task in old_tasks}
+    old_by_sha12 = {task.sha12: task for task in old_tasks}
 
     staged_tasks: list[tuple[Task, Path]] = []
     for label in DONOR_LABELS:
@@ -286,14 +302,36 @@ def verify_staged(snapshot: Path, staged: Path) -> VerifyRecord:
                 "donor-b-* label-form id; the re-mint's ids must name the label and the "
                 "commit it was mined from"
             )
-        if match.group(2) != task.base_commit[:12]:
+        commit = task.provenance.get("commit")
+        if not isinstance(commit, str) or not commit:
+            raise RemintRefusal(
+                f"the staged manifest {task.task_id!r} carries no provenance commit; the "
+                "id's sha12 resolves against the mined commit, and a manifest without one "
+                "cannot be verified"
+            )
+        if match.group(2) != commit[:12]:
             raise RemintRefusal(
                 f"the staged id {task.task_id!r} does not embed its own manifest's sha12 "
-                f"({task.base_commit[:12]}); a label-form id that names the wrong commit "
-                "breaks the provably-identical claim"
+                f"({commit[:12]}); a label-form id that names the wrong commit breaks the "
+                "provably-identical claim"
+            )
+        old_record = old_by_sha12.get(match.group(2))
+        if old_record is None or old_record.commit != commit:
+            raise RemintRefusal(
+                f"the staged manifest {task.task_id!r} carries mined commit {commit!r}, "
+                f"which is not the snapshot's commit for sha12 {match.group(2)!r}; the "
+                "#62 pairing requires a provably identical commit set, so any changed "
+                "commit refuses the apply before any file moves"
+            )
+        if task.base_commit != old_record.base:
+            raise RemintRefusal(
+                f"the staged manifest {task.task_id!r} checks out base_commit "
+                f"{task.base_commit!r}, but the snapshot records {old_record.base!r} for "
+                "the same sha12; the tree a task checks out is part of the task, and a "
+                "swapped base is a changed task"
             )
         staged_ids.add(task.task_id)
-        staged_commits.add(task.base_commit)
+        staged_commits.add(commit)
         by_label[match.group(1)] = by_label.get(match.group(1), 0) + 1
 
     if staged_commits != old_commits:
@@ -448,12 +486,12 @@ def real_donors(snapshot: Path, corpus: Sequence[Path]) -> Mapping[str, Path]:
     The staged manifests' `repo_url` values point at the staging donors; the real donor
     paths are a property of the pre-swap corpus — the `repo_url` values its own manifests
     carried — recorded in the snapshot. Each applied manifest's sha12 (the first twelve
-    hex of its `base_commit`) resolves to the snapshot's task of the same sha12, and that
-    task's manifest copy in the snapshot names the donor path the corpus used for it, so
-    the rewrite step never types an operator's absolute path. A label whose manifests
-    resolve to more than one path is refused — the bakeoff would resolve one name to two
-    repositories — and a sha12 the snapshot does not carry is refused: the real donor path
-    is recovered, never guessed.
+    hex of its mined commit, `provenance.commit`, which its label-form id embeds) resolves
+    to the snapshot's task of the same sha12, and that task's manifest copy in the
+    snapshot names the donor path the corpus used for it, so the rewrite step never types
+    an operator's absolute path. A label whose manifests resolve to more than one path is
+    refused — the bakeoff would resolve one name to two repositories — and a sha12 the
+    snapshot does not carry is refused: the real donor path is recovered, never guessed.
     """
     old_tasks = _read_snapshot(snapshot)
     by_sha12 = {task.sha12: task for task in old_tasks}
@@ -472,7 +510,14 @@ def real_donors(snapshot: Path, corpus: Sequence[Path]) -> Mapping[str, Path]:
                 raise RemintRefusal(
                     f"the applied manifest {str(entry)!r} could not be read: {exc}"
                 ) from exc
-            sha12 = raw["base_commit"][:12]
+            commit = raw.get("provenance", {}).get("commit")
+            if not isinstance(commit, str) or not commit:
+                raise RemintRefusal(
+                    f"the applied manifest {entry.name!r} carries no provenance commit; "
+                    "the real donor path is paired by the mined commit, and a manifest "
+                    "without one cannot be paired"
+                )
+            sha12 = commit[:12]
             record = by_sha12.get(sha12)
             if record is None:
                 raise RemintRefusal(

@@ -49,14 +49,19 @@ def _manifest(
     donor: str,
     repo_url: str,
 ) -> dict[str, object]:
-    """One valid synthetic manifest, shaped like the machine corpus's (full commit 40-hex)."""
+    """One valid synthetic manifest, shaped like the machine corpus's.
+
+    The id names the mined commit's sha12 (`provenance.commit[:12]`); `base_commit` is the
+    parent — a different commit, like the real corpus's (the two sha12s must not be
+    confused, which is exactly what the apply's verification asserts).
+    """
     commit = sha12 + "c" * 28
-    parent = sha12 + "p" * 28
+    parent = "f" * 12 + sha12 + "p" * 16
     return {
         "task_id": task_id,
         "source": "private",
         "repo_url": repo_url,
-        "base_commit": commit,
+        "base_commit": parent,
         "environment": {"python": "3.12", "pins": [], "import_roots": ["."]},
         "problem_statement": f"Fix {task_id}",
         "fail_to_pass": ["tests/test_x.py::test_fail"],
@@ -293,6 +298,23 @@ def test_verify_refuses_a_staged_commit_set_that_is_not_identical(tmp_path: Path
     staged = _staged_layout(tmp_path)
     changed = staged["donor-b"] / "donor-b-b1b1b1b1b1b1.json"
     raw = json.loads(changed.read_text())
+    raw["provenance"] = {**raw["provenance"], "commit": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}
+    changed.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(remint_apply.RemintRefusal) as caught:
+        remint_apply.verify_staged(snapshot, staged["staged"])
+    assert "deadbeef" in str(caught.value), caught.value
+
+
+def test_verify_refuses_a_staged_base_commit_that_is_not_identical(tmp_path: Path) -> None:
+    """The task's checkout tree is the base_commit; a swapped base is a changed task."""
+    layout = _old_layout(tmp_path)
+    snapshot = remint_apply.snapshot_corpus(
+        [layout["donor-a"], layout["donor-b"]], _old_ledger(tmp_path), tmp_path / "snapshot"
+    )
+    staged = _staged_layout(tmp_path)
+    changed = staged["donor-b"] / "donor-b-b1b1b1b1b1b1.json"
+    raw = json.loads(changed.read_text())
     raw["base_commit"] = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
     changed.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n")
 
@@ -500,7 +522,7 @@ def test_real_donors_refuses_a_sha12_the_snapshot_does_not_carry(tmp_path: Path)
     remint_apply.swap_manifests([layout["donor-a"], layout["donor-b"]], staged["staged"])
     stranger = layout["donor-b"] / "donor-b-b1b1b1b1b1b1.json"
     raw = json.loads(stranger.read_text())
-    raw["base_commit"] = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    raw["provenance"] = {**raw["provenance"], "commit": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}
     stranger.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n")
 
     with pytest.raises(remint_apply.RemintRefusal) as caught:
@@ -678,7 +700,8 @@ def _mined_corpus(
     derivation that never faced the refusal would prove nothing about the door. `bulk`
     names the number of characters the first task's `base_commit` source file carries, so
     its oracle exceeds any budget smaller than it (its id is the third return). The ids are
-    sha12-form: `<label>-<base_commit's first 12 hex>`.
+    sha12-form: `<label>-<the mined commit's first 12 hex>`, matching the machine corpus's
+    own convention (`provenance.commit`, never `base_commit`).
     """
     root = tmp_path / ("staged-corpus" if staged else "old-corpus")
     root.mkdir()
@@ -709,7 +732,7 @@ def _mined_corpus(
             after["bulk.py"] = padded + "FILLER += 'y'\n"
         parent = _commit(donor, before, "Seed the calculator")
         commit = _commit(donor, after, f"Fix task {i}")
-        sha12 = parent[:12]
+        sha12 = commit[:12]
         label = (
             ("donor-a" if i % 2 == 0 else "donor-b")
             if staged
