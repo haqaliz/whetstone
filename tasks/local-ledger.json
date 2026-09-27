@@ -3,990 +3,990 @@
   "tasks": [
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "19393bdd11ec1c33d188e9bd24e74b9add7ba38689bce5bd06d4e7f107338e1d",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "7ba393b2f6e14c8b1962cc5931f80973f6834c4892bc9a3f579f12fa0d5c8efc",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-0cfbb1590a70",
+      "task_id": "donor-a-10476d50e5e8",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "191f47018cc609034676a9c18ee7d292cd358b054e0c25fcfd76aa237630629b",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "7025a61c1651e5d38caeaa0d1f62a2c41043bc30ea69b8e74d5c421e8ee14c7c",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-0f8651175ef8",
+      "task_id": "donor-a-128bcb99b701",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "850db4fc1dcde12a09f574adb81c48929fc1f1ee7186a397232b9272999c8334",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "25090e1ec1212fb81d89cf45fa1ce1f4728fc9c08777b1948a2e2d989d8fa9c0",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-0fe4582aeac1",
+      "task_id": "donor-a-12a1d8e4d766",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "e32cd85bf64e747816cfe157653ee6deebe1d0d5f527b95e7fe4ec59eed02f4e",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "67133431cd6940b7ebb598dfc1e3a788f0ee118c98969eb261a68bcb94a71ba9",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-2e149603209a",
+      "task_id": "donor-a-1586c793159c",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "693bb7d6257ff047a2e1210e2f9be5c606f9bced24bf04ad93d18b2ea43862a6",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "b40537a6ebb4fd9ca70871fc1a6a540f24c13346f1d5551b33bdb64ed709556e",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-353359e9ac6e",
+      "task_id": "donor-a-16213e62eae1",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "f98d5aa1382d49edee77181002d6a1d09ce309ccb4687dceda681e5b23138dd4",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "c7b9cd76dbb71938062ba442fb04551ddf60352c0aec860f51bd6f68985c2464",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-3e3051c4192a",
+      "task_id": "donor-a-18265334544f",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "95e2593943f4ae402ed9bc163df79b322d15b94b12f6dab4814d18e7b3ebcb52",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "f614b54732ce9cd3111f4f2b0625279070ab97d9e35848bc9b395946c5b0ea86",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-45740535725b",
+      "task_id": "donor-a-192f26c402a3",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "681c8d1e695f572bfef8d15f60acfeffb82d8c6b1d959e27d3a7156396103e72",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "9e5c868d8a98a558b483e1fd30c85db332f465a05aede95ef33c879e05fa3fe8",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-468e343e9fb5",
+      "task_id": "donor-a-289854d0a7a2",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "ae60a4d557e5f2234616780b222b0e2e6d47afc1590b83200f92c48335b61c23",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "b2f9e06c5e577602883459ec3638d6583a51f9180924480b2f4ed3f6bc42f145",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-624a42175dda",
+      "task_id": "donor-a-2debddf6aa81",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "b70cddfb11dce63537fc970a9f711c0ef27dcf7cdb2f07fe00ddf7baee908ed2",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "95088248c47dbd447a298f22efbbe4cbfdd0200e862405cc8d991cdc380d4c56",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-844db07ed482",
+      "task_id": "donor-a-2ef3383b0ce7",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "241d1714b4acd27c0ecfe76047d2b5c31b88343a4a9c4cb2e9731280023356e5",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "b364a04d3a6c093e9d29411d0c4666f0036f9c6993dd44bc6b13ae06710ff006",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-9dba3ea557f5",
+      "task_id": "donor-a-2f4e497580ff",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "663273a9c1443f5f0cdd9ed17e1541f8f4543e3eb38ddc31fb34728f72122b36",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "80e27aff19ad59deafd0f6756039970b8818b5c5536caa2b48eb81bab0ceeaa4",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-afd096a4b2ea",
+      "task_id": "donor-a-3326ca8a116d",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "c63581069a64799ade8ffa4edf7825efadd00ee04adf49d113146daada8a1f67",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "de264a31888422651025d6361af6d4d088a8d1891d0586cf73d142df0542ecb8",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-bffecd967c60",
+      "task_id": "donor-a-34daf85182d5",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "d56d6dddf885b42b2b2a479368b465d14b2d3ec32dd6f0c52a02bc716da9bf55",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "64fc9c8a16292eb7d7cb9636d5497b1a8ae0d41eb73c3d6eedebe96626ee49ae",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-c3e132b7469b",
+      "task_id": "donor-a-3560e6ca1c22",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "b144f011818cddd94f71ce18dd8e33340a13e4901b2f88a0d7fa85c4ed9cbc19",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "f7d90346f3eedd8aefc22dcbdcab94a7aa1707219574e61431da2af6fc7fd25d",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-c57246c7841a",
+      "task_id": "donor-a-37a91266029a",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "b3a86a481fda7f719d16c1298ce7998f1269357fef79a5d085f53368d1951274",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "d8300065f251f0108a0009c9425d3ac9a954393600db2a7f4928a4a31044e1f0",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-cc7d3f520f1c",
+      "task_id": "donor-a-45f7e64b5e5a",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "6ff69d3cf60411ce1d07f079cbf5e64a336d25428d0a162ccfcdf2a039a2b233",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "5163c304020801abecf2d486ca86b63ba0c5c6b03a910ba48132a99f147415e0",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-ce6425d3101a",
+      "task_id": "donor-a-4731e32044c5",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "b6f67bd51f1fcbb929bebcb2f87cc6bfb41fcf91898517e1abb5294e58331f34",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "333361efea6dbc1ed881f30530e16a8fabd483ab566363688218b4f07f278673",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-d900ada906a3",
+      "task_id": "donor-a-4a1771d5c305",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "ce1e5e18fd104f28ee63151392b7f7081276d1246aa44286c08002fa06c40ee7",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "76f7351d20a27a7faf1385d2dbedae28a89eb80bbd14bb9fe789b64ef87dcfbd",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-dbf19c8009dd",
+      "task_id": "donor-a-51127e8a50a5",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "46fd3153a021eee00ac473ac208b5e41c0e1b16bb365f14eaf2edf4210b084a5",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "8dcb73e06902e55bd212ecacde0b1af52111a2fc46fda917d5d62962d16e5816",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-ee0841a837c9",
+      "task_id": "donor-a-5e25b106874c",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "b6d5597565166b35c2559a6f606836c22334cea45814d43d84ce5f6e09ac1ce5",
-      "proven_at": "2026-07-28T18:53:08Z",
+      "manifest_sha256": "8364590ef32ae84409d59d77a935147915d2d24246e33bf65b3b672aabac43fb",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "belay-f589d0e93cc9",
+      "task_id": "donor-a-5ec864efe403",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "69c1b023cc2db11694a7c04af3e717d66ad5e9cbc6adef3e4999eea0a13fb68a",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "4a20ffe5f3221fb1a7a9b9ee43f6e15cf7d2851331f3662497ac4e826c6fb419",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-10476d50e5e8",
+      "task_id": "donor-a-6005d7ec06f5",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "56671a9bd0d9a961f8474b551a89ecc228fe3eb119e1281d898dbb30efe02f29",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "79123469ab6e7452d1dd63af8619cf9f928527fa01d4159afefe212ebc2513e7",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-128bcb99b701",
+      "task_id": "donor-a-6884ed72a9e9",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "4992ed1638477afdf6718abdee5f9a943fc5f620c814beb51782f69b604ab600",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "ddbd35e134eb89e0baddfe436cab2aa325ae8c2bec21a5ab7ce4f7492d0f8efd",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-12a1d8e4d766",
+      "task_id": "donor-a-68bdebd875f1",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "099f8906a914dfea669020f785f9ed97853e3c48b4fff79eb432a78872520966",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "7ccfd292d8fa9a256f6b4608218bd0ce9da28dc060f6dacab4384177df9576c7",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-1586c793159c",
+      "task_id": "donor-a-69dce0ca21e9",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "4ec86b92574ab252bb00037f1940f601779341b34c6b64485af668c14386baae",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "816e6b97c139da8b91440d3d57b95d7371fe87ce0e332ec7fc04916f810799d0",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-16213e62eae1",
+      "task_id": "donor-a-6d35bb3a4d17",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "afd8450e436be4d86aac70ed36728c6cb2369ea2aff5f9d791f799e354b6f273",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "4936ccf02b2deedaf6c868128497ff0b45ff03f488e49cc5e90854f9ca24a81f",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-18265334544f",
+      "task_id": "donor-a-74f000a772cf",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "1a14d5b3717b5d0388acca9e5c86518896a27678afd60c4dcb5e7524dbe05be7",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "b68b318e8a359fd0f72b2af86eb6746f06ede943cc9eed5dc616fddd0763a86b",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-192f26c402a3",
+      "task_id": "donor-a-7975de5439dc",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "e11d5f51640b93946149c703a2800e85bc6c93a140c76b9f3ebb1c3eb3af001d",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "1a163a63ab1d328522fc1375fb1c71c6db583038e47d3d88af46a6eba76b8b58",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-289854d0a7a2",
+      "task_id": "donor-a-8d599d32ab31",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "6e0ae675b533664d3bc582a14b8a3beb45b0346ed735b23d1c2a3e75e665c965",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "fce102519fbfdb93502f77256763ff8392b6b3571d14b6b5958250e11d2d21a4",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-2debddf6aa81",
+      "task_id": "donor-a-955d9a079c16",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "7675d6f19d49f54ec1b37ae3b340c90e5834fd8bb47f369f56bc0d7b1bee6b17",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "90e41a8d43adac6e85148468527d470242d9f05eb8f89dddc5dcf790f8b474ec",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-2ef3383b0ce7",
+      "task_id": "donor-a-99c0e0464c21",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "3a5350dcf1542538e9b387bdaec1e54871ea27696330f909ba3ef806a015c4c7",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "f8e3f8150df8ec1938c8e44ac1507b23d08f73a27a19825ff22f2092c88e16ac",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-2f4e497580ff",
+      "task_id": "donor-a-a8b3104cb3ad",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "77f169545c45835613de1d0c88d5120f0497e17dc368e73430c8102543522496",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "4472e1792e26db64bb8da5c6b055fef7ff2f8ce5790abf80b2bda72eee0ec462",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-3326ca8a116d",
+      "task_id": "donor-a-a93fe36d6e85",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "0757d8668ea918cd1be24c3b70b2939ff8429071e27427b55eac27e84e4b00fa",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "4e34253b766a4f5a18aa9131b79f717a0f161536088f65c4569325a0a47673c8",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-34daf85182d5",
+      "task_id": "donor-a-b5f840cdf71d",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "b01ee2e8ab2c81f8d2c380ab6aabd5f9a261cd534dad7d59535c863335e837b5",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "b340cc3228607d971b7f2e0a6bdddbfbe779a34892ddab1369b145f2fc66c384",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-3560e6ca1c22",
+      "task_id": "donor-a-b7c53b77453a",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "d9f3201e0d7e7d63dc5330ea695c13c261c09ead0f6f3b9d18dd738049c90e1b",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "83a2cb115f98e5e1b817245d662e7736cd62b3def60b1ad9e6f977dbc2059ef3",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-37a91266029a",
+      "task_id": "donor-a-c32d7c672465",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "11292105aa0affa77b04458b1b663963afbc283be8203c4e195163bdf818810c",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "4b2f5ae591c883a9fa2c823b782c27f5bd5ce67aad0aff9d68819a45800d4fc8",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-45f7e64b5e5a",
+      "task_id": "donor-a-c4989af66e08",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "37981201d213e8893543063efeed198a1620d72b05cc9f1dcd322f0c08c1c9a5",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "8565d7897b3e0cefe3e94d7def90cc4d2640ed6a7d7207ae04632e4ea4b65dbc",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-4731e32044c5",
+      "task_id": "donor-a-c6e4d4c4de87",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "9b0c87f75cb159aa78433fdf01194fa9b49d3a114de2fdce634b6ea8566425d4",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "f88e23686874a7a5f5d7a98e027ccbefa5b041a5368101c79ef3e6b250c51910",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-4a1771d5c305",
+      "task_id": "donor-a-c7cee63e3cab",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "2fd9681d9eed90e88eb144abb42629fcd1fe1ad1cd2c31d0b45e66be6b83b60f",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "6c5307c3f95464baf28e4e053eddcba7487828d7d026849fc6a4fb043183140b",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-51127e8a50a5",
+      "task_id": "donor-a-d2c03949ecf3",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "7bba47f64fd59682e86f2a88eb2accd28f3750e49f4a0edc7e2dc1940722f073",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "f9d4478cb3561b4fc78ad900696ba43aa296d7d76a877918f0d868a26279ef0a",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-5e25b106874c",
+      "task_id": "donor-a-d601ff2d0ec0",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "6c089800cbd4ffdda0f57ceb3a4fd738f8186ff18a46ac0cf7cc520b9556f5bf",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "bdd9e806b5a1b1581bf2e2cb07202e2b9a24acf0583b9b8d06312343f2f5c322",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-5ec864efe403",
+      "task_id": "donor-a-dc3be3134276",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "c3ae9e2e41fb0381bfffeab6ec8e5d4809922397f93e08ebe6ae575a7e58b991",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "48a392d461deb9266e80103cac29762618bcf1eb6df178b857446f3e0d8fc4df",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-6005d7ec06f5",
+      "task_id": "donor-a-df207b27e82c",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "0fb4ff37e255f3b004369bcdc406c858733d438746de680c2f4069a75968b6f3",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "b3a00327a34d4bed106a4094da45e66733bd5909fbb24f17b5546a2cc8603c32",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-6884ed72a9e9",
+      "task_id": "donor-a-ec3af08b913d",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "9d61ee5eb2a7e0c314ef925cac6867f363fe9a27f85641a08bf9c3aacf4b4c0e",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "9f46333daeafb21692a667093f5720e7b8f2c8ae281d1d8b58e197a4bd847690",
+      "proven_at": "2026-09-26T01:26:21Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-68bdebd875f1",
+      "task_id": "donor-a-f100a90e47f2",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "e64aee9ef4be37b08559f741e88b6eb26891acdc8a0a8a4c397fa5555c9f65b7",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "005196e646a95367a006fd100fc7145a6e47118b507f52fba89d2315c0bd0a9a",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-69dce0ca21e9",
+      "task_id": "donor-b-0cfbb1590a70",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "90807ae65225f9cd99d6926c4de5458a4f3806c3cec4ae042894725dda97c4ac",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "6f3069d040e263674899dad7d2f087efdd662ac309f22a387ea8d41ac30516c0",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-6d35bb3a4d17",
+      "task_id": "donor-b-0f8651175ef8",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "3e04041f1820c5f297c5a9f358fb94f74a6ce0db68897faf993468fdf536aaf8",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "8ac3f77c57ce0530ab2243090ec151b263e30cf7b0f5d37bf32295edc11816ab",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-74f000a772cf",
+      "task_id": "donor-b-0fe4582aeac1",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "1350be046e61844cdd400d63427d2d511b10c4ad708f7329b183d23d0d44876f",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "8acf2b311f1d24a15b51a5479a9f1ead20276751ac23179a5fd36b369be0a175",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-7975de5439dc",
+      "task_id": "donor-b-2e149603209a",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "62b7d6f9d961c02261674eaf9622752a79acbf5b7fd2e93778074db297c57a6f",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "e4d04fe3a9f8e12afad033c297e66c8e776ff2e462b1b2ffbd12f3484007de0c",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-8d599d32ab31",
+      "task_id": "donor-b-353359e9ac6e",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "b5fc7fe925716c7f2369425bc6f22bf7694acf6bc3245c726a1528644a1d47c4",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "7f9e296402c08825e29f9793cf1b6296d5137902d1801f2ae61bd64e875eefc8",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-955d9a079c16",
+      "task_id": "donor-b-3e3051c4192a",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "5f2bce2e6ce5d9df949b2df17ae4750a63cabd68045f37fbe279e55cdade99dd",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "560b00d22bc346aa7a409dcb5662fe590b312d8a5687c6c08c142a6b80b4bb11",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-99c0e0464c21",
+      "task_id": "donor-b-45740535725b",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "df628ca4cf814cda305924c1f3fba21752aae5b28f1a3dc50e0615d345cec3e2",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "f52143f6e01d63fc23619b73e79160036a54a89a642871bc6a9174df7ce777c0",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-a8b3104cb3ad",
+      "task_id": "donor-b-468e343e9fb5",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "87c347d3ca83a2e8a23876a946305dea95cac498257077969c8bf0b348adc1f4",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "f0b8b8e9783760d7e1d25b8b49b97cc90fe9815aa19892f32c9bf27a704ca431",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-a93fe36d6e85",
+      "task_id": "donor-b-624a42175dda",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "252eea4c3d0d954df824edf23108c27d9865ee2278232bc29d6d409757830b53",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "77ca00c7689fdcaf5e99d631dd0995d98afab34d8f3722ff612ce567d729fcf9",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-b5f840cdf71d",
+      "task_id": "donor-b-844db07ed482",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "705be48d1d15123602bbefbbd363bc5d5953318b02dbebdad5b2364b900d999e",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "00c79467484e3dbd88e35d27c1316accfc4e1ebbaa03011c03aa7fb669e005df",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-b7c53b77453a",
+      "task_id": "donor-b-9dba3ea557f5",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "fb7642d99c135796e2af4e452a98a2646b6c96717f4ee466243b029f4e3cbe99",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "2a845e3eea0720fccf69b266ddf5dfab126c1ede1cb3c903f78a110cb7c758f2",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-c32d7c672465",
+      "task_id": "donor-b-afd096a4b2ea",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "adc888ba9c24429fe5a2e112cf0801d37bb2ac214d347a0c014044a956f35b70",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "5c54ee1768ec11776e006ba9be8e6e06af4c3aa4f206bcc011ff3d8c5039450f",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-c4989af66e08",
+      "task_id": "donor-b-bffecd967c60",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "47d9e4ad16a2aec1e1832ddcd777060d1d0cf69696afda4590ca4abb9885d13e",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "005709a3cc166fd24a4f95f4714e88725a55475d0157bd94062df226e0bc3411",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-c6e4d4c4de87",
+      "task_id": "donor-b-c3e132b7469b",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "8a2628391fab2a0e6296115e56169b09bca3782d6b017be1c21ffd7660ffbeb7",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "a46b3d4e1de578d40f01d3487be4fc8357bd58c82d03826d389829959961da08",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-c7cee63e3cab",
+      "task_id": "donor-b-c57246c7841a",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "6aac2823542d8ea8cb62a2572f39be85f76961724539b8731e22be24d0d701f7",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "fad0ff82a5a8497ec0f03f2fbbf00112be90e01f4c50a11362327596640b85cb",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-d2c03949ecf3",
+      "task_id": "donor-b-cc7d3f520f1c",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "9d7719586d222616626f2a06a6c324e0bad0d7c5883e397925c21e727989bd96",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "aafc5d19fcbcdb822c33948cd064c1e41473fa759119d0a17289cf2cb82c1bbe",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-d601ff2d0ec0",
+      "task_id": "donor-b-ce6425d3101a",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "0655a57474ac8efdc5410b92c13ad827c6da533116f3ba5c38b55696fd5191b9",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "83d65f8cff5503463c596ce89317a58bc7d6e67f5f5bb38b958887e009935296",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-dc3be3134276",
+      "task_id": "donor-b-d900ada906a3",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "ac6f5ac7533cd14bececa9e66a8c1829dd4969bce53cd8e76ea062df6e30d2c4",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "85fd76b055b72307699491c97db4992dc53432b82a22d4a9a3cec696aa47eefc",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-df207b27e82c",
+      "task_id": "donor-b-dbf19c8009dd",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "4434d005c8916998e20f7473f37fa8f84d209300ce6d7a4091b2a3ff4207d024",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "70b8818f72983591e5e1884aecc99b24c6a80ddd8d5a6cf7d44f54d008f3571a",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-ec3af08b913d",
+      "task_id": "donor-b-ee0841a837c9",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
     },
     {
       "executed_matches_declared": true,
-      "manifest_sha256": "7f76cb5a8b6a970c584b38a51a739e3c85719051330d81f38bae797ee3e486cb",
-      "proven_at": "2026-07-28T18:51:04Z",
+      "manifest_sha256": "46911d329d731e1a8c8ca2aaaba92533dc1999f2c1e34dd2935075db06aaba24",
+      "proven_at": "2026-09-26T01:29:45Z",
       "python": "3.12.13",
       "skipped": 0,
-      "task_id": "contig-f100a90e47f2",
+      "task_id": "donor-b-f589d0e93cc9",
       "tools": {
         "git": "git version 2.50.1 (Apple Git-155)",
-        "uv": "uv 0.11.23 (Homebrew 2026-06-19 aarch64-apple-darwin)",
-        "whetstone": "0.1.0"
+        "uv": "uv 0.12.17 (Homebrew 2026-09-18 aarch64-apple-darwin)",
+        "whetstone": "0.14.1"
       },
       "with_patch": "PASS",
       "without_patch": "FAIL"
