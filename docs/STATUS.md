@@ -10,6 +10,32 @@ carries the current state and the rules that still bind.
 
 ---
 
+**Would a line-number-free edit format convert the pinned base's refused diffs? Measured: NO-GO**
+(2026-09-27, GitHub #64). Two things landed and one was deliberately not built.
+
+**`NOT_APPLIED` now says why.** STRICT's `patch-apply` verdict always carried git's own report;
+`scoring._verify` copied only the verdict's kind, so night-006's refusals could be diagnosed only by
+joining transcripts to journals by hand. The message now reaches `Rollout.detail` and survives the
+journal. No other outcome's detail, status or kind changed, and nothing under `verify/` moved.
+
+**`python -m whetstone.bakeoff.locatability` asks a finished run whether the code its refused diffs
+quoted is in the file** at `base_commit` — line-aligned, overlap-counting, byte-exact — and exits
+0 GO / 1 NO-GO / 2 refused by a rule written into
+`docs/planning/patch-representation/locatability-finding/spec.md` before it ran: GO iff more than
+half the population is `LOCATABLE`. Offline, no model; a rollout whose evidence could not be
+reached is `UNCLASSIFIED` by name and stays in the denominator.
+
+**Over the pinned 32B base's larger-base arm it exits NO-GO**, over a population equal to that
+arm's `patch apply` count, every rollout classified. The 14B and 3B format-hardening arms agree,
+reported beside and never pooled. `docs/planning/patch-representation/finding.md` says what the
+refusals quoted — mostly real code with lines skipped, indentation shifted, or the model's own
+edit quoted as the original — and the counts live only in gitignored `runs/patch-representation/`.
+So **search/replace was not built**: an exact anchor must be contiguous too, and forgiving the
+near-miss is the harness choosing the model's answer. The D3 refusals in `p2-yield-probe` and
+`p2-format-hardening` stand, now on a measurement. The measurement is a proxy — text written under
+the diff prompt — and the finding says so; it is a go/no-go for building a contract, not a claim
+about yield.
+
 **The gate scores a real candidate for the first time, and returns `UNVERIFIED`** (2026-09-26).
 Three things had to be fixed before it could run at all, and the order they surfaced in is the
 record.
