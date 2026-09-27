@@ -37,19 +37,31 @@ same shape `tasks/local/` and `tasks/local-ledger.json` have in the primary chec
 paths are absolute (the runbook's discipline); the phase-4 runbook invokes these functions
 verbatim after the guard suite passes.
 
+The re-derivations run through the same doors the originals used — `bakeoff.stratum.main`
+and `loop.heldout.main`, imported by identity, invoked with absolute corpus paths and
+`--out` at the tracked destination. A door that exits nonzero is a named refusal carrying
+the door's own words; an unreadable donor is refused by name by the door's own fail-closed
+loader, never worked around. The heldout door reads the committed stratum document at
+`tasks/stratum/easier.json` relative to its CWD, which is why the sheet runs it from the
+worktree root after the stratum re-derivation has written the new document there.
+
 Zero runtime dependencies beyond the repo's own modules and stdlib: no model, no network.
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import re
 import shutil
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
+from whetstone.bakeoff import stratum
+from whetstone.loop import heldout
 from whetstone.tasks.ledger import Clock, read_ledger, utc_now, write_ledger
 from whetstone.tasks.manifest import load_tasks
 from whetstone.verify.task import Task
@@ -496,12 +508,76 @@ def regenerate_ledger(corpus: Sequence[Path], staged: Path, out: Path) -> Path:
     return Path(out)
 
 
+def _invoke_door(
+    name: str, door: Callable[[Sequence[str] | None], int], corpus: Sequence[Path], out: Path
+) -> Path:
+    """One derivation door, invoked with absolute paths; its refusal carried by name.
+
+    The door's own parser and fail-closed loaders are the authority — this function only
+    wires them: absolute corpus paths and an absolute `--out` (the 2026-08-12 failure class
+    is a relative path resolving against the wrong CWD), and a nonzero exit becomes a
+    `RemintRefusal` carrying the door's own words on stderr, never a bare exit code. The
+    door's stderr is captured so the operator (or the phase-4 sheet) hears exactly what the
+    door refused and why.
+    """
+    roots = [Path(root) for root in corpus]
+    relative_roots = [str(root) for root in roots if not root.is_absolute()]
+    if relative_roots:
+        raise RemintRefusal(
+            f"{name} was handed relative corpus path(s) {relative_roots!r}; a relative "
+            "path resolves against whatever directory the sheet happened to be in, which "
+            "is the 2026-08-12 failure class. Pass absolute paths"
+        )
+    destination = Path(out)
+    if not destination.is_absolute():
+        raise RemintRefusal(
+            f"{name} was handed a relative --out {str(destination)!r}; a document written "
+            "against the wrong CWD lands where the sheet never reads it. Pass an absolute "
+            "path"
+        )
+    argv = [*[f"--corpus={root}" for root in roots], f"--out={destination}"]
+    captured = io.StringIO()
+    with contextlib.redirect_stderr(captured):
+        code = door(argv)
+    if code != 0:
+        words = captured.getvalue().strip() or f"exit {code}"
+        raise RemintRefusal(f"{name} refused (exit {code}): {words}")
+    return destination
+
+
+def re_derive_stratum(corpus: Sequence[Path], out: Path) -> Path:
+    """Re-derive the stratum document over `corpus` through the stratum module's own door.
+
+    The door is `bakeoff.stratum.main` by identity — the same `python -m
+    whetstone.bakeoff.stratum` the original document was derived through — so the re-minted
+    document is produced by the identical rule and loader. The door resolves each task's
+    donor from its rewritten `repo_url`; an unreadable donor is a recorded refusal inside
+    the document, never a guess. Returns `out`.
+    """
+    return _invoke_door("the stratum re-derivation", stratum.main, corpus, out)
+
+
+def re_derive_heldout(corpus: Sequence[Path], out: Path) -> Path:
+    """Re-derive the held-out document over `corpus` through the heldout module's own door.
+
+    The door is `loop.heldout.main` by identity, and it reads the stratum document at
+    `tasks/stratum/easier.json` relative to its CWD — so the sheet runs it from the worktree
+    root, after `re_derive_stratum` has written the re-minted stratum document to that
+    tracked path. A task whose oracle cannot be decided — an unreadable donor, machine
+    state — is `HeldoutUnscorable` from the door's own derivation, a refusal naming the
+    task, never a classification. Returns `out`.
+    """
+    return _invoke_door("the heldout re-derivation", heldout.main, corpus, out)
+
+
 __all__ = [
     "DONOR_LABELS",
-    "SNAPSHOT_SCHEMA",
     "RemintRefusal",
+    "SNAPSHOT_SCHEMA",
     "SwapRecord",
     "VerifyRecord",
+    "re_derive_heldout",
+    "re_derive_stratum",
     "regenerate_ledger",
     "rewrite_repo_url",
     "snapshot_corpus",

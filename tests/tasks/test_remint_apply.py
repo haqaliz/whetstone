@@ -23,6 +23,16 @@ from pathlib import Path
 
 import pytest
 
+from fixtures.repos import _git
+from fixtures.repos.mined import (
+    MINED_BULK_LINE,
+    MINED_CALC_BUGGY,
+    MINED_CALC_FIXED,
+    MINED_TESTS_AFTER,
+    MINED_TESTS_BEFORE,
+)
+from whetstone.bakeoff import stratum
+from whetstone.loop import heldout
 from whetstone.tasks import ledger, remint_apply
 
 #: The two donor labels the staged re-mint carries, and the old-id labels it replaces.
@@ -572,3 +582,195 @@ def test_the_apply_chain_runs_end_to_end_over_synthetic_roots(tmp_path: Path) ->
         assert entry.manifest_sha256 == _sha256(applied[entry.task_id]), (
             f"{entry.task_id}: the chain's final hash is not the applied manifest's"
         )
+
+# --------------------------------------------------------------------------------------------
+# Phase 2 — the re-derivations through their established doors: the stratum door over a
+# synthetic re-minted corpus (per-sha12 difficulty equality), the heldout door over the
+# synthetic corpus (the class excluded, never drawn).
+# --------------------------------------------------------------------------------------------
+
+
+def _commit(donor: Path, files: dict[str, str], subject: str) -> str:
+    """Write `files` into `donor`, commit them, and return the resulting SHA."""
+    for relative, contents in files.items():
+        target = donor / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(contents)
+    _git(["add", "--all"], cwd=donor)
+    _git(["commit", "--quiet", "--message", subject], cwd=donor)
+    return _git(["rev-parse", "HEAD"], cwd=donor).strip()
+
+
+def _mined_corpus(
+    tmp_path: Path,
+    *,
+    staged: bool,
+    count: int,
+    bulk: int = 0,
+) -> tuple[Path, dict[str, str], str | None]:
+    """A synthetic corpus of `count` real-git mined tasks; returns (root, id by sha12, bulk id).
+
+    Each task is built in its own scratch directory (its donor lives beside the manifest,
+    and a corpus root may hold only manifests), then the manifest alone is copied into the
+    returned corpus root. Every third task's fixing commit also touches `notes.md`, so its
+    shape sits outside the stratum band (two non-test files) while still being measured —
+    a corpus where every task is in band would be a degenerate whole-corpus stratum, and a
+    derivation that never faced the refusal would prove nothing about the door. `bulk`
+    names the number of characters the first task's `base_commit` source file carries, so
+    its oracle exceeds any budget smaller than it (its id is the third return). The ids are
+    sha12-form: `<label>-<base_commit's first 12 hex>`.
+    """
+    root = tmp_path / ("staged-corpus" if staged else "old-corpus")
+    root.mkdir()
+    by_sha12: dict[str, str] = {}
+    bulk_id: str | None = None
+    for i in range(count):
+        scratch = tmp_path / ("staged-scratch" if staged else "old-scratch") / str(i)
+        donor = scratch / "donor"
+        donor.mkdir(parents=True)
+        _git(["init", "--quiet", "--initial-branch=main"], cwd=donor)
+        # The fixture pins commit dates, so two identical seed trees would be one commit;
+        # the per-task marker keeps every seed tree distinct and every sha12 unique.
+        marker = f"# task {i}\n"
+        before: dict[str, str] = {
+            "calc.py": MINED_CALC_BUGGY + marker,
+            "tests/test_addition.py": MINED_TESTS_BEFORE,
+        }
+        after: dict[str, str] = {
+            "calc.py": MINED_CALC_FIXED + marker,
+            "tests/test_addition.py": MINED_TESTS_AFTER,
+        }
+        if i % 3 == 2:
+            before["notes.md"] = "# notes\n"
+            after["notes.md"] = "# notes\n\n- fixed\n"
+        if bulk and i == 0:
+            padded = MINED_BULK_LINE * (bulk // len(MINED_BULK_LINE) + 1)
+            before["bulk.py"] = padded
+            after["bulk.py"] = padded + "FILLER += 'y'\n"
+        parent = _commit(donor, before, "Seed the calculator")
+        commit = _commit(donor, after, f"Fix task {i}")
+        sha12 = parent[:12]
+        label = (
+            ("donor-a" if i % 2 == 0 else "donor-b")
+            if staged
+            else ("contig" if i % 2 == 0 else "belay")
+        )
+        task_id = f"{label}-{sha12}"
+        manifest = {
+            "task_id": task_id,
+            "source": "private",
+            "repo_url": str(donor),
+            "base_commit": parent,
+            "environment": {"python": "3.12", "pins": [], "import_roots": ["."]},
+            "problem_statement": f"Fix task {i}",
+            "fail_to_pass": ["tests/test_addition.py::test_add_is_addition"],
+            "pass_to_pass": ["tests/test_addition.py::test_adding_zero_is_the_identity"],
+            "test_blobs": {
+                "tests/test_addition.py": base64.b64encode(MINED_TESTS_AFTER.encode()).decode()
+            },
+            "provenance": {"donor": label, "commit": commit, "parent": parent},
+        }
+        _write(root, f"{task_id}.json", manifest)
+        by_sha12[sha12] = task_id
+        if bulk and i == 0:
+            bulk_id = task_id
+    return root, by_sha12, bulk_id
+
+
+def test_the_stratum_difficulty_is_equal_per_sha12_between_old_and_re_minted(
+    tmp_path: Path,
+) -> None:
+    """AC7's core: the difficulty axis is a per-commit property, asserted equal per sha12.
+
+    The old document is derived over the old-id corpus through the apply's own door, the
+    re-minted twin over the label-form corpus (same commits, new ids), and the two documents'
+    difficulties must agree for every sha12 — a changed difficulty under the same commit
+    would mean the re-mint moved the axis, not just the labels.
+    """
+    old_root, old_ids, _ = _mined_corpus(tmp_path, staged=False, count=3)
+    staged_root, staged_ids, _ = _mined_corpus(tmp_path, staged=True, count=3)
+
+    old_out = tmp_path / "old-stratum.json"
+    staged_out = tmp_path / "staged-stratum.json"
+    remint_apply.re_derive_stratum([old_root], old_out)
+    remint_apply.re_derive_stratum([staged_root], staged_out)
+
+    old_doc = json.loads(old_out.read_text())
+    new_doc = json.loads(staged_out.read_text())
+    assert set(new_doc["difficulty"]) == set(staged_ids.values())
+    for sha12, old_id in old_ids.items():
+        assert new_doc["difficulty"][staged_ids[sha12]] == old_doc["difficulty"][old_id], (
+            f"task at commit {sha12}: the re-minted difficulty differs from the old "
+            "document's, but the commit is the same — the axis moved, not the labels"
+        )
+
+
+def test_the_heldout_rederivation_excludes_the_class_and_never_draws_an_excluded_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The heldout re-derivation over the re-minted corpus: the class excluded, never drawn.
+
+    Fifteen measured tasks, one of whose oracles exceeds the sealed budget at `base_commit`
+    (a permanent property of the commit, not machine state). The re-derivation must record
+    exactly that task in `excluded` — with the predicate's own reason — and the membership
+    must never draw it: `membership ∩ excluded = ∅`, 12 members (AC8's shape over a
+    synthetic corpus).
+    """
+    staged_root, staged_ids, bulk_id = _mined_corpus(tmp_path, staged=True, count=15, bulk=200_000)
+    assert bulk_id is not None
+
+    stratum_doc = tmp_path / "tasks" / "stratum" / "easier.json"
+    assert stratum.main(["--corpus", str(staged_root), "--out", str(stratum_doc)]) == 0
+
+    monkeypatch.chdir(tmp_path)
+    out = tmp_path / "heldout" / "source-b.json"
+    remint_apply.re_derive_heldout([staged_root], out)
+
+    doc = json.loads(out.read_text())
+    assert set(doc["excluded"]) == {bulk_id}, doc["excluded"]
+    reason = doc["excluded"][bulk_id]
+    assert "bulk.py" in reason, reason
+    assert not (set(doc["membership"]) & set(doc["excluded"])), (
+        "the membership draws an id the scorable filter excluded; the draw never holds out "
+        "a task the rule refused"
+    )
+    assert len(doc["membership"]) == 12, doc["membership"]
+
+
+def test_the_rederivations_use_the_doors_by_identity() -> None:
+    """The apply step drives `stratum.main` / `heldout.main` by identity — never a second door."""
+    assert remint_apply.stratum is stratum
+    assert remint_apply.heldout is heldout
+
+
+def test_re_derive_stratum_refuses_a_relative_corpus_path(tmp_path: Path) -> None:
+    """A relative corpus path is the 2026-08-12 failure class: refused before anything runs."""
+    with pytest.raises(remint_apply.RemintRefusal) as caught:
+        remint_apply.re_derive_stratum([Path("tasks/local/donor-a")], tmp_path / "out.json")
+    assert "relative" in str(caught.value), caught.value
+
+
+def test_re_derive_stratum_refuses_a_relative_out(tmp_path: Path) -> None:
+    with pytest.raises(remint_apply.RemintRefusal) as caught:
+        remint_apply.re_derive_stratum([tmp_path / "corpus"], Path("tasks/stratum/easier.json"))
+    assert "relative" in str(caught.value), caught.value
+
+
+def test_re_derive_stratum_refuses_when_the_door_refuses(tmp_path: Path) -> None:
+    """A door that exits 2 is a named refusal carrying the door's own words, never a bare exit."""
+    with pytest.raises(remint_apply.RemintRefusal) as caught:
+        remint_apply.re_derive_stratum([tmp_path / "missing"], tmp_path / "out.json")
+    message = str(caught.value)
+    assert "stratum" in message and "could not read task manifest" in message, message
+
+
+def test_re_derive_heldout_refuses_when_the_door_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreadable stratum document halts the heldout re-derivation by name."""
+    corpus, _, _ = _mined_corpus(tmp_path, staged=True, count=1)
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(remint_apply.RemintRefusal) as caught:
+        remint_apply.re_derive_heldout([corpus], tmp_path / "out.json")
+    message = str(caught.value)
+    assert "heldout" in message and "stratum document" in message, message
