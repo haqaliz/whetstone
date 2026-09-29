@@ -28,7 +28,13 @@ This file orients a coding agent working in this repository. Read it first.
 > finding** (2026-09-27): `NOT_APPLIED` records git's own reason, and
 > `python -m whetstone.bakeoff.locatability` asks a finished run whether its refused diffs quoted
 > the file exactly — **NO-GO** on the pinned 32B base, so search/replace was measured and **not
-> built** (`docs/planning/patch-representation/finding.md`).
+> built** (`docs/planning/patch-representation/finding.md`). Then the **heldout-scorable unit**
+> (2026-09-29): the gate's first real run returned `UNVERIFIED` because 2 of the 12 held-out
+> tasks are permanently `NO_ORACLE` over the 80,000-char oracle budget — no candidate could ever
+> be promoted. The held-out split is re-derived under a **scorable rule** (`oracle_fittable`,
+> sealed in the document's rule digest), the corpus re-minted under labels, the split fixed by
+> `PREREGISTRATION.md` § 10.16 (Type 1). The gate can now reach a decision — and has still not
+> produced one, because no candidate has scored against the new document.
 >
 > **The corpus, stated precisely.** Source B (private, pre-registered headline):
 > **66 tasks**, each proven live rather than asserted. Source A (public SWE-bench-Lite):
