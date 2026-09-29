@@ -135,6 +135,17 @@ def _exports_repo(text: str) -> bool:
     return "export REPO=/" in text
 
 
+def _flat(text: str) -> str:
+    """The sheet's words with runs of whitespace collapsed to single spaces.
+
+    A phrase pin asserts a sentence the sheet wraps freely, and the wrap point is not a
+    word: "…§ 10.16 (Type 1,\\n  2026-09-27)…" is the same sentence as its flattened
+    form. The emphasis-strip precedent (`_assert_untrained_base_incumbent`) pins words
+    against markup the same way; this pins words against wrapping.
+    """
+    return re.sub(r"\s+", " ", text)
+
+
 def _runbook() -> str:
     text = RUNBOOK.read_text(encoding="utf-8")
     assert text.strip(), (
@@ -529,7 +540,8 @@ def test_the_sheet_cites_the_amendment_that_re_derived_the_split() -> None:
     moved.
     """
     assert (
-        "whose split is fixed by `PREREGISTRATION.md` § 10.16 (Type 1, 2026-09-27)" in _runbook()
+        "whose split is fixed by `PREREGISTRATION.md` § 10.16 (Type 1, 2026-09-27)"
+        in _flat(_runbook())
     ), (
         "WHY THIS IS A FAILURE: the sheet does not cite § 10.16 (Type 1, 2026-09-27) as fixing "
         "the held-out split. The split is re-derived under the scorable rule by that amendment, "
@@ -550,7 +562,7 @@ def test_no_live_citation_of_the_superseded_amendment_survives() -> None:
     sentence and against the current sheet; both failed with this message before the sheet
     moved.
     """
-    assert "§ 10.7" not in _runbook(), (
+    assert "§ 10.7" not in _flat(_runbook()), (
         "WHY THIS IS A FAILURE: the sheet still carries a live § 10.7 citation. The held-out "
         "split is re-derived by § 10.16 (Type 1, 2026-09-27); a sheet that names § 10.7 as "
         "fixing it sends the operator to the superseded document"
@@ -570,7 +582,7 @@ def test_the_sheet_states_the_scorable_rule() -> None:
     § 10.7 sentence and against the current sheet; both failed with their messages before
     the sheet moved.
     """
-    text = _runbook()
+    text = _flat(_runbook())
     assert "held out only if its oracle can be built under the declared budget" in text, (
         "WHY THIS IS A FAILURE: the sheet never states the scorable rule — a member is held "
         "out only if its oracle can be built under the declared budget. That is the rule § 10.16 "
@@ -596,7 +608,7 @@ def test_the_sheet_still_refuses_a_changed_document_as_a_halt() -> None:
     condition lost the digest-mismatch response; each failed with its message before the
     sheet moved.
     """
-    text = _runbook()
+    text = _flat(_runbook())
     assert "it must equal the digest of the committed" in text, (
         "WHY THIS IS A FAILURE: step 5 no longer demands the record's held-out digest equal "
         "the committed document's. The digest-equality read-back is what makes the decision a "
