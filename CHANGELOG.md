@@ -11,6 +11,8 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-29
+
 ### Fixed
 
 - **The gate can reach a real decision: the held-out split is re-derived under the scorable
