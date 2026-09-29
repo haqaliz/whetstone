@@ -12,7 +12,7 @@ seen by every runbook guard in this tree. The flag and value parses are keyed on
 own doors and are this file's own, rather than mutating a constant another guard reads: a guard
 that reaches into another guard's globals can silently repoint the sheet it was watching.
 
-Ten properties, and the last five are this sheet's own:
+Thirteen properties, and the last eight are this sheet's own:
 
 1. the parse really reads the sheet (anti-vacuity);
 2. every flag either command passes exists in the shipped parser;
@@ -30,7 +30,17 @@ Ten properties, and the last five are this sheet's own:
 10. the sheet names the **untrained base as the first incumbent** — a bash block that
     materializes it with `write_baseline_checkpoint` at an absolute checkpoint path, a gate
     command whose `--incumbent` is that same path and never a night checkpoint, the § 3
-    boundary wording ("not the § 3 baseline measurement"), and no "two nights" anywhere.
+    boundary wording ("not the § 3 baseline measurement"), and no "two nights" anywhere;
+11. the split the sheet pins is § 10.16's — the amendment (Type 1, 2026-09-27) that re-derived
+    the held-out split under the scorable rule — and no live § 10.7 citation survives in the
+    sheet's live instructions (a sheet that still names § 10.7 as fixing the split sends the
+    operator to the document the gate cannot score; the history stays in git);
+12. the scorable rule is stated where the split's provenance is — a member is held out only
+    if its oracle can be built under the declared budget, the exclusion by class and sealed
+    in the document's rule digest;
+13. the digest-equality halt stands — step 5's read-back still demands the record's held-out
+    digest equal the committed document's, and a changed document is a halt ("find out by
+    whom"), never a rerun.
 
 **Watched failing first** (`CONTRIBUTING.md`): every assertion was run against a deliberately
 wrong stub sheet — relative writable paths, a flag the parser does not define, a renamed
@@ -123,6 +133,17 @@ def _is_anchored(value: str) -> bool:
 def _exports_repo(text: str) -> bool:
     """The sheet must define `$REPO` as an absolute path, or the anchor anchors nothing."""
     return "export REPO=/" in text
+
+
+def _flat(text: str) -> str:
+    """The sheet's words with runs of whitespace collapsed to single spaces.
+
+    A phrase pin asserts a sentence the sheet wraps freely, and the wrap point is not a
+    word: "…§ 10.16 (Type 1,\\n  2026-09-27)…" is the same sentence as its flattened
+    form. The emphasis-strip precedent (`_assert_untrained_base_incumbent`) pins words
+    against markup the same way; this pins words against wrapping.
+    """
+    return re.sub(r"\s+", " ", text)
 
 
 def _runbook() -> str:
@@ -501,4 +522,99 @@ def test_the_sheet_exports_the_anchor_every_path_depends_on() -> None:
         "WHY THIS IS A FAILURE: the sheet anchors its paths to `$REPO` and never exports it. "
         "An unset variable expands to the empty string, so every anchored path resolves "
         "against whatever directory the operator happened to be in"
+    )
+
+
+def test_the_sheet_cites_the_amendment_that_re_derived_the_split() -> None:
+    """Step 5's digest read-back pins the split to § 10.16, not to the amendment it supersedes.
+
+    The sheet named `PREREGISTRATION.md` § 10.7 (Type 1, 2026-08-24) as fixing the held-out
+    split. § 10.16 (Type 1, 2026-09-27) re-derives that split under the scorable rule — the
+    old document carried members whose oracles could not be built under the sealed budget, so
+    no candidate could ever be promoted against it — and the read-back is the one sentence
+    that says which document the digest must equal. A sheet that still points at § 10.7 sends
+    the operator to the superseded document.
+
+    **Watched failing first:** the assertion was run against a stub sheet that kept the § 10.7
+    sentence and against the current sheet; both failed with this message before the sheet
+    moved.
+    """
+    assert (
+        "whose split is fixed by `PREREGISTRATION.md` § 10.16 (Type 1, 2026-09-27)"
+        in _flat(_runbook())
+    ), (
+        "WHY THIS IS A FAILURE: the sheet does not cite § 10.16 (Type 1, 2026-09-27) as fixing "
+        "the held-out split. The split is re-derived under the scorable rule by that amendment, "
+        "and a sheet that names any other provenance sends the operator to the document the "
+        "gate cannot score"
+    )
+
+
+def test_no_live_citation_of_the_superseded_amendment_survives() -> None:
+    """A sheet that still names § 10.7 as fixing the split describes a dead document.
+
+    The history stays in git; the sheet's live instructions must not carry the superseded
+    citation. § 10.16 re-derives, never edits, § 10.7's record — and the gate runbook is
+    where an operator meets the split, so it is the one sheet that may not point at the
+    amendment that produced a document no candidate can be promoted against.
+
+    **Watched failing first:** the assertion was run against a stub sheet that kept the § 10.7
+    sentence and against the current sheet; both failed with this message before the sheet
+    moved.
+    """
+    assert "§ 10.7" not in _flat(_runbook()), (
+        "WHY THIS IS A FAILURE: the sheet still carries a live § 10.7 citation. The held-out "
+        "split is re-derived by § 10.16 (Type 1, 2026-09-27); a sheet that names § 10.7 as "
+        "fixing it sends the operator to the superseded document"
+    )
+
+
+def test_the_sheet_states_the_scorable_rule() -> None:
+    """Why the split changed, in the operator's own words: the rule, not the membership.
+
+    The re-derivation's whole point is the scorable rule: a member is held out only if its
+    oracle can be built under the declared budget. The exclusion is by class — the rule
+    lives as a digest-sealed function, so an edit to the rule invalidates the document by
+    design — and the sheet must state that where the split's provenance is, or the operator
+    cannot tell a rule exclusion from a hand-picked membership.
+
+    **Watched failing first:** both assertions were run against a stub sheet that kept the
+    § 10.7 sentence and against the current sheet; both failed with their messages before
+    the sheet moved.
+    """
+    text = _flat(_runbook())
+    assert "held out only if its oracle can be built under the declared budget" in text, (
+        "WHY THIS IS A FAILURE: the sheet never states the scorable rule — a member is held "
+        "out only if its oracle can be built under the declared budget. That is the rule § 10.16 "
+        "re-derives the split under, and the operator reading the membership needs it stated"
+    )
+    assert "sealed in the document's rule digest" in text, (
+        "WHY THIS IS A FAILURE: the sheet never states that the exclusion is sealed in the "
+        "document's rule digest. The rule lives as a digest-sealed function, so an edit to it "
+        "invalidates the document by design — the exclusion is by class and sealed, never a "
+        "hand-picked membership"
+    )
+
+
+def test_the_sheet_still_refuses_a_changed_document_as_a_halt() -> None:
+    """The digest-equality halt stands: a changed document is a halt, never a rerun.
+
+    Step 5's read-back demands the record's held-out digest equal the committed document's,
+    and halt condition 1 names the response when it does not: find out who changed it. The
+    re-derived document must not smuggle in a looser reading — an operator who may rerun a
+    digest mismatch until it passes has turned the refusal into a rerun loop.
+
+    **Watched failing first:** both assertions were run against a stub sheet whose halt
+    condition lost the digest-mismatch response; each failed with its message before the
+    sheet moved.
+    """
+    text = _flat(_runbook())
+    assert "it must equal the digest of the committed" in text, (
+        "WHY THIS IS A FAILURE: step 5 no longer demands the record's held-out digest equal "
+        "the committed document's. The digest-equality read-back is what makes the decision a "
+        "statement about the sealed document"
+    )
+    assert "the response is to find out by whom" in text, (
+        "WHY THIS IS A FAILURE: the sheet no longer names the digest-mismatch response — find "
+        "out who changed the document. A changed document is a halt, never a rerun"
     )

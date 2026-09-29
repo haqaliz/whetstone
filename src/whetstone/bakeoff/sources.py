@@ -90,12 +90,12 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from whetstone.tasks.donor import GitFailed, is_test_path, run_git
+from whetstone.tasks.donor import GitFailed, is_test_path, run_git, run_git_bytes
 from whetstone.tasks.fetch import read_pool
 from whetstone.verify.repo import CheckoutError, PatchError, declared_paths, materialise
 from whetstone.verify.task import Task
@@ -228,6 +228,24 @@ class Sources:
     origin: Origin
 
 
+@dataclass(frozen=True)
+class OracleFit:
+    """Does this task's oracle fit the budget, and if not, why — decided without a checkout.
+
+    The held-out derivation's predicate (aspect 2 of this unit): `fits=False` is a structural
+    fact about the task and its commit — no non-test path touched, an operator-held collision,
+    an oracle over the budget, nothing readable at `base_commit` — never a fact about this
+    machine at this moment. The reason is one of the bakeoff's own sentences, so the two
+    records name the same class.
+    """
+
+    #: Whether the oracle can be built under the budget in force.
+    fits: bool
+
+    #: Why not, or an empty string when it fits.
+    reason: str
+
+
 def changed_paths(task: Task, *, pool: Path | None = None) -> Changed:
     """The non-test paths `task`'s own fix touches — from its donor, or from `pool`.
 
@@ -258,11 +276,19 @@ def changed_paths(task: Task, *, pool: Path | None = None) -> Changed:
 
 
 def _from_donor(task: Task) -> Changed:
-    """Source B's route: the paths the mined commit itself touched, read from git now."""
-    commit = task.provenance[_COMMIT]
+    """Source B's route: the paths the mined commit itself touched, read from git now.
+
+    The catch lives here and only here. `_structural_paths` — the derivation this route and the
+    held-out predicate (aspect 2) share by identity — raises when the machine says no: git
+    failed, the subprocess could not run, the filesystem refused. This function is the
+    bakeoff's boundary, where that raise becomes a recorded skip with a sentence, because a
+    missing donor is an ordinary property of a corpus rather than a defect. The predicate must
+    see the raise and refuse by name, never classify — so nothing else in this module may
+    swallow these exceptions on the donor route.
+    """
     donor = Path(task.repo_url)
     try:
-        touched = _touched_paths(donor, commit)
+        return _structural_paths(task)
     except (GitFailed, subprocess.SubprocessError, OSError) as exc:
         return Changed(
             paths=None,
@@ -273,6 +299,23 @@ def _from_donor(task: Task) -> Changed:
             origin=Origin.NONE,
         )
 
+
+def _structural_paths(task: Task) -> Changed:
+    """The donor route's path derivation: touched paths, less test paths, vouched.
+
+    One statement of "which non-test files does this task's commit touch", shared by identity
+    with the held-out derivation's predicate (aspect 2), so the scope a task is drawn under
+    cannot be derived a second way by the thing that refuses it. The machine is never
+    classified here: a git failure or an unreadable donor raises (the
+    `GitFailed`/`SubprocessError`/`OSError` family), and the caller decides what a raise means
+    — `_from_donor` records it as a skip, the predicate refuses by name. The structural
+    refusals are returned, not raised: a commit that touched no non-test path and a path the
+    operator holds are permanent properties of the task and its commit, and the predicate must
+    be able to say `fits=False` about them without the machine having anything to do with it.
+    """
+    commit = task.provenance[_COMMIT]
+    donor = Path(task.repo_url)
+    touched = _touched_paths(donor, commit)
     paths = tuple(sorted(path for path in touched if not is_test_path(path)))
     if not paths:
         return Changed(
@@ -440,6 +483,93 @@ def oracle_sources(task: Task, *, pool: Path | None = None) -> Sources:
         shutil.rmtree(workspace, ignore_errors=True)
 
 
+def oracle_fittable(task: Task, *, budget: int = ORACLE_BUDGET_CHARS) -> OracleFit:
+    """Does `task`'s oracle fit `budget`: the structural predicate the held-out draw asks.
+
+    Decided on immutable git objects only — the path set at the mined commit and the blobs at
+    `base_commit` — with no checkout, no network and no clock, so two derivations of one task
+    are identical and an exclusion from the held-out draw can never be caused by a transient
+    condition.
+
+    The structural classes return `fits=False` with the bakeoff's own sentences, shared by
+    identity: `_structural_paths` supplies the path set — and its refusals, a commit that
+    touched no non-test path and an operator-held collision — and `_budget_rule`, fed from
+    `base_commit`'s tree by the same `(path, byte_size, text)` triples `_read` feeds it from
+    a checkout, decides the budget with the same reasons. A path that does not exist at
+    `base_commit` is omitted, a commit that creates a file being ordinary; a blob that is not
+    UTF-8 is omitted the same way.
+
+    **Machine state raises, and only machine state.** A git failure while reading the donor's
+    tree — an unreadable donor, a commit or tree that is missing — propagates as the
+    `GitFailed`/`SubprocessError`/`OSError` family; this function never returns `fits=False`
+    for a cause the machine produced, and the caller refuses such a task by name.
+
+    `budget` defaults to `ORACLE_BUDGET_CHARS`, and the reason a refusal leaves behind names
+    the budget actually in force, so a classification under a parameter the bakeoff never
+    sees still records the limit it was judged against.
+    """
+    changed = _structural_paths(task)
+    if changed.paths is None:
+        return OracleFit(fits=False, reason=changed.reason)
+    entries = _read_tree(task, changed.paths, budget=budget)
+    files, reason = _budget_rule(entries, task, budget=budget)
+    if files is None:
+        return OracleFit(fits=False, reason=reason)
+    return OracleFit(fits=True, reason="")
+
+
+def _budget_rule(
+    entries: Sequence[tuple[str, int | None, str | None]],
+    task: Task,
+    *,
+    budget: int,
+) -> tuple[Mapping[str, str] | None, str]:
+    """The oracle budget's one statement: does this path set fit, and if not, why.
+
+    `entries` is one `(path, byte_size, text)` triple per path of the derived set, in order:
+    `byte_size` is the path's size at `base_commit` — `None` when the path is not there (created
+    by the fix) or is not a file — and `text` is its decoded UTF-8 contents, or `None` when the
+    bytes were not UTF-8. The caller reads; this function decides, and it never touches the
+    filesystem. The held-out derivation's predicate feeds it from `base_commit`'s tree the same
+    way `_read` feeds it from a checkout, which is the point: one rule, two readers, and the
+    rule is shared by identity rather than restated.
+
+    The checks run in `_read`'s order, byte for byte. A path whose `byte_size` exceeds
+    `budget * _MAX_BYTES_PER_CHARACTER` is refused by that fact alone — a pathological blob is
+    never loaded into memory to be measured and discarded. A path with no decodable text is
+    omitted. The cumulative character total, once over `budget`, refuses with the path that
+    tipped it. Each refusal returns immediately on the first offending path, and the reason is
+    `_over`'s sentence, which names the limit and the file. If no path yields text, the refusal
+    is the nothing-readable sentence. On a fit, the map is returned with an empty reason.
+
+    `budget` is an argument rather than a read of `ORACLE_BUDGET_CHARS` so the held-out
+    derivation can classify under a parameter the bakeoff never sees; `_read` passes the module
+    constant, which is how the two keep the same boundary.
+    """
+    files: dict[str, str] = {}
+    total = 0
+    for path, byte_size, text in entries:
+        if byte_size is None:
+            continue
+        if byte_size > budget * _MAX_BYTES_PER_CHARACTER:
+            return None, _over(task, path, byte_size, budget=budget)
+        if text is None:
+            continue
+        total += len(text)
+        if total > budget:
+            return None, _over(task, path, total, budget=budget)
+        files[path] = text
+
+    if not files:
+        return None, (
+            f"none of the {len(entries)} non-test paths of task {task.task_id!r} could be read "
+            f"at {task.base_commit}: every one is either created by the fix or not UTF-8 "
+            f"text, so there is no source to show and the prompt would ask for a diff against "
+            f"files the base has never seen"
+        )
+    return files, ""
+
+
 def _read(task: Task, checkout: Path, paths: tuple[str, ...], origin: Origin) -> Sources:
     """Read `paths` out of `checkout`, refusing the whole set if it is over the budget.
 
@@ -453,48 +583,100 @@ def _read(task: Task, checkout: Path, paths: tuple[str, ...], origin: Origin) ->
     base would be patching around a file it was told nothing about, and the rollout would be
     scored beside ones that saw the whole picture.
 
-    A file whose size on disk cannot possibly fit — even at one character per byte — is refused
-    without being read, so a vendored blob is not loaded into memory to be measured and discarded.
+    This function only reads the checkout; the budget itself is decided by `_budget_rule`, shared
+    by identity with the held-out derivation's predicate. A path whose size cannot possibly fit —
+    even at one character per byte — is not read at all here, so a vendored blob is not loaded
+    into memory to be measured and discarded.
     """
-    files: dict[str, str] = {}
-    total = 0
+    entries: list[tuple[str, int | None, str | None]] = []
     for path in paths:
         target = checkout / path
         if not target.is_file():
+            entries.append((path, None, None))
             continue
-        if target.stat().st_size > ORACLE_BUDGET_CHARS * _MAX_BYTES_PER_CHARACTER:
-            return Sources(
-                files=None,
-                reason=_over(task, path, target.stat().st_size),
-                origin=Origin.NONE,
-            )
+        size = target.stat().st_size
+        if size > ORACLE_BUDGET_CHARS * _MAX_BYTES_PER_CHARACTER:
+            entries.append((path, size, None))
+            continue
         try:
             text = target.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
-            continue
-        total += len(text)
-        if total > ORACLE_BUDGET_CHARS:
-            return Sources(files=None, reason=_over(task, path, total), origin=Origin.NONE)
-        files[path] = text
+            text = None
+        entries.append((path, size, text))
 
-    if not files:
-        return Sources(
-            files=None,
-            reason=(
-                f"none of the {len(paths)} non-test paths of task {task.task_id!r} could be read "
-                f"at {task.base_commit}: every one is either created by the fix or not UTF-8 "
-                f"text, so there is no source to show and the prompt would ask for a diff against "
-                f"files the base has never seen"
-            ),
-            origin=Origin.NONE,
-        )
+    files, reason = _budget_rule(entries, task, budget=ORACLE_BUDGET_CHARS)
+    if files is None:
+        return Sources(files=None, reason=reason, origin=Origin.NONE)
     return Sources(files=files, reason="", origin=origin)
 
 
-def _over(task: Task, path: str, measured: int) -> str:
-    """The one sentence a budget refusal leaves behind. Names the limit, so it can be judged."""
+def _read_tree(
+    task: Task, paths: tuple[str, ...], *, budget: int
+) -> list[tuple[str, int | None, str | None]]:
+    """Read `paths` out of `base_commit`'s tree — git objects, never a checkout.
+
+    The predicate's reader, the mirror of `_read`: per path, is there a blob at
+    `base_commit:path`, how big is it, and what does it decode to. One `git ls-tree` call
+    settles existence and size for every path at once — a missing path produces no line,
+    which is the ordinary "created by the fix" case, and a directory entry is not a blob —
+    and each blob's contents come back with `git cat-file`. A blob over
+    `budget * _MAX_BYTES_PER_CHARACTER` is never fetched, the same pre-check that keeps
+    `_read` from loading a pathological file into memory.
+
+    Machine state is never classified here: `run_git` raising — an unreadable donor, a
+    missing commit — propagates as the `GitFailed`/`SubprocessError`/`OSError` family for the
+    caller to refuse by name. Absence and undecodable bytes are structural and returned as
+    `(path, None, None)` / `(path, size, None)` triples for `_budget_rule` to classify.
+    """
+    donor = Path(task.repo_url)
+    raw = run_git(
+        [
+            "ls-tree",
+            "-z",
+            "-l",
+            task.base_commit,
+            "--",
+            *(f":(literal){path}" for path in paths),
+        ],
+        cwd=donor,
+    )
+    sizes: dict[str, int] = {}
+    for record in raw.split("\0"):
+        if not record:
+            continue
+        meta, name = record.split("\t", 1)
+        _, kind, _, blob_size = meta.split()
+        if kind == "blob":
+            sizes[name] = int(blob_size)
+
+    entries: list[tuple[str, int | None, str | None]] = []
+    for path in paths:
+        size = sizes.get(path)
+        if size is None:
+            entries.append((path, None, None))
+            continue
+        if size > budget * _MAX_BYTES_PER_CHARACTER:
+            entries.append((path, size, None))
+            continue
+        blob = run_git_bytes(["cat-file", "blob", f"{task.base_commit}:{path}"], cwd=donor)
+        try:
+            text = blob.decode("utf-8")
+        except UnicodeDecodeError:
+            text = None
+        entries.append((path, size, text))
+    return entries
+
+
+def _over(task: Task, path: str, measured: int, *, budget: int = ORACLE_BUDGET_CHARS) -> str:
+    """The one sentence a budget refusal leaves behind. Names the limit, so it can be judged.
+
+    `budget` is the limit actually enforced: `_budget_rule` passes the budget it was given,
+    so a refusal under a non-default budget names that budget on the record. The default
+    keeps `_read`'s sentence byte-identical, which the oracle tests assert sentence for
+    sentence.
+    """
     return (
-        f"the source files of task {task.task_id!r} exceed the {ORACLE_BUDGET_CHARS}-character "
+        f"the source files of task {task.task_id!r} exceed the {budget}-character "
         f"oracle budget at {path!r} ({measured} and counting), so the prompt would overrun the "
         f"context window. Truncating it would show the base part of a file, and a diff written "
         f"from context lines that stop mid-way is charged NOT_APPLIED — a rollout that ran a "
@@ -529,8 +711,10 @@ def _touched_paths(donor: Path, commit: str) -> frozenset[str]:
 __all__ = [
     "ORACLE_BUDGET_CHARS",
     "Changed",
+    "OracleFit",
     "Origin",
     "Sources",
     "changed_paths",
+    "oracle_fittable",
     "oracle_sources",
 ]

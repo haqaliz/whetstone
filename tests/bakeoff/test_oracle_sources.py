@@ -26,7 +26,14 @@ different way of quietly running a different experiment from the one that gets p
    to any base — a source published under `PREREGISTRATION.md:142-143` beside source B while
    contributing no scored result. Which route produced a set is recorded on it, because "derived
    from the user's own commit, now" and "read out of a committed dataset nobody here re-derived"
-   are different provenance.
+   are different provenance;
+6. **the budget has exactly one statement**, shared by identity with the held-out derivation's
+   predicate (aspect 2 of this unit), so "does this set fit the oracle budget" cannot be
+   answered two ways;
+7. **the donor route's path derivation is one statement**, shared by identity the same way,
+   and it classifies nothing the machine produced: a git failure or an unreadable donor
+   raises, and only `_from_donor` — the bakeoff's own boundary — turns that raise into the
+   recorded skip.
 
 No model, no `mlx`, no network. Donors are two-commit synthetic repositories built with real git,
 the "public" tasks are ordinary local fixture repositories with a pool written beside them, and
@@ -38,18 +45,20 @@ clone of flask is made and none is needed.
 from __future__ import annotations
 
 import shutil
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from fixtures.pool import write_pool
-from fixtures.repos import BROKEN_ADDER, CALC_BUGGY, CALC_FIXED, build_task, make_patch
+from fixtures.repos import BROKEN_ADDER, CALC_BUGGY, CALC_FIXED, _git, build_task, make_patch
 from fixtures.repos.mined import (
     MINED_BULK_LINE,
     MINED_CALC_BUGGY,
     MINED_CALC_FIXED,
     MINED_HELPER,
     MINED_README_BEFORE,
+    MINED_TESTS_AFTER,
     build_mined_task,
 )
 
@@ -61,6 +70,7 @@ from whetstone.bakeoff.sources import (
     changed_paths,
     oracle_sources,
 )
+from whetstone.tasks.donor import GitFailed
 from whetstone.verify.task import load_task
 
 #: The budget this contract shipped with, before a run measured what it excluded. Kept as a literal
@@ -310,6 +320,64 @@ def test_an_oracle_within_the_budget_is_shown_whole(tmp_path: Path) -> None:
     )
 
 
+def test_the_budget_rule_is_one_function_shared_by_identity() -> None:
+    """The budget's one statement is an object, and `_read` reaches that object.
+
+    The held-out derivation (aspect 2 of this unit) must classify tasks on the same budget rule
+    the bakeoff enforces — "one rule by identity, asserted `is`" is the aspect's spec. A second
+    implementation of "does this set fit the budget" would be a second definition of what is
+    posable, and the one that disagreed would be the one nobody looked at. `_read`'s globals are
+    where its body resolves the name, so the pin is: that resolution is this module's object.
+    """
+    assert sources_module._read.__globals__["_budget_rule"] is sources_module._budget_rule, (
+        "WHY THIS IS A FAILURE: `_read` resolves a budget rule that is not the module's own "
+        "object, so a second implementation of the rule exists and the held-out predicate could "
+        "classify on a boundary the bakeoff does not enforce"
+    )
+
+
+def test_the_budget_boundary_is_exact_on_both_sides(tmp_path: Path) -> None:
+    """`==` the budget fits and one character more refuses — the boundary `_read` enforces.
+
+    The budget is a bound, not a round number: a set totalling exactly `ORACLE_BUDGET_CHARS`
+    characters is posable, and the same set plus one character is refused, naming the file that
+    tipped it. The pin is on the shared rule directly, with synthetic per-path entries, because
+    the rule is the single statement of the check both readers feed.
+    """
+    fixture = build_mined_task(tmp_path / "task")
+    exact = "x" * ORACLE_BUDGET_CHARS
+    entries: list[tuple[str, int | None, str | None]] = [
+        ("bulk.py", len(exact.encode("utf-8")), exact)
+    ]
+
+    files, reason = sources_module._budget_rule(entries, fixture.task, budget=ORACLE_BUDGET_CHARS)
+
+    assert files == {"bulk.py": exact}, (
+        "WHY THIS IS A FAILURE: a set totalling exactly the budget was refused, so the budget "
+        "is not a bound but something smaller, and the held-out derivation would exclude tasks "
+        f"the bakeoff can pose. Got {files!r} with reason {reason!r}"
+    )
+    assert reason == "", (
+        f"WHY THIS IS A FAILURE: a set inside the budget carries a reason, so a fit and a "
+        f"refusal cannot be told apart on the record. Got {reason!r}"
+    )
+
+    one_over = exact + "y"
+    entries = [("bulk.py", len(one_over.encode("utf-8")), one_over)]
+
+    files, reason = sources_module._budget_rule(entries, fixture.task, budget=ORACLE_BUDGET_CHARS)
+
+    assert files is None, (
+        "WHY THIS IS A FAILURE: a set one character over the budget was accepted, so the "
+        "cumulative check measures something other than what the bakeoff refuses, and the "
+        "held-out derivation could draw a task whose oracle cannot be built"
+    )
+    assert "bulk.py" in reason and str(ORACLE_BUDGET_CHARS) in reason, (
+        f"WHY THIS IS A FAILURE: the refusal names neither the file that tipped it nor the "
+        f"budget it enforced, so it cannot be told from any other refusal. Got {reason!r}"
+    )
+
+
 def test_raising_the_budget_cannot_move_a_prompt_that_already_fitted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -363,6 +431,147 @@ def test_raising_the_budget_cannot_move_a_prompt_that_already_fitted(
         "WHY THIS IS A FAILURE: the prompt hash moved. That hash is this run's provenance and the "
         "seal `run.freeze` fixes the question with — a budget that could move it would invalidate "
         "every honest run under M7b's rule with nothing about the question having changed"
+    )
+
+
+def test_the_path_set_derivation_is_one_function_shared_by_identity() -> None:
+    """The donor route's derivation is one object, and both entry points reach that object.
+
+    The held-out predicate (aspect 2 of this unit) must classify tasks on the same path set the
+    bakeoff derives — "one derivation by identity, asserted `is`" is the aspect's spec. Two
+    pins, because the route is entered twice: `changed_paths` dispatches to the module's own
+    `_from_donor`, and `_from_donor` derives through the module's own `_structural_paths`.
+    Either resolution landing on a second object would be a second definition of "which files
+    does this fix touch", and the one that disagreed would be the one nobody looked at.
+    """
+    assert (
+        sources_module.changed_paths.__globals__["_from_donor"] is sources_module._from_donor
+    ), (
+        "WHY THIS IS A FAILURE: `changed_paths` dispatches the donor route to a function that is "
+        "not the module's own `_from_donor`, so the bakeoff and the held-out predicate could "
+        "derive the same task through different code"
+    )
+    assert (
+        sources_module._from_donor.__globals__["_structural_paths"]
+        is sources_module._structural_paths
+    ), (
+        "WHY THIS IS A FAILURE: `_from_donor` derives its path set through a function that is "
+        "not the module's own `_structural_paths`, so a second derivation of the donor route "
+        "exists and the predicate could classify on a path set the bakeoff never derived"
+    )
+
+
+def test_an_unreadable_donor_refuses_on_changed_paths_and_raises_on_the_structural_function(
+    tmp_path: Path,
+) -> None:
+    """The one seam: machine state is a recorded skip here and a raise on the shared rule.
+
+    The donor route's shared derivation — the function the held-out predicate will call
+    directly — must not classify machine state. A donor that cannot be read is a fact about
+    this machine at this moment, so it raises, and `_from_donor` is where that raise becomes
+    the same recorded skip with the same sentence the bakeoff has always returned. Both halves
+    are asserted: the exact sentence through `changed_paths`, and the raise from the structural
+    function. The sentence is built from the very exception the structural function raised, so
+    the equality is exact without depending on git's wording.
+    """
+    fixture = build_mined_task(tmp_path / "task")
+    shutil.rmtree(fixture.donor)
+
+    with pytest.raises((GitFailed, subprocess.SubprocessError, OSError)) as raised:
+        sources_module._structural_paths(fixture.task)
+
+    changed = changed_paths(fixture.task)
+
+    assert changed.paths is None, (
+        "WHY THIS IS A FAILURE: a task whose donor cannot be read produced a path set, so the "
+        f"contents came from somewhere nobody can name: {changed.paths!r}"
+    )
+    assert changed.origin is Origin.NONE, (
+        f"WHY THIS IS A FAILURE: a derivation that did not happen is recorded as having "
+        f"happened. Got {changed.origin!r}"
+    )
+    assert changed.reason == (
+        f"the donor for task {fixture.task.task_id!r} could not be read at "
+        f"{str(fixture.donor)!r}: {type(raised.value).__name__}: {raised.value}"
+    ), (
+        f"WHY THIS IS A FAILURE: the bakeoff's refusal sentence for an unreadable donor moved. "
+        f"Every existing run's ledger spells this sentence, so a change would be a format "
+        f"change on the record. Got {changed.reason!r}"
+    )
+
+
+def test_a_commit_touching_only_test_paths_refuses_with_the_exact_sentence(
+    tmp_path: Path,
+) -> None:
+    """A mined commit can be all held tests: that is a structural property, not a machine state.
+
+    `git apply` refuses an empty diff, so a task whose fix touched nothing but held tests is
+    not a task this contract can pose or control for — and the sentence has to say so, because
+    this refusal is what the held-out predicate must return as `fits=False`, never raise. The
+    commit is added to the fixture's own donor after it was built, so it is a real commit with
+    a real SHA and the derivation reads it out of real git, like every other path here.
+    """
+    fixture = build_mined_task(tmp_path / "task")
+    test_file = fixture.donor / "tests" / "test_addition.py"
+    test_file.write_text(MINED_TESTS_AFTER + "\n# only held tests in this commit\n")
+    _git(["add", "--all"], cwd=fixture.donor)
+    _git(["commit", "--quiet", "--message", "touch only held tests"], cwd=fixture.donor)
+    only_tests = _git(["rev-parse", "HEAD"], cwd=fixture.donor).strip()
+    task = replace(fixture.task, provenance={**fixture.task.provenance, "commit": only_tests})
+
+    changed = changed_paths(task)
+
+    assert changed.paths is None, (
+        "WHY THIS IS A FAILURE: a commit that touched nothing but held tests produced a path "
+        f"set, so the derivation invented a scope the commit never stated: {changed.paths!r}"
+    )
+    assert changed.reason == (
+        f"commit {only_tests} of task {task.task_id!r} touched no non-test path, so there is "
+        f"neither a reference patch to apply — `git apply` refuses an empty diff — nor a "
+        f"file to show the base"
+    ), (
+        f"WHY THIS IS A FAILURE: the no-non-test-path refusal sentence moved. It is the "
+        f"predicate's `fits=False` reason as well as the bakeoff's skip, so the two records "
+        f"would stop naming the same class. Got {changed.reason!r}"
+    )
+    assert changed.origin is Origin.NONE, (
+        f"WHY THIS IS A FAILURE: a derivation that produced no path set is recorded as a "
+        f"derivation that happened. Got {changed.origin!r}"
+    )
+
+
+def test_a_fix_touching_an_operator_held_path_refuses_with_the_exact_sentence(
+    tmp_path: Path,
+) -> None:
+    """The vouched refusal is a structural class, and its sentence is the predicate's too.
+
+    A path the operator holds is a permanent property of the task — no machine state can make
+    it un-held — so this is exactly the refusal the held-out predicate must return as
+    `fits=False` with the same sentence the bakeoff records. `changed_paths` is asserted on
+    directly, because the sentence lives on the `Changed` record before `oracle_sources`
+    carries it onto the `Sources` record.
+    """
+    fixture = build_mined_task(tmp_path / "task", held_conftest=True)
+
+    changed = changed_paths(fixture.task)
+
+    assert changed.paths is None, (
+        "WHY THIS IS A FAILURE: a fix touching an operator-held path produced a path set, so "
+        f"the answer key reached the context window: {changed.paths!r}"
+    )
+    assert changed.reason == (
+        f"the fix for task {fixture.task.task_id!r} touches operator-held ['conftest.py'], "
+        f"which STRICT refuses as a cheat before anything runs. Using it as a reference would "
+        f"report the reward's own scope check as `the harness cannot reach PASS`, and "
+        f"showing it to a base would hand over the assertions the reward is computed from"
+    ), (
+        f"WHY THIS IS A FAILURE: the vouched refusal sentence moved. It is the predicate's "
+        f"`fits=False` reason as well as the bakeoff's skip, so the two records would stop "
+        f"naming the same class. Got {changed.reason!r}"
+    )
+    assert changed.origin is Origin.NONE, (
+        f"WHY THIS IS A FAILURE: a collision refusal is recorded as a derivation that "
+        f"happened. Got {changed.origin!r}"
     )
 
 

@@ -369,6 +369,7 @@ def _heldout_document(
             task_id: ordered.index(task_id) % heldout.HELDOUT_BANDS for task_id in ordered
         },
         "refusals": {},
+        "excluded": {},
         "membership": list(members),
     }
     raw.update(fields)

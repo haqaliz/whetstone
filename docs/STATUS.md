@@ -10,6 +10,42 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The gate can fire again: the held-out split is re-derived under the scorable rule, and the
+gate runbook now names the amendment that re-derives it** (2026-09-27, #60, #62).
+
+**Why the gate could not fire.** `gate-001` (2026-09-26) reduced to `UNVERIFIED`: 2 of the 12
+members of `tasks/heldout/source-b.json` are permanently `NO_ORACLE` — their file sets exceed
+`ORACLE_BUDGET_CHARS = 80_000`, refused whole by the bakeoff, deterministic and unaffected by
+retrying. Promotion requires `unverified == 0`, so **no candidate, however good, could ever be
+promoted against that document** (#60). The fix is a property of the selection, not of the
+check: `PREREGISTRATION.md` § 10.16 (Type 1, 2026-09-27) re-derives the split under the
+scorable rule — a member is held out only if its oracle can be built under the declared
+budget, the exclusion by class and sealed in the document's rule digest, the budget value
+cross-pinned against the bakeoff's own constant by identity.
+
+**The re-minted corpus, one re-derivation.** The #62 pairing is applied: the machine corpus is
+re-minted under `--label` — the same sha12s, the same heads, the ids taking the
+`donor-a-*`/`donor-b-*` label form — and the ledger, the stratum document and the held-out
+document are re-derived and committed together with the rule that produced them. The pre-swap
+corpus is preserved at `_sandbox/pre-remint/`; the snapshot is the reversibility path.
+
+**The differential.** Over the 66 corpus tasks the predicate and the bakeoff agree per
+direction: **12 excluded by class** — exactly the document's `excluded` field — including
+**both `NO_ORACLE` members**, which stay in the corpus with their status reported, never
+hidden. The loader fails closed on superseded and doctored documents: a document missing the
+`excluded` field (the pre-amendment shape), a membership naming an `excluded` id, or an
+`excluded` entry naming a stranger id, is refused by name.
+
+**The gate runbook.** Step 5's digest read-back pins the split to § 10.16 (Type 1,
+2026-09-27) and states the scorable rule; `tests/test_gate_runbook_guards.py` refuses a live
+§ 10.7 citation by name and keeps the digest-equality halt — a changed document is a halt,
+never a rerun.
+
+**The honest remainder.** No candidate has scored against the new document. The gate has
+still not produced a `promoted`/`rejected` decision, and a `rejected` 0-0 is a valid first
+outcome, never dressed as a win. Prior figures keyed to the old document — the night
+denominators, `gate-001` — are non-comparable, and the old series is never extended (§ 10.16).
+
 **Would a line-number-free edit format convert the pinned base's refused diffs? Measured: NO-GO**
 (2026-09-27, GitHub #64). Two things landed and one was deliberately not built.
 

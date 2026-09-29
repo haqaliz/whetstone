@@ -11,6 +11,26 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The gate can reach a real decision: the held-out split is re-derived under the scorable
+  rule.** The old document carried members whose oracles could not be built under the sealed
+  budget, so no candidate could ever be promoted against it (`unverified == 0`; `gate-001`
+  reduced to `UNVERIFIED`). `PREREGISTRATION.md` § 10.16 (Type 1, 2026-09-27) re-derives the
+  split — a member is held out only if its oracle can be built under the declared budget, the
+  exclusion by class and sealed in the document's rule digest — over the re-minted corpus
+  (the #62 pairing: the same sha12s, label-form ids), and the loader now refuses a
+  superseded or doctored document by name. **No gate semantics changed**: the decision table,
+  `unverified == 0`, `R = 3`, the three exits and the budget value (80,000) are byte-identical
+  to the previous release. No candidate has scored against the new document yet.
+
+### Added
+
+- **The gate runbook names the amendment that re-derives the split.** Step 5's digest
+  read-back pins the held-out document to `PREREGISTRATION.md` § 10.16 (Type 1, 2026-09-27)
+  and states the scorable rule; a live § 10.7 citation is a guard failure. The
+  digest-equality halt stands: a changed document is a halt, never a rerun.
+
 ## [0.15.0] - 2026-09-27
 
 ### Added

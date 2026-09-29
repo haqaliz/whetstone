@@ -1,331 +1,142 @@
 {
   "bands": {
-    "belay-0cfbb1590a70": 1,
-    "belay-0f8651175ef8": 0,
-    "belay-0fe4582aeac1": 1,
-    "belay-2e149603209a": 2,
-    "belay-353359e9ac6e": 2,
-    "belay-3e3051c4192a": 1,
-    "belay-45740535725b": 0,
-    "belay-468e343e9fb5": 2,
-    "belay-624a42175dda": 1,
-    "belay-844db07ed482": 1,
-    "belay-9dba3ea557f5": 2,
-    "belay-afd096a4b2ea": 2,
-    "belay-bffecd967c60": 2,
-    "belay-c3e132b7469b": 1,
-    "belay-c57246c7841a": 0,
-    "belay-cc7d3f520f1c": 2,
-    "belay-ce6425d3101a": 2,
-    "belay-d900ada906a3": 2,
-    "belay-dbf19c8009dd": 0,
-    "belay-ee0841a837c9": 2,
-    "belay-f589d0e93cc9": 2,
-    "contig-10476d50e5e8": 2,
-    "contig-128bcb99b701": 0,
-    "contig-12a1d8e4d766": 2,
-    "contig-1586c793159c": 1,
-    "contig-16213e62eae1": 0,
-    "contig-18265334544f": 2,
-    "contig-192f26c402a3": 1,
-    "contig-289854d0a7a2": 2,
-    "contig-2debddf6aa81": 1,
-    "contig-2ef3383b0ce7": 0,
-    "contig-2f4e497580ff": 0,
-    "contig-3326ca8a116d": 1,
-    "contig-34daf85182d5": 0,
-    "contig-3560e6ca1c22": 0,
-    "contig-37a91266029a": 1,
-    "contig-45f7e64b5e5a": 1,
-    "contig-4731e32044c5": 2,
-    "contig-4a1771d5c305": 1,
-    "contig-51127e8a50a5": 1,
-    "contig-5e25b106874c": 0,
-    "contig-5ec864efe403": 2,
-    "contig-6005d7ec06f5": 0,
-    "contig-6884ed72a9e9": 0,
-    "contig-68bdebd875f1": 1,
-    "contig-69dce0ca21e9": 0,
-    "contig-6d35bb3a4d17": 2,
-    "contig-74f000a772cf": 0,
-    "contig-7975de5439dc": 0,
-    "contig-8d599d32ab31": 2,
-    "contig-955d9a079c16": 2,
-    "contig-99c0e0464c21": 2,
-    "contig-a8b3104cb3ad": 1,
-    "contig-a93fe36d6e85": 1,
-    "contig-b5f840cdf71d": 1,
-    "contig-b7c53b77453a": 0,
-    "contig-c32d7c672465": 1,
-    "contig-c4989af66e08": 1,
-    "contig-c6e4d4c4de87": 0,
-    "contig-c7cee63e3cab": 0,
-    "contig-d2c03949ecf3": 2,
-    "contig-d601ff2d0ec0": 0,
-    "contig-dc3be3134276": 1,
-    "contig-df207b27e82c": 1,
-    "contig-ec3af08b913d": 0,
-    "contig-f100a90e47f2": 0
+    "donor-a-10476d50e5e8": 2,
+    "donor-a-128bcb99b701": 0,
+    "donor-a-12a1d8e4d766": 2,
+    "donor-a-1586c793159c": 1,
+    "donor-a-16213e62eae1": 0,
+    "donor-a-18265334544f": 2,
+    "donor-a-192f26c402a3": 1,
+    "donor-a-289854d0a7a2": 2,
+    "donor-a-2debddf6aa81": 1,
+    "donor-a-2ef3383b0ce7": 0,
+    "donor-a-2f4e497580ff": 0,
+    "donor-a-3326ca8a116d": 1,
+    "donor-a-34daf85182d5": 0,
+    "donor-a-3560e6ca1c22": 0,
+    "donor-a-37a91266029a": 1,
+    "donor-a-45f7e64b5e5a": 1,
+    "donor-a-4731e32044c5": 2,
+    "donor-a-4a1771d5c305": 1,
+    "donor-a-51127e8a50a5": 1,
+    "donor-a-5e25b106874c": 0,
+    "donor-a-5ec864efe403": 2,
+    "donor-a-6005d7ec06f5": 0,
+    "donor-a-6884ed72a9e9": 0,
+    "donor-a-68bdebd875f1": 1,
+    "donor-a-69dce0ca21e9": 0,
+    "donor-a-6d35bb3a4d17": 2,
+    "donor-a-74f000a772cf": 0,
+    "donor-a-7975de5439dc": 0,
+    "donor-a-8d599d32ab31": 2,
+    "donor-a-955d9a079c16": 2,
+    "donor-a-99c0e0464c21": 2,
+    "donor-a-a8b3104cb3ad": 1,
+    "donor-a-a93fe36d6e85": 1,
+    "donor-a-b5f840cdf71d": 1,
+    "donor-a-b7c53b77453a": 0,
+    "donor-a-c32d7c672465": 1,
+    "donor-a-c4989af66e08": 1,
+    "donor-a-c6e4d4c4de87": 0,
+    "donor-a-c7cee63e3cab": 0,
+    "donor-a-d2c03949ecf3": 2,
+    "donor-a-d601ff2d0ec0": 0,
+    "donor-a-dc3be3134276": 1,
+    "donor-a-df207b27e82c": 1,
+    "donor-a-ec3af08b913d": 0,
+    "donor-a-f100a90e47f2": 0,
+    "donor-b-0cfbb1590a70": 1,
+    "donor-b-0f8651175ef8": 0,
+    "donor-b-0fe4582aeac1": 1,
+    "donor-b-2e149603209a": 2,
+    "donor-b-353359e9ac6e": 2,
+    "donor-b-3e3051c4192a": 1,
+    "donor-b-45740535725b": 0,
+    "donor-b-468e343e9fb5": 2,
+    "donor-b-624a42175dda": 1,
+    "donor-b-844db07ed482": 1,
+    "donor-b-9dba3ea557f5": 2,
+    "donor-b-afd096a4b2ea": 2,
+    "donor-b-bffecd967c60": 2,
+    "donor-b-c3e132b7469b": 1,
+    "donor-b-c57246c7841a": 0,
+    "donor-b-cc7d3f520f1c": 2,
+    "donor-b-ce6425d3101a": 2,
+    "donor-b-d900ada906a3": 2,
+    "donor-b-dbf19c8009dd": 0,
+    "donor-b-ee0841a837c9": 2,
+    "donor-b-f589d0e93cc9": 2
   },
   "corpus": [
-    "belay-0cfbb1590a70",
-    "belay-0f8651175ef8",
-    "belay-0fe4582aeac1",
-    "belay-2e149603209a",
-    "belay-353359e9ac6e",
-    "belay-3e3051c4192a",
-    "belay-45740535725b",
-    "belay-468e343e9fb5",
-    "belay-624a42175dda",
-    "belay-844db07ed482",
-    "belay-9dba3ea557f5",
-    "belay-afd096a4b2ea",
-    "belay-bffecd967c60",
-    "belay-c3e132b7469b",
-    "belay-c57246c7841a",
-    "belay-cc7d3f520f1c",
-    "belay-ce6425d3101a",
-    "belay-d900ada906a3",
-    "belay-dbf19c8009dd",
-    "belay-ee0841a837c9",
-    "belay-f589d0e93cc9",
-    "contig-10476d50e5e8",
-    "contig-128bcb99b701",
-    "contig-12a1d8e4d766",
-    "contig-1586c793159c",
-    "contig-16213e62eae1",
-    "contig-18265334544f",
-    "contig-192f26c402a3",
-    "contig-289854d0a7a2",
-    "contig-2debddf6aa81",
-    "contig-2ef3383b0ce7",
-    "contig-2f4e497580ff",
-    "contig-3326ca8a116d",
-    "contig-34daf85182d5",
-    "contig-3560e6ca1c22",
-    "contig-37a91266029a",
-    "contig-45f7e64b5e5a",
-    "contig-4731e32044c5",
-    "contig-4a1771d5c305",
-    "contig-51127e8a50a5",
-    "contig-5e25b106874c",
-    "contig-5ec864efe403",
-    "contig-6005d7ec06f5",
-    "contig-6884ed72a9e9",
-    "contig-68bdebd875f1",
-    "contig-69dce0ca21e9",
-    "contig-6d35bb3a4d17",
-    "contig-74f000a772cf",
-    "contig-7975de5439dc",
-    "contig-8d599d32ab31",
-    "contig-955d9a079c16",
-    "contig-99c0e0464c21",
-    "contig-a8b3104cb3ad",
-    "contig-a93fe36d6e85",
-    "contig-b5f840cdf71d",
-    "contig-b7c53b77453a",
-    "contig-c32d7c672465",
-    "contig-c4989af66e08",
-    "contig-c6e4d4c4de87",
-    "contig-c7cee63e3cab",
-    "contig-d2c03949ecf3",
-    "contig-d601ff2d0ec0",
-    "contig-dc3be3134276",
-    "contig-df207b27e82c",
-    "contig-ec3af08b913d",
-    "contig-f100a90e47f2"
+    "donor-a-10476d50e5e8",
+    "donor-a-128bcb99b701",
+    "donor-a-12a1d8e4d766",
+    "donor-a-1586c793159c",
+    "donor-a-16213e62eae1",
+    "donor-a-18265334544f",
+    "donor-a-192f26c402a3",
+    "donor-a-289854d0a7a2",
+    "donor-a-2debddf6aa81",
+    "donor-a-2ef3383b0ce7",
+    "donor-a-2f4e497580ff",
+    "donor-a-3326ca8a116d",
+    "donor-a-34daf85182d5",
+    "donor-a-3560e6ca1c22",
+    "donor-a-37a91266029a",
+    "donor-a-45f7e64b5e5a",
+    "donor-a-4731e32044c5",
+    "donor-a-4a1771d5c305",
+    "donor-a-51127e8a50a5",
+    "donor-a-5e25b106874c",
+    "donor-a-5ec864efe403",
+    "donor-a-6005d7ec06f5",
+    "donor-a-6884ed72a9e9",
+    "donor-a-68bdebd875f1",
+    "donor-a-69dce0ca21e9",
+    "donor-a-6d35bb3a4d17",
+    "donor-a-74f000a772cf",
+    "donor-a-7975de5439dc",
+    "donor-a-8d599d32ab31",
+    "donor-a-955d9a079c16",
+    "donor-a-99c0e0464c21",
+    "donor-a-a8b3104cb3ad",
+    "donor-a-a93fe36d6e85",
+    "donor-a-b5f840cdf71d",
+    "donor-a-b7c53b77453a",
+    "donor-a-c32d7c672465",
+    "donor-a-c4989af66e08",
+    "donor-a-c6e4d4c4de87",
+    "donor-a-c7cee63e3cab",
+    "donor-a-d2c03949ecf3",
+    "donor-a-d601ff2d0ec0",
+    "donor-a-dc3be3134276",
+    "donor-a-df207b27e82c",
+    "donor-a-ec3af08b913d",
+    "donor-a-f100a90e47f2",
+    "donor-b-0cfbb1590a70",
+    "donor-b-0f8651175ef8",
+    "donor-b-0fe4582aeac1",
+    "donor-b-2e149603209a",
+    "donor-b-353359e9ac6e",
+    "donor-b-3e3051c4192a",
+    "donor-b-45740535725b",
+    "donor-b-468e343e9fb5",
+    "donor-b-624a42175dda",
+    "donor-b-844db07ed482",
+    "donor-b-9dba3ea557f5",
+    "donor-b-afd096a4b2ea",
+    "donor-b-bffecd967c60",
+    "donor-b-c3e132b7469b",
+    "donor-b-c57246c7841a",
+    "donor-b-cc7d3f520f1c",
+    "donor-b-ce6425d3101a",
+    "donor-b-d900ada906a3",
+    "donor-b-dbf19c8009dd",
+    "donor-b-ee0841a837c9",
+    "donor-b-f589d0e93cc9"
   ],
   "difficulty": {
-    "belay-0cfbb1590a70": {
-      "added": 77,
-      "blobs": 2,
-      "deleted": 6,
-      "f2p": 6,
-      "files": 1,
-      "hunks": 4,
-      "pins": 40
-    },
-    "belay-0f8651175ef8": {
-      "added": 7,
-      "blobs": 2,
-      "deleted": 5,
-      "f2p": 1,
-      "files": 1,
-      "hunks": 2,
-      "pins": 40
-    },
-    "belay-0fe4582aeac1": {
-      "added": 64,
-      "blobs": 2,
-      "deleted": 5,
-      "f2p": 1,
-      "files": 1,
-      "hunks": 4,
-      "pins": 40
-    },
-    "belay-2e149603209a": {
-      "added": 183,
-      "blobs": 2,
-      "deleted": 5,
-      "f2p": 1,
-      "files": 2,
-      "hunks": 2,
-      "pins": 40
-    },
-    "belay-353359e9ac6e": {
-      "added": 170,
-      "blobs": 2,
-      "deleted": 4,
-      "f2p": 4,
-      "files": 4,
-      "hunks": 8,
-      "pins": 40
-    },
-    "belay-3e3051c4192a": {
-      "added": 23,
-      "blobs": 2,
-      "deleted": 9,
-      "f2p": 1,
-      "files": 1,
-      "hunks": 3,
-      "pins": 40
-    },
-    "belay-45740535725b": {
-      "added": 9,
-      "blobs": 2,
-      "deleted": 1,
-      "f2p": 1,
-      "files": 1,
-      "hunks": 1,
-      "pins": 40
-    },
-    "belay-468e343e9fb5": {
-      "added": 247,
-      "blobs": 2,
-      "deleted": 1,
-      "f2p": 1,
-      "files": 3,
-      "hunks": 5,
-      "pins": 40
-    },
-    "belay-624a42175dda": {
-      "added": 74,
-      "blobs": 2,
-      "deleted": 2,
-      "f2p": 2,
-      "files": 1,
-      "hunks": 5,
-      "pins": 40
-    },
-    "belay-844db07ed482": {
-      "added": 20,
-      "blobs": 3,
-      "deleted": 13,
-      "f2p": 1,
-      "files": 1,
-      "hunks": 5,
-      "pins": 40
-    },
-    "belay-9dba3ea557f5": {
-      "added": 337,
-      "blobs": 3,
-      "deleted": 5,
-      "f2p": 2,
-      "files": 3,
-      "hunks": 7,
-      "pins": 40
-    },
-    "belay-afd096a4b2ea": {
-      "added": 1271,
-      "blobs": 2,
-      "deleted": 7,
-      "f2p": 2,
-      "files": 7,
-      "hunks": 10,
-      "pins": 40
-    },
-    "belay-bffecd967c60": {
-      "added": 52,
-      "blobs": 2,
-      "deleted": 14,
-      "f2p": 2,
-      "files": 2,
-      "hunks": 5,
-      "pins": 40
-    },
-    "belay-c3e132b7469b": {
-      "added": 23,
-      "blobs": 2,
-      "deleted": 11,
-      "f2p": 1,
-      "files": 1,
-      "hunks": 4,
-      "pins": 40
-    },
-    "belay-c57246c7841a": {
-      "added": 1,
-      "blobs": 2,
-      "deleted": 0,
-      "f2p": 1,
-      "files": 1,
-      "hunks": 1,
-      "pins": 40
-    },
-    "belay-cc7d3f520f1c": {
-      "added": 157,
-      "blobs": 2,
-      "deleted": 12,
-      "f2p": 1,
-      "files": 3,
-      "hunks": 8,
-      "pins": 40
-    },
-    "belay-ce6425d3101a": {
-      "added": 47,
-      "blobs": 3,
-      "deleted": 12,
-      "f2p": 6,
-      "files": 3,
-      "hunks": 6,
-      "pins": 40
-    },
-    "belay-d900ada906a3": {
-      "added": 630,
-      "blobs": 4,
-      "deleted": 161,
-      "f2p": 8,
-      "files": 7,
-      "hunks": 29,
-      "pins": 40
-    },
-    "belay-dbf19c8009dd": {
-      "added": 26,
-      "blobs": 2,
-      "deleted": 1,
-      "f2p": 1,
-      "files": 1,
-      "hunks": 1,
-      "pins": 40
-    },
-    "belay-ee0841a837c9": {
-      "added": 46,
-      "blobs": 4,
-      "deleted": 4,
-      "f2p": 3,
-      "files": 2,
-      "hunks": 9,
-      "pins": 40
-    },
-    "belay-f589d0e93cc9": {
-      "added": 84,
-      "blobs": 2,
-      "deleted": 29,
-      "f2p": 5,
-      "files": 2,
-      "hunks": 6,
-      "pins": 40
-    },
-    "contig-10476d50e5e8": {
+    "donor-a-10476d50e5e8": {
       "added": 32,
       "blobs": 1,
       "deleted": 6,
@@ -334,7 +145,7 @@
       "hunks": 2,
       "pins": 19
     },
-    "contig-128bcb99b701": {
+    "donor-a-128bcb99b701": {
       "added": 12,
       "blobs": 1,
       "deleted": 1,
@@ -343,7 +154,7 @@
       "hunks": 2,
       "pins": 19
     },
-    "contig-12a1d8e4d766": {
+    "donor-a-12a1d8e4d766": {
       "added": 96,
       "blobs": 2,
       "deleted": 30,
@@ -352,7 +163,7 @@
       "hunks": 4,
       "pins": 19
     },
-    "contig-1586c793159c": {
+    "donor-a-1586c793159c": {
       "added": 6,
       "blobs": 1,
       "deleted": 0,
@@ -361,7 +172,7 @@
       "hunks": 4,
       "pins": 19
     },
-    "contig-16213e62eae1": {
+    "donor-a-16213e62eae1": {
       "added": 22,
       "blobs": 1,
       "deleted": 1,
@@ -370,7 +181,7 @@
       "hunks": 2,
       "pins": 19
     },
-    "contig-18265334544f": {
+    "donor-a-18265334544f": {
       "added": 29,
       "blobs": 1,
       "deleted": 1,
@@ -379,7 +190,7 @@
       "hunks": 4,
       "pins": 16
     },
-    "contig-192f26c402a3": {
+    "donor-a-192f26c402a3": {
       "added": 52,
       "blobs": 1,
       "deleted": 1,
@@ -388,7 +199,7 @@
       "hunks": 3,
       "pins": 16
     },
-    "contig-289854d0a7a2": {
+    "donor-a-289854d0a7a2": {
       "added": 19,
       "blobs": 1,
       "deleted": 10,
@@ -397,7 +208,7 @@
       "hunks": 6,
       "pins": 19
     },
-    "contig-2debddf6aa81": {
+    "donor-a-2debddf6aa81": {
       "added": 41,
       "blobs": 1,
       "deleted": 1,
@@ -406,7 +217,7 @@
       "hunks": 2,
       "pins": 19
     },
-    "contig-2ef3383b0ce7": {
+    "donor-a-2ef3383b0ce7": {
       "added": 22,
       "blobs": 1,
       "deleted": 0,
@@ -415,7 +226,7 @@
       "hunks": 1,
       "pins": 19
     },
-    "contig-2f4e497580ff": {
+    "donor-a-2f4e497580ff": {
       "added": 12,
       "blobs": 1,
       "deleted": 1,
@@ -424,7 +235,7 @@
       "hunks": 1,
       "pins": 19
     },
-    "contig-3326ca8a116d": {
+    "donor-a-3326ca8a116d": {
       "added": 11,
       "blobs": 1,
       "deleted": 14,
@@ -433,7 +244,7 @@
       "hunks": 2,
       "pins": 19
     },
-    "contig-34daf85182d5": {
+    "donor-a-34daf85182d5": {
       "added": 8,
       "blobs": 1,
       "deleted": 10,
@@ -442,7 +253,7 @@
       "hunks": 2,
       "pins": 19
     },
-    "contig-3560e6ca1c22": {
+    "donor-a-3560e6ca1c22": {
       "added": 37,
       "blobs": 1,
       "deleted": 0,
@@ -451,7 +262,7 @@
       "hunks": 2,
       "pins": 19
     },
-    "contig-37a91266029a": {
+    "donor-a-37a91266029a": {
       "added": 17,
       "blobs": 1,
       "deleted": 1,
@@ -460,7 +271,7 @@
       "hunks": 3,
       "pins": 19
     },
-    "contig-45f7e64b5e5a": {
+    "donor-a-45f7e64b5e5a": {
       "added": 197,
       "blobs": 1,
       "deleted": 2,
@@ -469,7 +280,7 @@
       "hunks": 3,
       "pins": 19
     },
-    "contig-4731e32044c5": {
+    "donor-a-4731e32044c5": {
       "added": 57,
       "blobs": 1,
       "deleted": 2,
@@ -478,7 +289,7 @@
       "hunks": 3,
       "pins": 19
     },
-    "contig-4a1771d5c305": {
+    "donor-a-4a1771d5c305": {
       "added": 35,
       "blobs": 1,
       "deleted": 3,
@@ -487,7 +298,7 @@
       "hunks": 6,
       "pins": 19
     },
-    "contig-51127e8a50a5": {
+    "donor-a-51127e8a50a5": {
       "added": 62,
       "blobs": 1,
       "deleted": 40,
@@ -496,7 +307,7 @@
       "hunks": 9,
       "pins": 19
     },
-    "contig-5e25b106874c": {
+    "donor-a-5e25b106874c": {
       "added": 5,
       "blobs": 1,
       "deleted": 1,
@@ -505,7 +316,7 @@
       "hunks": 2,
       "pins": 19
     },
-    "contig-5ec864efe403": {
+    "donor-a-5ec864efe403": {
       "added": 157,
       "blobs": 1,
       "deleted": 0,
@@ -514,7 +325,7 @@
       "hunks": 4,
       "pins": 16
     },
-    "contig-6005d7ec06f5": {
+    "donor-a-6005d7ec06f5": {
       "added": 8,
       "blobs": 1,
       "deleted": 0,
@@ -523,7 +334,7 @@
       "hunks": 1,
       "pins": 19
     },
-    "contig-6884ed72a9e9": {
+    "donor-a-6884ed72a9e9": {
       "added": 6,
       "blobs": 2,
       "deleted": 3,
@@ -532,7 +343,7 @@
       "hunks": 1,
       "pins": 19
     },
-    "contig-68bdebd875f1": {
+    "donor-a-68bdebd875f1": {
       "added": 36,
       "blobs": 1,
       "deleted": 6,
@@ -541,7 +352,7 @@
       "hunks": 3,
       "pins": 16
     },
-    "contig-69dce0ca21e9": {
+    "donor-a-69dce0ca21e9": {
       "added": 23,
       "blobs": 1,
       "deleted": 16,
@@ -550,7 +361,7 @@
       "hunks": 2,
       "pins": 16
     },
-    "contig-6d35bb3a4d17": {
+    "donor-a-6d35bb3a4d17": {
       "added": 18,
       "blobs": 2,
       "deleted": 10,
@@ -559,7 +370,7 @@
       "hunks": 5,
       "pins": 16
     },
-    "contig-74f000a772cf": {
+    "donor-a-74f000a772cf": {
       "added": 51,
       "blobs": 1,
       "deleted": 0,
@@ -568,7 +379,7 @@
       "hunks": 1,
       "pins": 19
     },
-    "contig-7975de5439dc": {
+    "donor-a-7975de5439dc": {
       "added": 29,
       "blobs": 1,
       "deleted": 1,
@@ -577,7 +388,7 @@
       "hunks": 2,
       "pins": 19
     },
-    "contig-8d599d32ab31": {
+    "donor-a-8d599d32ab31": {
       "added": 130,
       "blobs": 1,
       "deleted": 18,
@@ -586,7 +397,7 @@
       "hunks": 7,
       "pins": 19
     },
-    "contig-955d9a079c16": {
+    "donor-a-955d9a079c16": {
       "added": 197,
       "blobs": 2,
       "deleted": 0,
@@ -595,7 +406,7 @@
       "hunks": 8,
       "pins": 16
     },
-    "contig-99c0e0464c21": {
+    "donor-a-99c0e0464c21": {
       "added": 26,
       "blobs": 2,
       "deleted": 29,
@@ -604,7 +415,7 @@
       "hunks": 4,
       "pins": 19
     },
-    "contig-a8b3104cb3ad": {
+    "donor-a-a8b3104cb3ad": {
       "added": 28,
       "blobs": 1,
       "deleted": 2,
@@ -613,7 +424,7 @@
       "hunks": 14,
       "pins": 19
     },
-    "contig-a93fe36d6e85": {
+    "donor-a-a93fe36d6e85": {
       "added": 66,
       "blobs": 1,
       "deleted": 2,
@@ -622,7 +433,7 @@
       "hunks": 5,
       "pins": 19
     },
-    "contig-b5f840cdf71d": {
+    "donor-a-b5f840cdf71d": {
       "added": 50,
       "blobs": 1,
       "deleted": 1,
@@ -631,7 +442,7 @@
       "hunks": 3,
       "pins": 19
     },
-    "contig-b7c53b77453a": {
+    "donor-a-b7c53b77453a": {
       "added": 25,
       "blobs": 2,
       "deleted": 0,
@@ -640,7 +451,7 @@
       "hunks": 2,
       "pins": 19
     },
-    "contig-c32d7c672465": {
+    "donor-a-c32d7c672465": {
       "added": 4,
       "blobs": 1,
       "deleted": 0,
@@ -649,7 +460,7 @@
       "hunks": 3,
       "pins": 19
     },
-    "contig-c4989af66e08": {
+    "donor-a-c4989af66e08": {
       "added": 47,
       "blobs": 2,
       "deleted": 1,
@@ -658,7 +469,7 @@
       "hunks": 5,
       "pins": 19
     },
-    "contig-c6e4d4c4de87": {
+    "donor-a-c6e4d4c4de87": {
       "added": 9,
       "blobs": 1,
       "deleted": 2,
@@ -667,7 +478,7 @@
       "hunks": 1,
       "pins": 19
     },
-    "contig-c7cee63e3cab": {
+    "donor-a-c7cee63e3cab": {
       "added": 12,
       "blobs": 1,
       "deleted": 1,
@@ -676,7 +487,7 @@
       "hunks": 2,
       "pins": 19
     },
-    "contig-d2c03949ecf3": {
+    "donor-a-d2c03949ecf3": {
       "added": 693,
       "blobs": 1,
       "deleted": 146,
@@ -685,7 +496,7 @@
       "hunks": 5,
       "pins": 19
     },
-    "contig-d601ff2d0ec0": {
+    "donor-a-d601ff2d0ec0": {
       "added": 9,
       "blobs": 1,
       "deleted": 1,
@@ -694,7 +505,7 @@
       "hunks": 1,
       "pins": 19
     },
-    "contig-dc3be3134276": {
+    "donor-a-dc3be3134276": {
       "added": 69,
       "blobs": 1,
       "deleted": 20,
@@ -703,7 +514,7 @@
       "hunks": 2,
       "pins": 19
     },
-    "contig-df207b27e82c": {
+    "donor-a-df207b27e82c": {
       "added": 30,
       "blobs": 1,
       "deleted": 2,
@@ -712,7 +523,7 @@
       "hunks": 3,
       "pins": 19
     },
-    "contig-ec3af08b913d": {
+    "donor-a-ec3af08b913d": {
       "added": 10,
       "blobs": 1,
       "deleted": 1,
@@ -721,7 +532,7 @@
       "hunks": 2,
       "pins": 16
     },
-    "contig-f100a90e47f2": {
+    "donor-a-f100a90e47f2": {
       "added": 18,
       "blobs": 1,
       "deleted": 0,
@@ -729,30 +540,234 @@
       "files": 1,
       "hunks": 1,
       "pins": 19
+    },
+    "donor-b-0cfbb1590a70": {
+      "added": 77,
+      "blobs": 2,
+      "deleted": 6,
+      "f2p": 6,
+      "files": 1,
+      "hunks": 4,
+      "pins": 40
+    },
+    "donor-b-0f8651175ef8": {
+      "added": 7,
+      "blobs": 2,
+      "deleted": 5,
+      "f2p": 1,
+      "files": 1,
+      "hunks": 2,
+      "pins": 40
+    },
+    "donor-b-0fe4582aeac1": {
+      "added": 64,
+      "blobs": 2,
+      "deleted": 5,
+      "f2p": 1,
+      "files": 1,
+      "hunks": 4,
+      "pins": 40
+    },
+    "donor-b-2e149603209a": {
+      "added": 183,
+      "blobs": 2,
+      "deleted": 5,
+      "f2p": 1,
+      "files": 2,
+      "hunks": 2,
+      "pins": 40
+    },
+    "donor-b-353359e9ac6e": {
+      "added": 170,
+      "blobs": 2,
+      "deleted": 4,
+      "f2p": 4,
+      "files": 4,
+      "hunks": 8,
+      "pins": 40
+    },
+    "donor-b-3e3051c4192a": {
+      "added": 23,
+      "blobs": 2,
+      "deleted": 9,
+      "f2p": 1,
+      "files": 1,
+      "hunks": 3,
+      "pins": 40
+    },
+    "donor-b-45740535725b": {
+      "added": 9,
+      "blobs": 2,
+      "deleted": 1,
+      "f2p": 1,
+      "files": 1,
+      "hunks": 1,
+      "pins": 40
+    },
+    "donor-b-468e343e9fb5": {
+      "added": 247,
+      "blobs": 2,
+      "deleted": 1,
+      "f2p": 1,
+      "files": 3,
+      "hunks": 5,
+      "pins": 40
+    },
+    "donor-b-624a42175dda": {
+      "added": 74,
+      "blobs": 2,
+      "deleted": 2,
+      "f2p": 2,
+      "files": 1,
+      "hunks": 5,
+      "pins": 40
+    },
+    "donor-b-844db07ed482": {
+      "added": 20,
+      "blobs": 3,
+      "deleted": 13,
+      "f2p": 1,
+      "files": 1,
+      "hunks": 5,
+      "pins": 40
+    },
+    "donor-b-9dba3ea557f5": {
+      "added": 337,
+      "blobs": 3,
+      "deleted": 5,
+      "f2p": 2,
+      "files": 3,
+      "hunks": 7,
+      "pins": 40
+    },
+    "donor-b-afd096a4b2ea": {
+      "added": 1271,
+      "blobs": 2,
+      "deleted": 7,
+      "f2p": 2,
+      "files": 7,
+      "hunks": 10,
+      "pins": 40
+    },
+    "donor-b-bffecd967c60": {
+      "added": 52,
+      "blobs": 2,
+      "deleted": 14,
+      "f2p": 2,
+      "files": 2,
+      "hunks": 5,
+      "pins": 40
+    },
+    "donor-b-c3e132b7469b": {
+      "added": 23,
+      "blobs": 2,
+      "deleted": 11,
+      "f2p": 1,
+      "files": 1,
+      "hunks": 4,
+      "pins": 40
+    },
+    "donor-b-c57246c7841a": {
+      "added": 1,
+      "blobs": 2,
+      "deleted": 0,
+      "f2p": 1,
+      "files": 1,
+      "hunks": 1,
+      "pins": 40
+    },
+    "donor-b-cc7d3f520f1c": {
+      "added": 157,
+      "blobs": 2,
+      "deleted": 12,
+      "f2p": 1,
+      "files": 3,
+      "hunks": 8,
+      "pins": 40
+    },
+    "donor-b-ce6425d3101a": {
+      "added": 47,
+      "blobs": 3,
+      "deleted": 12,
+      "f2p": 6,
+      "files": 3,
+      "hunks": 6,
+      "pins": 40
+    },
+    "donor-b-d900ada906a3": {
+      "added": 630,
+      "blobs": 4,
+      "deleted": 161,
+      "f2p": 8,
+      "files": 7,
+      "hunks": 29,
+      "pins": 40
+    },
+    "donor-b-dbf19c8009dd": {
+      "added": 26,
+      "blobs": 2,
+      "deleted": 1,
+      "f2p": 1,
+      "files": 1,
+      "hunks": 1,
+      "pins": 40
+    },
+    "donor-b-ee0841a837c9": {
+      "added": 46,
+      "blobs": 4,
+      "deleted": 4,
+      "f2p": 3,
+      "files": 2,
+      "hunks": 9,
+      "pins": 40
+    },
+    "donor-b-f589d0e93cc9": {
+      "added": 84,
+      "blobs": 2,
+      "deleted": 29,
+      "f2p": 5,
+      "files": 2,
+      "hunks": 6,
+      "pins": 40
     }
   },
-  "document_digest": "fc84acab0aedc0eb796dec55b6fb0b0f6d6268d2af9dc988b529aaf8e220d194",
+  "document_digest": "6b5fbd49e5d20fada7c53c53d5076cf846210ea6a4522046e1ba025142e9980d",
+  "excluded": {
+    "donor-a-10476d50e5e8": "the source files of task 'donor-a-10476d50e5e8' exceed the 80000-character oracle budget at 'CHANGELOG.md' (180097 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "donor-a-128bcb99b701": "the source files of task 'donor-a-128bcb99b701' exceed the 80000-character oracle budget at 'src/contig/cli.py' (105118 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "donor-a-1586c793159c": "the source files of task 'donor-a-1586c793159c' exceed the 80000-character oracle budget at 'src/contig/cli.py' (92908 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "donor-a-16213e62eae1": "the source files of task 'donor-a-16213e62eae1' exceed the 80000-character oracle budget at 'src/contig/cli.py' (103409 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "donor-a-289854d0a7a2": "the source files of task 'donor-a-289854d0a7a2' exceed the 80000-character oracle budget at 'src/contig/cli.py' (124739 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "donor-a-45f7e64b5e5a": "the source files of task 'donor-a-45f7e64b5e5a' exceed the 80000-character oracle budget at 'src/contig/cli.py' (113912 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "donor-a-4a1771d5c305": "the source files of task 'donor-a-4a1771d5c305' exceed the 80000-character oracle budget at 'src/contig/cli.py' (93321 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "donor-a-51127e8a50a5": "the source files of task 'donor-a-51127e8a50a5' exceed the 80000-character oracle budget at 'src/contig/cli.py' (124733 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "donor-a-8d599d32ab31": "the source files of task 'donor-a-8d599d32ab31' exceed the 80000-character oracle budget at 'src/contig/reference_harmonize.py' (85775 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "donor-b-45740535725b": "the source files of task 'donor-b-45740535725b' exceed the 80000-character oracle budget at 'src/belay/cli.py' (80594 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "donor-b-bffecd967c60": "the source files of task 'donor-b-bffecd967c60' exceed the 80000-character oracle budget at 'uv.lock' (305740 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which",
+    "donor-b-d900ada906a3": "the source files of task 'donor-b-d900ada906a3' exceed the 80000-character oracle budget at 'src/belay/sandbox/seatbelt.py' (90148 and counting), so the prompt would overrun the context window. Truncating it would show the base part of a file, and a diff written from context lines that stop mid-way is charged NOT_APPLIED \u2014 a rollout that ran a different experiment from the others in its denominator, with nothing recording which"
+  },
   "membership": [
-    "contig-69dce0ca21e9",
-    "contig-f100a90e47f2",
-    "contig-2f4e497580ff",
-    "contig-16213e62eae1",
-    "belay-624a42175dda",
-    "contig-68bdebd875f1",
-    "contig-b5f840cdf71d",
-    "contig-3326ca8a116d",
-    "belay-afd096a4b2ea",
-    "contig-10476d50e5e8",
-    "contig-6d35bb3a4d17",
-    "belay-ce6425d3101a"
+    "donor-a-c6e4d4c4de87",
+    "donor-a-c7cee63e3cab",
+    "donor-a-74f000a772cf",
+    "donor-a-6884ed72a9e9",
+    "donor-a-dc3be3134276",
+    "donor-b-3e3051c4192a",
+    "donor-a-192f26c402a3",
+    "donor-a-b5f840cdf71d",
+    "donor-a-18265334544f",
+    "donor-b-468e343e9fb5",
+    "donor-a-d2c03949ecf3",
+    "donor-b-353359e9ac6e"
   ],
   "refusals": {},
   "rule": {
     "bands": 3,
     "min_heldout": 10,
     "min_per_band": 2,
+    "oracle_budget_chars": 80000,
     "split_seed": "whetstone-heldout-source-b-v1"
   },
-  "rule_digest": "862568462b8401ece44287df67ac5d988b24ae4508d7aa615206fa5225c3b83c",
+  "rule_digest": "6be05f1c2fbc83f3b73c165a3fbccbe9e71994eb824b6f35aa5a77d2d1113f86",
   "schema": "whetstone-heldout/1"
 }

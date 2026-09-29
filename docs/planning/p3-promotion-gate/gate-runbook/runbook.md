@@ -207,8 +207,9 @@ Into the operator's log, from the record itself and never from memory:
   (sha256 over the empty file set, the same for every untrained base), so the record is read
   by role and by base identity, never by digest equality;
 - the held-out document digest — it must equal the digest of the committed
-  `tasks/heldout/source-b.json`, whose split is fixed by `PREREGISTRATION.md` § 10.7 (Type 1,
-  2026-08-24, closing § 7.1);
+  `tasks/heldout/source-b.json`, whose split is fixed by `PREREGISTRATION.md` § 10.16 (Type 1,
+  2026-09-27), re-derived under the scorable rule — a member is held out only if its oracle
+  can be built under the declared budget, the exclusion sealed in the document's rule digest;
 - `retry_count`, `retries_used`, and `unverified_after_retries`;
 - source A's counts beside source B's, both denominators disclosed.
 

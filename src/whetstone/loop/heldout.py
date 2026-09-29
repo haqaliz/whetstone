@@ -5,8 +5,11 @@ a dated amendment committed **before the split is used to score anything**, with
 small for a non-degenerate split being the published finding rather than a worked-around number
 (`PREREGISTRATION.md:242-247`). This module is the split's machinery, and its whole value is
 the order of events: the rule lives here in code — `HELDOUT_BANDS`, `MIN_HELDOUT`,
-`MIN_PER_BAND`, and the `SPLIT_SEED` — so it is fixed before any split is computed, and the
-document it writes is committed before any scoring touches it.
+`MIN_PER_BAND`, the `SPLIT_SEED`, and the scorable filter over the corpus, whose oracle must
+fit the budget the rule seals (`bakeoff.sources.oracle_fittable`, reached by identity) — so
+it is fixed before any split is computed, and the document it writes is committed before any
+scoring touches it. The sealed oracle budget and the budget the bakeoff enforces must be one
+number, or `compose_document` refuses by name (the drift guard).
 
 **The difficulty axis is the stratum document's, never a new one.** The 66 source-B tasks are
 ordered into terciles by the per-task difficulty the committed stratum document already
@@ -21,19 +24,24 @@ the split it produced.
 per process, so a derivation built on it would make the split's determinism a claim about
 `PYTHONHASHSEED` (the `sampling.attempt_seed` discipline, `sampling.py:100-119`). Per band, the
 members sort by the digest and the first `max(MIN_PER_BAND, ceil(MIN_HELDOUT / HELDOUT_BANDS))`
-are held out; the seed is a declared constant the document carries, and the rule digest hashes
-the rule's source **and** the constants, so any edit to either invalidates every committed
-document by design.
+are held out — over the scorable members only, the measured tasks the scorable filter refuses
+being recorded (`excluded`, digested) rather than dropped from the record; the seed is a
+declared constant the document carries, and the rule digest hashes the rule's source **and**
+the constants, so any edit to either invalidates every committed document by design.
 
 **A split that cannot meet the rule is refused by name, in the writer and the loader.** Empty,
 whole-corpus, and floors-unmet memberships are `EmptyHeldout` — the § 7.1 finding is the
-response, never a loosened floor (`spec.md` AC1). The loader is fail-closed like the stratum
-loader's: unknown schema, an unknown field, a rule whose digest moved on, a hand-edited payload
-that breaks the `document_digest`, a duplicated membership, a membership naming a task the
-document refused rather than measured, and the two degenerate memberships are each a named
-refusal. A fully regenerated doctored document passes by construction — the layered defence is
-git history plus ordering plus the recomputation test (`test_heldout_document.py`), stated,
-never reconciled.
+response, never a loosened floor (`spec.md` AC1). A task whose oracle cannot be decided at
+derivation time — an unreadable donor, machine state — is `HeldoutUnscorable`, a refusal naming
+the task: never a classification, and never an exclusion (AC7). The loader is fail-closed like
+the stratum loader's: unknown schema, an unknown field, a document predating the
+scorable-filter amendment (no `excluded`), a rule whose digest moved on, a hand-edited payload
+that breaks the `document_digest`, a membership naming a task the document excluded, an
+exclusion of a task the corpus never names, an exclusion that blurs into `refusals`, a
+duplicated membership, a membership naming a task the document refused rather than measured,
+and the two degenerate memberships are each a named refusal. A fully regenerated doctored
+document passes by construction — the layered defence is git history plus ordering plus the
+recomputation test (`test_heldout_document.py`), stated, never reconciled.
 
 The document is evidence about the data, never the data (`tasks/README.md:126-128`): counts,
 band indices and membership ids only — never paths, never patch content, never donor code. The
@@ -50,12 +58,15 @@ import hashlib
 import inspect
 import json
 import math
+import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from whetstone.bakeoff import sources
+from whetstone.bakeoff.sources import oracle_fittable
 from whetstone.bakeoff.stratum import (
     _LOCAL_OUT_ROOTS,
     Difficulty,
@@ -65,6 +76,7 @@ from whetstone.bakeoff.stratum import (
 from whetstone.bakeoff.stratum import (
     read_document as read_stratum_document,
 )
+from whetstone.tasks.donor import GitFailed
 from whetstone.tasks.manifest import load_tasks
 from whetstone.verify.task import Task
 
@@ -90,11 +102,15 @@ STRATUM_DOCUMENT = Path("tasks/stratum/easier.json")
 
 #: The rule's declared parameters, as the document carries them and the `rule_digest` hashes
 #: them — any edit to a constant invalidates every committed document by design (spec AC1).
+#: `oracle_budget_chars` is the bakeoff's own budget, referenced by identity rather than
+#: copied: the rule the document seals and the budget the bakeoff enforces must be one number,
+#: and `compose_document` refuses (the drift guard) if they ever disagree.
 _RULE_PARAMETERS = {
     "bands": HELDOUT_BANDS,
     "min_heldout": MIN_HELDOUT,
     "min_per_band": MIN_PER_BAND,
     "split_seed": SPLIT_SEED,
+    "oracle_budget_chars": sources.ORACLE_BUDGET_CHARS,
 }
 
 
@@ -162,10 +178,27 @@ def select_band(ids: Sequence[str]) -> tuple[str, ...]:
     return tuple(ordered[:_PER_BAND_TAKE])
 
 
+def scorable(task: Task, *, budget: int) -> bool:
+    """Whether `task`'s oracle fits `budget`: the predicate's verdict, reached by identity.
+
+    The one statement of "can this task's oracle be built" is `bakeoff.sources.oracle_fittable`
+    — imported here and called, never re-implemented. A copied budget check would be a second
+    rule with a different digest: this wrapper's source is digest-covered through
+    `_RULE_FUNCTIONS`, and the budget value is separately sealed through
+    `_RULE_PARAMETERS["oracle_budget_chars"]`, so an edit to either invalidates every
+    committed document by design. The predicate's own machine-state raises — an unreadable
+    donor, a missing commit, the `GitFailed`/`SubprocessError`/`OSError` family — propagate
+    unchanged: derivation-time machine state is a refusal of the derivation by name (aspect
+    AC7, wired by the draw), never a classification.
+    """
+    return oracle_fittable(task, budget=budget).fits
+
+
 #: The functions whose source IS the rule, for the drift guard. Scoped to the rule rather
 #: than the module's I/O: a loader-only edit (an error-message change) must not refuse the
-#: committed document, while any edit to the ordering, the banding or the selection must.
-_RULE_FUNCTIONS = (difficulty_key, band_of, select_band)
+#: committed document, while any edit to the ordering, the banding, the selection or the
+#: scorable filter must.
+_RULE_FUNCTIONS = (difficulty_key, band_of, select_band, scorable)
 
 
 def rule_digest() -> str:
@@ -205,6 +238,7 @@ _DIGESTED_FIELDS = (
     "corpus",
     "difficulty",
     "bands",
+    "excluded",
     "refusals",
     "membership",
 )
@@ -224,6 +258,23 @@ class EmptyHeldout(ValueError):
 
 class HeldoutDigestMismatch(ValueError):
     """The document's digest does not match its payload, or the rule's has moved on."""
+
+
+class HeldoutRuleDrift(ValueError):
+    """The rule's sealed parameters contradict the bakeoff: the oracle budget the rule seals is
+    not the budget `bakeoff.sources` enforces, so a draw under the rule would classify on a
+    boundary the bakeoff refuses."""
+
+
+class HeldoutUnscorable(ValueError):
+    """A task's oracle could not be decided at derivation time: machine state, refused by name.
+
+    `scorable` raises the `GitFailed`/`SubprocessError`/`OSError` family when the donor cannot
+    be read — a transient condition, never a property of the task. An exclusion is permanent,
+    so a classification caused by a machine that was briefly unavailable would hold a task out
+    forever for a reason that vanished the moment the donor came back: the derivation refuses
+    instead, naming the task (spec AC7).
+    """
 
 
 class UnknownHeldoutId(ValueError):
@@ -271,10 +322,13 @@ def document_digest_of(document: Mapping[str, Any]) -> str:
     """The digest over the canonical payload of the other fields — the stratum shape.
 
     Canonical JSON — sorted keys, no whitespace — so the digest is a pure function of the
-    payload. The loader's mechanically-required check: a hand-edited membership, band or
-    value breaks it, and the loader refuses rather than trusts.
+    payload. The payload is the `_DIGESTED_FIELDS` the document carries: a field the document
+    predates — the pre-amendment shape, written before `excluded` existed — is absent rather
+    than a crash, while stripping a field the writer emitted still moves the digest. The
+    loader's mechanically-required check: a hand-edited membership, band or value breaks it,
+    and the loader refuses rather than trusts.
     """
-    payload = {key: document[key] for key in _DIGESTED_FIELDS}
+    payload = {key: document[key] for key in _DIGESTED_FIELDS if key in document}
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -313,10 +367,24 @@ def compose_document(tasks: Sequence[Task], stratum_document: Stratum) -> dict[s
 
     Sorted ids, sorted keys, no timestamp: two calls over one corpus are byte-identical,
     which is the recomputation test's premise. A task the stratum document refused carries a
-    refusal here — never a guessed band — and an empty corpus, an empty membership, a
-    whole-corpus membership or an unmet floor is refused by name: the vacuous-pass lie
-    (`manifest.py:70-75`), each wearing its own spelling.
+    refusal here — never a guessed band — and a measured task the scorable filter refuses is
+    excluded with the predicate's own reason (`excluded`), while `corpus`/`difficulty`/`bands`
+    still cover it: only the draw changes (spec AC5). A task whose oracle cannot be decided —
+    an unreadable donor, machine state — refuses the derivation by name (`HeldoutUnscorable`),
+    never an exclusion (spec AC7). An empty corpus, an empty membership, a whole-corpus
+    membership or an unmet floor over the filtered membership is refused by name: the
+    vacuous-pass lie (`manifest.py:70-75`), each wearing its own spelling. A rule whose sealed
+    oracle budget is not the budget the bakeoff enforces is refused by name first — the drift
+    guard (AC3): the document can never seal a budget the bakeoff does not use.
     """
+    if _RULE_PARAMETERS["oracle_budget_chars"] != sources.ORACLE_BUDGET_CHARS:
+        raise HeldoutRuleDrift(
+            f"the rule seals oracle_budget_chars={_RULE_PARAMETERS['oracle_budget_chars']}, "
+            f"but the bakeoff enforces sources.ORACLE_BUDGET_CHARS="
+            f"{sources.ORACLE_BUDGET_CHARS}; the draw classifies under the sealed budget, and "
+            "a seal that names a budget the bakeoff does not enforce would hold out tasks the "
+            "bakeoff refuses. Make the two one number before recomposing the document"
+        )
     ids = [task.task_id for task in tasks]
     if not ids:
         raise ValueError(
@@ -344,9 +412,28 @@ def compose_document(tasks: Sequence[Task], stratum_document: Stratum) -> dict[s
 
     bands = {task_id: band_of(task_id, measured, list(measured)) for task_id in measured}
 
+    budget = _RULE_PARAMETERS["oracle_budget_chars"]
+    excluded: dict[str, str] = {}
+    for task in tasks:
+        if task.task_id not in measured:
+            continue
+        try:
+            fits = scorable(task, budget=budget)
+        except (GitFailed, subprocess.SubprocessError, OSError) as exc:
+            raise HeldoutUnscorable(
+                f"the oracle of task {task.task_id!r} could not be decided while deriving the "
+                f"held-out document: {type(exc).__name__}: {exc}. Machine state is never a "
+                "classification: the task is neither drawn nor excluded, and the derivation "
+                "refuses until its donor reads again"
+            ) from exc
+        if not fits:
+            excluded[task.task_id] = oracle_fittable(task, budget=budget).reason
+
     membership: list[str] = []
     for band in range(HELDOUT_BANDS):
-        members = sorted(task_id for task_id, b in bands.items() if b == band)
+        members = sorted(
+            task_id for task_id, b in bands.items() if b == band and task_id not in excluded
+        )
         membership.extend(select_band(members))
 
     if not membership:
@@ -383,6 +470,7 @@ def compose_document(tasks: Sequence[Task], stratum_document: Stratum) -> dict[s
             for task_id, d in sorted(measured.items())
         },
         "bands": dict(sorted(bands.items())),
+        "excluded": dict(sorted(excluded.items())),
         "refusals": dict(sorted(refusals.items())),
         "membership": membership,
     }
@@ -409,10 +497,12 @@ def read_document(path: Path) -> Heldout:
 
     Fail-closed like the stratum loader (`stratum.py:478-649`): a document that half-parsed
     would let the gate score a membership the document's own fields do not support. The
-    checks are the named refusals — unknown schema, an unknown field, digest mismatches (the
-    rule's, then the document's), a duplicated membership, a membership naming a refused
-    task, an id the document neither measured nor refused, and a degenerate membership —
-    plus `ValueError` for a file that cannot be read at all.
+    checks are the named refusals — unknown schema, an unknown field, the pre-amendment shape
+    (no `excluded`), digest mismatches (the rule's, then the document's), a membership naming
+    an excluded task, an exclusion of a task the corpus never names, an exclusion that blurs
+    into `refusals`, a duplicated membership, a membership naming a refused task, an id the
+    document neither measured nor refused, and a degenerate membership — plus `ValueError`
+    for a file that cannot be read at all.
     """
     location = Path(path)
     try:
@@ -451,6 +541,14 @@ def read_document(path: Path) -> Heldout:
             "document by design; regenerate it in the same commit as the edit"
         )
 
+    if "excluded" not in raw:
+        raise HeldoutSchemaError(
+            f"held-out document {str(location)!r} predates the scorable-filter amendment: it "
+            "carries no `excluded` field, so its membership cannot be checked against the "
+            "scorable class the rule seals. A gate pointed at the pre-amendment shape must "
+            "halt; regenerate the document under the current rule"
+        )
+    _require(raw, "excluded", dict, location)
     _require(raw, "rule", dict, location)
     _require(raw, "corpus", list, location)
     _require(raw, "difficulty", dict, location)
@@ -510,8 +608,18 @@ def read_document(path: Path) -> Heldout:
             )
         refusals[task_id] = reason
 
+    excluded: dict[str, str] = {}
+    for task_id, reason in raw["excluded"].items():
+        if not isinstance(task_id, str) or not isinstance(reason, str):
+            raise HeldoutSchemaError(
+                f"held-out document {str(location)!r} has a malformed exclusion; each entry "
+                "must be a task id mapping to a reason string"
+            )
+        excluded[task_id] = reason
+
     ids = set(corpus)
     measured_ids = set(difficulty)
+    excluded_ids = set(excluded)
     for task_id in membership:
         if task_id not in ids:
             raise HeldoutSchemaError(
@@ -519,17 +627,38 @@ def read_document(path: Path) -> Heldout:
                 "but the corpus never names that task; an unknown id is refused rather than "
                 "silently scored by the gate"
             )
+    drawn_excluded = sorted(excluded_ids & set(membership))
+    if drawn_excluded:
+        raise HeldoutSchemaError(
+            f"held-out document {str(location)!r} lists {drawn_excluded!r} in its membership "
+            "while excluding them; the draw never holds out a task the scorable filter "
+            "refused, so a membership that names one was edited or miswritten"
+        )
     for task_id in measured_ids | set(refusals):
         if task_id not in ids:
             raise HeldoutSchemaError(
                 f"held-out document {str(location)!r} records difficulty or a refusal for "
                 f"{task_id!r}, which is not in its corpus"
             )
+    unknown_excluded = sorted(excluded_ids - ids)
+    if unknown_excluded:
+        raise HeldoutSchemaError(
+            f"held-out document {str(location)!r} excludes {unknown_excluded!r}, which its "
+            "corpus never names; an exclusion of a task the document does not carry is a "
+            "classification of nothing"
+        )
     overlap = measured_ids & set(refusals)
     if overlap:
         raise HeldoutSchemaError(
             f"held-out document {str(location)!r} both measures and refuses "
             f"{sorted(overlap)!r}; a task cannot carry both"
+        )
+    blurred = excluded_ids & set(refusals)
+    if blurred:
+        raise HeldoutSchemaError(
+            f"held-out document {str(location)!r} both excludes and refuses "
+            f"{sorted(blurred)!r}; `excluded` records the scorable filter's verdict and "
+            "`refusals` records the stratum's, and the two meanings must never blur"
         )
     uncovered = ids - measured_ids - set(refusals)
     if uncovered:
@@ -768,7 +897,9 @@ __all__ = [
     "EmptyHeldout",
     "Heldout",
     "HeldoutDigestMismatch",
+    "HeldoutRuleDrift",
     "HeldoutSchemaError",
+    "HeldoutUnscorable",
     "Rule",
     "UnknownHeldoutId",
     "band_of",
@@ -781,6 +912,7 @@ __all__ = [
     "read_stratum_document",
     "refuse_committed_out",
     "rule_digest",
+    "scorable",
     "select_band",
     "write_document",
 ]

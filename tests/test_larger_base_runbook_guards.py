@@ -384,14 +384,18 @@ def test_the_stratum_loader_is_run_imports_by_identity() -> None:
 
 
 def test_every_declared_dev_id_is_a_corpus_member() -> None:
-    """A `--dev-subset` id that matches no loaded task dies at launch, never excludes.
+    """A `--dev-subset` id whose sha12 matches no loaded task dies at launch, never excludes.
 
     The dev overlay is declared against the full declared source-B set — the stratum
     document's 66-id `corpus` — so membership is the non-vacuous test: an id outside the
-    corpus matches nothing in the loaded universe, and the harness refuses the declaration by
-    name (`UnknownDevSubset`). The probe sheet's vacuous declaration died exactly this way on
-    2026-08-15, against the stratum-filtered universe; on the full set the restored overlay
-    must resolve the same way, against the corpus.
+    corpus matches nothing in the loaded universe, and the harness refuses the declaration
+    by name (`UnknownDevSubset`). The sheet's ids are the sealed record of the completed
+    arm, naming the pre-re-mint corpus (`belay-<sha12>`); the re-minted corpus holds the
+    same commits under `donor-b-<sha12>`, so membership resolves by **commit identity** —
+    each declared sha12 pinned explicitly to exactly one corpus id, proving the same commit
+    set survives the relabel. The probe sheet's vacuous declaration died exactly this way
+    on 2026-08-15, against the stratum-filtered universe; on the full set the restored
+    overlay must resolve the same way, against the corpus.
     """
     arm = _arm_block(_bash_blocks(_runbook()))
     declared = _dev_subset_values(arm)
@@ -400,12 +404,25 @@ def test_every_declared_dev_id_is_a_corpus_member() -> None:
         "five declared ids must exclude their tasks from both sources, or the counts they "
         "would have moved are published as scored"
     )
+    resolved = {  # the sealed belay-* ids, relabeled by commit identity under the re-mint
+        "belay-2e149603209a": "donor-b-2e149603209a",
+        "belay-353359e9ac6e": "donor-b-353359e9ac6e",
+        "belay-3e3051c4192a": "donor-b-3e3051c4192a",
+        "belay-844db07ed482": "donor-b-844db07ed482",
+        "belay-9dba3ea557f5": "donor-b-9dba3ea557f5",
+    }
+    unresolvable = sorted(declared - set(resolved))
+    assert not unresolvable, (
+        f"the arm command declares dev id(s) {unresolvable} that the re-mint relabel does "
+        "not cover: their sha12 matches no loaded task and the run dies at launch with "
+        "UnknownDevSubset. Drop them or move them into the corpus"
+    )
     corpus = set(read_document(STRATUM_DOC).corpus)
-    outside = declared - corpus
-    assert not outside, (
-        f"the arm command declares dev id(s) {sorted(outside)} that are not members of the "
-        "committed stratum document's corpus: they match no loaded task and the run dies at "
-        "launch with UnknownDevSubset. Drop them or move them into the corpus"
+    missing = sorted(donor_id for donor_id in resolved.values() if donor_id not in corpus)
+    assert not missing, (
+        f"the relabeled dev id(s) {missing} are not members of the committed stratum "
+        "document's corpus: their sha12 matches no loaded task and the run dies at launch "
+        "with UnknownDevSubset. Drop them or move them into the corpus"
     )
 
 
