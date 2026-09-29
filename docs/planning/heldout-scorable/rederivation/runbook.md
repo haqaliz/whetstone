@@ -5,7 +5,7 @@
 that holds the real donors the pre-swap manifests name, the staged re-mint at the
 primary's `_sandbox/remint/`, and the pre-swap corpus at the primary's `tasks/local/`.
 The apply machinery
-(`src/whetstone/tasks/remint_apply.py`) exists only on this branch until merge, so every
+(`src/whetstone/loop/remint_apply.py`) exists only on this branch until merge, so every
 command below runs with CWD at the **branch's worktree checkout**; `$REPO` always names
 the **primary checkout**, whose gitignored `tasks/local/` and `_sandbox/` are the machine
 state this sheet touches. The worktree's own path is never spelled — a committed sheet
@@ -36,7 +36,7 @@ gate, and the snapshot is the reversibility path.
 **Run with CWD at the branch's worktree checkout:**
 
 ```bash
-uv run pytest tests/test_remint_runbook_guards.py tests/tasks/test_remint_apply.py -q
+uv run pytest tests/test_remint_runbook_guards.py tests/loop/test_remint_apply.py -q
 ```
 
 **Halt if this is not green.** The sheet is guarded exactly so that its commands cannot
@@ -51,7 +51,7 @@ sha12s, each manifest's sha256 and the ledger's digest. It is the reversibility
 guarantee (spec AC10), and it lands **before** anything moves:
 
 ```bash
-uv run python -c "from pathlib import Path; from whetstone.tasks.remint_apply import snapshot_corpus; print(snapshot_corpus([Path('$REPO/tasks/local/donor-a'), Path('$REPO/tasks/local/donor-b')], Path('$REPO/tasks/local-ledger.json'), Path('$REPO/_sandbox/pre-remint')))"
+uv run python -c "from pathlib import Path; from whetstone.loop.remint_apply import snapshot_corpus; print(snapshot_corpus([Path('$REPO/tasks/local/donor-a'), Path('$REPO/tasks/local/donor-b')], Path('$REPO/tasks/local-ledger.json'), Path('$REPO/_sandbox/pre-remint')))"
 ```
 
 **Halt if the snapshot refuses.** The refusal names the manifest or the ledger that did
@@ -66,7 +66,7 @@ staged ledger's 66 entries — and any mismatch is a named refusal **before any 
 moves**:
 
 ```bash
-uv run python -c "from pathlib import Path; from whetstone.tasks.remint_apply import verify_staged; print(verify_staged(Path('$REPO/_sandbox/pre-remint'), Path('$REPO/_sandbox/remint')))"
+uv run python -c "from pathlib import Path; from whetstone.loop.remint_apply import verify_staged; print(verify_staged(Path('$REPO/_sandbox/pre-remint'), Path('$REPO/_sandbox/remint')))"
 ```
 
 **Halt if the verification refuses.** The staged re-mint is then NOT the provably
@@ -78,7 +78,7 @@ Each corpus root's manifests are replaced with the staged re-mint's and the old-
 are removed, so each root ends holding exactly the re-minted set:
 
 ```bash
-uv run python -c "from pathlib import Path; from whetstone.tasks.remint_apply import swap_manifests; print(swap_manifests([Path('$REPO/tasks/local/donor-a'), Path('$REPO/tasks/local/donor-b')], Path('$REPO/_sandbox/remint')))"
+uv run python -c "from pathlib import Path; from whetstone.loop.remint_apply import swap_manifests; print(swap_manifests([Path('$REPO/tasks/local/donor-a'), Path('$REPO/tasks/local/donor-b')], Path('$REPO/_sandbox/remint')))"
 ```
 
 **Halt: double-apply.** If the swap refuses because a corpus root **already holds
@@ -107,7 +107,7 @@ The real donor paths are the pre-swap corpus's own values, recovered from the sn
 per sha12 — never typed here — and exactly one field per manifest is rewritten:
 
 ```bash
-uv run python -c "from pathlib import Path; from whetstone.tasks.remint_apply import real_donors, rewrite_repo_url; print(rewrite_repo_url([Path('$REPO/tasks/local/donor-a'), Path('$REPO/tasks/local/donor-b')], real_donors(Path('$REPO/_sandbox/pre-remint'), [Path('$REPO/tasks/local/donor-a'), Path('$REPO/tasks/local/donor-b')])))"
+uv run python -c "from pathlib import Path; from whetstone.loop.remint_apply import real_donors, rewrite_repo_url; print(rewrite_repo_url([Path('$REPO/tasks/local/donor-a'), Path('$REPO/tasks/local/donor-b')], real_donors(Path('$REPO/_sandbox/pre-remint'), [Path('$REPO/tasks/local/donor-a'), Path('$REPO/tasks/local/donor-b')])))"
 ```
 
 **Halt if the rewrite refuses.** An undeclared label, a sha12 the snapshot does not
@@ -121,7 +121,7 @@ set, which Step 3 pinned — and each entry's `manifest_sha256` is recomputed fr
 applied manifests, through `tasks.ledger`'s own reader and writer by identity:
 
 ```bash
-uv run python -c "from pathlib import Path; from whetstone.tasks.remint_apply import regenerate_ledger; print(regenerate_ledger([Path('$REPO/tasks/local/donor-a'), Path('$REPO/tasks/local/donor-b')], Path('$REPO/_sandbox/remint'), Path('$WORKTREE/tasks/local-ledger.json')))"
+uv run python -c "from pathlib import Path; from whetstone.loop.remint_apply import regenerate_ledger; print(regenerate_ledger([Path('$REPO/tasks/local/donor-a'), Path('$REPO/tasks/local/donor-b')], Path('$REPO/_sandbox/remint'), Path('$WORKTREE/tasks/local-ledger.json')))"
 ```
 
 **Halt if the regeneration refuses.** A staged entry with no applied manifest, or an
@@ -164,7 +164,7 @@ re-minted machine corpus and compares it field by field; the apply suite re-runs
 whole machinery over synthetic roots:
 
 ```bash
-uv run pytest tests/loop/test_heldout_document.py tests/tasks/test_remint_apply.py -q
+uv run pytest tests/loop/test_heldout_document.py tests/loop/test_remint_apply.py -q
 ```
 
 **Halt if this is not green.** The recomputation test is the final document's gate (spec

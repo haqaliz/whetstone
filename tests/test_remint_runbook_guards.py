@@ -16,7 +16,7 @@ are imported **by identity** from `test_runbook_guards`, and the stale-worktree 
 `test_gate_runbook_guards`, so a fix to the shared parse or a name added to the retirement
 list is seen by every runbook guard in this tree.
 
-The apply blocks run the branch's machinery (`whetstone.tasks.remint_apply`), which exists
+The apply blocks run the branch's machinery (`whetstone.loop.remint_apply`), which exists
 only on the branch until merge — so the sheet runs with CWD at the branch's worktree and
 derives the worktree's own path from `git worktree list --porcelain` (the
 `test_heldout_document.py` pattern: resolved with git's own words rather than assumed),
@@ -41,7 +41,7 @@ from test_runbook_guards import _bash_blocks, _is_anchored, _named_paths, _workt
 RUNBOOK = Path(__file__).parent.parent / "docs/planning/heldout-scorable/rederivation/runbook.md"
 
 #: The apply machinery the sheet drives, and the two derivation doors it invokes directly.
-APPLY_MODULE = "whetstone.tasks.remint_apply"
+APPLY_MODULE = "whetstone.loop.remint_apply"
 DOORS = ("whetstone.bakeoff.stratum", "whetstone.loop.heldout")
 
 #: The apply step's functions, in the order the sheet must perform them.
@@ -90,7 +90,7 @@ def _apply_blocks(blocks: list[str]) -> list[str]:
     return [
         block
         for block in blocks
-        if "whetstone.tasks" in block or any(door in block for door in DOORS)
+        if APPLY_MODULE in block or any(door in block for door in DOORS)
     ]
 
 
@@ -147,7 +147,7 @@ def test_the_parse_really_reads_the_sheets_commands() -> None:
     apply_blocks = _apply_blocks(blocks)
     assert apply_blocks, (
         "WHY THIS IS A FAILURE: no bash block invokes the apply machinery. The sheet "
-        "executes `whetstone.tasks.remint_apply`'s functions and the two derivation doors; "
+        "executes `whetstone.loop.remint_apply`'s functions and the two derivation doors; "
         "a sheet that names none of them guards nothing."
     )
     for step in STEPS:

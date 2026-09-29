@@ -32,8 +32,8 @@ from fixtures.repos.mined import (
 )
 
 from whetstone.bakeoff import stratum
-from whetstone.loop import heldout
-from whetstone.tasks import ledger, remint_apply
+from whetstone.loop import heldout, remint_apply
+from whetstone.tasks import ledger
 
 #: The two donor labels the staged re-mint carries, and the old-id labels it replaces.
 DONOR_A = "donor-a"
