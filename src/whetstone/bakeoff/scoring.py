@@ -56,7 +56,7 @@ from __future__ import annotations
 import hashlib
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
@@ -206,6 +206,12 @@ class Rollout:
 #: claim can be asserted by counting calls rather than by timing two real `uv sync` runs, and so
 #: a later phase can substitute a provisioner without this module learning about it.
 Provision = Callable[[Task, Path], Path]
+
+#: How a rollout's prompt is built. Takes the task and the oracle's `path -> contents` map
+#: and returns the prompt string. Injectable so the measurement run can pose the numbered-
+#: listing prompt through the same seam every other caller uses; the default is
+#: `render_prompt` itself, so a caller that says nothing gets exactly master's bytes.
+Renderer = Callable[[Task, Mapping[str, str]], str]
 
 
 def provision(task: Task, into: Path) -> Path:
@@ -365,6 +371,7 @@ def score(
     timeout: float,
     interpreters: Interpreters,
     pool: Path | None = None,
+    renderer: Renderer | None = None,
 ) -> Rollout:
     """Ask `candidate` for a patch to `task`, verify it both ways, and record what happened.
 
@@ -390,6 +397,13 @@ def score(
     this module knows for the reason `control` gives: a hardcoded `tasks/public/pool.json` would
     make every test either read a 3.2 MB committed artefact or exercise a different code path from
     the one that runs at night.
+
+    `renderer` is the seam the measurement run's numbered-listing prompt is threaded through:
+    `renderer or render_prompt`, so the default is `render_prompt` itself and every existing
+    caller's behaviour is byte-identical (asserted in `test_measure_driver.py`). A renderer is
+    a pure function of `(task, sources)` like `render_prompt`'s own shape, and it must refuse a
+    held test path in its sources the way `render_prompt` does — the seam supplies bytes, never
+    permission to show the answer key.
 
     **The oracle is derived before the prompt exists**, for the same reason and one more: there is
     no prompt to render without it. Provisioning is checked first because a task can fail both
@@ -427,7 +441,7 @@ def score(
             detail=sources.reason,
         )
 
-    prompt = render_prompt(task, sources.files)
+    prompt = (renderer or render_prompt)(task, sources.files)
     record = replace(record, prompt_sha256=prompt_hash(prompt))
 
     started = time.perf_counter()
@@ -570,6 +584,7 @@ __all__ = [
     "Interpreters",
     "Outcome",
     "Provision",
+    "Renderer",
     "Rollout",
     "provision_from_lock",
     "score",
