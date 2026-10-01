@@ -864,6 +864,21 @@ below it.
 accounted for most of a nine-day run carried no reason, and recovering it meant joining stored
 transcripts to journals by hand. `NO_ORACLE` already carries its reason; this should too.
 
+> **Corrected 2026-09-30, when both representation directions were measured.** M1's
+> search/replace direction was measured **NO-GO** by `python -m whetstone.bakeoff.locatability`
+> over the pinned base's refused rollouts (`docs/planning/patch-representation/finding.md`),
+> and the finding's § 6 lead — a format that never asks the model to quote existing code,
+> line-range addressing against a numbered listing — has now been measured **NO-GO** in its
+> turn (`docs/planning/edit-contract-finding/measurement-run/finding.md`): over the pinned
+> 16-task population, zero completions were fully addressable, the majority violated the
+> format's own grammar, and the replacement text rarely parsed. **The `NOT_APPLIED` reason
+> field shipped with the first finding.** M1's exit criterion stands — a night selects at
+> least one strict-`PASS` — but the representation axis is spent in the two forms this
+> evidence could see; the P2 pivot's remaining pre-committed responses are raise *k* and the
+> portability arm's CPU dtype (§ 13), and the finding records one observation for the next
+> contract designer: this base's failure was closing its own replacement blocks and writing
+> replacement text that parses, not transcribing existing code.
+
 ### M2 — Make the gate able to answer: the held-out set (issues #60, #62)
 
 The first real gated evaluation returned `UNVERIFIED`, and it will return `UNVERIFIED` for **every

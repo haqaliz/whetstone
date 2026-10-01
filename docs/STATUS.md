@@ -10,6 +10,40 @@ carries the current state and the rules that still bind.
 
 ---
 
+**A numbered-listing edit contract was measured and not built: NO-GO** (2026-09-30, the
+`patch-representation` finding's § 6 lead). The lead was that a format which never asks the
+model to quote existing code — the prompt shows a numbered source listing, the model addresses
+line ranges and writes replacement text, the harness renders the diff — is the direction the
+NO-GO evidence did not rule out. It now has its own measurement, and it is spent.
+
+**The measurement.** `whetstone.bakeoff.measure` poses the numbered-listing prompt to the
+pinned 32B base over the pre-committed population — the easier-stratum band minus the held-out
+members, 16 tasks pinned by identity, a run whose task set differs refused — one greedy
+completion per task, retries 0, the verifier never entered, the control arm `INTACT` on all 16
+draws, and evidence written only when the whole run succeeded. `whetstone.bakeoff.addressability`
+classifies the run's completions offline — worst-first: `UNCLASSIFIED` > `MALFORMED` >
+`NO_FILE` > `OUT_OF_RANGE` > `ADDRESSABLE`, replacements gated by a standalone `ast.parse` —
+and exits 0 GO / 1 NO-GO / 2 refused under a rule committed before any rollout ran. The rule
+and the population were committed ahead of the run, as the spec's discipline requires.
+
+**The decision: NO-GO.** Over the 16 pinned tasks the partition was, in words: none fully
+addressable; the majority malformed (stray markers, unclosed replacement sections — the model
+adopted the format and then violated its own grammar in the same text); the remainder
+out-of-range, mostly replacement text that does not parse, where the standalone-parse proxy is
+sharpest at the fragment boundary (the splice-based sub-count is the honest cross-read and it
+too reported near-zero). Three pinned members were `NO_ORACLE` and stayed in the denominator by
+the pre-committed rule. The counts live only in gitignored `runs/edit-contract-finding/`;
+`docs/planning/edit-contract-finding/measurement-run/finding.md` states the decision and the
+disclosures (one exposure, a proxy, comparable to nothing prior).
+
+**Nothing was built beyond the measurement, and no amendment was made** — the contract aspect
+and `PREREGISTRATION.md` § 10.17 are unplanned and unbuilt, exactly as the pre-committed rule
+required. The numbered-listing direction joins search/replace as measured and spent; the P2
+pivot's remaining pre-committed responses are raise *k* and the portability arm's CPU dtype
+(`docs/ROADMAP.md` § 13). One observation is recorded for the next contract designer: this
+model's failure was not transcription of existing text but closing its own replacement blocks
+and writing replacement text that parses.
+
 **The gate can fire again: the held-out split is re-derived under the scorable rule, and the
 gate runbook now names the amendment that re-derives it** (2026-09-27, #60, #62).
 
