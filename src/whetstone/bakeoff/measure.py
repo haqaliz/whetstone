@@ -3,7 +3,9 @@
 The unit asks whether the pinned base can *address* a numbered listing — the generation
 half of the edit-contract finding (`docs/planning/edit-contract-finding/prd.md` § 4.1).
 The driver spends that small bake-off: for each of the 16 pre-committed tasks it renders
-the numbered-listing prompt, asks the base once (`K = 1`, greedy — `sampler_for(1)` is
+the format's prompt — the numbered listing by default (`--renderer line-range`,
+byte-identical to the v0.17.0 run), or the whole-function format under `--renderer
+whole-function` — asks the base once (`K = 1`, greedy — `sampler_for(1)` is
 the bake-off's own `greedy_sampler` by identity — retries 0), and records the completion
 beside a rollout row that says `UNVERIFIED` with the reason spelled out:
 **"measurement run — no grading performed by design"**. The verifier is never entered
@@ -71,7 +73,7 @@ from whetstone.bakeoff.run import (
     mlx_engine,
     select_candidates,
 )
-from whetstone.bakeoff.scoring import Interpreters, Outcome, Rollout
+from whetstone.bakeoff.scoring import Interpreters, Outcome, Renderer, Rollout
 from whetstone.bakeoff.sources import oracle_sources
 from whetstone.bakeoff.stratum import (
     EmptyStratum,
@@ -84,6 +86,7 @@ from whetstone.bakeoff.stratum import (
 )
 from whetstone.bakeoff.transcript import Transcribed, Transcript
 from whetstone.bakeoff.weights import ProvenanceUnreadable, WeightsUnverified, load_weights
+from whetstone.bakeoff.whole_function import render_whole_function_prompt
 from whetstone.loop.heldout import (
     EmptyHeldout,
     HeldoutDigestMismatch,
@@ -137,6 +140,17 @@ MEASUREMENT_DETAIL = "measurement run — no grading performed by design"
 #: is a knob that gets turned until the number improves.
 RUN_SEED = 1
 
+#: The two named prompt formats the run can pose, by their `--renderer` values. The
+#: default is `line-range` — the v0.17.0 behaviour, byte-identical — and `whole-function`
+#: is this unit's format, pinned by the runbook for its run. A name that is neither is a
+#: refusal, never a fallback: a run that quietly posed a different format than its
+#: command named would write evidence no reader could trust. The manifest schema is
+#: unchanged — the per-task `prompt_sha256` is the only discriminator between formats.
+RENDERERS: dict[str, Renderer] = {
+    "line-range": render_line_range_prompt,
+    "whole-function": render_whole_function_prompt,
+}
+
 #: The evidence home the run defaults to: gitignored, so a private run's completions —
 #: which quote the user's own donor code back verbatim — never enter the tree.
 _RUN_DIR = Path("runs") / "edit-contract-finding"
@@ -186,6 +200,16 @@ class ControlNotIntact(ValueError):
     """
 
 
+class UnknownRenderer(ValueError):
+    """`--renderer` named a format this driver does not pose.
+
+    Exactly two formats exist — `line-range`, the default, and `whole-function` — and a
+    name that is neither is refused rather than defaulted: a run that quietly fell back
+    would pose one format while its command named another, and its evidence would read
+    as the format it never posed.
+    """
+
+
 #: What the CLI turns into a refusal exit (2) rather than a traceback. The named refusals
 #: first; `ValueError` closes the tuple — the document loaders' own errors (a missing
 #: file, an unreadable JSON) are `ValueError`s, and a door that crashes on an unforeseen
@@ -197,6 +221,7 @@ REFUSALS: tuple[type[Exception], ...] = (
     UnknownPopulationMember,
     NotOneCandidate,
     ControlNotIntact,
+    UnknownRenderer,
     ProvenanceUnreadable,
     WeightsUnverified,
     StratumSchemaError,
@@ -253,6 +278,7 @@ def run_measurement(
     run_seed: int = RUN_SEED,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     engine: Engine = mlx_engine,
+    renderer: Renderer = render_line_range_prompt,
 ) -> Measured:
     """Run the measurement over the pinned population, or refuse — writing nothing on refusal.
 
@@ -262,7 +288,7 @@ def run_measurement(
     hand-edited pinned input halts before a token is spent; the population is pinned by
     identity before a task is posed. Then, per task: the control probe runs first (the
     `sweep` shape — a harness that cannot grade is visible from the first task), the
-    numbered-listing prompt is rendered from the same oracle derivation `score` uses, and
+    format's prompt is rendered from the same oracle derivation `score` uses, and
     one greedy completion is asked for and held, ungraded.
 
     Everything is held until the fold is known: a run whose control fold is not `PASS`
@@ -273,6 +299,15 @@ def run_measurement(
     revision); tests substitute a stub. `pool` is deliberately never threaded: every
     member of the pinned population is a source-B task carrying a donor commit, and the
     measurement must never fall back to a public dataset's scope.
+
+    `renderer` is the seam this driver's prompt is threaded through — the `score` seam
+    shape. The default is `render_line_range_prompt` itself (`RENDERERS["line-range"]`),
+    so every existing caller's behaviour is byte-identical (the line-range assertions in
+    `test_measure_driver.py` are the anti-regression control); `--renderer whole-function`
+    selects this unit's format. A renderer is a pure function of `(task, sources)` that
+    refuses a held test path in its sources the way `render_prompt` does — the seam
+    supplies bytes, never permission to show the answer key. The manifest schema does not
+    change with the renderer: the per-task `prompt_sha256` is the format discriminator.
     """
     workspace = _refuse_relative_workspace(workspace)
 
@@ -352,7 +387,7 @@ def run_measurement(
             )
             continue
 
-        prompt = render_line_range_prompt(task, sources.files)
+        prompt = renderer(task, sources.files)
         started = time.perf_counter()
         completion = generator.generate(prompt)
         generation_seconds = time.perf_counter() - started
@@ -483,6 +518,23 @@ def _no_oracle(candidate: str, task: Task, reason: str) -> Rollout:
     )
 
 
+def _resolve_renderer(name: str) -> Renderer:
+    """The renderer `--renderer` names — `line-range` by default, or the named refusal.
+
+    A name that is neither of the two formats is refused rather than defaulted: a run
+    that quietly posed a different format than its command named would write evidence
+    no reader could trust.
+    """
+    try:
+        return RENDERERS[name]
+    except KeyError:
+        raise UnknownRenderer(
+            f"--renderer {name!r} is not a format this driver poses. The choice is "
+            f"'line-range' (the default) or 'whole-function'; refused rather than "
+            "defaulted, so a run's prompts always match the format its command named"
+        ) from None
+
+
 def _refuse_relative_workspace(workspace: Path | str) -> Path:
     """The absolute-path rule, enforced before anything else is read or written."""
     root = Path(workspace)
@@ -525,10 +577,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m whetstone.bakeoff.measure",
         description=(
-            "Run the numbered-listing measurement over the spec's pinned 16-task "
-            "population: one greedy completion per task, no verifier entry, the control "
-            "arm intact on every draw required, and manifest + journal + transcript "
-            "written only when the whole run has succeeded."
+            "Run the measurement over the spec's pinned 16-task population: one greedy "
+            "completion per task, no verifier entry, the control arm intact on every "
+            "draw required, and manifest + journal + transcript written only when the "
+            "whole run has succeeded. The prompt format is a choice — the numbered "
+            "listing by default, or the whole-function format."
         ),
     )
     parser.add_argument(
@@ -608,6 +661,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="seconds allowed per control-arm verification. No default, matching the "
         "verifiers.",
     )
+    parser.add_argument(
+        "--renderer",
+        default="line-range",
+        help="the prompt format the run poses: 'line-range' (the default — the numbered "
+        "listing, v0.17.0's behaviour) or 'whole-function' (this unit's EDIT/FUNCTION "
+        "format). A name that is neither is refused, never defaulted.",
+    )
     return parser
 
 
@@ -632,6 +692,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             transcript=arguments.transcript,
             manifest=arguments.manifest,
             only=arguments.only,
+            renderer=_resolve_renderer(arguments.renderer),
         )
     except REFUSALS as refusal:
         print(f"whetstone measure: {refusal}", file=sys.stderr)
@@ -648,6 +709,7 @@ __all__ = [
     "MANIFEST_SCHEMA",
     "MEASUREMENT_DETAIL",
     "REFUSALS",
+    "RENDERERS",
     "RUN_SEED",
     "ControlNotIntact",
     "EmptyPopulation",
@@ -656,6 +718,7 @@ __all__ = [
     "PopulationMismatch",
     "RelativeWorkspace",
     "UnknownPopulationMember",
+    "UnknownRenderer",
     "build_parser",
     "main",
     "run_measurement",
