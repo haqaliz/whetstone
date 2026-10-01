@@ -1,109 +1,134 @@
-# Understanding — probe-decision-gate
+# Understanding — edit-contract-finding (2026-09-30)
 
-**Branch:** `feat/probe-decision-gate/aliz` · **Date:** 2026-09-05
+Sources: `docs/planning/_card/issue.md` (the whetstone-next handoff brief, verbatim),
+`docs/planning/patch-representation/finding.md`, `docs/ROADMAP.md` § 13/§ 14, and a code dig
+across the worktree (file:line citations below).
 
 ## What the work is really asking
 
-The night-door runbook pre-commits a go/no-go for night #1 — *"the night proceeds iff the
-probe completes with the control arm `PASS` on every draw and a non-empty seed map"*
-(`docs/planning/p2-rollouts/night-door/runbook.md:78-80`) — and today an operator enforces it
-by reading the probe's ledger by eye. This unit turns that pre-commitment into a command, so
-the decision is a process exit, never a narrative judgement — against the roadmap's own
-exit-criteria principle (`docs/ROADMAP.md:278`). It is the last buildable unit that de-risks
-the launch path's most expensive, least certain, least reversible step (the night) and reads
-no number. Modeled on `check_leakage` (`src/whetstone/loop/check_leakage.py`).
+Five nights across three base sizes have selected **zero** strict-PASS rollouts. The largest
+single cause is that git refuses the diffs the model writes — the model decides what to change
+and then fails to *transcribe* it (context lines and offsets from memory). The
+`patch-representation` unit (issue #64) measured the first candidate direction — search/replace
+— and got **NO-GO**: the pinned base's refused diffs mostly do not quote the file exactly
+(`finding.md:10-17`), and the near-misses (lines skipped, indentation shifted, the model's own
+edit quoted as the original) are exactly what an exact-anchor contract cannot forgive without
+the harness choosing the model's answer (`finding.md:35-49`; the M10 doctrine,
+`patch-representation/prd.md:117-121`).
 
-## What the code actually shows (all verified in this worktree, 2026-09-05)
+The finding names one direction the evidence does not rule out (`finding.md:84-92`): **a
+representation that never asks the model to quote existing code at all** — e.g. the prompt
+shows a **numbered source listing** and the model addresses **line ranges** and writes
+replacement text; the **harness** renders the diff. It is a lead, not a proposal, and it
+"would need its own finding before any amendment".
 
-1. **A probe run writes no checkpoint and a full ledger.** `run_night(..., probe=N)` narrows
-   the private source to its first `N` tasks (`night.py:248-249`), writes no checkpoint
-   (`night.py:495-500`), and writes `ledger.json`, `dataset.json`, `data/`, and
-   `draws/draw-NN.journal.jsonl` + `.transcript.jsonl` (`night.py:291-332`). The ledger
-   (`whetstone-run/1`, `ledger.py:47`) carries the three facts the decision needs:
-   `task_set.probe` (int iff a probe), `draws_recorded[].harness` (the per-draw control
-   fold), and `seeds` (the seed map). Readable fail-closed via `ledger.read`
-   (`ledger.py:211-224`, `LedgerUnreadable`) and the deeper typed `morning.read_ledger`
-   (`morning.py:279-328`).
-2. **The control fold is `harness_status`**: any `BROKEN` → `UNVERIFIED`, no `INTACT` at all
-   → `UNVERIFIED`, else `PASS` (`bakeoff/control.py:472-494`). "Control arm PASS on every
-   draw" = every `draws_recorded[].harness == "PASS"`. **A real written probe ledger always
-   satisfies this**: `rankable` raises `HarnessNotProven` unless every draw's status is PASS
-   (`sweep.py:160-183`), and the night then exits `UNVERIFIED_EXIT` (3) with **no ledger**
-   (`cli.py:828-830`). So the exit-1 control-violation case is reachable only through a
-   doctored ledger or the journals — the adversarial fixture is the point (the
-   `check_leakage` digest-swap posture).
-3. **The seed-map subtlety is real.** `Applied` seeds are recorded only when `generate()`
-   runs (`sampling.py:203-214`); a fully-replayed **resume** re-appends recorded steps
-   verbatim (`draws.py:176-179`) and can therefore write a ledger whose `seeds` array is
-   empty even though every draw ran under a seed. `_select` already falls back to the pure
-   `attempt_seed(run_seed, task_id, attempt)` derivation (`night.py:462-464`,
-   `sampling.py:100-119`). The decision gate must define "non-empty seed map" against this:
-   recorded-only (strict) or re-derived-on-miss (matching `_select`). This is the unit's
-   sharpest open question. The runbook's killed-night restart (same command, same `--run-id`)
-   applies to a probe too, so a resumed probe with an empty recorded seed map is not
-   hypothetical.
-4. **The go/no-go paragraph is NOT guard-pinned.** `tests/test_night_runbook_guards.py`
-   contains no reference to "Decision rule", "night proceeds iff", or the
-   "Read runs/night-probe/probe-001/ledger.json" sentence — rewriting it breaks nothing. The
-   guard DOES pin **exactly two door blocks** (`test_night_runbook_guards.py:175`), so adding
-   a check-probe step to the sheet means extending the guard 2 → 3, in the same commit, code
-   first. The pins to preserve: two (→ three) door invocations with flags ⊆ `build_parser()`,
-   absolute writable paths, exactly one worktree (`feat-p2-rollouts`), `RETAINED`/`EXCLUDED`
-   candidate names, the five dev ids, and the prose strings "zero"/"ceiling", "not a halt",
-   "raise `K`", "loosen", "Nothing here is published".
-5. **CLI subcommand vs module door.** A `whetstone check-probe` subcommand costs a **fifth**
-   partition-guard edge: `_DOCUMENTED_EDGES` (`test_reward_path_scope_is_partitioned.py:154-159`),
-   the `EXEMPT["loop"]` "exactly FOUR" reason (`:120-147`), the stale "three/four edges"
-   docstrings in `cli.py` (`:850-853, 905-906, 938-939`), the module docstring's command list
-   (`cli.py:27-37`, guarded by `test_morning_cli.py:212-239`), and the function-local-import
-   handler shape (`cli.py:895-924`). A module door (`python -m whetstone.loop.probe_check`,
-   the `heldout`/`baseline`/`honest_report` pattern) adds **zero** guard edges — the guard
-   walks only guarded roots, never inside the exempt loop package
-   (`test_reward_path_scope_is_partitioned.py:435-448`). The card's brief says "modeled on
-   `check_leakage`"; `check-leakage` is a CLI subcommand. Decide in the PRD: the runbook is
-   the only caller either way.
-6. **Exit-code contract for the gate (no fifth code).** 0 = the decision rule holds (proceed
-   to the night); 1 = the finding the command exists to report (named violation: a draw whose
-   harness is not PASS, or an empty seed map); 2 = refusal an operator can fix (not a probe
-   run, unreadable ledger). **No `UNVERIFIED`**: the command reads documents rather than
-   running anything ("it either answers or refuses", `cli.py:911-912`). `cli.py:82-93` fixes
-   PASS=0 / FAIL=1 / USAGE=2 / UNVERIFIED=3.
-7. **No fixture probe directories exist.** Tests build nights at runtime via
-   `tests/loop/harness.py` (`corpus`, `pool`, `weights`, `Answers` stub engine) +
-   `tests/loop/test_night.py::_night` (`probe=1`, `draws=2`), and hand-build ledgers via
-   `run_ledger.Ledger`/`write` (`tests/loop/test_run_ledger.py:53-105`). The decision gate's
-   tests need fixture probe run directories — a helper is new code.
+This unit is that finding. Its shape mirrors `patch-representation` exactly: a **pre-committed
+GO/NO-GO rule** (written and committed before any rollout runs), exposed as a command exit
+(0 GO / 1 NO-GO / 2 refusal, following `check-probe` and `locatability`); an **offline,
+deterministic, stdlib-only instrument** off the reward path (same boundary as
+`bakeoff/locatability.py`); a **committed finding** whose counts live only in gitignored
+`runs/`. On NO-GO the unit ships instrument + finding (+ the reason-field polish) and nothing
+else. On GO it additionally ships the parser/converter (exact location, never repair,
+all-or-nothing, scope-before-location), a `NOT_LOCATED`-equivalent covered outcome, adversarial
+tests asserting the STRICT/WEAK differential stays intact, and a Type 1 amendment
+(`PREREGISTRATION.md` § 10.x) committed before any night records `edit_format = line-range`.
 
-## Open questions for the PRD
+## The decisive difference from locatability: there is no stored evidence
 
-- **Seed-map semantics on resume.** Recorded-only vs re-derived-on-miss (matching `_select`
-  by identity). Strict recorded-only makes a legitimately resumed probe un-runnable;
-  re-derivation makes "non-empty" total. Middle path: the runbook forbids *resuming a probe*
-  (a killed probe restarts fresh — it is cheap, first-N private tasks) while the gate reads
-  recorded-only, which keeps both honest. Recommend deciding this explicitly rather than by
-  accident.
-- **CLI subcommand vs module door** (§ 5). The partition-guard cost of the CLI is mechanical
-  and the house has done it four times; the module door avoids it. The card says "modeled on
-  `check_leakage`".
-- **Per-draw fold vs per-task detail.** The pre-committed rule's words are the per-draw fold
-  (`draws_recorded[].harness`). Reading the journals for per-task `INTACT` detail is stricter
-  than the rule and would re-litigate what "control arm PASS" means — recommend the fold,
-  with the journals read only to prove each draw actually ran (completeness), never to add a
-  bar.
-- **Does the gate need a `--heldout`-style second input?** No — it reads one run directory,
-  like `check_leakage` reads one run + the heldout doc. Here the probe run is the only input;
-  the night's task set is already in the ledger.
+`locatability.py` classified a **finished** run's transcripts
+(`locatability.py:289-295,323-334`). No run has ever prompted under a numbered-listing
+contract, so this unit must spend a **small real bake-off** on the pinned base
+(`mlx-community/Qwen2.5-Coder-32B-Instruct-4bit`, § 10.10) under the new prompt, then classify
+its output. Cost bounds from committed metadata: ≈ 258 s/task of generation on the 32B
+(`reports/larger-base/cost.json`; `reports/larger-base/report.md:26`); a ~10-task run is
+roughly 45–60 minutes of generation plus control-arm/verification time, bounded first by a
+D7 timing probe (`run.py:598-610`, `runbook.md:51-98`). The run is the operator's GPU pass,
+commanded from a runbook (the `measured-arm-run` precedent); the unit ships the machinery and
+the rule, and the finding records the outcome.
 
-## Guardrail placement
+## Affected areas (anchored)
 
-- Core-loop element changed: **② nightly improvement loop** — the probe decision gate is the
-  door to the night. It is *not* the promotion gate (③): `decide()`, the three exits and the
-  retry discipline are untouched.
-- Reward stays execution-grounded: the reward path (`src/whetstone/verify/`, `patch.py`,
-  `attribution.py`) is untouched; the gate reads evidence documents only.
-- `UNVERIFIED` still never a win: the gate has no `UNVERIFIED` exit and promotes nothing; a
-  probe that proved nothing already aborts the night at `UNVERIFIED_EXIT` with no ledger
-  (`cli.py:828-830`).
-- Local/private: reads the gitignored `runs/<id>/`; nothing leaves the box; nothing is
-  published. Not redundant with a better base: the pre-committed go/no-go is part of the
-  loop's honesty contract, which a stronger base only makes more worth defending.
+- **The response contract seam:** `bakeoff/rendering.py:131-142` `_RESPONSE_FORMAT` (the diff
+  response-format text) inside `render_prompt` (`:176-248`); byte-determinism rule `:25-36`;
+  `prompt_hash` `:267-279`. A numbered-listing contract adds a second spelling here. The prompt
+  is sealed before any engine exists — `freeze` digests every posed prompt (`run.py:418-473`)
+  and `Sealed` aborts on an un-frozen prompt (`run.py:234-262`).
+- **A new extractor:** the numbered-listing parser mirrors `bakeoff/patch.py:148-187`
+  (`extract_patch` → `Extracted | NoDiff`); the "locate, never author" doctrine
+  (`patch.py:20-28`) and the no-empty-string rule (`patch.py:8-18`) carry over. The harness
+  *renders* the unified diff; `verify_strict`/`verify_weak` keep receiving a plain diff string
+  (`scoring.py:454-516`; `verify/repo.py:87-118` is the reward-path boundary — unchanged).
+- **The outcome surface:** `Outcome` enum (`scoring.py:87-130`); `_classify`
+  (`scoring.py:519-536`); `report.tally` (`report.py:426-453`); `_UNCOVERED` set
+  (`report.py:60`), imported by identity in `gate.py:99` and `night.py:41`; exhaustive tests
+  (`tests/loop/test_dataset.py:84-91`, `tests/loop/test_gate.py:149-161`,
+  `tests/loop/test_run_ledger.py:170-178`, `tests/bakeoff/test_honest_number_report.py:47-50`,
+  `baseline.py:849-860`). A `NOT_LOCATED`-equivalent is a scored-zero (covered) member — never
+  `_UNCOVERED`, never a win.
+- **Provenance:** `extractor_version` is a digest over `patch.py`'s source (`run.py:1133-1141`);
+  a new renderer needs its own digest or the recorded version will not move when the contract
+  changes. `GenerationContract` (`report.py:177-218`) carries `prompt_sha256`; recorded in the
+  ledger (`ledger.py:313-323`), per rollout (`scoring.py:184`), re-read by the honest/morning
+  reports (`honest_report.py:237-247`, `morning.py:177-221`). No `edit_format` field exists
+  anywhere today.
+- **The instrument template:** `bakeoff/locatability.py` — spec fixed before the run
+  (`locatability.py:12-15`), classes `:146-172`, worst-first per-rollout `:207-221`, exit map
+  0/1/2 `:305-306`, refusal paths `:337-363`; spec shape at
+  `docs/planning/patch-representation/locatability-finding/spec.md`; import guards
+  `tests/bakeoff/test_locatability_cli.py:230-255`.
+- **The driver:** `python -m whetstone.bakeoff.run` (`run.py:741-901` flags), deliberately not a
+  `whetstone` subcommand (`run.py:7-13`); weights must be verified + local (`weights.py:134-181`);
+  the pinned runtime is `PINNED_MLX_LM = "0.31.3"` (`mlx_runtime.py:74`).
+- **What must not break:** reward path stays inference-free and one-way
+  (`tests/test_no_inference_on_reward_path.py:104-109`; partition guard
+  `tests/test_reward_path_scope_is_partitioned.py`); journal/transcript codecs are strict
+  field-by-field (`journal.py:134-203`, `transcript.py:273-310`); the retry discipline replays
+  recorded bytes (`gate.py:1337-1404`); the morning reader refuses unknown ledger fields
+  (`morning.py:207-221`); no changes under `verify/` or `tasks/` (the card's guardrail, and the
+  reward-path amendment registry `reward-path-amendments.json` is not for this).
+
+## Ambiguities / open questions for the interview
+
+1. **The measurement's population and scope.** How many tasks, drawn how (a fixed, pre-committed
+   subset — which? the stratum? dev-subset?); one greedy attempt per task (K=1, matching the
+   locatability population of graded attempts); retries 0.
+2. **The classifier's classes under the new contract.** What exactly does "addresses real lines"
+   mean (range within the file's line count at `base_commit`?); what does "grammatical
+   replacement" mean as an offline structural check (non-empty? parses with `ast.parse`? a
+   syntax-only proxy, never semantics); which classes (UNCLASSIFIED stays in the denominator);
+   how the prompt-format refusal shapes are classified.
+3. **The exact GO rule.** The inequality, the denominator (all rollouts of the population,
+   refusals included), and its "e.g." status — the brief's "GO iff > half the sampled rollouts
+   address real lines and produce grammatical replacements" is a suggestion, the rule is this
+   unit's to fix and pre-commit.
+4. **New-file creation is outside line-range addressing** (no lines to address). Declare it out
+   of scope for the measurement (population = existing files only) and note it in the finding.
+5. **The reason-field polish (NO-GO's third deliverable).** `NOT_APPLIED`'s `detail` already
+   ships (0.15.0, `scoring.py:506-509`). What polish remains — `NO_DIFF`'s reason? the
+   `UNCLASSIFIED` reasons? draws-directory acceptance (PRD S2)? Must be named precisely or cut.
+6. **Measurement-run provenance.** The run's `prompt_sha256` will be new (it must be — that is
+   the point); no amendment precedes the *measurement* (the amendment is committed only on GO,
+   before any *night* records `edit_format`). The finding must state the non-comparability.
+7. **Weights.** `weights/` is machine-level and gitignored; the run points at the primary
+   checkout's copy by absolute path (never fetched inside a worktree).
+
+## Contradictions and guardrail checks
+
+- **No contradiction found between the brief and the code.** The brief's constraints (no
+  `verify/`/`tasks/` changes; reward path and gate rule byte-identical; counts only in
+  gitignored `runs/`) are all enforceable with existing machinery — the locatability precedent
+  ships all three.
+- **Reward stays execution-grounded:** STRICT/WEAK are byte-identical; the converter only
+  renders a diff that STRICT re-executes against restored operator-held tests. On GO, the
+  differential tests (STRICT rejects AND WEAK accepts) are the acceptance floor, and the
+  scope-before-location rule keeps `N` honest (a held-path attempt is refused by STRICT itself,
+  never labelled by the converter).
+- **`UNVERIFIED` is never a win:** `NOT_LOCATED`-equivalent is a covered not-solved outcome;
+  gate semantics, `R`, and the decision table are untouched.
+- **Local-first:** the measurement run is on the pinned base already on this machine; nothing
+  leaves the box. No judge anywhere: the instrument is a structural, pre-committed rule.
+- **Type 1 discipline:** the amendment (§ 10.x) is committed *before* any night records the new
+  `edit_format`, only on GO, and names a non-comparable home — exactly § 8.1's shape.
+- **Core-loop element:** ② the nightly improvement loop — the generation contract that
+  produces rollouts. It touches ① only at the seam where an edit becomes the patch STRICT
+  grades, and ① does not change.

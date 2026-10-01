@@ -11,6 +11,29 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+### Added
+
+- **`python -m whetstone.bakeoff.measure`: the numbered-listing measurement driver.** Poses
+  the line-range edit prompt to a candidate over a population pinned by identity (the
+  easier-stratum band minus the held-out members, 16 tasks) — one greedy completion per task,
+  retries 0, the verifier never entered, the control arm `INTACT` on every draw required, and
+  journal + transcript + manifest written only when the whole run succeeded. A run whose task
+  set differs from the pinned list, whose control fold is not `PASS`, or whose workspace is
+  relative is refused by name and writes nothing.
+- **`python -m whetstone.bakeoff.addressability`: the offline addressability instrument.**
+  Classifies a measurement run's completions — worst-first `UNCLASSIFIED` > `MALFORMED` >
+  `NO_FILE` > `OUT_OF_RANGE` > `ADDRESSABLE`, replacements gated by a standalone `ast.parse`
+  — and exits 0 GO / 1 NO-GO / 2 refused under a rule committed before any rollout ran
+  (GO iff `ADDRESSABLE × 2 > population`). Stdlib-only, deterministic, no model, off the
+  reward path; two sub-counts (splice-in-context fragility, outside-listing paths) reported
+  beside the partition and never decisive.
+
+### Changed
+
+- **`scoring.score` gains an injectable renderer whose default is `render_prompt`** — every
+  existing caller's behaviour is byte-identical; only the measurement run supplies the
+  numbered-listing renderer.
+
 ## [0.16.0] - 2026-09-29
 
 ### Fixed
