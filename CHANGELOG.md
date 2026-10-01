@@ -9,7 +9,7 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
-## [Unreleased]
+## [0.17.0] - 2026-10-01
 
 ### Added
 
@@ -1450,5 +1450,6 @@ everything after it can be built test-first.
   exited 0.
 
 [Unreleased]: https://github.com/haqaliz/whetstone/compare/v0.2.0...HEAD
+[0.17.0]: https://github.com/haqaliz/whetstone/compare/v0.16.0...v0.17.0
 [0.2.0]: https://github.com/haqaliz/whetstone/releases/tag/v0.2.0
 <!-- 0.1.0 has no link: it was never tagged and never published. -->
