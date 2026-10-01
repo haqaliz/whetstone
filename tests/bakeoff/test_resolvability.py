@@ -37,7 +37,7 @@ from fixtures.repos.mined import (
     MINED_TESTS_BEFORE,
 )
 
-from whetstone.bakeoff import measure
+from whetstone.bakeoff import measure, resolvability
 from whetstone.bakeoff import stratum as stratum_module
 from whetstone.bakeoff.resolvability import RULE, RolloutClass, classify_rollout, decide, main
 from whetstone.bakeoff.transcript import Transcribed, Transcript
@@ -175,6 +175,16 @@ ADDER_BEFORE = {
 ADDER_AFTER = {
     "calc.py": "def adder(a, b):\n    return a + b\n\n\ndef multiply(a, b):\n    return a * b\n",
     "README.md": MINED_README_AFTER,
+}
+
+#: A donor whose `add` is a module-level `async def` — the format's async scope (spec,
+#: "Format": module-level `def`/`async def`). `multiply` is the unique sync name.
+ASYNC_BEFORE = {
+    "calc.py": (
+        "async def add(a, b):\n    return await a\n\n\n"
+        "def multiply(a, b):\n    return a * b\n"
+    ),
+    "README.md": MINED_README_BEFORE,
 }
 
 #: A donor whose `add` lives inside a class — a method, never a module-level function.
@@ -792,6 +802,46 @@ def test_a_resolvable_completion_splices_in_context() -> None:
     assert classified.klass is RolloutClass.RESOLVABLE
     assert classified.splice_in_context is True
     assert classified.outside_shown_set is False
+
+
+def test_an_async_targets_body_with_await_is_resolvable() -> None:
+    """An `await`-carrying body for an async target resolves — the format's async scope
+    (spec, "Format": module-level `async def`) is in the format, and the body the base
+    wrote for it is the body the harness would splice; the file with the splice still
+    parses, so the splice-in-context flag is set."""
+    classified = classify_rollout(
+        _block(name="add", body="    return await a"),
+        _reader({"calc.py": ASYNC_BEFORE["calc.py"]}),
+        shown=frozenset({"calc.py"}),
+    )
+    assert classified.klass is RolloutClass.RESOLVABLE
+    assert classified.splice_in_context is True
+
+
+def test_a_sync_targets_body_with_yield_is_resolvable() -> None:
+    """A `yield`-carrying body for a sync target stays resolvable — the sync wrapper keeps
+    its kind; the sync path must not regress when the wrapper follows the target's kind."""
+    classified = classify_rollout(
+        _block(body="    yield a + b"),
+        _reader({"calc.py": MINED_CALC_BUGGY}),
+        shown=frozenset({"calc.py"}),
+    )
+    assert classified.klass is RolloutClass.RESOLVABLE
+    assert classified.splice_in_context is True
+
+
+def test_the_wrapped_parse_follows_the_resolved_targets_kind() -> None:
+    """The synthetic wrapper's kind follows the resolved target's kind: an async target's
+    body is parsed inside an `async def`, a sync target's inside a `def` (spec, "Format":
+    module-level `def`/`async def` are in scope). `ast.parse` does not itself enforce the
+    async context — `'await' outside async function` is a compile-time error, never a
+    parse-time one — so the wrapper's kind is the gate's own contract: it must wrap the
+    body in the kind the instrument resolved for the function the harness would splice."""
+    body = "    return await a"
+    async_wrapped = ast.parse(resolvability._WRAP_ASYNC + body)
+    sync_wrapped = ast.parse(resolvability._WRAP + body)
+    assert isinstance(async_wrapped.body[0], ast.AsyncFunctionDef)
+    assert isinstance(sync_wrapped.body[0], ast.FunctionDef)
 
 
 # --- The decision inequality (the pure function, at the exact-half boundary) -----------------

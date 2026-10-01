@@ -25,11 +25,14 @@ function) → `UNKNOWN_FUNCTION` (the name is not a module-level function) → `
 first, in the enum's declaration order.
 
 **The wrapped parse is the spec's gate, and it never repairs.** `ast.parse("def
-__whetstone_synthetic():\\n" + body)` — the body wrapped in a synthetic `def` at column 0. A
-body at column 0 — the indentation the format requires, violated — raises `IndentationError`,
-which is `MALFORMED`; any other parse failure is `NOT_PARSEABLE` (spec R1's class rule).
-Never dedented, never repaired: the body the base wrote is the body the harness would splice,
-and a gate that fixed it up would measure a repair the harness never performs.
+__whetstone_synthetic():\\n" + body)` — the body wrapped in a synthetic `def` at column 0,
+and the wrapper's kind follows the kind the instrument resolved for the target: an async
+target is wrapped in `async def`, because the format's scope includes module-level `async def`
+functions and the body the harness would splice lands in that kind. A body at column 0 — the
+indentation the format requires, violated — raises `IndentationError`, which is `MALFORMED`;
+any other parse failure is `NOT_PARSEABLE` (spec R1's class rule). Never dedented, never
+repaired: the body the base wrote is the body the harness would splice, and a gate that fixed
+it up would measure a repair the harness never performs.
 
 **Two sub-counts, reported beside the partition and never moving a class.** (a)
 *splice-in-context*: the file at `base_commit` re-parsed with the body spliced over the
@@ -104,7 +107,15 @@ _REFUSED = 2
 
 #: The wrapped-parse gate's synthetic def (spec R1): the body is parsed as the body of a
 #: module-level function, which is exactly the position the harness would splice it into.
+#: The wrapper's kind follows the kind the instrument resolved for the target — an async
+#: target is wrapped in `_WRAP_ASYNC`, a sync target in `_WRAP` — because `ast.parse` does
+#: not itself enforce the async context (`'await' outside async function` is a compile-time
+#: error, never a parse-time one), so the wrapper's kind is the gate's own contract.
 _WRAP = "def __whetstone_synthetic():\n"
+
+#: The async target's wrapper: the body lands inside an `async def`, the kind the harness
+#: would splice it into (spec, "Format": module-level `def`/`async def` are in scope).
+_WRAP_ASYNC = "async def __whetstone_synthetic():\n"
 
 #: Directory names that make everything below them test code — `tasks.donor.is_test_path`'s
 #: rule, kept here by identity because this module must not import `tasks/`.
@@ -209,6 +220,9 @@ class _Extent:
     body_start: int
     #: The function's last line (`end_lineno`), 1-based, inclusive.
     end: int
+    #: The resolved target's kind — `FunctionDef` or `AsyncFunctionDef` — so the wrapped
+    #: parse wraps an async target in `async def` (spec, "Format").
+    is_async: bool
 
 
 def classify_rollout(
@@ -269,7 +283,7 @@ def _classify_block(
                 extent = outcome
             else:
                 defects.append(outcome)
-    wrapped = _wrapped(block.body)
+    wrapped = _wrapped(block.body, is_async=extent.is_async if extent is not None else False)
     if wrapped is not None:
         defects.append(wrapped)
     if not defects:
@@ -321,18 +335,24 @@ def _resolve(name: str, text: str) -> _Extent | tuple[RolloutClass, str]:
         first=node.decorator_list[0].lineno if node.decorator_list else node.lineno,
         body_start=node.body[0].lineno,
         end=node.end_lineno if node.end_lineno is not None else node.lineno,
+        is_async=isinstance(node, ast.AsyncFunctionDef),
     )
 
 
-def _wrapped(body: str) -> tuple[RolloutClass, str] | None:
+def _wrapped(body: str, *, is_async: bool = False) -> tuple[RolloutClass, str] | None:
     """The spec's wrapped-parse gate (R1's class rule), or `None` when the body parses.
 
     `IndentationError` — a body at column 0, or an empty one — is `MALFORMED`, the format's
     grammar; any other parse failure is `NOT_PARSEABLE`. The order matters: `IndentationError`
     is a `SyntaxError` subclass, and the class rule is decided by which of the two it is.
+
+    The synthetic wrapper's kind follows the resolved target's kind: `is_async` wraps the
+    body in `async def`, the kind the harness would splice it into — `ast.parse` does not
+    itself enforce the async context, so the wrapper's kind is the gate's own contract.
     """
+    wrap = _WRAP_ASYNC if is_async else _WRAP
     try:
-        ast.parse(_WRAP + body)
+        ast.parse(wrap + body)
     except IndentationError as exc:
         return (
             RolloutClass.MALFORMED,
