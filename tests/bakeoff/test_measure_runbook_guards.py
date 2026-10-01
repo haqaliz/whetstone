@@ -1,9 +1,9 @@
 """Guards over the measurement runbook, so its commands cannot drift from the doors they invoke.
 
-`docs/planning/edit-contract-finding/measurement-run/runbook.md` is the operator's sheet for
-the unit's measurement: the driver (`python -m whetstone.bakeoff.measure`) spends one small
-real bake-off on the pinned base under the numbered-listing prompt, the instrument
-(`python -m whetstone.bakeoff.addressability`) classifies the completions by the pre-committed
+`docs/planning/whole-function-edit-finding/measurement-run/runbook.md` is the operator's sheet
+for the unit's measurement: the driver (`python -m whetstone.bakeoff.measure`) spends one small
+real bake-off on the pinned base under the whole-function prompt, the instrument
+(`python -m whetstone.bakeoff.resolvability`) classifies the completions by the pre-committed
 rule, and the finding is written from the exits. The sheet is run verbatim, after this unit
 merges, on a GPU pass that costs an hour — a sheet that disagrees with the code it runs fails
 after that pass is spent, so the disagreements are refused here first.
@@ -16,39 +16,44 @@ own two doors (`python -m` modules with their own `build_parser`s, not `whetston
 subcommands) and are this file's own, rather than mutating a constant another guard reads: a
 guard that reaches into another guard's globals can silently repoint the sheet it was watching.
 
-Thirteen properties, and the last nine are this sheet's own:
+Sixteen tests, and the last fourteen are this sheet's own:
 
 1. the parse really reads the sheet (anti-vacuity);
 2. every flag either command passes exists in the shipped parser (`measure.build_parser`,
-   `addressability.build_parser` — the sheet is pinned to the code that ships, not to a memory
+   `resolvability.build_parser` — the sheet is pinned to the code that ships, not to a memory
    of it);
 3. every path either command names is absolute;
 4. no worktree is named anywhere, and no stale one survives;
 5. the sheet exports the anchor every path depends on;
 6. the sheet cites the spec and pins the rule sentence by identity with
-   `addressability.RULE` — a wrong citation or a lax variant is a failure — and the rule is
+   `resolvability.RULE` — a wrong citation or a lax variant is a failure — and the rule is
    cross-pinned into the spec document itself, so a sheet and a spec cannot disagree quietly;
 7. the population is pinned by identity with `measure._PINNED_POPULATION`: every one of the 16
    ids present, and both committed documents named by path;
-8. the measure command passes `--only` the pinned candidate, and nothing else;
-9. the measure command uses the night door's own `--timeout 900` and a declared
-   `--recorded-on` — an input, never the clock;
-10. the machine-level GPU is serialized — a second process drawing on the same device perturbs
+8. the two documents are pinned by digest — the spec's values are the only values the sheet
+   may carry, cross-pinned into the spec document itself;
+9. the measure command passes `--only` the pinned candidate, and nothing else;
+10. the measure command pins the renderer — `--renderer whole-function`, this unit's format,
+    and nothing else;
+11. the measure command uses the night door's own `--timeout 900` and a declared
+    `--recorded-on` — an input, never the clock;
+12. the machine-level GPU is serialized — a second process drawing on the same device perturbs
     the draws;
-11. the digest-equality halt stands — a changed spec, stratum document or held-out document is
+13. the digest-equality halt stands — a changed spec, stratum document or held-out document is
     a halt, never a rerun; a driver refusal is a halt, never a rerun with the inputs changed;
     exit 0 only when all three evidence files are on disk; the instrument's exits are 0 GO /
     1 NO-GO / 2 refused, and an exit-2 instrument refusal writes nothing and is re-run only
     with the same inputs;
-12. no counts are published into `reports/` — the sentence is stated, and no command writes
+14. no counts are published into `reports/` — the sentence is stated, and no command writes
     under a reports path.
 
 **Watched failing first** (CONTRIBUTING.md): every assertion was run against a deliberately
 wrong stub sheet — a missing spec citation, a lax rule sentence, a population that dropped an
-id, a relative `--workspace`, a `--only` naming a second candidate, a `--timeout` other than
-the night door's, a halt condition that renamed the digest response, a `--out` under
-`reports/`, and a missing "counts never published" sentence — and each refused it before the
-real sheet existed.
+id, one document digest missing and the other a wrong hex string, a `--renderer` naming the
+default `line-range`, a relative `--workspace`, a `--only` naming a second candidate, a
+`--timeout` other than the night door's, a halt condition that renamed the digest response, a
+`--out` under `reports/`, and a missing "counts never published" sentence — and each refused it
+before the real sheet existed.
 """
 
 from __future__ import annotations
@@ -59,30 +64,39 @@ from pathlib import Path
 
 from test_runbook_guards import _bash_blocks, _named_paths, _worktree_name
 
-from whetstone.bakeoff import addressability, measure
+from whetstone.bakeoff import measure, resolvability
 
 #: The sheet under guard. This module lives under `tests/bakeoff/`, so the repository root
 #: is three parents up — one deeper than the root-level runbook guards' sheets.
 RUNBOOK = (
     Path(__file__).parent.parent.parent
-    / "docs/planning/edit-contract-finding/measurement-run/runbook.md"
+    / "docs/planning/whole-function-edit-finding/measurement-run/runbook.md"
 )
 
 #: The spec the sheet must cite — the pre-committed rule's home.
-SPEC = "docs/planning/edit-contract-finding/measurement-run/spec.md"
+SPEC = "docs/planning/whole-function-edit-finding/measurement-run/spec.md"
 
 #: The two doors this sheet drives, paired with the module whose parser defines their flags.
 DOORS = (
     ("python -m whetstone.bakeoff.measure", measure.build_parser),
-    ("python -m whetstone.bakeoff.addressability", addressability.build_parser),
+    ("python -m whetstone.bakeoff.resolvability", resolvability.build_parser),
 )
 
 #: The candidate the measurement is taken under (PREREGISTRATION.md § 10.10) — the one value
 #: `--only` may name, and the one candidate the instrument's manifest may record.
 CANDIDATE = "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit"
 
+#: The renderer the runbook pins — this unit's format, the value `--renderer` must carry.
+RENDERER = "whole-function"
+
 #: The timeout the night door chose, carried over unchanged (`--timeout 900`).
 TIMEOUT = "900"
+
+#: The two sealed documents' digests, as the spec pins them (spec.md, "Population") — the
+#: values the sheet must spell. A sheet that carries any other hex string describes documents
+#: the run never consumed.
+STRATUM_DIGEST = "87954587a51e72921e8f6d9a1e9c22a73031720bd5fd0a31d5c3fc108eed1dd9"
+HELDOUT_DIGEST = "6b5fbd49e5d20fada7c53c53d5076cf846210ea6a4522046e1ba025142e9980d"
 
 #: Every worktree any unit ever used. A worktree is removed the moment its unit merges, so a
 #: sheet that names one sends the operator to a directory that no longer exists — including the
@@ -105,8 +119,8 @@ STALE_WORKTREES = (
 
 #: Every flag on either door whose value is a path. All of them must be absolute — the failure
 #: that killed the measured arm on 2026-08-12 was a relative workspace, and this run is longer
-#: than that one: the driver provisions a sandbox per task and the instrument materialises two
-#: checkouts per task.
+#: than that one: the driver provisions a sandbox per task and the instrument materialises a
+#: checkout per task.
 PATH_FLAGS = frozenset(
     {
         "--tasks",
@@ -328,13 +342,13 @@ def test_the_sheet_cites_the_spec_and_pins_the_rule_sentence() -> None:
 
     The pre-committed rule lives in the spec (spec.md, "The pre-committed rule"); the sheet is
     where the operator meets it, so it cites the spec by name and states the decision sentence
-    **by identity** with `addressability.RULE` — the constant the instrument writes into every
+    **by identity** with `resolvability.RULE` — the constant the instrument writes into every
     document it emits. A sheet that quotes a lax variant (`>=`, a threshold, a yield claim)
     describes a different decision than the instrument makes, and is refused here rather than
     discovered at exit time.
 
     **Watched failing first:** the assertions were run against a stub sheet that dropped the
-    spec citation and against one that pinned the lax `count(ADDRESSABLE) * 2 >= population`;
+    spec citation and against one that pinned the lax `count(RESOLVABLE) * 2 >= population`;
     each failed with its message before the real sheet existed.
     """
     text = _flat(_runbook())
@@ -343,9 +357,9 @@ def test_the_sheet_cites_the_spec_and_pins_the_rule_sentence() -> None:
         f"({SPEC}). The pre-committed rule — the population, the classes, the decision — "
         "lives there, and a sheet that does not name it cannot be checked against it"
     )
-    assert addressability.RULE in text, (
+    assert resolvability.RULE in text, (
         f"WHY THIS IS A FAILURE: the sheet does not state the rule sentence "
-        f"{addressability.RULE!r} by identity with `addressability.RULE`. The decision the "
+        f"{resolvability.RULE!r} by identity with `resolvability.RULE`. The decision the "
         "instrument makes is that strict-majority inequality, and a sheet that pins any other "
         "sentence describes a different experiment"
     )
@@ -361,9 +375,9 @@ def test_the_rule_sentence_is_cross_pinned_into_the_spec_document() -> None:
     """
     spec = (RUNBOOK.parent / "spec.md").read_text(encoding="utf-8")
     plain = _flat(spec).replace("`", "")
-    assert addressability.RULE in plain, (
+    assert resolvability.RULE in plain, (
         f"WHY THIS IS A FAILURE: the spec no longer carries the rule sentence "
-        f"{addressability.RULE!r}. The spec is the pre-committed rule's home, and the "
+        f"{resolvability.RULE!r}. The spec is the pre-committed rule's home, and the "
         "instrument's constant is cross-pinned to it; a spec that disagrees with the code "
         "leaves the sheet pinning a rule nobody implements"
     )
@@ -405,6 +419,40 @@ def test_the_sheet_pins_the_population_by_identity() -> None:
     )
 
 
+def test_the_sheet_pins_both_document_digests() -> None:
+    """The two documents are pinned by digest — the spec's values, cross-pinned both ways.
+
+    The population is derived from the stratum and held-out documents **by identity**, and a
+    run over changed documents is a different experiment (spec.md, "Population"). The sheet
+    must spell the two digests the spec pins, and the spec document itself must carry them —
+    a sheet that pins a re-minted digest, or a spec that drifted from the sheet, is refused
+    here rather than discovered after the GPU pass.
+
+    **Watched failing first:** the assertions were run against a stub sheet that dropped the
+    held-out digest and against one that pinned a wrong stratum hex string; each failed with
+    its message before the real sheet existed.
+    """
+    text = _runbook()
+    assert STRATUM_DIGEST in text, (
+        "WHY THIS IS A FAILURE: the sheet does not spell the stratum document's pinned "
+        f"digest {STRATUM_DIGEST!r}. The population is its membership by identity, and a "
+        "sheet that does not pin the digest cannot tell the operator which document the run "
+        "must consume"
+    )
+    assert HELDOUT_DIGEST in text, (
+        "WHY THIS IS A FAILURE: the sheet does not spell the held-out document's pinned "
+        f"digest {HELDOUT_DIGEST!r}. Its members are subtracted from the population, and a "
+        "sheet that does not pin the digest leaves the subtraction to whatever document "
+        "happens to be there"
+    )
+    spec = (RUNBOOK.parent / "spec.md").read_text(encoding="utf-8")
+    assert STRATUM_DIGEST in spec and HELDOUT_DIGEST in spec, (
+        "WHY THIS IS A FAILURE: the spec no longer carries the two document digests the sheet "
+        "pins. The spec is the pre-committed rule's home, and a spec that disagrees with the "
+        "sheet leaves the operator pinning digests nobody committed"
+    )
+
+
 def test_the_measure_command_uses_the_pinned_candidate() -> None:
     """`--only` names the pinned base and nothing else.
 
@@ -423,6 +471,36 @@ def test_the_measure_command_uses_the_pinned_candidate() -> None:
         f"WHY THIS IS A FAILURE: the measure command passes `--only` {only}, and the pinned "
         f"candidate is {CANDIDATE!r}. The measurement is one base — measuring several in one "
         "run is refused by the driver, and naming a different base measures a different question"
+    )
+
+
+def test_the_measure_command_pins_the_whole_function_renderer() -> None:
+    """`--renderer` names this unit's format — `whole-function` — and nothing else.
+
+    The driver's default is `line-range` — the v0.17.0 behaviour, byte-identical — so the
+    sheet must state the choice rather than inherit it: a run under the default would pose
+    the numbered listing, the format this unit is *not* measuring, and the manifest's
+    `prompt_sha256` would discriminate nothing the finding claims. The value is pinned by
+    identity with `measure.RENDERERS`, so a renamed format fails here rather than at run time.
+
+    **Watched failing first:** the assertion was run against a stub sheet whose measure
+    command carried no `--renderer` at all; it failed with its message before the real sheet
+    existed.
+    """
+    blocks = _bash_blocks(_runbook())
+    door = DOORS[0][0]
+    measure_blocks = _door_blocks(blocks, door)
+    assert measure_blocks, f"WHY THIS IS A FAILURE: no bash block invokes `{door}`"
+    assert RENDERER in measure.RENDERERS, (
+        "WHY THIS IS A FAILURE: the pinned renderer is no longer a format the driver poses, "
+        "so the sheet names a format the code refuses"
+    )
+    renderer = _values(measure_blocks[0], door).get("--renderer", [])
+    assert renderer == [RENDERER], (
+        f"WHY THIS IS A FAILURE: the measure command passes `--renderer` {renderer}, and this "
+        f"unit's format is {RENDERER!r}. The default `line-range` would pose the numbered "
+        "listing — the format this unit is not measuring — and a different name would be "
+        "refused by the driver"
     )
 
 
@@ -531,8 +609,8 @@ def test_no_counts_are_published_into_reports() -> None:
     assert "counts never published into `reports/`" in text, (
         "WHY THIS IS A FAILURE: the sheet never states the no-reports rule — counts never "
         "published into `reports/`. The counts live only in gitignored "
-        "`runs/edit-contract-finding/`, and a sheet that does not say so leaves their home "
-        "to the operator's memory"
+        "`runs/whole-function-edit-finding/`, and a sheet that does not say so leaves their "
+        "home to the operator's memory"
     )
     blocks = _bash_blocks(_runbook())
     for door, _ in DOORS:
