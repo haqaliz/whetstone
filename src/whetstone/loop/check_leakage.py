@@ -31,9 +31,10 @@ in a notice (a night can write its dataset and raise before its ledger lands).
 records what was actually trained on — the strict-PASS selection — and the ledger's task set
 records what was *considered*. Only the first can leak into an adapter's weights.
 
-This module prevents nothing. If it ever exits nonzero, the finding is a regression in the
-night's partition seam, and the disclosure says so in those words rather than merely
-reporting a number.
+This module prevents nothing. If it ever exits nonzero, the disclosure names two possible
+causes and asserts neither: the night's partition seam failed to exclude held-out ids, or
+the held-out document was derived or re-derived after the night ran. It says so in those
+words rather than merely reporting a number.
 """
 
 from __future__ import annotations
@@ -295,9 +296,9 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
         lines.append(
             "A leak means one of two things, and the operator must find out which: (a) the "
             "night's partition seam failed to exclude held-out ids, or (b) the held-out "
-            "document was derived or re-derived after the night ran, so the night could not "
-            "have excluded these ids. Either way the candidate trained on these tasks is "
-            "not gated; do not exclude these examples after the fact"
+            "document was derived or re-derived after the night ran (e.g. a corpus re-mint), "
+            "so the night could not have excluded these ids. Either way the candidate "
+            "trained on these tasks is not gated; do not exclude these examples after the fact"
         )
     return _with_notice(report, lines)
 

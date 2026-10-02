@@ -143,7 +143,7 @@ uv run whetstone check-leakage \
   `ledger.json` is still checked and carries a notice saying so; read it into the log.
 - **Exit 1** — a leak, named by task. It means one of two things, and you must find out which:
   (a) the night's partition seam failed to exclude held-out ids, or (b) the held-out document
-  was derived or re-derived after the night ran, so the night could not have excluded them. Do
+  was derived or re-derived after the night ran (e.g. a corpus re-mint), so the night could not have excluded them. Do
   not assume either. Dropping the leaked examples after the fact would leave the defect in place
   and print a clean result. The candidate is not gated; never loop on this check hoping it comes back clean.
 - **Exit 2** — a refusal: a run with no `dataset.json`, an id with no recognisable sha12 (a

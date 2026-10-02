@@ -73,7 +73,10 @@ def test_a_leaked_run_exits_nonzero_and_names_the_task(
         "WHY THIS IS A FAILURE: the command exited nonzero without naming the leaked task. "
         "The fix for a leak is in the night that produced it, and the id is how it is found"
     )
-    assert "partition seam" in out
+    # Two causes, neither asserted: a seam failure or a split derived after the night ran.
+    assert "partition seam failed to exclude" in out
+    assert "re-derived after the night ran" in out
+    assert "This is a regression" not in out
 
 
 def test_a_directory_that_is_not_a_run_is_a_usage_error(
