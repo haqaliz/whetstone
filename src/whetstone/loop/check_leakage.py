@@ -1,6 +1,6 @@
 """The leakage proof: a night's training set and the held-out membership must not touch.
 
-`docs/ROADMAP.md:449-450` makes this a P3 exit criterion in its own right — *"`uv run
+`docs/ROADMAP.md:459-460` makes this a P3 exit criterion in its own right — *"`uv run
 whetstone check-leakage` exits 0 — zero overlap between the training set and the held-out
 set"* — and it is deliberately separate from the exclusion that prevents the overlap. The
 night already drops the held-out ids at the partition seam, before the contract is frozen;

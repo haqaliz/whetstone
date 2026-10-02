@@ -24,7 +24,7 @@ Twenty properties, and the last fifteen are this sheet's own:
 7. the **machinery is verified before the real pair** — the gate's own fixture suites run
    first, so the first real evaluation is not also the first test of the machinery;
 8. the liveness measurement is stated — the unverified count over its denominator, from the
-   first evaluation onward (`docs/ROADMAP.md:441-442`);
+   first evaluation onward (`docs/ROADMAP.md:451-452`);
 9. the `UNVERIFIED` exit is stated as a published outcome with the roadmap's own response, and
    the sheet nowhere tells the operator to rerun until it passes;
 10. the sheet names the **untrained base as the first incumbent** — a bash block that
@@ -377,7 +377,7 @@ def test_the_machinery_is_verified_before_the_real_pair() -> None:
 def test_the_sheet_states_the_liveness_measurement() -> None:
     """The unverified count over its denominator, from the first evaluation onward.
 
-    `docs/ROADMAP.md:441-442` makes liveness itself a measurement, and this sheet is where the
+    `docs/ROADMAP.md:451-452` makes liveness itself a measurement, and this sheet is where the
     first one gets read. A proportion would breach the denominator rule, so the sheet is checked
     for one as well.
     """
@@ -636,7 +636,7 @@ def _assert_untrained_base_incumbent(text: str) -> None:
     materialized = [block for block in blocks if "write_baseline_checkpoint" in block]
     assert materialized, (
         "WHY THIS IS A FAILURE: no bash block materializes the untrained base "
-        "(`write_baseline_checkpoint`). `docs/ROADMAP.md:663-671` made the untrained base the "
+        "(`write_baseline_checkpoint`). `docs/ROADMAP.md:673-683` made the untrained base the "
         "first incumbent — materialized before the gate, never a second night — and a sheet "
         "without the materialization step sends the operator to the gate with nothing to "
         "compare the candidate against"
@@ -682,7 +682,7 @@ def _assert_untrained_base_incumbent(text: str) -> None:
     assert "not the § 3 baseline measurement" in plain, (
         "WHY THIS IS A FAILURE: the sheet never states the § 3 boundary — the gate's "
         "incumbent is **not** the § 3 baseline measurement, different roles, different homes "
-        "(`docs/ROADMAP.md:678-683`). A sheet that blurs the two invites the first "
+        "(`docs/ROADMAP.md:688-693`). A sheet that blurs the two invites the first "
         "disagreement between their figures to be reconciled instead of published as a finding"
     )
     assert "two nights" not in plain, (
@@ -697,7 +697,7 @@ def test_the_sheet_names_the_untrained_base_as_the_first_incumbent() -> None:
     """The first gated evaluation is one night: night #1's candidate vs the untrained base.
 
     The sheet was written when the first incumbent was a second night.
-    `docs/ROADMAP.md:663-671` reordered the launch path — the first incumbent is the untrained
+    `docs/ROADMAP.md:673-683` reordered the launch path — the first incumbent is the untrained
     base the night started from, materialized by `write_baseline_checkpoint` before the gate —
     and this pin refuses the old reading in all four places it could resurface: the
     materialization block itself (a bash block naming the writer, at an absolute checkpoint

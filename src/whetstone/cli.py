@@ -585,7 +585,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Compare a night's source B training set with the held-out membership by task "
             "identity (the trailing 12-hex of each id) and exit 0 iff no identity is shared "
-            "(docs/ROADMAP.md:449-450). Identity is all it compares: near-duplicate tasks "
+            "(docs/ROADMAP.md:459-460). Identity is all it compares: near-duplicate tasks "
             "under different identities are not detected. The night already excludes the held-out "
             "ids at its partition seam; this proves it, because an exclusion nobody checks is "
             "a claim — and the one claim this project cannot make on trust is that its "

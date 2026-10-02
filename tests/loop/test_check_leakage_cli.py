@@ -1,6 +1,6 @@
 """The door: `whetstone check-leakage`, its flag surface, and its exits.
 
-`docs/ROADMAP.md:449-450` names the command and its success condition — *"`uv run whetstone
+`docs/ROADMAP.md:459-460` names the command and its success condition — *"`uv run whetstone
 check-leakage` exits 0 — zero overlap between the training set and the held-out set"* — so
 the exit code is the deliverable and it is asserted at the process boundary, not only
 against the core.

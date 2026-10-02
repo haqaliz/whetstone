@@ -1,7 +1,7 @@
 """The leakage proof: a night's training set and the held-out membership must be disjoint.
 
 The night already *excludes* the held-out ids at the partition seam, before the contract is
-frozen. That is a behaviour, and `docs/ROADMAP.md:449-450` asks for a **proof**: `uv run
+frozen. That is a behaviour, and `docs/ROADMAP.md:459-460` asks for a **proof**: `uv run
 whetstone check-leakage` exits 0 iff the two sets do not touch. The distinction is the whole
 point of this aspect — an exclusion nobody checks is a claim, and the one claim this project
 cannot afford to make on trust is that its headline was not measured on its training data.
