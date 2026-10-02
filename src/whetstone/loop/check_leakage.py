@@ -18,6 +18,10 @@ this repository:
   denominator (`:157`). The membership is source B's and identity matching applies to
   source B only: source A's examples are counted and disclosed as *not compared*, never as a
   measured zero, because a structural constant printed as a count reads as a measurement.
+- **Exit 0 means exactly one thing:** source B examples were compared and none shared a task
+  identity. A training set with source A examples and no source B example compared nothing and
+  is a refusal (exit 2, Amendment 2 of the gate-leakage-guard PRD); a training set with no
+  example at all stays disjoint by truth.
 
 **The run input is the dataset document; the ledger is optional.** `dataset.json` is
 required, the ledger is validated when present, and a run without one is checked and says so
@@ -92,6 +96,17 @@ class UnrecognisedIdentity(ValueError):
     """
 
 
+class NothingCompared(ValueError):
+    """The training set holds source A examples and no source B example, so nothing was compared.
+
+    Identity matching is source B's alone, so such a run has no example the held-out membership
+    could have touched. Refused rather than reported: an exit code that cannot tell "checked"
+    from "nothing compared" is the wrong signal for a guard the runbook halts on
+    (`docs/planning/gate-leakage-guard/prd.md`, Amendment 2). A training set with no example at
+    all is a different fact: nothing trained, nothing to leak, disjoint by truth.
+    """
+
+
 #: What the CLI turns into a usage error rather than a traceback: everything an operator can
 #: fix by retyping the command or by pointing at a different directory.
 REFUSALS: tuple[type[Exception], ...] = (
@@ -99,6 +114,7 @@ REFUSALS: tuple[type[Exception], ...] = (
     UnknownSource,
     DatasetUnreadable,
     UnrecognisedIdentity,
+    NothingCompared,
     LedgerUnreadable,
     EmptyHeldout,
     HeldoutSchemaError,
@@ -193,6 +209,13 @@ def check_overlap(
     # public ids carry no such identity and are counted as examples, never compared.
     for task_id in training.get(PRIVATE, ()):
         _identity(task_id)
+    if not training.get(PRIVATE) and any(training.get(source) for source in SOURCES):
+        raise NothingCompared(
+            "the training set has no source B example, so nothing was compared against the "
+            "held-out membership (source A examples are never compared) and no verdict was "
+            "reached. Refused rather than reported clean: exit 0 means source B examples were "
+            "compared and none shared a task identity"
+        )
     leaks = {source: _leak_of(source, training.get(source, ()), by_identity) for source in SOURCES}
     return LeakReport(
         heldout_count=len(members),
@@ -239,21 +262,10 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
 
     A clean night and a night that trained on nothing both satisfy the check, and they are
     different facts about the night — so the empty case says so in its own words rather than
-    reading as an ordinary pass.
+    reading as an ordinary pass. A run with source A examples only never reaches here: it
+    compared nothing and `check_overlap` refuses it (`NothingCompared`).
     """
     subject = f"held-out membership: {report.heldout_count} task(s)"
-    if report.private.examples == 0 and report.examples > 0:
-        return _with_notice(
-            report,
-            (
-                "leakage: not checked — the run has no source B training examples, so "
-                "nothing was compared against the held-out membership; source A examples "
-                "are never compared",
-                subject,
-                _source_line(report.private),
-                _source_line(report.public),
-            ),
-        )
     if report.examples == 0:
         return _with_notice(
             report,
@@ -413,6 +425,7 @@ __all__ = [
     "DatasetUnreadable",
     "LeakReport",
     "NotARun",
+    "NothingCompared",
     "SourceLeak",
     "UnknownSource",
     "UnrecognisedIdentity",

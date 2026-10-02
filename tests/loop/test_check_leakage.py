@@ -608,12 +608,16 @@ def test_the_leakage_path_imports_no_inference_library(relative: str) -> None:
     )
 
 
-def test_a_source_a_only_run_is_not_reported_clean() -> None:
-    """Nothing was compared, so the disclosure says so and never says 'clean' or 'disjoint'."""
-    report = check_leakage.check_overlap(_training(public=("a-1", "a-2")), _HELDOUT)
-    text = "\n".join(check_leakage.disclosure(report))
+def test_a_source_a_only_run_is_a_refusal_not_a_verdict() -> None:
+    """Amendment 2 (gate-leakage-guard PRD): a comparison that compared nothing is a refusal.
 
-    assert report.clean is True  # the exit code is unchanged
-    assert "clean" not in text and "disjoint by truth" not in text, text
-    assert "nothing was compared" in text and "no source B training examples" in text, text
-    assert "0 of 0" not in text, text
+    This test asserted exit-0 semantics ("not checked", report.clean True) until Amendment 2;
+    it is updated, not deleted: the same input now raises, so no verdict can be rendered.
+    """
+    with pytest.raises(check_leakage.NothingCompared) as caught:
+        check_leakage.check_overlap(_training(public=("a-1", "a-2")), _HELDOUT)
+
+    assert check_leakage.NothingCompared in check_leakage.REFUSALS
+    message = str(caught.value)
+    assert "no source B" in message and "nothing was compared" in message, message
+    assert "no verdict" in message, message
