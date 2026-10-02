@@ -386,6 +386,23 @@ def test_a_directory_with_neither_dataset_nor_ledger_is_not_a_run(tmp_path: Path
     assert night.DATASET_FILE in str(refusal.value)
 
 
+def test_a_ledger_without_a_dataset_is_refused_by_a_true_message(tmp_path: Path) -> None:
+    """A ledger present and no dataset: refused, and the message may not claim the opposite.
+
+    The refusal names the missing dataset and does not say the run is unidentified, because
+    the ledger is right there.
+    """
+    run = _run(tmp_path / "ledgered", ledger=True, dataset_text=None)
+    (run / night.DATASET_FILE).unlink()
+    document = _heldout_document(tmp_path / "doc", _MEMBERS)
+
+    with pytest.raises(check_leakage.NotARun) as refusal:
+        check_leakage.run_check(run, document)
+    message = str(refusal.value)
+    assert night.DATASET_FILE in message
+    assert "nothing identifies" not in message and "not a night-written" not in message, message
+
+
 def test_a_dataset_without_a_ledger_is_checked_and_says_so(tmp_path: Path) -> None:
     """AC4 / PRD requirement 2: CHANGED from "a ledger-less directory is not a run".
 

@@ -19,6 +19,10 @@ this repository:
   source B only: source A's examples are counted and disclosed as *not compared*, never as a
   measured zero, because a structural constant printed as a count reads as a measurement.
 
+**The run input is the dataset document; the ledger is optional.** `dataset.json` is
+required, the ledger is validated when present, and a run without one is checked and says so
+in a notice (a night can write its dataset and raise before its ledger lands).
+
 **The subject is the dataset document, not the ledger's task set.** `runs/<id>/dataset.json`
 records what was actually trained on — the strict-PASS selection — and the ledger's task set
 records what was *considered*. Only the first can leak into an adapter's weights.
@@ -56,12 +60,12 @@ SOURCES = (PRIVATE, PUBLIC)
 
 
 class NotARun(ValueError):
-    """The directory named is not a night-written run.
+    """The directory named holds no `dataset.json`, so there is no training set to check.
 
-    Refused rather than read for what happens to be there: a directory holding a
-    `dataset.json` and nothing else could be anything — a copy, a hand-made fixture, an
-    aborted run — and a leakage proof over an unidentified training set proves nothing about
-    any night.
+    Refused rather than read as an empty training set: an absent dataset and a night that
+    trained on nothing are different facts, and only the second is disjoint by truth. A
+    missing ledger alone is not a refusal; the dataset is the document that records what was
+    trained on.
     """
 
 
@@ -200,8 +204,10 @@ def check_overlap(
 def run_check(run: Path, heldout: Path) -> LeakReport:
     """Read a night's training set and a held-out document, and compare them.
 
-    The order is the design: the run is identified before it is read (a directory without a
-    ledger is not a night's run, whatever else it holds), the held-out document goes through
+    The contract: `dataset.json` is required (without it there is nothing to check); the
+    ledger is optional, validated when present, and its absence is disclosed in a notice. The
+    order is the design: the dataset is located before anything is read, the held-out
+    document goes through
     aspect 1's fail-closed loader by identity (a doctored membership or a digest mismatch
     refuses before any comparison), and only then are the two sets compared. A check that
     read a doctored document and reported "clean" would be worse than no check.
@@ -210,8 +216,9 @@ def run_check(run: Path, heldout: Path) -> LeakReport:
     if not dataset_path.is_file():
         raise NotARun(
             f"{str(run)!r} holds no {DATASET_FILE!r}, so there is no training set to check "
-            "and nothing identifies it as a night-written run. Refused rather than read for "
-            "whatever is there"
+            "and nothing to prove disjoint from the held-out set. Refused rather than treated "
+            "as an empty training set: a night with no dataset is not a night that trained on "
+            "nothing"
         )
     # A ledger is validated when present and not required: a night can write its dataset and
     # then raise before its ledger lands, and the dataset is the document that records what

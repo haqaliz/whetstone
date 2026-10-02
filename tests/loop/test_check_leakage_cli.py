@@ -96,6 +96,21 @@ def test_a_directory_that_is_not_a_run_is_a_usage_error(
     assert "dataset.json" in captured.err
 
 
+def test_a_ledger_without_a_dataset_is_a_usage_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A ledger and no dataset exits 2 naming the dataset, never a verdict."""
+    run = _run(tmp_path / "ledgered")
+    (run / night.DATASET_FILE).unlink()
+    document = _heldout_document(tmp_path / "doc", _MEMBERS)
+
+    code = cli.main(_argv(run, document))
+    captured = capsys.readouterr()
+
+    assert code == 2 and "dataset.json" in captured.err
+    assert "nothing identifies" not in captured.err and "clean" not in captured.out
+
+
 def test_a_run_without_a_ledger_is_checked_and_says_so(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
