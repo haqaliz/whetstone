@@ -14,8 +14,8 @@ Two properties carry the honesty here, and both are asserted rather than describ
   a report that counted without naming would fail them.
 - **Both sources are reported together** (`PREREGISTRATION.md:142-147`), each over its own
   denominator (`:157`). The held-out membership is source B's, so source A's overlap is
-  expected to be empty — and it is *measured* empty rather than assumed, because "it cannot
-  happen" is the kind of assumption that stops being true quietly.
+  not compared against it at all (identity matching applies to source B only), and the
+  disclosure says "not compared" rather than printing a zero that reads as a measurement.
 
 No model, no `mlx`, no network. The inputs are two id sets and a run directory.
 """
@@ -118,11 +118,10 @@ def test_every_leaked_id_is_named_and_the_examples_are_counted_separately() -> N
 
 
 def test_both_sources_are_reported_over_their_own_denominators() -> None:
-    """Source A is measured beside source B, never assumed away.
+    """Source A's examples are counted beside source B's, over their own denominator.
 
-    The membership is source B's, so source A's overlap should be empty — and it is checked
-    rather than asserted, because a public task id colliding with a held-out one would be a
-    finding about the corpus, and "that cannot happen" is how a finding goes unnoticed.
+    The membership is source B's, so source A is counted but not compared against it; the
+    next tests pin that the disclosure says so.
     """
     report = check_leakage.check_overlap(
         _training(private=(_id(2), _id(9)), public=("pallets__flask-4045",)), _HELDOUT
@@ -133,6 +132,26 @@ def test_both_sources_are_reported_over_their_own_denominators() -> None:
     assert report.public.source == night.PUBLIC
     assert report.public.examples == 1 and report.public.overlap == ()
     assert report.examples == 3
+
+
+def test_source_a_is_stated_as_not_compared_not_as_measured_clean() -> None:
+    """The source A line says it was not compared, and never "0 of N ... touch a held-out task".
+
+    The membership is source B's and public ids carry no identity, so source A's zero is a
+    structural constant. Printing it as a count over its denominator would read as a
+    measurement nobody made.
+    """
+    report = check_leakage.check_overlap(
+        _training(private=(_id(9),), public=("pallets__flask-4045",)), _HELDOUT
+    )
+    line = next(one for one in check_leakage.disclosure(report) if "source A (public)" in one)
+
+    assert "not compared" in line and "source B" in line, line
+    assert "touch a held-out task" not in line, (
+        "WHY THIS IS A FAILURE: the source A line reports a count of examples touching a "
+        "held-out task, but source A is never compared against the membership"
+    )
+    assert "1 training example" in line, line
 
 
 def test_the_same_identity_in_the_public_source_is_not_an_overlap() -> None:

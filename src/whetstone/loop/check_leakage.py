@@ -15,9 +15,9 @@ this repository:
   something is wrong and nothing about what; the fix for a leak lives in the night that
   produced it, and the id is how that night is found.
 - **Both sources are reported together** (`PREREGISTRATION.md:142-147`), each over its own
-  denominator (`:157`). The membership is source B's, so source A's overlap is expected to be
-  empty — and it is measured rather than assumed, because "that cannot happen" is how a
-  finding goes unnoticed.
+  denominator (`:157`). The membership is source B's and identity matching applies to
+  source B only: source A's examples are counted and disclosed as *not compared*, never as a
+  measured zero, because a structural constant printed as a count reads as a measurement.
 
 **The subject is the dataset document, not the ledger's task set.** `runs/<id>/dataset.json`
 records what was actually trained on — the strict-PASS selection — and the ledger's task set
@@ -252,7 +252,12 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
 
 def _source_line(leak: SourceLeak) -> str:
     """One source's counts over its own denominator, named even when empty."""
-    label = "source B (private)" if leak.source == PRIVATE else "source A (public)"
+    if leak.source != PRIVATE:
+        return (
+            f"source A (public): {leak.examples} training examples, not compared — the "
+            "held-out membership is source B's"
+        )
+    label = "source B (private)"
     named = ", ".join(leak.overlap) if leak.overlap else "none"
     return (
         f"{label}: {leak.leaked_examples} of {leak.examples} training examples touch a "
