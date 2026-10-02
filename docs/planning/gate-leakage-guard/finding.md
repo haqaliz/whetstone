@@ -4,8 +4,9 @@
 `whetstone check-leakage` run on this branch's code. **Instrument:** `whetstone check-leakage`
 (`src/whetstone/loop/check_leakage.py`; offline, reads documents, runs nothing). **Local evidence
 (the only home of every count below):** `runs/nights/night-001/` and `checkpoints/` (both
-gitignored). **Guard:** `tests/test_gate_leakage_finding.py` re-runs the command and fails if this
-file stops quoting it exactly.
+gitignored). **Guard:** `tests/test_gate_leakage_finding.py` re-runs the command and fails unless
+section 2's block equals its output exactly — the same lines, in the same order, no more and no
+fewer, after the one stated redaction.
 
 ## 1. What was run
 
@@ -102,20 +103,24 @@ any dataset and was not the adapter examined here.
 - **Not reproducible without gitignored artefacts.** The finding depends on `runs/nights/night-001/`
   and `checkpoints/`, which are gitignored and live only in the primary checkout. Without them the
   guard test skips loudly and this finding cannot be re-checked.
-- **No ledger.** `ledger.json` is absent from night-001's run (the night predates 0.14.1, which made a
-  night write its ledger even when training raises), so
-  the run was **not identified as complete by its ledger**; the training set was read from
-  `dataset.json` alone, as the last printed line says.
+- **No ledger.** `ledger.json` is absent from night-001's run, so the run was **not identified as
+  complete by its ledger**; the training set was read from `dataset.json` alone, as the last printed
+  line says. Why it is absent is **history from two documents, not something this run showed**:
+  `CHANGELOG.md`'s 0.14.1 entry and `docs/STATUS.md`'s night #1 account ("The ledger was written
+  last") record that a night then wrote its ledger after training, so the exception in night #1's
+  training step took the ledger with it; 0.14.1 made a night write its ledger even when training
+  raises.
 
 ## 7. The next unit
 
 **A clean candidate — option B: an operator-run retrain on the examples that are not held out.**
-Only 2 of the 6 examples are not on a held-out task. Two examples sit below any validation floor, so
-a candidate trained on them would be **weak evidence** at best; whether it is worth the run is the
+Only 2 of the 6 examples are not on a held-out task. The 6-example adapter's own `provenance.json`
+records `validation: no valid split (strict-PASS set below floor)`; 2 examples is fewer, so a
+retrain on them would also be below the floor — **an inference, not a measurement**. A candidate
+trained on them would be **weak evidence** at best; whether it is worth the run is the
 **operator's decision**, not this unit's. Option C — gating the contaminated adapter anyway — is out
 of scope and is not proposed.
 
-**M2's exit criterion therefore stays open.** `docs/ROADMAP.md` § 14 M2 closes only when
-`whetstone gate` returns a decision on a real candidate/incumbent pair and `whetstone check-leakage`
-exits 0 on that candidate's night. The only trained adapter is refused before the gate, so neither
-has happened.
+**M2's exit criterion therefore stays open.** `docs/ROADMAP.md` § 14 M2's exit criterion is a gate
+decision on a real pair, with `whetstone check-leakage` exiting 0, and no structural `UNVERIFIED`
+remaining. The only trained adapter is refused before the gate, so no gate decision exists.
