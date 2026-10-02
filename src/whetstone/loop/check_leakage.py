@@ -30,6 +30,7 @@ reporting a number.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,12 +78,23 @@ class DatasetUnreadable(ValueError):
     """The run's dataset document could not be read as the schema it must declare."""
 
 
+class UnrecognisedIdentity(ValueError):
+    """A task id carries no trailing 12-hex identity, so it cannot be matched by identity.
+
+    Refused rather than compared as a string: a corpus re-mint renames ids (`legacy-a-X` became
+    `donor-a-X`) and keeps the trailing identity, so an exact-string match calls a renamed
+    leak clean. An id this check cannot read an identity from is an id it cannot prove
+    disjoint, and the fix is an amendment that says how the id maps, not a looser match.
+    """
+
+
 #: What the CLI turns into a usage error rather than a traceback: everything an operator can
 #: fix by retyping the command or by pointing at a different directory.
 REFUSALS: tuple[type[Exception], ...] = (
     NotARun,
     UnknownSource,
     DatasetUnreadable,
+    UnrecognisedIdentity,
     LedgerUnreadable,
     EmptyHeldout,
     HeldoutSchemaError,
@@ -108,6 +120,10 @@ class SourceLeak:
     #: How many examples touched a held-out task. Distinct from `len(overlap)` because one
     #: leaked task can have been trained on several times.
     leaked_examples: int
+
+    #: Each distinct (training id, held-out id) pair that matched on identity, sorted. They
+    #: differ in name when a re-mint renamed the task, so both are named.
+    matched: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -162,9 +178,14 @@ def check_overlap(
             "the denominator or be counted under a source they are not from"
         )
     members = set(heldout_membership)
-    leaks = {
-        source: _leak_of(source, training.get(source, ()), members) for source in SOURCES
-    }
+    by_identity: dict[str, str] = {}
+    for member in sorted(members):
+        by_identity.setdefault(_identity(member), member)
+    # The membership is source B's, so only the private source is matched against it; the
+    # public ids carry no such identity and are counted as examples, never compared.
+    for task_id in training.get(PRIVATE, ()):
+        _identity(task_id)
+    leaks = {source: _leak_of(source, training.get(source, ()), by_identity) for source in SOURCES}
     return LeakReport(
         heldout_count=len(members),
         private=leaks[PRIVATE],
@@ -218,6 +239,9 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
     lines = [verdict, subject, _source_line(report.private), _source_line(report.public)]
     if not report.clean:
         lines.append(f"leaked task(s): {', '.join(report.overlap)}")
+        pairs = [pair for leak in (report.private, report.public) for pair in leak.matched]
+        for trained, held in sorted(set(pairs)):
+            lines.append(f"matched by identity: trained on {trained}, held out as {held}")
         lines.append(
             "This is a regression in the night's partition seam: held-out ids are excluded "
             "there, before the contract is frozen. Fix the night that produced this run; do "
@@ -236,14 +260,37 @@ def _source_line(leak: SourceLeak) -> str:
     )
 
 
-def _leak_of(source: str, ids: Sequence[str], members: set[str]) -> SourceLeak:
+_IDENTITY = re.compile(r"[0-9a-f]{12}$")
+
+
+def _identity(task_id: str) -> str:
+    """The trailing 12-hex identity of a private task id, or a refusal naming the id."""
+    found = _IDENTITY.search(task_id)
+    if found is None:
+        raise UnrecognisedIdentity(
+            f"task id {task_id!r} carries no trailing 12-hex identity, so it cannot be "
+            "compared. Refused rather than matched as a string: a corpus re-mint renames ids "
+            "and keeps the identity, so a string match can call a renamed leak clean. Fixing "
+            "this takes an amendment naming how the id maps, never a looser comparison"
+        )
+    return found.group(0)
+
+
+def _leak_of(source: str, ids: Sequence[str], by_identity: Mapping[str, str]) -> SourceLeak:
     """One source's leak, with ids distinct and sorted and examples counted as examples."""
-    touched = [task_id for task_id in ids if task_id in members]
+    if source != PRIVATE:
+        return SourceLeak(source=source, examples=len(ids), overlap=(), leaked_examples=0)
+    pairs = [
+        (task_id, by_identity[_identity(task_id)])
+        for task_id in ids
+        if _identity(task_id) in by_identity
+    ]
     return SourceLeak(
         source=source,
         examples=len(ids),
-        overlap=tuple(sorted(set(touched))),
-        leaked_examples=len(touched),
+        overlap=tuple(sorted({held for _, held in pairs})),
+        leaked_examples=len(pairs),
+        matched=tuple(sorted(set(pairs))),
     )
 
 
@@ -293,6 +340,7 @@ __all__ = [
     "NotARun",
     "SourceLeak",
     "UnknownSource",
+    "UnrecognisedIdentity",
     "check_overlap",
     "disclosure",
     "run_check",

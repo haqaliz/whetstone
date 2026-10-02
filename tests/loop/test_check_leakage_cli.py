@@ -21,8 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from loop.test_check_leakage import _run
-from loop.test_gate import _MEMBERS, _heldout_document
+from loop.test_check_leakage import _MEMBERS, _SURVIVOR, _heldout_document, _id, _run
 from whetstone import cli
 from whetstone.loop import dataset, night
 
@@ -36,7 +35,11 @@ def test_a_disjoint_run_exits_zero_and_discloses_both_sources(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """AC1 and the roadmap's own criterion: exit 0, with every count over its denominator."""
-    run = _run(tmp_path / "runs" / "night-1", private=("t-11", "t-11"), public=("pub-1",))
+    run = _run(
+        tmp_path / "runs" / "night-1",
+        private=(_SURVIVOR, _SURVIVOR),
+        public=("pallets__flask-4045",),
+    )
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
 
     code = cli.main(_argv(run, document))
@@ -57,7 +60,7 @@ def test_a_leaked_run_exits_nonzero_and_names_the_task(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """AC2: a leak is a failure with a name on it, not a count and not a usage error."""
-    run = _run(tmp_path / "runs" / "night-1", private=(_MEMBERS[0], "t-11"))
+    run = _run(tmp_path / "runs" / "night-1", private=(_MEMBERS[0], _SURVIVOR))
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
 
     code = cli.main(_argv(run, document))
@@ -76,7 +79,7 @@ def test_a_directory_that_is_not_a_run_is_a_usage_error(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """AC3: refusals are 2 and name what was wrong — never a traceback, never a leak verdict."""
-    run = _run(tmp_path / "loose", private=("t-11",), ledger=False)
+    run = _run(tmp_path / "loose", private=(_SURVIVOR,), ledger=False)
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
 
     code = cli.main(_argv(run, document))
@@ -94,7 +97,7 @@ def test_a_doctored_held_out_document_is_a_usage_error(
     run = _run(tmp_path / "runs" / "night-1", private=(_MEMBERS[0],))
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
     raw = json.loads(document.read_text(encoding="utf-8"))
-    raw["membership"] = ["t-11" if one == _MEMBERS[0] else one for one in raw["membership"]]
+    raw["membership"] = [_SURVIVOR if one == _MEMBERS[0] else one for one in raw["membership"]]
     document.write_text(json.dumps(raw), encoding="utf-8")
 
     code = cli.main(_argv(run, document))
@@ -165,3 +168,19 @@ def test_the_sources_the_door_reports_are_the_nights_own() -> None:
     assert check_leakage.SOURCES == (night.PRIVATE, night.PUBLIC)
     assert check_leakage.SOURCES[0] is night.PRIVATE
     assert check_leakage.SOURCES[1] is night.PUBLIC
+
+
+def test_a_re_minted_leak_exits_one_and_an_unrecognised_id_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The adversarial leak is exit 1 naming both ids; an id with no identity is exit 2."""
+    document = _heldout_document(tmp_path / "doc", _MEMBERS)
+
+    leaked = _run(tmp_path / "runs" / "leaked", private=(_id(1, "legacy-a"),))
+    assert cli.main(_argv(leaked, document)) == 1
+    out = capsys.readouterr().out
+    assert _id(1, "legacy-a") in out and _MEMBERS[0] in out
+
+    unnamed = _run(tmp_path / "runs" / "unnamed", private=("t-07",))
+    assert cli.main(_argv(unnamed, document)) == 2
+    assert "t-07" in capsys.readouterr().err

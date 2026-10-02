@@ -27,14 +27,34 @@ from pathlib import Path
 
 import pytest
 
-from loop.test_gate import _MEMBERS, _heldout_document
+from loop.test_gate import _heldout_document as _gate_heldout_document
 from whetstone.bakeoff.scoring import Outcome
 from whetstone.loop import check_leakage, dataset, heldout, night
 from whetstone.loop import ledger as run_ledger
 from whetstone.verify.verdict import Status
 
+
+def _id(n: int, prefix: str = "donor-a") -> str:
+    """A private task id as the corpus mints it: a name, then a 12-hex identity.
+
+    Identity is the trailing 12 hex; the prefix is the corpus's own naming and a re-mint can
+    change it (`legacy-a-X` became `donor-a-X`). The tests use the prefix to say which side of
+    that re-mint an id is on.
+    """
+    return f"{prefix}-{n:012x}"
+
+
 #: A held-out membership, in the shape aspect 1's document declares it.
-_HELDOUT = ("t-01", "t-02", "t-03")
+_HELDOUT = (_id(1), _id(2), _id(3))
+
+#: The fixture document's membership (ten ids) and the one corpus task it leaves out.
+_MEMBERS = tuple(_id(n) for n in range(1, 11))
+_SURVIVOR = _id(11)
+
+
+def _heldout_document(root: Path, members: tuple[str, ...]) -> Path:
+    """A loader-valid held-out document over `members` plus the survivor."""
+    return _gate_heldout_document(root, members, corpus_ids=(*members, _SURVIVOR))
 
 
 def _training(
@@ -52,7 +72,7 @@ def _training(
 
 def test_a_disjoint_training_set_is_clean() -> None:
     """The ordinary case: nothing the night trained on is held out."""
-    report = check_leakage.check_overlap(_training(private=("t-07", "t-08")), _HELDOUT)
+    report = check_leakage.check_overlap(_training(private=(_id(7), _id(8))), _HELDOUT)
 
     assert report.clean is True
     assert report.overlap == ()
@@ -69,10 +89,10 @@ def test_an_overlap_names_the_id_it_found() -> None:
     "just tell me if it's clean" would reach for. An operator holding a nonzero exit needs to
     know *which* task leaked, because the fix is in the night that produced it.
     """
-    report = check_leakage.check_overlap(_training(private=("t-07", "t-02")), _HELDOUT)
+    report = check_leakage.check_overlap(_training(private=(_id(7), _id(2))), _HELDOUT)
 
     assert report.clean is False
-    assert report.overlap == ("t-02",), (
+    assert report.overlap == (_id(2),), (
         "WHY THIS IS A FAILURE: the check did not name the leaked id. A leak reported as a "
         "count tells an operator that something is wrong and nothing about what — and the "
         "fix for a leak is in the night that produced it, which the id is how you find"
@@ -89,10 +109,10 @@ def test_every_leaked_id_is_named_and_the_examples_are_counted_separately() -> N
     task that is not there.
     """
     report = check_leakage.check_overlap(
-        _training(private=("t-03", "t-02", "t-02", "t-09")), _HELDOUT
+        _training(private=(_id(3), _id(2), _id(2), _id(9))), _HELDOUT
     )
 
-    assert report.overlap == ("t-02", "t-03")
+    assert report.overlap == (_id(2), _id(3))
     assert report.leaked_examples == 3
     assert report.examples == 4
 
@@ -105,23 +125,88 @@ def test_both_sources_are_reported_over_their_own_denominators() -> None:
     finding about the corpus, and "that cannot happen" is how a finding goes unnoticed.
     """
     report = check_leakage.check_overlap(
-        _training(private=("t-02", "t-09"), public=("pallets__flask-4045",)), _HELDOUT
+        _training(private=(_id(2), _id(9)), public=("pallets__flask-4045",)), _HELDOUT
     )
 
     assert report.private.source == night.PRIVATE
-    assert report.private.examples == 2 and report.private.overlap == ("t-02",)
+    assert report.private.examples == 2 and report.private.overlap == (_id(2),)
     assert report.public.source == night.PUBLIC
     assert report.public.examples == 1 and report.public.overlap == ()
     assert report.examples == 3
 
 
-def test_a_public_collision_is_a_finding_not_an_impossibility() -> None:
-    """If a public training example ever names a held-out id, the check says so."""
-    report = check_leakage.check_overlap(_training(public=("t-01",)), _HELDOUT)
+def test_the_same_identity_in_the_public_source_is_not_an_overlap() -> None:
+    """AC5: the membership is source B's, so a public example is not compared against it.
+
+    CHANGED from "a public collision is a finding": under identity matching the public
+    source's ids (`pallets__flask-4045`) carry no 12-hex identity at all, and the membership
+    says nothing about them. Comparing them would either refuse every public example or
+    invent a match by accident. They are counted as examples and never matched.
+    """
+    report = check_leakage.check_overlap(
+        _training(public=(_id(1, "pallets"),), private=(_id(9),)), _HELDOUT
+    )
+
+    assert report.clean is True
+    assert report.public.examples == 1 and report.public.overlap == ()
+    assert report.private.examples == 1
+
+
+def test_disjoint_identities_are_clean_whatever_the_prefixes() -> None:
+    """AC1: different 12-hex identities do not touch, however alike the names look."""
+    report = check_leakage.check_overlap(
+        _training(private=(_id(7, "legacy-a"), _id(8, "donor-a"))), _HELDOUT
+    )
+
+    assert report.clean is True
+    assert report.overlap == ()
+
+
+def _exact_string_rule(training: tuple[str, ...], membership: tuple[str, ...]) -> tuple[str, ...]:
+    """A local copy of the rule `check_overlap` used before: exact string equality."""
+    return tuple(sorted({one for one in training if one in set(membership)}))
+
+
+def test_a_re_minted_id_cannot_hide_a_leak() -> None:
+    """AC2, adversarial: `legacy-a-X` trained on, `donor-a-X` held out, is a leak naming both.
+
+    The corpus re-mint renamed ids but kept the trailing identity. The old exact-string rule
+    calls this fixture clean, which is pinned here so the test demonstrably fails it.
+    """
+    trained = _id(5, "legacy-a")
+    held = _id(5, "donor-a")
+    membership = (_id(1), held, _id(3))
+
+    assert _exact_string_rule((trained,), membership) == (), (
+        "the fixture no longer demonstrates the defect: the old rule must call it clean"
+    )
+
+    report = check_leakage.check_overlap(_training(private=(trained,)), membership)
 
     assert report.clean is False
-    assert report.public.overlap == ("t-01",)
-    assert report.overlap == ("t-01",)
+    assert report.leaked_examples == 1
+    lines = " ".join(check_leakage.disclosure(report))
+    assert trained in lines and held in lines, (
+        "WHY THIS IS A FAILURE: the leak did not name both the training id and the held-out "
+        "id it matched, and the re-mint is exactly why the two names differ"
+    )
+
+
+def test_a_training_id_without_an_identity_is_refused() -> None:
+    """AC3: an id with no trailing 12-hex cannot be matched, so it is refused, never passed."""
+    with pytest.raises(check_leakage.UnrecognisedIdentity) as refusal:
+        check_leakage.check_overlap(_training(private=("t-07",)), _HELDOUT)
+
+    assert "t-07" in str(refusal.value)
+    assert check_leakage.UnrecognisedIdentity in check_leakage.REFUSALS
+
+
+def test_a_held_out_member_without_an_identity_is_refused() -> None:
+    """The same refusal on the other side: a member nothing can be matched against."""
+    with pytest.raises(check_leakage.UnrecognisedIdentity) as refusal:
+        check_leakage.check_overlap(_training(private=(_id(7),)), (_id(1), "legacy-name"))
+
+    assert "legacy-name" in str(refusal.value)
 
 
 def test_an_empty_training_set_is_disjoint_by_truth() -> None:
@@ -144,7 +229,7 @@ def test_an_empty_training_set_is_disjoint_by_truth() -> None:
 
 def test_the_disclosure_carries_the_count_over_its_denominator() -> None:
     """Every rate carries its denominator (`PREREGISTRATION.md:157`) — here, examples."""
-    report = check_leakage.check_overlap(_training(private=("t-02", "t-09")), _HELDOUT)
+    report = check_leakage.check_overlap(_training(private=(_id(2), _id(9))), _HELDOUT)
     lines = check_leakage.disclosure(report)
 
     assert any("1 of 2 training examples" in line for line in lines), lines
@@ -164,7 +249,7 @@ def test_an_unrecognised_source_is_refused_by_name() -> None:
     import pytest
 
     with pytest.raises(check_leakage.UnknownSource) as refusal:
-        check_leakage.check_overlap({"source-c": ("t-09",)}, _HELDOUT)
+        check_leakage.check_overlap({"source-c": (_id(9),)}, _HELDOUT)
 
     assert "source-c" in str(refusal.value)
     assert night.PRIVATE in str(refusal.value) and night.PUBLIC in str(refusal.value)
@@ -233,7 +318,9 @@ def test_a_disjoint_run_reads_clean_end_to_end(tmp_path: Path) -> None:
     out — and it appears twice, because a night draws `K` attempts per task and two verified
     wins on one task are two examples. The denominator counts them both.
     """
-    run = _run(tmp_path / "runs" / "night-1", private=("t-11", "t-11"), public=("pub-1",))
+    run = _run(
+        tmp_path / "runs" / "night-1", private=(_id(11), _id(11)), public=("pallets__flask-4045",)
+    )
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
 
     report = check_leakage.run_check(run, document)
@@ -253,7 +340,7 @@ def test_a_leaked_run_names_the_task_and_the_regression_it_is_evidence_of(
     the leaked examples after the fact and re-running the check — would leave the defect in
     place and produce a clean result.
     """
-    run = _run(tmp_path / "runs" / "night-1", private=(_MEMBERS[0], "t-11"))
+    run = _run(tmp_path / "runs" / "night-1", private=(_MEMBERS[0], _id(11)))
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
 
     report = check_leakage.run_check(run, document)
@@ -271,7 +358,7 @@ def test_a_leaked_run_names_the_task_and_the_regression_it_is_evidence_of(
 
 def test_a_directory_without_a_ledger_is_not_a_run(tmp_path: Path) -> None:
     """AC3: refused by name — a leakage proof over an unidentified training set proves nothing."""
-    run = _run(tmp_path / "loose", private=("t-07",), ledger=False)
+    run = _run(tmp_path / "loose", private=(_id(7),), ledger=False)
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
 
     with pytest.raises(check_leakage.NotARun) as refusal:
@@ -317,7 +404,7 @@ def test_a_doctored_held_out_document_refuses_before_any_comparison(tmp_path: Pa
     run = _run(tmp_path / "runs" / "night-1", private=(_MEMBERS[0],))
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
     raw = json.loads(document.read_text(encoding="utf-8"))
-    raw["membership"] = ["t-11" if one == _MEMBERS[0] else one for one in raw["membership"]]
+    raw["membership"] = [_id(11) if one == _MEMBERS[0] else one for one in raw["membership"]]
     document.write_text(json.dumps(raw), encoding="utf-8")
 
     with pytest.raises(heldout.HeldoutDigestMismatch):
@@ -343,7 +430,7 @@ def test_a_dataset_naming_a_third_source_is_refused(tmp_path: Path) -> None:
         "denominator": 1,
         "unverified": 0,
         "coverage": 1,
-        "examples": [{"task_id": "t-07", "source": "source-c"}],
+        "examples": [{"task_id": _id(7), "source": "source-c"}],
     }
     run = _run(tmp_path / "runs" / "night-1", dataset_text=json.dumps(payload))
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
