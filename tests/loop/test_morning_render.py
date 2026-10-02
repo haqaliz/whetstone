@@ -35,7 +35,7 @@ from typing import Any
 
 import pytest
 
-from loop.test_promotion_record_n import _sides
+from loop.test_promotion_record_n import _sides, _trainings
 from loop.test_run_ledger import _ledger
 from whetstone.bakeoff import report as bakeoff_report
 from whetstone.bakeoff.scoring import Outcome
@@ -80,6 +80,10 @@ def _record(
         recorded_on="2026-08-27",
         candidate_digest=candidate_digest,
         incumbent_digest="i" * 64,
+        # Schema 2 (gate-record-provenance) names what trained each side; updated deliberately,
+        # the shared fixture's values, so the morning report reads a record the gate can write.
+        candidate_training=_trainings()["candidate"],
+        incumbent_training=_trainings()["incumbent"],
         heldout_digest="h" * 64,
         candidate=sides["candidate"],
         incumbent=sides["incumbent"],

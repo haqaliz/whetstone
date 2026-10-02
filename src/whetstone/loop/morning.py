@@ -518,6 +518,15 @@ class MorningReportAltered(ValueError):
     """A written morning report is not what its evidence renders to."""
 
 
+class PromotionRecordRefused(ValueError):
+    """The gate's own fail-closed reader refused the promotion record named by `--record`.
+
+    Carries the reader's message verbatim — an old-schema record (one that predates the training
+    provenance), a doctored count, an unknown field — so the operator sees why, as a message and
+    never as a traceback. The record is never upgraded or partially rendered.
+    """
+
+
 @dataclass(frozen=True)
 class MorningReport:
     """One night's report, before it is bytes."""
@@ -782,6 +791,7 @@ REFUSALS: tuple[type[Exception], ...] = (
     RunIdentityMismatch,
     RecordNotThisNight,
     UnknownGateExit,
+    PromotionRecordRefused,
     TranscriptNotPrivate,
 )
 
@@ -805,7 +815,10 @@ def _evidence(record: Path | None) -> Any | None:
         return None
     from whetstone.loop.gate import read_promotion_record
 
-    return read_promotion_record(record)
+    try:
+        return read_promotion_record(record)
+    except ValueError as refused:
+        raise PromotionRecordRefused(str(refused)) from refused
 
 
 def render_morning(

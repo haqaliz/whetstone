@@ -162,6 +162,14 @@ def _record(
         recorded_on=_RECORDED_ON,
         candidate_digest="c" * 64,
         incumbent_digest="i" * 64,
+        # Schema 2 (gate-record-provenance) names what trained each side; updated deliberately.
+        # The incumbent is the previous night's trained candidate, so both carry a digest.
+        candidate_training=gate.TrainingProvenance(
+            dataset_digest="d" * 64, base_repo_id=_BASE, base_revision=_REVISION
+        ),
+        incumbent_training=gate.TrainingProvenance(
+            dataset_digest="e" * 64, base_repo_id=_BASE, base_revision=_REVISION
+        ),
         heldout_digest=heldout_digest,
         candidate=_side(solved=candidate_solved, weaker_wins=candidate_weaker_wins),
         incumbent=_side(solved=incumbent_solved, weaker_wins=incumbent_weaker_wins),

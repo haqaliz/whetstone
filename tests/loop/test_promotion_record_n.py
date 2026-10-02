@@ -166,15 +166,41 @@ def _sides() -> dict[str, Side]:
     }
 
 
-def _write_fixture_record(tmp_path: Path) -> Path:
+def _trainings() -> dict[str, Any]:
+    """The fixture's training provenance, per side — schema 2's `candidate.training` and
+    `incumbent.training`.
+
+    Updated deliberately when the record moved to `whetstone-promotion/2` (gate-record-
+    provenance): the trained candidate names its dataset digest and base, the untrained
+    incumbent names its base and an explicit `None` digest — the first-night shape.
+    """
+    base = {
+        "base_repo_id": "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit",
+        "base_revision": "main",
+    }
+    return {
+        "candidate": gate.TrainingProvenance(dataset_digest="d" * 64, **base),
+        "incumbent": gate.TrainingProvenance(dataset_digest=None, **base),
+    }
+
+
+def _write_fixture_record(
+    tmp_path: Path,
+    *,
+    candidate_training: Any = None,
+    incumbent_training: Any = None,
+) -> Path:
     """A legal record as the gate's own writer emits it, under `tmp_path`."""
     sides = _sides()
+    trainings = _trainings()
     path = gate.write_promotion_record(
         path=tmp_path / "record.json",
         run_id="gate-001",
         recorded_on="2026-08-27",
         candidate_digest="c" * 64,
         incumbent_digest="i" * 64,
+        candidate_training=candidate_training or trainings["candidate"],
+        incumbent_training=incumbent_training or trainings["incumbent"],
         heldout_digest="h" * 64,
         candidate=sides["candidate"],
         incumbent=sides["incumbent"],
@@ -236,6 +262,9 @@ def test_a_written_record_round_trips_through_the_reader_verbatim(tmp_path: Path
     assert read.candidate_digest == "c" * 64
     assert read.incumbent_digest == "i" * 64
     assert read.heldout_digest == "h" * 64
+    assert read.candidate_training == _trainings()["candidate"]
+    assert read.incumbent_training == _trainings()["incumbent"]
+    assert read.incumbent_training.dataset_digest is None
     assert read.sides["candidate"].private == sides["candidate"].private
     assert read.sides["candidate"].public == sides["candidate"].public
     assert read.sides["incumbent"].private == sides["incumbent"].private
@@ -261,7 +290,7 @@ def test_an_unreadable_record_is_refused_by_name(tmp_path: Path) -> None:
 def test_invalid_json_is_refused_by_name(tmp_path: Path) -> None:
     """Bytes that are not JSON are refused, naming the file — never parsed leniently."""
     broken = tmp_path / "broken.json"
-    broken.write_text('{"schema": "whetstone-promotion/1", ', encoding="utf-8")
+    broken.write_text(f'{{"schema": "{gate.PROMOTION_SCHEMA}", ', encoding="utf-8")
     with pytest.raises(ValueError) as refused:
         gate.read_promotion_record(broken)
     assert str(broken) in str(refused.value), refused.value
@@ -269,7 +298,9 @@ def test_invalid_json_is_refused_by_name(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "schema",
-    ["whetstone-promotion/2", None],
+    # `/2` is today's schema (gate-record-provenance), so the "wrong" case is a future one;
+    # the `/1` refusal has its own wording and its own tests in `test_gate_provenance.py`.
+    ["whetstone-promotion/3", None],
     ids=["wrong", "missing"],
 )
 def test_a_record_with_a_wrong_or_missing_schema_is_refused_by_name(
