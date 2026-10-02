@@ -18,6 +18,12 @@ asked. The seam-spy assertion on `scoring.verify_strict`/`verify_weak` stays cle
 the control arm genuinely verifies, because the control reaches the verifier through
 `whetstone.verify.strict` directly and the rollout path never does.
 
+The driver's renderer seam (`--renderer`, `line-range` default | `whole-function`) mirrors
+the `score` seam: the default is `render_line_range_prompt` itself, so a default run poses
+exactly the v0.17.0 bytes — the line-range assertions here are the byte-identity control —
+and the whole-function format is selectable for this unit's run, with the manifest's
+per-task `prompt_sha256` as the only discriminator between formats.
+
 No model, no `mlx`, no network. Nothing writes outside `tmp_path` (the default-paths test
 chdirs into `tmp_path` first). The pinned population is spelled here as the spec's list and
 cross-pinned against the module's constant, so a drift in either is a red test.
@@ -46,6 +52,7 @@ from whetstone.bakeoff.scoring import Interpreters, Outcome, score
 from whetstone.bakeoff.sources import oracle_sources
 from whetstone.bakeoff.transcript import Transcript
 from whetstone.bakeoff.weights import PROVENANCE_FILE, PROVENANCE_SCHEMA, Weights
+from whetstone.bakeoff.whole_function import render_whole_function_prompt
 from whetstone.loop import heldout as heldout_module
 from whetstone.tasks.manifest import load_tasks
 
@@ -275,6 +282,24 @@ def inputs(tmp_path_factory: pytest.TempPathFactory):
         assert sources.files is not None, sources.reason
         expected[task_id] = render_line_range_prompt(by_id[task_id], sources.files)
     return corpus, _weights(root / "weights", CANDIDATE), expected
+
+
+@pytest.fixture(scope="module")
+def whole_expected(inputs: Any) -> dict[str, str]:
+    """The whole-function prompt per pinned id, derived through the contract's own rendering.
+
+    A sibling of `inputs`' `expected`, built through `render_whole_function_prompt` on the
+    same oracle derivation, so the whole-function path's assertions compare against the
+    format's own bytes.
+    """
+    corpus, _, _ = inputs
+    by_id = {task.task_id: task for task in load_tasks(corpus)}
+    out: dict[str, str] = {}
+    for task_id in SPEC_PINNED:
+        sources = oracle_sources(by_id[task_id], pool=None)
+        assert sources.files is not None, sources.reason
+        out[task_id] = render_whole_function_prompt(by_id[task_id], sources.files)
+    return out
 
 
 def _run(
@@ -847,3 +872,154 @@ def test_a_weights_root_holding_more_than_one_candidate_is_refused(
             manifest=tmp_path / "manifest.json",
             engine=_engine_of(_AnswersEveryPrompt()),
         )
+
+
+# --- The renderer seam (spec criterion 2) ----------------------------------------------------
+
+
+def test_the_renderer_choice_is_exactly_two_named_values() -> None:
+    """The driver's renderer choice is `line-range` (the default) and `whole-function`.
+
+    The default resolves to `render_line_range_prompt` itself, so a default run poses
+    exactly v0.17.0's bytes — the existing line-range assertions are the byte-identity
+    control — and the whole-function format is this unit's selectable other. The per-task
+    `prompt_sha256` is the only discriminator between the two formats' evidence.
+    """
+    assert set(measure.RENDERERS) == {"line-range", "whole-function"}, (
+        "WHY THIS IS A FAILURE: the renderer choice is not exactly the two named formats. "
+        "A third value would be a format nobody pre-committed"
+    )
+    assert measure.RENDERERS["line-range"] is render_line_range_prompt
+    assert measure.RENDERERS["whole-function"] is render_whole_function_prompt
+
+
+def test_the_whole_function_renderer_reaches_the_generator(
+    tmp_path: Path, inputs: Any, whole_expected: dict[str, str]
+) -> None:
+    """A run on the whole-function path poses exactly that format's prompts.
+
+    The per-task `prompt_sha256` matches `prompt_hash(render_whole_function_prompt(...))`
+    — the manifest's discriminator — every rollout row is `UNVERIFIED` with the
+    measurement detail, the control arm is probed per task and `INTACT` on every draw,
+    and the three evidence files land on disk only because the whole run succeeded.
+    """
+    stub = _AnswersEveryPrompt()
+    measured = _run(
+        tmp_path, inputs, engine=_engine_of(stub), renderer=render_whole_function_prompt
+    )
+    expected = whole_expected
+
+    assert stub.asked == [expected[task_id] for task_id in SPEC_PINNED], (
+        "WHY THIS IS A FAILURE: the base was asked prompts other than the pinned tasks' "
+        "whole-function prompts, or in a different order"
+    )
+    assert measured.journal.is_file() and measured.transcript.is_file()
+    assert measured.manifest.is_file()
+
+    manifest = json.loads(Path(measured.manifest).read_text())
+    assert manifest["schema"] == "whetstone-measure/1"
+    assert "renderer" not in manifest, (
+        "WHY THIS IS A FAILURE: the manifest schema gained a renderer field. The schema "
+        "is unchanged — the per-task prompt_sha256 is the format discriminator"
+    )
+    assert manifest["tasks"] == list(SPEC_PINNED)
+    assert manifest["prompt_sha256"] == {
+        task_id: prompt_hash(expected[task_id]) for task_id in SPEC_PINNED
+    }, (
+        "WHY THIS IS A FAILURE: the manifest's per-task prompt digests do not match the "
+        "whole-function prompts the run poses, so the manifest could not be the source of "
+        "truth for what each rollout was asked"
+    )
+    assert manifest["control"] == {task_id: "INTACT" for task_id in SPEC_PINNED}
+
+    steps = Journal(Path(measured.journal)).replay()
+    assert len(steps) == len(SPEC_PINNED)
+    for step in steps.values():
+        assert step.probe.control is Control.INTACT
+        assert step.rollout.outcome is Outcome.UNVERIFIED
+        assert step.rollout.detail == MEASUREMENT_DETAIL
+        assert step.rollout.strict is None and step.rollout.weak is None
+        assert step.rollout.prompt_sha256 == prompt_hash(expected[step.rollout.task_id])
+
+    records = Transcript(Path(measured.transcript)).replay()
+    assert len(records) == len(SPEC_PINNED)
+    for record in records.values():
+        assert record.prompt == expected[record.task_id], (
+            "WHY THIS IS A FAILURE: the transcript does not carry the exact whole-function "
+            "prompt the contract renders for the task, so a replay could not re-derive "
+            "what the base was shown"
+        )
+        assert record.prompt_sha256 == prompt_hash(expected[record.task_id])
+        assert record.completion == stub.completion
+
+
+def test_a_whole_function_run_whose_control_fold_is_not_intact_refuses_and_writes_nothing(
+    tmp_path: Path, inputs: Any
+) -> None:
+    """The control arm is required the same way on the whole-function path.
+
+    One pinned task is built `vacuous` — its declared failing test already passes at
+    `base_commit` — so its probe is genuinely BROKEN through the real verifier, the fold
+    is UNVERIFIED, the run refuses with the named reason, and no evidence exists.
+    """
+    root = tmp_path / "corpus"
+    vacuous = SPEC_PINNED[0]
+    vacuous_corpus = root / "private"
+    vacuous_corpus.mkdir(parents=True)
+    for task_id in SPEC_PINNED:
+        build_mined_task(
+            root / f"donor-{task_id}",
+            task_id=task_id,
+            subject=f"Fix addition ({task_id})",
+            vacuous=task_id == vacuous,
+        )
+        shutil.copy(
+            root / f"donor-{task_id}" / f"{task_id}.json", vacuous_corpus / f"{task_id}.json"
+        )
+    weights_root = _weights(root / "weights", CANDIDATE)
+    journal, transcript, manifest = _evidence_paths(tmp_path)
+
+    with pytest.raises(measure.ControlNotIntact) as refusal:
+        measure.run_measurement(
+            tasks=(vacuous_corpus,),
+            stratum=_stratum_document(tmp_path / "docs", STRATUM_MEMBERS),
+            heldout=_heldout_document(tmp_path / "docs", HELDOUT_MEMBERS),
+            weights=weights_root,
+            workspace=tmp_path / "workspace",
+            recorded_on=RECORDED_ON,
+            timeout=TIMEOUT,
+            journal=journal,
+            transcript=transcript,
+            manifest=manifest,
+            engine=_engine_of(_AnswersEveryPrompt()),
+            renderer=render_whole_function_prompt,
+        )
+    assert vacuous in str(refusal.value), (
+        "the refusal must name the task whose control arm failed, so the operator can see "
+        "which draw voided the run"
+    )
+    assert not journal.exists() and not transcript.exists() and not manifest.exists(), (
+        "WHY THIS IS A FAILURE: a whole-function run whose harness was never shown to "
+        "grade anything left evidence on disk"
+    )
+
+
+def test_an_unknown_renderer_is_a_refusal_that_writes_nothing(
+    tmp_path: Path, inputs: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--renderer` naming no format is refused, exit 2 — never defaulted.
+
+    A run that quietly fell back to `line-range` would pose one format while its command
+    named another, so the unknown name is a refusal like any other, and a refusal writes
+    no evidence.
+    """
+    journal, transcript, manifest = _evidence_paths(tmp_path)
+
+    assert measure.main(_cli(tmp_path, inputs, **{"--renderer": "whole"})) == 2
+    assert "renderer" in capsys.readouterr().err, (
+        "the refusal must name the renderer flag, not crash like a harness defect"
+    )
+    assert not journal.exists() and not transcript.exists() and not manifest.exists(), (
+        "WHY THIS IS A FAILURE: a refused renderer value left evidence on disk, or the "
+        "unknown name fell back to a default run that wrote evidence"
+    )
