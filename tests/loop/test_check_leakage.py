@@ -396,8 +396,9 @@ def test_a_leaked_run_names_the_task_and_the_regression_it_is_evidence_of(
 ) -> None:
     """AC2: the id is named, and the disclosure says what the operator should fix.
 
-    A nonzero exit here is not a fact about the gate; it is evidence that the night's
-    partition seam regressed. The disclosure says so, because the wrong response — dropping
+    A nonzero exit here is not a fact about the gate; it is evidence of a seam failure or of
+    a split derived after the night (see the two-cause test below). The disclosure says
+    so, because the wrong response — dropping
     the leaked examples after the fact and re-running the check — would leave the defect in
     place and produce a clean result.
     """
@@ -415,6 +416,28 @@ def test_a_leaked_run_names_the_task_and_the_regression_it_is_evidence_of(
         "evidence of. The fix is in the night that produced this run — excluding these "
         "examples after the fact would leave the defect in place and print a clean result"
     )
+
+
+def test_a_leak_names_both_causes_and_asserts_neither(tmp_path: Path) -> None:
+    """A leak by identity is a seam failure OR a split derived after the night ran.
+
+    night-001 ran before the held-out split was re-derived under § 10.16, so asserting
+    "a regression in the seam" was wrong for it. The disclosure names both causes, tells
+    the operator to find out which, and never drops the rule against after-the-fact exclusion.
+    """
+    run = _run(tmp_path / "runs" / "night-1", private=(_MEMBERS[0], _id(11)))
+    document = _heldout_document(tmp_path / "doc", _MEMBERS)
+
+    text = " ".join(check_leakage.disclosure(check_leakage.run_check(run, document)))
+
+    assert "This is a regression" not in text, (
+        "WHY THIS IS A FAILURE: the disclosure asserts a single cause; a split re-derived "
+        "after the night ran also leaks by identity"
+    )
+    assert "partition seam failed to exclude" in text
+    assert "derived or re-derived after the night ran" in text
+    assert "not gated" in text
+    assert "do not exclude these examples after the fact" in text
 
 
 def test_a_directory_with_neither_dataset_nor_ledger_is_not_a_run(tmp_path: Path) -> None:

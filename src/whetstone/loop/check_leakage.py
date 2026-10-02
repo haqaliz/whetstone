@@ -293,9 +293,11 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
         for trained, held in sorted(set(pairs)):
             lines.append(f"matched by identity: trained on {trained}, held out as {held}")
         lines.append(
-            "This is a regression in the night's partition seam: held-out ids are excluded "
-            "there, before the contract is frozen. Fix the night that produced this run; do "
-            "not exclude these examples after the fact"
+            "A leak means one of two things, and the operator must find out which: (a) the "
+            "night's partition seam failed to exclude held-out ids, or (b) the held-out "
+            "document was derived or re-derived after the night ran, so the night could not "
+            "have excluded these ids. Either way the candidate trained on these tasks is "
+            "not gated; do not exclude these examples after the fact"
         )
     return _with_notice(report, lines)
 

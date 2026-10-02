@@ -141,9 +141,11 @@ uv run whetstone check-leakage \
   "no shared task identity", never "no contamination": a near-duplicate task — the same
   function, an adjacent commit — under a different identity is not detected. A run without a
   `ledger.json` is still checked and carries a notice saying so; read it into the log.
-- **Exit 1** — a leak, named by task. It is **evidence of a regression in the night's partition
-  seam**: the fix is in the night that produced the run, and dropping the leaked examples after
-  the fact would leave the defect in place and print a clean result. The candidate is not gated.
+- **Exit 1** — a leak, named by task. It means one of two things, and you must find out which:
+  (a) the night's partition seam failed to exclude held-out ids, or (b) the held-out document
+  was derived or re-derived after the night ran, so the night could not have excluded them. Do
+  not assume either. Dropping the leaked examples after the fact would leave the defect in place
+  and print a clean result. The candidate is not gated; never loop on this check hoping it comes back clean.
 - **Exit 2** — a refusal: a run with no `dataset.json`, an id with no recognisable sha12 (a
   re-mint changed the id scheme, and an amendment is needed before the gate may run), a document
   that cannot be trusted — and a run that compared nothing (no source B training example) is
