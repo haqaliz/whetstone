@@ -53,6 +53,8 @@ This file orients a coding agent working in this repository. Read it first.
 > trained**. The three defects behind that are fixed in 0.14.1 (`docs/STATUS.md`), including
 > the one that mattered: a night's ledger is now written even when training raises, so 26
 > hours of verified rollouts can never again be lost to an exception in the final minutes.
+> `check-leakage` now matches by task identity and refuses the one trained adapter (4 of its 6
+> examples sit on a held-out task), so the gate still has not produced a decision on a real pair.
 > The gate has therefore **still never run on real checkpoints**. Its exits and refusals are proven against fixtures only — as are
 > `check-probe`'s, which has never been pointed at a real probe. `R = 3` is
 > declared a priori because there is no observed unverified rate to set it from. Cheat 6

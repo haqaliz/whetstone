@@ -9,6 +9,34 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING: `whetstone check-leakage` exits 2 for a comparison that compared nothing.** A
+  training set with no source B examples was exit 0; it is now a refusal, so exit 0 means
+  exactly "source B examples were compared and none shared a task identity". Any caller that
+  relied on exit 0 there must handle 2. A training set with no examples at all stays exit 0.
+- **BREAKING: the promotion record is schema `whetstone-promotion/2`.** `candidate.training`
+  and `incumbent.training` carry `dataset_digest`, `base_repo_id` and `base_revision`; an
+  untrained incumbent's `dataset_digest` is an explicit `null`. A `/1` record is refused by
+  readers and never upgraded. The digest is recorded provenance, not verified.
+- The gate runbook orders `check-leakage` before the gate, halts on any non-zero exit, and names
+  the candidate's night through the recorded dataset digest; its ROADMAP line citations are
+  pinned by a guard.
+
+### Fixed
+
+- `check-leakage` compared exact task-id strings, so a corpus re-mint made a leaked training
+  set look disjoint. Identity is now the trailing 12-hex per source; an id with no
+  recognisable sha12 is a refusal, exit 2. A leak names both causes and asserts neither;
+  source A is reported as not compared.
+- `check-leakage` refused a run with no `ledger.json`; it now reads `dataset.json` alone and
+  says so.
+- `whetstone gate` exits 2 and writes no record when a trained side's digest is unreadable.
+- The morning report exits 2 with a message on a record the gate reader refuses, instead of a
+  traceback.
+
 ## [0.18.0] - 2026-10-02
 
 ### Added
