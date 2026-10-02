@@ -9,6 +9,32 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Added
+
+- **`python -m whetstone.bakeoff.resolvability`: the whole-function measurement instrument.**
+  Offline, deterministic, stdlib-only, off the reward path. Classifies a measurement run's
+  completions under the whole-function edit contract — worst-first `UNCLASSIFIED` >
+  `MALFORMED` > `NO_FILE` > `AMBIGUOUS` > `UNKNOWN_FUNCTION` > `NOT_PARSEABLE` > `RESOLVABLE`,
+  the replacement body gated by a wrapped standalone `ast.parse` whose synthetic wrapper
+  follows the resolved target's kind (an `IndentationError` is the format's grammar violation,
+  `MALFORMED`) — and exits 0 GO / 1 NO-GO / 2 refused under the pre-committed rule
+  `GO iff count(RESOLVABLE) * 2 > population`, cross-pinned into every output document. Two
+  sub-counts (splice-in-context; outside-shown-set, held-test paths included) are reported
+  beside and never decisive; refusals write nothing.
+- **`src/whetstone/bakeoff/whole_function.py`: the whole-function renderer.** Poses the
+  `EDIT <path>` / `FUNCTION <name>` / `<<<<<<< REPLACE` body block format — the model states a
+  name, the harness finds the function's extent — byte-deterministic, held-test sources
+  refused by name; the format grammar's single home, with the measurement-side block parser.
+
+### Changed
+
+- **`whetstone.bakeoff.measure` gains a `--renderer` choice** — `line-range` (the default,
+  byte-identical to v0.17.0) or `whole-function`. The manifest schema is unchanged: the
+  per-task `prompt_sha256` is the format discriminator. A refused renderer value is a named
+  refusal (exit 2), never a fallback.
+
 ## [0.17.0] - 2026-10-01
 
 ### Added

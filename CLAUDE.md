@@ -34,7 +34,12 @@ This file orients a coding agent working in this repository. Read it first.
 > be promoted. The held-out split is re-derived under a **scorable rule** (`oracle_fittable`,
 > sealed in the document's rule digest), the corpus re-minted under labels, the split fixed by
 > `PREREGISTRATION.md` § 10.16 (Type 1). The gate can now reach a decision — and has still not
-> produced one, because no candidate has scored against the new document.
+> produced one, because no candidate has scored against the new document. Then the
+> **whole-function-edit measurement** (2026-10-01): the third patch-representation direction —
+> the model states a function name, the harness finds the function's extent and renders the
+> diff — shipped its measurement instruments (`bakeoff.resolvability`, rule pre-committed and
+> cross-pinned, exit 0 GO / 1 NO-GO / 2 refused) and its guarded runbook; nothing beyond the
+> instruments was built, and the decision awaits the operator's one-GPU-hour run.
 >
 > **The corpus, stated precisely.** Source B (private, pre-registered headline):
 > **66 tasks**, each proven live rather than asserted. Source A (public SWE-bench-Lite):

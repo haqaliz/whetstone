@@ -10,6 +10,40 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The whole-function replacement contract is being measured; its instruments shipped, its
+decision pending** (2026-10-01, the `edit-contract-finding` finding's § 6 lead). The lead was
+that a format which reduces the replacement text's surface — the model states an `EDIT` path
+and a `FUNCTION` name, the harness finds the function's extent via AST at `base_commit` and
+renders the diff — is the direction the two NO-GO measurements did not rule out: the model's
+failure was not transcription of existing text but closing its own replacement blocks and
+writing replacement text that parses, and this format removes both measured walls (quoting and
+line addressing) while testing the third observation directly.
+
+**The measurement.** `whetstone.bakeoff.measure --renderer whole-function` poses the
+whole-function prompt to the pinned 32B base over the same pre-committed population — the
+easier-stratum band minus the held-out members, 16 tasks pinned by identity, a run whose task
+set differs refused — one greedy completion per task, retries 0, the verifier never entered,
+the control arm `INTACT` on every draw required, evidence written only when the whole run
+succeeded. The driver's default renderer is byte-identical to v0.17.0's numbered listing.
+`whetstone.bakeoff.resolvability` classifies the run's completions offline — worst-first:
+`UNCLASSIFIED` > `MALFORMED` > `NO_FILE` > `AMBIGUOUS` > `UNKNOWN_FUNCTION` > `NOT_PARSEABLE` >
+`RESOLVABLE`, the body gated by a wrapped standalone `ast.parse` (its synthetic wrapper follows
+the resolved target's kind; an `IndentationError` is the format's own grammar violation,
+`MALFORMED`) — and exits 0 GO / 1 NO-GO / 2 refused under the rule committed before any rollout
+ran: GO iff `count(RESOLVABLE) * 2 > population`. Sub-counts (splice-in-context;
+outside-shown-set, held-test paths included) are reported beside and never decisive. The rule,
+the population and the document digests were committed ahead of the run, as the spec's
+discipline requires.
+
+**Nothing beyond the measurement instruments has been built, and no amendment has been made.**
+The decision awaits the operator's run — one GPU hour on the pinned base, commanded by the
+guarded runbook (`docs/planning/whole-function-edit-finding/measurement-run/runbook.md`) —
+and the finding that follows it. On NO-GO the unit ships instrument + finding only; the
+contract aspect and `PREREGISTRATION.md` § 10.x are GO-gated and unplanned. The reward path
+and the gate's rule are byte-identical; nothing under `verify/` or `tasks/` changed. The run's
+`prompt_sha256` will be new by construction — no run has ever prompted under a whole-function
+contract, so its figures will be comparable to nothing prior.
+
 **A numbered-listing edit contract was measured and not built: NO-GO** (2026-09-30, the
 `patch-representation` finding's § 6 lead). The lead was that a format which never asks the
 model to quote existing code — the prompt shows a numbered source listing, the model addresses
