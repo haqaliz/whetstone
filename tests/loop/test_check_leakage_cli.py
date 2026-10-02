@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from loop.test_check_leakage import _MEMBERS, _SURVIVOR, _heldout_document, _id, _run
+from loop.test_gate import _heldout_document as _gate_heldout_document
 from whetstone import cli
 from whetstone.loop import dataset, night
 
@@ -78,8 +79,13 @@ def test_a_leaked_run_exits_nonzero_and_names_the_task(
 def test_a_directory_that_is_not_a_run_is_a_usage_error(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """AC3: refusals are 2 and name what was wrong — never a traceback, never a leak verdict."""
-    run = _run(tmp_path / "loose", private=(_SURVIVOR,), ledger=False)
+    """AC3/AC4: refusals are 2 and name what was wrong — never a traceback, never a verdict.
+
+    CHANGED: a missing ledger alone no longer refuses (PRD requirement 2); a directory with
+    neither dataset nor ledger does.
+    """
+    run = tmp_path / "loose"
+    run.mkdir()
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
 
     code = cli.main(_argv(run, document))
@@ -87,7 +93,41 @@ def test_a_directory_that_is_not_a_run_is_a_usage_error(
 
     assert code == 2
     assert "whetstone check-leakage:" in captured.err
-    assert "ledger.json" in captured.err
+    assert "dataset.json" in captured.err
+
+
+def test_a_run_without_a_ledger_is_checked_and_says_so(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """PRD requirement 2: exit 0 on a clean ledger-less run, with the notice on stdout."""
+    run = _run(tmp_path / "loose", private=(_SURVIVOR,), ledger=False)
+    document = _heldout_document(tmp_path / "doc", _MEMBERS)
+
+    code = cli.main(_argv(run, document))
+    out = capsys.readouterr().out
+
+    assert code == 0, out
+    assert "ledger.json" in out and "absent" in out
+
+
+def test_a_night_001_shaped_run_exits_one_naming_both_ids(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC6: the real night's shape, through the door, is a named leak."""
+    ids = ("legacy-a-c6e4d4c4de87",) * 4 + ("legacy-a-34daf85182d5", "legacy-b-c3e132b7469b")
+    run = _run(tmp_path / "runs" / "night-001", private=ids, ledger=False)
+    members = ("donor-a-c6e4d4c4de87", *_MEMBERS[:9])
+    document = _gate_heldout_document(
+        tmp_path / "doc",
+        members,
+        corpus_ids=(*members, "donor-a-34daf85182d5", "donor-b-c3e132b7469b"),
+    )
+
+    code = cli.main(_argv(run, document))
+    out = capsys.readouterr().out
+
+    assert code == 1, out
+    assert "legacy-a-c6e4d4c4de87" in out and "donor-a-c6e4d4c4de87" in out
 
 
 def test_a_doctored_held_out_document_is_a_usage_error(

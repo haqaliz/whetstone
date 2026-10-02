@@ -375,14 +375,77 @@ def test_a_leaked_run_names_the_task_and_the_regression_it_is_evidence_of(
     )
 
 
-def test_a_directory_without_a_ledger_is_not_a_run(tmp_path: Path) -> None:
-    """AC3: refused by name — a leakage proof over an unidentified training set proves nothing."""
-    run = _run(tmp_path / "loose", private=(_id(7),), ledger=False)
+def test_a_directory_with_neither_dataset_nor_ledger_is_not_a_run(tmp_path: Path) -> None:
+    """AC4: nothing identifies the directory as a night's run, so it is refused by name."""
+    run = tmp_path / "empty"
+    run.mkdir()
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
 
     with pytest.raises(check_leakage.NotARun) as refusal:
         check_leakage.run_check(run, document)
-    assert run_ledger.LEDGER_FILE in str(refusal.value)
+    assert night.DATASET_FILE in str(refusal.value)
+
+
+def test_a_dataset_without_a_ledger_is_checked_and_says_so(tmp_path: Path) -> None:
+    """AC4 / PRD requirement 2: CHANGED from "a ledger-less directory is not a run".
+
+    Night #1 wrote a dataset and then raised before its ledger landed, so the check must
+    work on the one document that records what was trained on. It says the ledger was absent
+    rather than staying silent, and claims no more than that.
+    """
+    run = _run(tmp_path / "loose", private=(_SURVIVOR,), ledger=False)
+    document = _heldout_document(tmp_path / "doc", _MEMBERS)
+
+    report = check_leakage.run_check(run, document)
+    lines = check_leakage.disclosure(report)
+
+    assert report.clean is True and report.examples == 1
+    notice = [line for line in lines if run_ledger.LEDGER_FILE in line]
+    assert len(notice) == 1 and "absent" in notice[0], lines
+    assert "not" in notice[0] and "dataset" in notice[0], notice
+
+
+def test_a_dataset_with_a_ledger_carries_no_notice(tmp_path: Path) -> None:
+    """AC6: the existing behaviour is unchanged when the ledger is there."""
+    run = _run(tmp_path / "runs" / "night-1", private=(_SURVIVOR,))
+    document = _heldout_document(tmp_path / "doc", _MEMBERS)
+
+    lines = check_leakage.disclosure(check_leakage.run_check(run, document))
+
+    assert not any(run_ledger.LEDGER_FILE in line for line in lines), lines
+
+
+def test_a_present_ledger_is_still_validated(tmp_path: Path) -> None:
+    """A corrupt ledger refuses; only an absent one is tolerated."""
+    run = _run(tmp_path / "runs" / "night-1", private=(_id(7),))
+    (run / run_ledger.LEDGER_FILE).write_text("{not json", encoding="utf-8")
+    document = _heldout_document(tmp_path / "doc", _MEMBERS)
+
+    with pytest.raises(run_ledger.LedgerUnreadable):
+        check_leakage.run_check(run, document)
+
+
+def _night_001(tmp_path: Path) -> tuple[Path, Path]:
+    """A night-001-shaped run with no ledger: 4+1+1 private examples under the old names."""
+    ids = ("legacy-a-c6e4d4c4de87",) * 4 + ("legacy-a-34daf85182d5", "legacy-b-c3e132b7469b")
+    run = _run(tmp_path / "runs" / "night-001", private=ids, ledger=False)
+    members = ("donor-a-c6e4d4c4de87", *_MEMBERS[:9])
+    corpus = (*members, "donor-a-34daf85182d5", "donor-b-c3e132b7469b")
+    return run, _gate_heldout_document(tmp_path / "doc", members, corpus_ids=corpus)
+
+
+def test_a_night_001_shaped_run_is_leaked_by_identity(tmp_path: Path) -> None:
+    """AC6: the old names and the new names share an identity, and the check says so."""
+    run, document = _night_001(tmp_path)
+
+    report = check_leakage.run_check(run, document)
+    text = " ".join(check_leakage.disclosure(report))
+
+    assert report.clean is False
+    assert report.examples == 6 and report.leaked_examples == 4
+    assert report.overlap == ("donor-a-c6e4d4c4de87",)
+    assert "legacy-a-c6e4d4c4de87" in text and "donor-a-c6e4d4c4de87" in text
+    assert "donor-a-34daf85182d5" not in text and "donor-b-c3e132b7469b" not in text
 
 
 def test_a_dataset_that_does_not_declare_the_schema_is_refused(tmp_path: Path) -> None:

@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +139,10 @@ class LeakReport:
     #: Source A's examples and overlap.
     public: SourceLeak
 
+    #: Whether the run directory held no `ledger.json`. The check read the dataset alone and
+    #: says so; it is never a reason to pass or to fail.
+    ledger_absent: bool = False
+
     @property
     def examples(self) -> int:
         """Training examples across both sources — the denominator of the verdict sentence."""
@@ -202,18 +206,25 @@ def run_check(run: Path, heldout: Path) -> LeakReport:
     refuses before any comparison), and only then are the two sets compared. A check that
     read a doctored document and reported "clean" would be worse than no check.
     """
-    ledger = run / LEDGER_FILE
-    if not ledger.is_file():
+    dataset_path = run / DATASET_FILE
+    if not dataset_path.is_file():
         raise NotARun(
-            f"{str(run)!r} holds no {LEDGER_FILE!r}, so it is not a night-written run. "
-            "Refused rather than read for whatever is there: a leakage proof over an "
-            "unidentified training set proves nothing about any night"
+            f"{str(run)!r} holds no {DATASET_FILE!r}, so there is no training set to check "
+            "and nothing identifies it as a night-written run. Refused rather than read for "
+            "whatever is there"
         )
-    read_ledger(ledger)
+    # A ledger is validated when present and not required: a night can write its dataset and
+    # then raise before its ledger lands, and the dataset is the document that records what
+    # was trained on (PRD requirement 2). The absence is carried into the report, not hidden.
+    ledger = run / LEDGER_FILE
+    ledger_absent = not ledger.is_file()
+    if not ledger_absent:
+        read_ledger(ledger)
 
-    document = _read_dataset(run / DATASET_FILE)
-    training = _training_of(document, run / DATASET_FILE)
-    return check_overlap(training, read_heldout(heldout).membership)
+    document = _read_dataset(dataset_path)
+    training = _training_of(document, dataset_path)
+    report = check_overlap(training, read_heldout(heldout).membership)
+    return replace(report, ledger_absent=ledger_absent)
 
 
 def disclosure(report: LeakReport) -> tuple[str, ...]:
@@ -225,12 +236,15 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
     """
     subject = f"held-out membership: {report.heldout_count} task(s)"
     if report.examples == 0:
-        return (
-            "leakage: clean — the run has no training examples, so it is disjoint by truth "
-            "rather than by exclusion",
-            subject,
-            _source_line(report.private),
-            _source_line(report.public),
+        return _with_notice(
+            report,
+            (
+                "leakage: clean — the run has no training examples, so it is disjoint by truth "
+                "rather than by exclusion",
+                subject,
+                _source_line(report.private),
+                _source_line(report.public),
+            ),
         )
     verdict = (
         f"leakage: {'clean' if report.clean else 'LEAKED'} — {report.leaked_examples} of "
@@ -247,7 +261,18 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
             "there, before the contract is frozen. Fix the night that produced this run; do "
             "not exclude these examples after the fact"
         )
-    return tuple(lines)
+    return _with_notice(report, lines)
+
+
+def _with_notice(report: LeakReport, lines: Sequence[str]) -> tuple[str, ...]:
+    """The lines, with the ledger-absence notice appended when the run held no ledger."""
+    if not report.ledger_absent:
+        return tuple(lines)
+    return (
+        *lines,
+        f"notice: {LEDGER_FILE} was absent from the run; the training set was read from "
+        f"{DATASET_FILE} alone, and the run was not identified as complete by its ledger",
+    )
 
 
 def _source_line(leak: SourceLeak) -> str:
