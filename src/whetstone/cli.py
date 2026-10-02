@@ -588,7 +588,7 @@ def build_parser() -> argparse.ArgumentParser:
             "ids at its partition seam; this proves it, because an exclusion nobody checks is "
             "a claim — and the one claim this project cannot make on trust is that its "
             "headline was not measured on its own training data. A leak exits 1 and names the "
-            "task; a run that cannot be identified or a document that cannot be trusted exits "
+            "task; a run with no dataset.json or a document that cannot be trusted exits "
             "2. There is no flag that narrows either set: a leakage proof that could be turned "
             "green at the command line would prove nothing."
         ),
@@ -599,9 +599,9 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         metavar="<runs/id>",
         help=(
-            "a night's run directory. Its ledger identifies it as a night's run and its "
-            "dataset.json is the training set — what was actually trained on, which is the "
-            "only thing that can reach an adapter's weights"
+            "a night's run directory. Its dataset.json is required and is the training set — "
+            "what was actually trained on, which is the only thing that can reach an "
+            "adapter's weights; a ledger, if present, is validated"
         ),
     )
     check.add_argument(

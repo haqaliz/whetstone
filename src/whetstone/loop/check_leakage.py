@@ -253,11 +253,16 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
                 _source_line(report.public),
             ),
         )
+    # The denominator is the compared examples only: source A's are not matched against the
+    # membership, so counting them here would dilute a leak into a smaller-looking fraction.
+    compared = report.private.examples
     verdict = (
         f"leakage: {'clean' if report.clean else 'LEAKED'} — {report.leaked_examples} of "
-        f"{report.examples} training examples touch a held-out task"
+        f"{compared} training {_examples(compared)} {_touch(compared)} a held-out task"
     )
     lines = [verdict, subject, _source_line(report.private), _source_line(report.public)]
+    if report.clean:
+        lines.append(_RESIDUAL)
     if not report.clean:
         lines.append(f"leaked task(s): {', '.join(report.overlap)}")
         pairs = [pair for leak in (report.private, report.public) for pair in leak.matched]
@@ -269,6 +274,24 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
             "not exclude these examples after the fact"
         )
     return _with_notice(report, lines)
+
+
+#: What a clean verdict rules out, and what it does not. Identity is all the check compares.
+_RESIDUAL = (
+    "This rules out a shared task identity between source B's training examples and the "
+    "held-out membership: no shared task identity was found. It is not a claim of freedom "
+    "from contamination: near-duplicate tasks under different identities are not detected"
+)
+
+
+def _examples(count: int) -> str:
+    """'example' for exactly one, 'examples' otherwise."""
+    return "example" if count == 1 else "examples"
+
+
+def _touch(count: int) -> str:
+    """The verb that agrees with 'of <count> training example(s)'."""
+    return "touches" if count == 1 else "touch"
 
 
 def _with_notice(report: LeakReport, lines: Sequence[str]) -> tuple[str, ...]:
@@ -286,14 +309,15 @@ def _source_line(leak: SourceLeak) -> str:
     """One source's counts over its own denominator, named even when empty."""
     if leak.source != PRIVATE:
         return (
-            f"source A (public): {leak.examples} training examples, not compared — the "
-            "held-out membership is source B's"
+            f"source A (public): {leak.examples} training {_examples(leak.examples)}, not "
+            "compared — the held-out membership is source B's"
         )
     label = "source B (private)"
     named = ", ".join(leak.overlap) if leak.overlap else "none"
     return (
-        f"{label}: {leak.leaked_examples} of {leak.examples} training examples touch a "
-        f"held-out task; leaked task(s): {named}"
+        f"{label}: {leak.leaked_examples} of {leak.examples} training "
+        f"{_examples(leak.examples)} {_touch(leak.examples)} a held-out task; "
+        f"leaked task(s): {named}"
     )
 
 

@@ -151,7 +151,8 @@ def test_source_a_is_stated_as_not_compared_not_as_measured_clean() -> None:
         "WHY THIS IS A FAILURE: the source A line reports a count of examples touching a "
         "held-out task, but source A is never compared against the membership"
     )
-    assert "1 training example" in line, line
+    assert "1 training example," in line, line
+    assert "1 training examples" not in line, line
 
 
 def test_the_same_identity_in_the_public_source_is_not_an_overlap() -> None:
@@ -226,6 +227,47 @@ def test_a_held_out_member_without_an_identity_is_refused() -> None:
         check_leakage.check_overlap(_training(private=(_id(7),)), (_id(1), "legacy-name"))
 
     assert "legacy-name" in str(refusal.value)
+
+
+def test_the_unrecognised_identity_refusal_names_the_cause_and_the_fix() -> None:
+    """AC3: the message says why (a re-mint renames ids) and what fixes it (an amendment)."""
+    with pytest.raises(check_leakage.UnrecognisedIdentity) as refusal:
+        check_leakage.check_overlap(_training(private=("t-07",)), _HELDOUT)
+
+    text = str(refusal.value)
+    assert "t-07" in text and "re-mint" in text and "amendment" in text, text
+
+
+def test_a_clean_disclosure_states_what_it_does_not_rule_out() -> None:
+    """The clean verdict is about shared identity only, and says so."""
+    report = check_leakage.check_overlap(_training(private=(_id(7),)), _HELDOUT)
+    text = " ".join(check_leakage.disclosure(report))
+
+    assert "no shared task identity" in text, text
+    assert "no contamination" not in text.lower(), text
+    assert "near-duplicate" in text, text
+
+
+def test_the_verdict_denominator_counts_only_compared_examples() -> None:
+    """Source A examples are not compared, so they are not in the verdict's denominator."""
+    report = check_leakage.check_overlap(
+        _training(private=(_id(2), _id(9)), public=("a-1", "a-2", "a-3")), _HELDOUT
+    )
+    verdict = check_leakage.disclosure(report)[0]
+
+    assert "1 of 2 training examples" in verdict, verdict
+    assert "of 5" not in verdict, verdict
+
+
+def test_the_counts_are_grammatical_for_one_example() -> None:
+    """'1 training example', never '1 training examples', in the verdict and the source line."""
+    report = check_leakage.check_overlap(_training(private=(_id(9),)), _HELDOUT)
+    text = "\n".join(check_leakage.disclosure(report))
+
+    assert "0 of 1 training example " in text, text
+    assert "1 training examples" not in text, text
+    many = check_leakage.check_overlap(_training(private=(_id(9), _id(8))), _HELDOUT)
+    assert "0 of 2 training examples" in "\n".join(check_leakage.disclosure(many))
 
 
 def test_an_empty_training_set_is_disjoint_by_truth() -> None:

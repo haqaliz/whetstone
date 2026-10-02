@@ -48,7 +48,7 @@ def test_a_disjoint_run_exits_zero_and_discloses_both_sources(
 
     assert code == 0, out
     assert "clean" in out
-    assert "0 of 3 training examples" in out, out
+    assert "0 of 2 training examples" in out, out
     assert "source B (private)" in out and "source A (public)" in out, (
         "WHY THIS IS A FAILURE: the output names one source. Both sources are always "
         "published together (PREREGISTRATION.md:142-147), and a check that reported only "
@@ -239,3 +239,14 @@ def test_a_re_minted_leak_exits_one_and_an_unrecognised_id_exits_two(
     unnamed = _run(tmp_path / "runs" / "unnamed", private=("t-07",))
     assert cli.main(_argv(unnamed, document)) == 2
     assert "t-07" in capsys.readouterr().err
+
+
+def test_the_help_says_a_run_with_no_dataset_exits_two(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The help names the real refusal (no dataset.json), not 'cannot be identified'."""
+    cli.main(["check-leakage", "--help"])
+    text = " ".join(capsys.readouterr().out.split())
+
+    assert "no dataset.json" in text, text
+    assert "cannot be identified" not in text, text
