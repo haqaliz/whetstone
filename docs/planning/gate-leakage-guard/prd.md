@@ -59,7 +59,7 @@ Should-have
   gate's decision rule are untouched; `unverified == 0` is still required, `UNVERIFIED` is
   still never a win, and nothing narrows § 2 / § 8.3.
 - The leakage check is offline, deterministic, and off the reward path.
-- Exit codes are unchanged: check-leakage 0/1/2; gate 0 promoted, 1 rejected, 3 UNVERIFIED,
+- Exit codes: check-leakage 0/1/2 (see Amendment 2 for the one case that moves to 2); gate 0 promoted, 1 rejected, 3 UNVERIFIED,
   2 refusal.
 - Adding fields to the gate record changes its schema; the version and any digest over it
   must be handled deliberately (open question below).
@@ -92,6 +92,16 @@ Should-have
   operator-run retrain), recorded in the finding as the next unit.
 - **The finding is not reproducible without gitignored artefacts** (`runs/nights/night-001/`);
   it says so.
+
+## Amendment 2 — "not checked" exits 2 (2026-10-03, user-approved)
+
+A `check-leakage` run that compared nothing (a training set with no source B examples, so no
+identity could be matched against the held-out set) is **a refusal, exit 2**, not exit 0. The
+review of the disclosure wording found an exit code that cannot tell "checked" from "nothing
+compared" is the wrong signal for a guard the runbook halts on. Exit 0 now means exactly one
+thing: examples were compared and none shared a task identity. A training set with no examples
+at all stays "disjoint by truth" (exit 0) — nothing trained, nothing to leak. This supersedes the
+earlier "exit codes unchanged" line for this one case; the 0/1/2 meanings are otherwise as before.
 
 ## Out of Scope
 

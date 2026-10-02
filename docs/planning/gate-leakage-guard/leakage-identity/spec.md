@@ -26,3 +26,7 @@
 ## Amendments after the review gate
 - AC3's refusal message names the re-mint cause and the need for an amendment.
 - The output states the residual: "no shared task identity" is not "no contamination".
+
+## Amendment 2 (2026-10-03, user-approved)
+- AC7: a source-A-only training set (no source B example) exits 2 with a refusal stating that
+  nothing was compared; it never exits 0. A training set with zero examples remains exit 0.
