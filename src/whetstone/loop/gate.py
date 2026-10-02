@@ -55,6 +55,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -313,6 +314,16 @@ def refuse_cross_backend(
     )
 
 
+class DatasetDigestUnrecorded(ValueError):
+    """A trained checkpoint whose provenance does not record a well-formed dataset digest.
+
+    `sft.write_checkpoint` writes the digest of the training set into `provenance.json`. A
+    trained candidate without one cannot be audited against the held-out split, so the gate
+    refuses rather than record an empty or invented value. The refusal names the checkpoint
+    directory and the field.
+    """
+
+
 #: Every refusal `run_gate` raises that is an **operator's error** rather than a finding: a
 #: runs root pointed at a published directory, a checkpoint that cannot be re-hashed, an
 #: untrained checkpoint passed as the candidate, a held-out document that cannot be read or
@@ -326,6 +337,7 @@ REFUSALS: tuple[type[Exception], ...] = (
     CheckpointUnverified,
     UntrainedCandidate,
     MismatchedBackend,
+    DatasetDigestUnrecorded,
     HeldoutSchemaError,
     HeldoutDigestMismatch,
     EmptyHeldout,
@@ -1466,6 +1478,32 @@ def _checkpoint_base(checkpoint: Checkpoint) -> Mapping[str, str]:
     )
     base = document["base"]
     return {"repo_id": str(base["repo_id"]), "revision": str(base["revision"])}
+
+
+_DIGEST_SHAPE = re.compile(r"[0-9a-f]{64}")
+
+
+def _checkpoint_dataset_digest(checkpoint: Checkpoint) -> str | None:
+    """The digest of the dataset that trained a checkpoint, read from its provenance.
+
+    `None` only for an untrained checkpoint, which was trained on nothing. A trained checkpoint
+    whose `dataset_digest` is missing, or is not the 64-hex sha256 `sft` writes, raises
+    `DatasetDigestUnrecorded`; never an empty string and never `None`.
+    """
+    if checkpoint.untrained:
+        return None
+    document: Any = json.loads(
+        (checkpoint.directory / "provenance.json").read_text(encoding="utf-8")
+    )
+    recorded = document.get("dataset_digest") if isinstance(document, dict) else None
+    if not isinstance(recorded, str) or _DIGEST_SHAPE.fullmatch(recorded) is None:
+        raise DatasetDigestUnrecorded(
+            f"checkpoint {str(checkpoint.directory)!r} is trained but its provenance.json "
+            f"records no well-formed `dataset_digest` (found {recorded!r}; expected a 64-digit "
+            "lowercase sha256). Without it the promotion record cannot name what trained the "
+            "candidate, so the gate refuses rather than invent one"
+        )
+    return recorded
 
 
 def _score_side(
