@@ -250,3 +250,26 @@ def test_the_help_says_a_run_with_no_dataset_exits_two(
 
     assert "no dataset.json" in text, text
     assert "cannot be identified" not in text, text
+
+
+def test_a_source_a_only_run_exits_zero_but_says_nothing_was_compared(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run = _run(tmp_path / "runs" / "night-1", public=("pallets__flask-4045",))
+    document = _heldout_document(tmp_path / "doc", _MEMBERS)
+
+    code = cli.main(_argv(run, document))
+    out = capsys.readouterr().out
+
+    assert code == 0, out
+    assert "nothing was compared" in out and "clean" not in out, out
+
+
+def test_the_description_states_the_identity_only_limit(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli.main(["check-leakage", "--help"])
+    text = " ".join(capsys.readouterr().out.split())
+
+    assert "12-hex" in text and "near-duplicate" in text, text
+    assert "an id it cannot read" in text, text

@@ -242,6 +242,18 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
     reading as an ordinary pass.
     """
     subject = f"held-out membership: {report.heldout_count} task(s)"
+    if report.private.examples == 0 and report.examples > 0:
+        return _with_notice(
+            report,
+            (
+                "leakage: not checked — the run has no source B training examples, so "
+                "nothing was compared against the held-out membership; source A examples "
+                "are never compared",
+                subject,
+                _source_line(report.private),
+                _source_line(report.public),
+            ),
+        )
     if report.examples == 0:
         return _with_notice(
             report,
@@ -313,6 +325,8 @@ def _source_line(leak: SourceLeak) -> str:
             "compared — the held-out membership is source B's"
         )
     label = "source B (private)"
+    if leak.examples == 0:
+        return f"{label}: no training examples, so nothing to compare"
     named = ", ".join(leak.overlap) if leak.overlap else "none"
     return (
         f"{label}: {leak.leaked_examples} of {leak.examples} training "

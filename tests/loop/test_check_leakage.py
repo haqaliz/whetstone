@@ -606,3 +606,14 @@ def test_the_leakage_path_imports_no_inference_library(relative: str) -> None:
         f"{relative} contains no import at all, so the assertion above holds for a file "
         "nothing was checked against (`CONTRIBUTING.md:60`)."
     )
+
+
+def test_a_source_a_only_run_is_not_reported_clean() -> None:
+    """Nothing was compared, so the disclosure says so and never says 'clean' or 'disjoint'."""
+    report = check_leakage.check_overlap(_training(public=("a-1", "a-2")), _HELDOUT)
+    text = "\n".join(check_leakage.disclosure(report))
+
+    assert report.clean is True  # the exit code is unchanged
+    assert "clean" not in text and "disjoint by truth" not in text, text
+    assert "nothing was compared" in text and "no source B training examples" in text, text
+    assert "0 of 0" not in text, text

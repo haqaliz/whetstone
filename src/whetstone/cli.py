@@ -581,16 +581,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     check = commands.add_parser(
         "check-leakage",
-        help="prove a night's training set does not touch the held-out set",
+        help="check a night's training set shares no task identity with the held-out set",
         description=(
-            "Compare a night's training set with the held-out membership and exit 0 iff they "
-            "are disjoint (docs/ROADMAP.md:449-450). The night already excludes the held-out "
+            "Compare a night's source B training set with the held-out membership by task "
+            "identity (the trailing 12-hex of each id) and exit 0 iff no identity is shared "
+            "(docs/ROADMAP.md:449-450). Identity is all it compares: near-duplicate tasks "
+            "under different identities are not detected. The night already excludes the held-out "
             "ids at its partition seam; this proves it, because an exclusion nobody checks is "
             "a claim — and the one claim this project cannot make on trust is that its "
             "headline was not measured on its own training data. A leak exits 1 and names the "
-            "task; a run with no dataset.json or a document that cannot be trusted exits "
-            "2. There is no flag that narrows either set: a leakage proof that could be turned "
-            "green at the command line would prove nothing."
+            "task; a run with no dataset.json, an id it cannot read, or a document that "
+            "cannot be trusted exits 2. There is no flag that narrows either set: a check "
+            "that could be turned green at the command line would prove nothing."
         ),
     )
     check.add_argument(
