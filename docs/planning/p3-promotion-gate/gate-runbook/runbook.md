@@ -22,7 +22,7 @@ liveness measurement.
 
 ## What the gate decides, and what it does not
 
-The rule is fixed by `docs/ROADMAP.md:420-427` and this sheet cannot soften it:
+The rule is fixed by `docs/ROADMAP.md:431-433` and this sheet cannot soften it:
 
 ```
 promote iff  solved_new > solved_old  AND  regressed == 0  AND  unverified == 0
@@ -54,6 +54,16 @@ the runbook-resolved candidate the night runbook retained on its evidence
 base the pre-registration has pinned. Materializing it as the gate's incumbent is not a base
 selection, and § 7.3 closes only by a Type 1 amendment before the measurement it governs runs.
 
+**The candidate's night, and how it is found.** The gate takes a checkpoint and `check-leakage`
+takes a run directory, and nothing on either command line ties the two. The tie is the dataset
+digest: the night that trained the candidate is the one where the checkpoint's `provenance.json`
+`dataset_digest` equals the night's `dataset.json` `digest`. Read both before Step 3 and write
+the night's id into the operator's log; a leakage proof over any other night says nothing about
+this candidate. The tie is **recorded, not verified**: `provenance.json` sits outside the
+checkpoint's file-hash seal, so it states what the writer recorded about its dataset, and no
+re-hash proves it. Here the candidate is `night-002`, and its night is
+`$REPO/runs/nights/night-002` — the home the night door writes to.
+
 Both are re-hashed by `verify_checkpoint` before anything is compared, so the decision is a
 statement about the bytes on disk and not about the directory names above. A checkpoint whose
 hash does not match its provenance refuses the run by name (exit 2).
@@ -61,7 +71,7 @@ hash does not match its provenance refuses the run by name (exit 2).
 The first gated evaluation therefore needs **one** night: the candidate is night #1's
 checkpoint and the incumbent is the untrained base the night started from. This is the
 gate's incumbent, **not** the § 3 baseline measurement: different roles, different homes
-(`docs/ROADMAP.md:678-683`) — if the two figures disagree it is published as a finding,
+(`docs/ROADMAP.md:688-693`) — if the two figures disagree it is published as a finding,
 never reconciled.
 
 ## Before the gate
@@ -79,6 +89,8 @@ never reconciled.
    candidate is spent on it.
 5. **Materialize the untrained incumbent** (Step 2 below) — the checkpoint writer, from the
    weights root's provenance.
+6. **Prove the candidate's night did not leak** (Step 3 below) — before the gate, so a candidate
+   that trained on the held-out membership is never scored against it.
 
 ## Step 1 — verify the machinery on the fixture pair
 
@@ -109,7 +121,39 @@ uv run python -c "from pathlib import Path; from whetstone.loop.ledger import to
 The directory must be empty at materialization — the writer refuses a checkpoint that would
 record an adapter beside a base that never trained.
 
-## Step 3 — the gated evaluation
+## Step 3 — prove the candidate's night did not leak
+
+The gate scores the held-out membership; this is what says that membership was never trained on,
+and it runs **before** the gate: a candidate that trained on the held-out tasks, scored against
+them, writes a promotion record for a comparison that was never fair. `docs/ROADMAP.md:459-460`
+makes the clean exit a P3 exit criterion in its own right. Run it over the night found above:
+
+```bash
+uv run whetstone check-leakage \
+  --run $REPO/runs/nights/night-002 \
+  --heldout $REPO/tasks/heldout/source-b.json
+```
+
+**Halt on any non-zero exit.** The gate is not run until this exits 0.
+
+- **Exit 0** — source B training examples were compared with the held-out membership by task
+  identity (the trailing 12-hex of each id), and none shared one. A clean check means
+  "no shared task identity", never "no contamination": a near-duplicate task — the same
+  function, an adjacent commit — under a different identity is not detected. A run without a
+  `ledger.json` is still checked and carries a notice saying so; read it into the log.
+- **Exit 1** — a leak, named by task. It is **evidence of a regression in the night's partition
+  seam**: the fix is in the night that produced the run, and dropping the leaked examples after
+  the fact would leave the defect in place and print a clean result. The candidate is not gated.
+- **Exit 2** — a refusal: a run with no `dataset.json`, an id with no recognisable sha12 (a
+  re-mint changed the id scheme, and an amendment is needed before the gate may run), a document
+  that cannot be trusted — and a run that compared nothing (no source B training example) is
+  exit 2 as well, because no identity was ever checked. Exit 2 is a halt. Fix the named cause
+  and re-run the check; never proceed to the gate on it.
+
+A refusal is never a pass. A check that did not run, or ran and compared nothing, is "not
+checked", and a promotion whose leakage was not checked is a promotion nobody may quote.
+
+## Step 4 — the gated evaluation
 
 **Run with CWD at the primary checkout (`$REPO`):**
 
@@ -131,7 +175,8 @@ uv run whetstone gate \
 ```
 
 The promotion record lands at `runs/promotions/promote-001.json` — gitignored local evidence,
-never published. It carries both re-hashed digests, the held-out document's digest, both sides'
+never published. Its schema is `whetstone-promotion/2`. It carries both re-hashed digests, each
+side's `training` block, the held-out document's digest, both sides'
 counts over both denominators, the decision with every count it was read from, the retry
 discipline's three facts, the tool versions, and `recorded_on`.
 
@@ -139,14 +184,16 @@ discipline's three facts, the tool versions, and `recorded_on`.
 
 1. **Exit 2 — a refusal.** The message names the cause: a checkpoint whose bytes do not match
    its provenance, a held-out document whose digest does not match its contents, a membership id
-   that matches no loaded task, or weights whose provenance the disk does not support. Fix the
+   that matches no loaded task, weights whose provenance the disk does not support, or a trained
+   candidate or incumbent whose recorded dataset digest cannot be read — in which case no
+   record is written. Fix the
    named thing and re-run with a **new** `--run-id`. Do not edit a document to make a refusal go
    away; a digest mismatch means the document was changed after it was sealed, and the response
    is to find out by whom.
 2. **Exit 3 — `UNVERIFIED`.** The evaluation did not compare: at least one held-out task reached
    no verdict on one side, and it survived the retry budget of R = 3. This is a **published
    outcome, not a rerun**. Record it, read the liveness line, and treat the unverified set as the
-   finding: `docs/ROADMAP.md:441-443` fixes the response — *if the gate proves unable to fire,
+   finding: `docs/ROADMAP.md:451-453` fixes the response — *if the gate proves unable to fire,
    the fix is a more reliable sandbox, never a looser gate.* Re-running until an evaluation
    happens to verify is selecting on the outcome, and it would turn the honest third exit into a
    slower way of promoting.
@@ -167,7 +214,7 @@ retries: R=3, <spent> spent over <n> (side, task) pair(s); <u> of <d> held-out t
 without a verdict
 ```
 
-`docs/ROADMAP.md:441-442` makes liveness itself a measurement, so this line is read and written
+`docs/ROADMAP.md:451-452` makes liveness itself a measurement, so this line is read and written
 into the operator's log every time — the unverified count over its denominator, never as a
 proportion. A budget spent in full with tasks still unverified is a fact about the machine; a
 budget never spent is a fact about the run. The two look identical in an exit code and different
@@ -176,22 +223,6 @@ in this line.
 `R = 3` is the declared constant (`gate.RETRY_COUNT`), pinned by `PREREGISTRATION.md` § 10.8
 (Type 1, 2026-08-25, closing § 7.2). It is not a flag: revising it needs a further dated
 amendment grounded in a measured unverified rate, never a command-line choice.
-
-## Step 4 — prove the night did not leak
-
-The gate scores the held-out membership; this is what says that membership was never trained on.
-Run it over the night that produced the **candidate**:
-
-```bash
-uv run whetstone check-leakage \
-  --run $REPO/runs/night-002 \
-  --heldout $REPO/tasks/heldout/source-b.json
-```
-
-Exit 0 is required. Exit 1 names the leaked task and is **evidence of a regression in the
-night's partition seam** — the fix is in the night that produced the run, and dropping the
-leaked examples after the fact would leave the defect in place and print a clean result. A
-promotion whose leakage was never checked is a promotion nobody may quote.
 
 ## Step 5 — read the record back
 
@@ -203,6 +234,13 @@ Into the operator's log, from the record itself and never from memory:
 
 - the decision and its three terms (`solved_new`, `solved_old`, `regressed`, `unverified`), each
   over the shared denominator;
+- the schema — it must be `whetstone-promotion/2`; a `/1` record is refused by every reader,
+  never upgraded;
+- each side's `training` block — `dataset_digest`, `base_repo_id`, `base_revision`. The
+  candidate's `dataset_digest` must equal the night's `dataset.json` `digest` that Step 3
+  checked; the untrained incumbent's is an explicit `null`, because nothing trained it. This
+  block is **recorded** provenance, copied from `provenance.json`, which is outside the
+  checkpoint's file-hash seal — read it as what the writer recorded, never as verified;
 - both checkpoint digests, as re-hashed — the incumbent's is the constant untrained digest
   (sha256 over the empty file set, the same for every untrained base), so the record is read
   by role and by base identity, never by digest equality;
@@ -212,6 +250,14 @@ Into the operator's log, from the record itself and never from memory:
   can be built under the declared budget, the exclusion sealed in the document's rule digest;
 - `retry_count`, `retries_used`, and `unverified_after_retries`;
 - source A's counts beside source B's, both denominators disclosed.
+
+## Who writes the finding
+
+The finding is written by the operator, from the promotion record and the `check-leakage`
+output only — both quoted verbatim, each with its exit code, and nothing remembered or
+re-derived beside them. It lives under `docs/planning/`, never `reports/`: a gated evaluation
+publishes no figure, and the counts stay in the gitignored record. A finding that halted at
+Step 3 says so and says that no gate was run.
 
 ## What this sheet does not authorise
 
