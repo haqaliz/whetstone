@@ -1,6 +1,6 @@
 """The leakage proof: a night's training set and the held-out membership must not touch.
 
-`docs/ROADMAP.md:449-450` makes this a P3 exit criterion in its own right — *"`uv run
+`docs/ROADMAP.md:459-460` makes this a P3 exit criterion in its own right — *"`uv run
 whetstone check-leakage` exits 0 — zero overlap between the training set and the held-out
 set"* — and it is deliberately separate from the exclusion that prevents the overlap. The
 night already drops the held-out ids at the partition seam, before the contract is frozen;
@@ -15,23 +15,33 @@ this repository:
   something is wrong and nothing about what; the fix for a leak lives in the night that
   produced it, and the id is how that night is found.
 - **Both sources are reported together** (`PREREGISTRATION.md:142-147`), each over its own
-  denominator (`:157`). The membership is source B's, so source A's overlap is expected to be
-  empty — and it is measured rather than assumed, because "that cannot happen" is how a
-  finding goes unnoticed.
+  denominator (`:157`). The membership is source B's and identity matching applies to
+  source B only: source A's examples are counted and disclosed as *not compared*, never as a
+  measured zero, because a structural constant printed as a count reads as a measurement.
+- **Exit 0 means exactly one thing:** source B examples were compared and none shared a task
+  identity. A training set with source A examples and no source B example compared nothing and
+  is a refusal (exit 2, Amendment 2 of the gate-leakage-guard PRD); a training set with no
+  example at all stays disjoint by truth.
+
+**The run input is the dataset document; the ledger is optional.** `dataset.json` is
+required, the ledger is validated when present, and a run without one is checked and says so
+in a notice (a night can write its dataset and raise before its ledger lands).
 
 **The subject is the dataset document, not the ledger's task set.** `runs/<id>/dataset.json`
 records what was actually trained on — the strict-PASS selection — and the ledger's task set
 records what was *considered*. Only the first can leak into an adapter's weights.
 
-This module prevents nothing. If it ever exits nonzero, the finding is a regression in the
-night's partition seam, and the disclosure says so in those words rather than merely
-reporting a number.
+This module prevents nothing. If it ever exits nonzero, the disclosure names two possible
+causes and asserts neither: the night's partition seam failed to exclude held-out ids, or
+the held-out document was derived or re-derived after the night ran. It says so in those
+words rather than merely reporting a number.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -55,12 +65,12 @@ SOURCES = (PRIVATE, PUBLIC)
 
 
 class NotARun(ValueError):
-    """The directory named is not a night-written run.
+    """The directory named holds no `dataset.json`, so there is no training set to check.
 
-    Refused rather than read for what happens to be there: a directory holding a
-    `dataset.json` and nothing else could be anything — a copy, a hand-made fixture, an
-    aborted run — and a leakage proof over an unidentified training set proves nothing about
-    any night.
+    Refused rather than read as an empty training set: an absent dataset and a night that
+    trained on nothing are different facts, and only the second is disjoint by truth. A
+    missing ledger alone is not a refusal; the dataset is the document that records what was
+    trained on.
     """
 
 
@@ -77,12 +87,35 @@ class DatasetUnreadable(ValueError):
     """The run's dataset document could not be read as the schema it must declare."""
 
 
+class UnrecognisedIdentity(ValueError):
+    """A task id carries no trailing 12-hex identity, so it cannot be matched by identity.
+
+    Refused rather than compared as a string: a corpus re-mint renames ids (`legacy-a-X` became
+    `donor-a-X`) and keeps the trailing identity, so an exact-string match calls a renamed
+    leak clean. An id this check cannot read an identity from is an id it cannot prove
+    disjoint, and the fix is an amendment that says how the id maps, not a looser match.
+    """
+
+
+class NothingCompared(ValueError):
+    """The training set holds source A examples and no source B example, so nothing was compared.
+
+    Identity matching is source B's alone, so such a run has no example the held-out membership
+    could have touched. Refused rather than reported: an exit code that cannot tell "checked"
+    from "nothing compared" is the wrong signal for a guard the runbook halts on
+    (`docs/planning/gate-leakage-guard/prd.md`, Amendment 2). A training set with no example at
+    all is a different fact: nothing trained, nothing to leak, disjoint by truth.
+    """
+
+
 #: What the CLI turns into a usage error rather than a traceback: everything an operator can
 #: fix by retyping the command or by pointing at a different directory.
 REFUSALS: tuple[type[Exception], ...] = (
     NotARun,
     UnknownSource,
     DatasetUnreadable,
+    UnrecognisedIdentity,
+    NothingCompared,
     LedgerUnreadable,
     EmptyHeldout,
     HeldoutSchemaError,
@@ -109,6 +142,10 @@ class SourceLeak:
     #: leaked task can have been trained on several times.
     leaked_examples: int
 
+    #: Each distinct (training id, held-out id) pair that matched on identity, sorted. They
+    #: differ in name when a re-mint renamed the task, so both are named.
+    matched: tuple[tuple[str, str], ...] = ()
+
 
 @dataclass(frozen=True)
 class LeakReport:
@@ -122,6 +159,10 @@ class LeakReport:
 
     #: Source A's examples and overlap.
     public: SourceLeak
+
+    #: Whether the run directory held no `ledger.json`. The check read the dataset alone and
+    #: says so; it is never a reason to pass or to fail.
+    ledger_absent: bool = False
 
     @property
     def examples(self) -> int:
@@ -162,9 +203,21 @@ def check_overlap(
             "the denominator or be counted under a source they are not from"
         )
     members = set(heldout_membership)
-    leaks = {
-        source: _leak_of(source, training.get(source, ()), members) for source in SOURCES
-    }
+    by_identity: dict[str, str] = {}
+    for member in sorted(members):
+        by_identity.setdefault(_identity(member), member)
+    # The membership is source B's, so only the private source is matched against it; the
+    # public ids carry no such identity and are counted as examples, never compared.
+    for task_id in training.get(PRIVATE, ()):
+        _identity(task_id)
+    if not training.get(PRIVATE) and any(training.get(source) for source in SOURCES):
+        raise NothingCompared(
+            "the training set has no source B example, so nothing was compared against the "
+            "held-out membership (source A examples are never compared) and no verdict was "
+            "reached. Refused rather than reported clean: exit 0 means source B examples were "
+            "compared and none shared a task identity"
+        )
+    leaks = {source: _leak_of(source, training.get(source, ()), by_identity) for source in SOURCES}
     return LeakReport(
         heldout_count=len(members),
         private=leaks[PRIVATE],
@@ -175,24 +228,34 @@ def check_overlap(
 def run_check(run: Path, heldout: Path) -> LeakReport:
     """Read a night's training set and a held-out document, and compare them.
 
-    The order is the design: the run is identified before it is read (a directory without a
-    ledger is not a night's run, whatever else it holds), the held-out document goes through
+    The contract: `dataset.json` is required (without it there is nothing to check); the
+    ledger is optional, validated when present, and its absence is disclosed in a notice. The
+    order is the design: the dataset is located before anything is read, the held-out
+    document goes through
     aspect 1's fail-closed loader by identity (a doctored membership or a digest mismatch
     refuses before any comparison), and only then are the two sets compared. A check that
     read a doctored document and reported "clean" would be worse than no check.
     """
-    ledger = run / LEDGER_FILE
-    if not ledger.is_file():
+    dataset_path = run / DATASET_FILE
+    if not dataset_path.is_file():
         raise NotARun(
-            f"{str(run)!r} holds no {LEDGER_FILE!r}, so it is not a night-written run. "
-            "Refused rather than read for whatever is there: a leakage proof over an "
-            "unidentified training set proves nothing about any night"
+            f"{str(run)!r} holds no {DATASET_FILE!r}, so there is no training set to check "
+            "and nothing to prove disjoint from the held-out set. Refused rather than treated "
+            "as an empty training set: a night with no dataset is not a night that trained on "
+            "nothing"
         )
-    read_ledger(ledger)
+    # A ledger is validated when present and not required: a night can write its dataset and
+    # then raise before its ledger lands, and the dataset is the document that records what
+    # was trained on (PRD requirement 2). The absence is carried into the report, not hidden.
+    ledger = run / LEDGER_FILE
+    ledger_absent = not ledger.is_file()
+    if not ledger_absent:
+        read_ledger(ledger)
 
-    document = _read_dataset(run / DATASET_FILE)
-    training = _training_of(document, run / DATASET_FILE)
-    return check_overlap(training, read_heldout(heldout).membership)
+    document = _read_dataset(dataset_path)
+    training = _training_of(document, dataset_path)
+    report = check_overlap(training, read_heldout(heldout).membership)
+    return replace(report, ledger_absent=ledger_absent)
 
 
 def disclosure(report: LeakReport) -> tuple[str, ...]:
@@ -200,50 +263,124 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
 
     A clean night and a night that trained on nothing both satisfy the check, and they are
     different facts about the night — so the empty case says so in its own words rather than
-    reading as an ordinary pass.
+    reading as an ordinary pass. A run with source A examples only never reaches here: it
+    compared nothing and `check_overlap` refuses it (`NothingCompared`).
     """
     subject = f"held-out membership: {report.heldout_count} task(s)"
     if report.examples == 0:
-        return (
-            "leakage: clean — the run has no training examples, so it is disjoint by truth "
-            "rather than by exclusion",
-            subject,
-            _source_line(report.private),
-            _source_line(report.public),
+        return _with_notice(
+            report,
+            (
+                "leakage: clean — the run has no training examples, so it is disjoint by truth "
+                "rather than by exclusion",
+                subject,
+                _source_line(report.private),
+                _source_line(report.public),
+            ),
         )
+    # The denominator is the compared examples only: source A's are not matched against the
+    # membership, so counting them here would dilute a leak into a smaller-looking fraction.
+    compared = report.private.examples
     verdict = (
         f"leakage: {'clean' if report.clean else 'LEAKED'} — {report.leaked_examples} of "
-        f"{report.examples} training examples touch a held-out task"
+        f"{compared} training {_examples(compared)} {_touch(compared)} a held-out task"
     )
     lines = [verdict, subject, _source_line(report.private), _source_line(report.public)]
+    if report.clean:
+        lines.append(_RESIDUAL)
     if not report.clean:
         lines.append(f"leaked task(s): {', '.join(report.overlap)}")
+        pairs = [pair for leak in (report.private, report.public) for pair in leak.matched]
+        for trained, held in sorted(set(pairs)):
+            lines.append(f"matched by identity: trained on {trained}, held out as {held}")
         lines.append(
-            "This is a regression in the night's partition seam: held-out ids are excluded "
-            "there, before the contract is frozen. Fix the night that produced this run; do "
-            "not exclude these examples after the fact"
+            "A leak means one of two things, and the operator must find out which: (a) the "
+            "night's partition seam failed to exclude held-out ids, or (b) the held-out "
+            "document was derived or re-derived after the night ran (e.g. a corpus re-mint), "
+            "so the night could not have excluded these ids. Either way the candidate "
+            "trained on these tasks is not gated; do not exclude these examples after the fact"
         )
-    return tuple(lines)
+    return _with_notice(report, lines)
+
+
+#: What a clean verdict rules out, and what it does not. Identity is all the check compares.
+_RESIDUAL = (
+    "This rules out a shared task identity between source B's training examples and the "
+    "held-out membership: no shared task identity was found. It is not a claim of freedom "
+    "from contamination: near-duplicate tasks under different identities are not detected"
+)
+
+
+def _examples(count: int) -> str:
+    """'example' for exactly one, 'examples' otherwise."""
+    return "example" if count == 1 else "examples"
+
+
+def _touch(count: int) -> str:
+    """The verb that agrees with 'of <count> training example(s)'."""
+    return "touches" if count == 1 else "touch"
+
+
+def _with_notice(report: LeakReport, lines: Sequence[str]) -> tuple[str, ...]:
+    """The lines, with the ledger-absence notice appended when the run held no ledger."""
+    if not report.ledger_absent:
+        return tuple(lines)
+    return (
+        *lines,
+        f"notice: {LEDGER_FILE} was absent from the run; the training set was read from "
+        f"{DATASET_FILE} alone, and the run was not identified as complete by its ledger",
+    )
 
 
 def _source_line(leak: SourceLeak) -> str:
     """One source's counts over its own denominator, named even when empty."""
-    label = "source B (private)" if leak.source == PRIVATE else "source A (public)"
+    if leak.source != PRIVATE:
+        return (
+            f"source A (public): {leak.examples} training {_examples(leak.examples)}, not "
+            "compared — the held-out membership is source B's"
+        )
+    label = "source B (private)"
+    if leak.examples == 0:
+        return f"{label}: no training examples, so nothing to compare"
     named = ", ".join(leak.overlap) if leak.overlap else "none"
     return (
-        f"{label}: {leak.leaked_examples} of {leak.examples} training examples touch a "
-        f"held-out task; leaked task(s): {named}"
+        f"{label}: {leak.leaked_examples} of {leak.examples} training "
+        f"{_examples(leak.examples)} {_touch(leak.examples)} a held-out task; "
+        f"leaked task(s): {named}"
     )
 
 
-def _leak_of(source: str, ids: Sequence[str], members: set[str]) -> SourceLeak:
+_IDENTITY = re.compile(r"[0-9a-f]{12}$")
+
+
+def _identity(task_id: str) -> str:
+    """The trailing 12-hex identity of a private task id, or a refusal naming the id."""
+    found = _IDENTITY.search(task_id)
+    if found is None:
+        raise UnrecognisedIdentity(
+            f"task id {task_id!r} carries no trailing 12-hex identity, so it cannot be "
+            "compared. Refused rather than matched as a string: a corpus re-mint renames ids "
+            "and keeps the identity, so a string match can call a renamed leak clean. Fixing "
+            "this takes an amendment naming how the id maps, never a looser comparison"
+        )
+    return found.group(0)
+
+
+def _leak_of(source: str, ids: Sequence[str], by_identity: Mapping[str, str]) -> SourceLeak:
     """One source's leak, with ids distinct and sorted and examples counted as examples."""
-    touched = [task_id for task_id in ids if task_id in members]
+    if source != PRIVATE:
+        return SourceLeak(source=source, examples=len(ids), overlap=(), leaked_examples=0)
+    pairs = [
+        (task_id, by_identity[_identity(task_id)])
+        for task_id in ids
+        if _identity(task_id) in by_identity
+    ]
     return SourceLeak(
         source=source,
         examples=len(ids),
-        overlap=tuple(sorted(set(touched))),
-        leaked_examples=len(touched),
+        overlap=tuple(sorted({held for _, held in pairs})),
+        leaked_examples=len(pairs),
+        matched=tuple(sorted(set(pairs))),
     )
 
 
@@ -291,8 +428,10 @@ __all__ = [
     "DatasetUnreadable",
     "LeakReport",
     "NotARun",
+    "NothingCompared",
     "SourceLeak",
     "UnknownSource",
+    "UnrecognisedIdentity",
     "check_overlap",
     "disclosure",
     "run_check",

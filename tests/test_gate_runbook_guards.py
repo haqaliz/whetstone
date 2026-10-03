@@ -12,7 +12,7 @@ seen by every runbook guard in this tree. The flag and value parses are keyed on
 own doors and are this file's own, rather than mutating a constant another guard reads: a guard
 that reaches into another guard's globals can silently repoint the sheet it was watching.
 
-Thirteen properties, and the last eight are this sheet's own:
+Twenty properties, and the last fifteen are this sheet's own:
 
 1. the parse really reads the sheet (anti-vacuity);
 2. every flag either command passes exists in the shipped parser;
@@ -24,7 +24,7 @@ Thirteen properties, and the last eight are this sheet's own:
 7. the **machinery is verified before the real pair** — the gate's own fixture suites run
    first, so the first real evaluation is not also the first test of the machinery;
 8. the liveness measurement is stated — the unverified count over its denominator, from the
-   first evaluation onward (`docs/ROADMAP.md:441-442`);
+   first evaluation onward (`docs/ROADMAP.md:451-452`);
 9. the `UNVERIFIED` exit is stated as a published outcome with the roadmap's own response, and
    the sheet nowhere tells the operator to rerun until it passes;
 10. the sheet names the **untrained base as the first incumbent** — a bash block that
@@ -40,7 +40,21 @@ Thirteen properties, and the last eight are this sheet's own:
     in the document's rule digest;
 13. the digest-equality halt stands — step 5's read-back still demands the record's held-out
     digest equal the committed document's, and a changed document is a halt ("find out by
-    whom"), never a rerun.
+    whom"), never a rerun;
+14. **leakage is checked before the gate** — the `check-leakage` block precedes the
+    `whetstone gate` block, and the sheet says to halt on any non-zero exit;
+15. every `docs/ROADMAP.md:<a>-<b>` cite lands on lines containing the phrase
+    `ROADMAP_CITES` anchors it to, and no cite is unanchored;
+16. the sheet names how the candidate's night is identified — the checkpoint's
+    `provenance.json` `dataset_digest` equals the night's `dataset.json` `digest` — and calls
+    that tie recorded, not verified;
+17. the residual is stated — a clean check means "no shared task identity", never "no
+    contamination" — and exit 2 includes a run that compared nothing;
+18. a `check-leakage` refusal is a halt, never a pass;
+19. the record read-back names `gate.PROMOTION_SCHEMA`, by identity, and the `training`
+    block's fields;
+20. the sheet says who writes the finding — the operator, from the record and the
+    `check-leakage` output only, under `docs/planning/`, never `reports/`.
 
 **Watched failing first** (`CONTRIBUTING.md`): every assertion was run against a deliberately
 wrong stub sheet — relative writable paths, a flag the parser does not define, a renamed
@@ -363,7 +377,7 @@ def test_the_machinery_is_verified_before_the_real_pair() -> None:
 def test_the_sheet_states_the_liveness_measurement() -> None:
     """The unverified count over its denominator, from the first evaluation onward.
 
-    `docs/ROADMAP.md:441-442` makes liveness itself a measurement, and this sheet is where the
+    `docs/ROADMAP.md:451-452` makes liveness itself a measurement, and this sheet is where the
     first one gets read. A proportion would breach the denominator rule, so the sheet is checked
     for one as well.
     """
@@ -402,21 +416,211 @@ def test_the_unverified_exit_is_a_published_outcome_and_never_a_rerun_loop() -> 
         )
 
 
-def test_the_post_run_chain_proves_the_night_did_not_leak() -> None:
+def test_the_chain_proves_the_night_did_not_leak() -> None:
     """`whetstone check-leakage` over the night that produced the candidate, in the chain.
 
     The gate scores the held-out membership; the leakage proof is what says that membership was
-    never trained on. Read after the gate rather than before it only because the exit an
-    operator acts on is the gate's — but a promotion whose leakage was never checked is a
-    promotion nobody may quote.
+    never trained on. A promotion whose leakage was never checked is a promotion nobody may
+    quote — and where in the chain it runs is the next guard's business.
     """
     blocks = _bash_blocks(_runbook())
     leak = _door_blocks(blocks, "whetstone check-leakage")
 
-    assert leak, "WHY THIS IS A FAILURE: the post-run chain never proves the night's disjointness"
+    assert leak, "WHY THIS IS A FAILURE: the chain never proves the night's disjointness"
     values = _values(leak[0], "whetstone check-leakage")
     assert values.get("--run"), "the leakage check names no run directory"
     assert values.get("--heldout"), "the leakage check names no held-out document"
+
+
+def test_leakage_is_checked_before_the_gate_and_any_non_zero_exit_halts() -> None:
+    """The leakage proof runs **before** the gate, and its non-zero exit stops the chain.
+
+    The sheet once ran it after the gate, on the argument that the exit an operator acts on is
+    the gate's. That ordering scores a candidate that may have trained on the very membership
+    it is scored against, and leaves a promotion record on disk for a comparison that should
+    never have been made. Checking first means a leaked candidate is never gated at all.
+    """
+    text = _runbook()
+    blocks = _bash_blocks(text)
+    leak = _door_blocks(blocks, "whetstone check-leakage")
+    real = _door_blocks(blocks, "whetstone gate")
+    assert leak and real, "the sheet must invoke both `whetstone check-leakage` and the gate"
+    assert text.index(leak[0]) < text.index(real[0]), (
+        "WHY THIS IS A FAILURE: the sheet gates the candidate before it proves the candidate's "
+        "night did not train on the held-out membership. A leaked candidate scored against its "
+        "own training data writes a promotion record for a comparison that was never fair"
+    )
+    assert "Halt on any non-zero exit" in _flat(text), (
+        "WHY THIS IS A FAILURE: the sheet does not say to halt on any non-zero "
+        "`check-leakage` exit. Exit 1 is a named leak and exit 2 is a refusal; neither is a "
+        "licence to proceed to the gate"
+    )
+
+
+#: Every `docs/ROADMAP.md:<a>-<b>` the sheet cites, keyed by what the cite is *for*, with the
+#: phrase those exact lines must contain. Line numbers drift with every roadmap edit; the phrase
+#: is what makes the drift fail here instead of misleading the operator silently. A cite the
+#: sheet makes that is not in this table fails too, so a new one cannot arrive unanchored.
+#: Matched against the lines with whitespace collapsed and emphasis (`*`) removed.
+ROADMAP_CITES = (
+    ("the gate rule", 431, 433,
+     "promote iff solved_new > solved_old AND regressed == 0 AND unverified == 0"),
+    ("the gate's incumbent is not the § 3 baseline", 688, 693,
+     "a disagreement is published as a finding, never reconciled"),
+    ("the response when the gate cannot fire", 451, 453,
+     "the fix is a more reliable sandbox, never a looser gate"),
+    ("liveness is a measurement", 451, 452,
+     "Liveness is itself a measurement. The unverified rate is reported from the first eval"),
+    ("the leakage exit criterion", 459, 460,
+     "`uv run whetstone check-leakage` exits 0 — zero overlap between the training set and "
+     "the held-out set"),
+)
+
+ROADMAP = Path(__file__).parent.parent / "docs/ROADMAP.md"
+CITE = re.compile(r"docs/ROADMAP\.md:(\d+)-(\d+)")
+
+
+def test_every_roadmap_cite_points_at_the_rule_it_names() -> None:
+    """A `ROADMAP.md:<a>-<b>` cite must land on lines that say what the sheet says they say.
+
+    Four of this sheet's cites had drifted — the gate rule cited at the end of P2's status
+    note, the § 3 boundary cited at the gate-untrained-incumbent paragraph — so an operator
+    following a cite to check the sheet found a different rule. The table above anchors each
+    one to its phrase.
+    """
+    text = _runbook()
+    cited = {(int(a), int(b)) for a, b in CITE.findall(text)}
+    assert len(cited) >= 4, (
+        f"WHY THIS IS A FAILURE: the sheet parses into only {sorted(cited)} roadmap cites, so "
+        "this guard would check almost nothing"
+    )
+    anchored = {(a, b) for _, a, b, _ in ROADMAP_CITES}
+    unanchored = sorted(cited - anchored)
+    assert not unanchored, (
+        f"WHY THIS IS A FAILURE: the sheet cites docs/ROADMAP.md lines {unanchored} that no "
+        "row of ROADMAP_CITES anchors. Either the cite is stale or it needs a row naming the "
+        "phrase those lines must contain"
+    )
+    uncited = sorted(anchored - cited)
+    assert not uncited, (
+        f"WHY THIS IS A FAILURE: ROADMAP_CITES anchors {uncited} and the sheet cites none of "
+        "them; a row with no cite guards nothing"
+    )
+    lines = ROADMAP.read_text(encoding="utf-8").splitlines()
+    for purpose, start, end, phrase in ROADMAP_CITES:
+        body = _flat(" ".join(lines[start - 1 : end])).replace("*", "")
+        assert phrase in body, (
+            f"WHY THIS IS A FAILURE: the sheet cites docs/ROADMAP.md:{start}-{end} for "
+            f"{purpose!r}, and those lines do not contain {phrase!r}. They read: {body!r}"
+        )
+
+
+def test_the_sheet_names_how_the_candidates_night_is_identified() -> None:
+    """Which night trained the candidate is found by digest, and the sheet says so.
+
+    `check-leakage` takes a run directory, the gate takes a checkpoint, and nothing on the
+    command line ties the two. A leakage proof over the wrong night proves nothing about the
+    candidate. The tie is the dataset digest: the checkpoint's `provenance.json` records the
+    digest of the dataset it trained on, and the night's `dataset.json` carries its own. It is
+    **recorded** provenance — `provenance.json` sits outside the checkpoint's file-hash seal —
+    so the sheet must not call it verified.
+    """
+    text = _runbook()
+    flat = _flat(text)
+    assert (
+        "the checkpoint's `provenance.json` `dataset_digest` equals the night's `dataset.json` "
+        "`digest`" in flat
+    ), (
+        "WHY THIS IS A FAILURE: the sheet never says how the candidate's night is identified. "
+        "A leakage proof over a different night's dataset says nothing about this candidate"
+    )
+    assert "recorded, not verified" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not say the dataset digest tie is recorded "
+        "provenance, not verified. `provenance.json` is outside the checkpoint's file-hash "
+        "seal, and calling it verified overstates what the bytes prove"
+    )
+    blocks = _bash_blocks(text)
+    run = _values(_door_blocks(blocks, "whetstone check-leakage")[0], "whetstone check-leakage")
+    candidate = _values(_door_blocks(blocks, "whetstone gate")[0], "whetstone gate")
+    assert Path(run["--run"][0]).name == Path(candidate["--candidate"][0]).name, (
+        f"WHY THIS IS A FAILURE: the sheet checks leakage over {run['--run'][0]!r} and gates "
+        f"{candidate['--candidate'][0]!r}. The typed example must name the same night on both "
+        "doors, or the operator copies a mismatch"
+    )
+
+
+def test_the_sheet_states_what_a_clean_leakage_check_does_not_mean() -> None:
+    """Identity is all `check-leakage` compares, and exit 2 includes "compared nothing".
+
+    A clean exit means no shared task identity; a near-duplicate task under a different
+    identity is not detected. And a run whose training set held no source B example compared
+    nothing — that is a refusal, exit 2, never a clean result (Amendment 2 of the
+    gate-leakage-guard PRD).
+    """
+    flat = _flat(_runbook())
+    assert '"no shared task identity", never "no contamination"' in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not state the residual — a clean check means "
+        '"no shared task identity", never "no contamination"'
+    )
+    assert "near-duplicate" in flat, (
+        "WHY THIS IS A FAILURE: the sheet never names what identity matching cannot see — a "
+        "near-duplicate task under a different identity"
+    )
+    assert "a run that compared nothing (no source B training example) is exit 2" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not say that a run which compared nothing is a "
+        "refusal (exit 2). An operator who reads exit 2 as only a typo misses the case where "
+        "no identity was ever checked"
+    )
+
+
+def test_a_leakage_refusal_is_a_halt_and_never_a_pass() -> None:
+    """Exit 2 halts the chain, and a check that did not run is never read as one that passed."""
+    flat = _flat(_runbook())
+    assert "Exit 2 is a halt" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not say that a `check-leakage` refusal halts "
+        "the chain before the gate"
+    )
+    assert "A refusal is never a pass" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not say that a refusal or a 'not checked' is "
+        "never treated as a pass. That reading is the one that would gate a leaked candidate"
+    )
+
+
+def test_the_record_read_back_names_the_shipped_schema_and_its_training_block() -> None:
+    """The read-back names `gate.PROMOTION_SCHEMA` by identity and the `training` block's fields.
+
+    The record is now schema `/2`: each side carries what trained it. A sheet that reads back a
+    `/1` record shape skips the one block that says which dataset the candidate trained on.
+    """
+    flat = _flat(_runbook())
+    assert gate.PROMOTION_SCHEMA in flat, (
+        f"WHY THIS IS A FAILURE: the sheet's read-back does not name {gate.PROMOTION_SCHEMA!r}, "
+        "the schema the gate writes and the readers accept"
+    )
+    missing = sorted(
+        field for field in gate._PROMOTION_TRAINING_FIELDS if f"`{field}`" not in flat
+    )
+    assert "`training`" in flat and not missing, (
+        f"WHY THIS IS A FAILURE: the read-back does not name the `training` block and its "
+        f"fields (missing {missing}). It is what records which dataset trained each side"
+    )
+
+
+def test_the_sheet_says_who_writes_the_finding_and_where() -> None:
+    """The operator writes the finding, from the record and the leakage output only.
+
+    Its home is `docs/planning/`, never `reports/`: a gated evaluation publishes no figure.
+    """
+    flat = _flat(_runbook())
+    for phrase in (
+        "The finding is written by the operator",
+        "from the promotion record and the `check-leakage` output only",
+        "under `docs/planning/`, never `reports/`",
+    ):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: the sheet does not say {phrase!r}. Without it the first "
+            "gate result has no stated author, source or home"
+        )
 
 
 def _assert_untrained_base_incumbent(text: str) -> None:
@@ -432,7 +636,7 @@ def _assert_untrained_base_incumbent(text: str) -> None:
     materialized = [block for block in blocks if "write_baseline_checkpoint" in block]
     assert materialized, (
         "WHY THIS IS A FAILURE: no bash block materializes the untrained base "
-        "(`write_baseline_checkpoint`). `docs/ROADMAP.md:663-671` made the untrained base the "
+        "(`write_baseline_checkpoint`). `docs/ROADMAP.md:673-683` made the untrained base the "
         "first incumbent — materialized before the gate, never a second night — and a sheet "
         "without the materialization step sends the operator to the gate with nothing to "
         "compare the candidate against"
@@ -478,7 +682,7 @@ def _assert_untrained_base_incumbent(text: str) -> None:
     assert "not the § 3 baseline measurement" in plain, (
         "WHY THIS IS A FAILURE: the sheet never states the § 3 boundary — the gate's "
         "incumbent is **not** the § 3 baseline measurement, different roles, different homes "
-        "(`docs/ROADMAP.md:678-683`). A sheet that blurs the two invites the first "
+        "(`docs/ROADMAP.md:688-693`). A sheet that blurs the two invites the first "
         "disagreement between their figures to be reconciled instead of published as a finding"
     )
     assert "two nights" not in plain, (
@@ -493,7 +697,7 @@ def test_the_sheet_names_the_untrained_base_as_the_first_incumbent() -> None:
     """The first gated evaluation is one night: night #1's candidate vs the untrained base.
 
     The sheet was written when the first incumbent was a second night.
-    `docs/ROADMAP.md:663-671` reordered the launch path — the first incumbent is the untrained
+    `docs/ROADMAP.md:673-683` reordered the launch path — the first incumbent is the untrained
     base the night started from, materialized by `write_baseline_checkpoint` before the gate —
     and this pin refuses the old reading in all four places it could resurface: the
     materialization block itself (a bash block naming the writer, at an absolute checkpoint

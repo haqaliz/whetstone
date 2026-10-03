@@ -10,6 +10,58 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The leakage guard matches by task identity, and the adapter in
+`checkpoints/portability-arm` is refused** (2026-10-03, `gate-leakage-guard`). `whetstone check-leakage` compared exact task-id strings.
+Across the corpus re-mint that would have reported *disjoint* on night-001's training set while
+4 of its 6 examples sit on a task that is now a held-out member: a false clean on the one case
+the guard exists for. Independently it refused a run with no `ledger.json`, and night-001 has
+none.
+
+**The fixes.** Identity is the trailing 12-hex of a task id, compared per source for source B training ids and
+held-out members (source A ids are never parsed), so a renamed task is still the same task.
+A source B id with no recognisable sha12 is a refusal, exit 2, saying a
+re-mint changed the id scheme and an amendment is needed before the gate may run. A run with
+`dataset.json` and no ledger is accepted, and the output says the ledger was absent. A
+comparison that compared nothing (no source B examples) is a refusal, exit 2 — PRD Amendment 2,
+user-approved: **exit 0 now means exactly "source B examples were compared and none shared a
+task identity"**, and a training set with no examples at all stays disjoint by truth. A leak
+names both causes, the seam failing and a split derived after the night ran, and asserts
+neither. Source A is stated as *not compared*, never as measured clean.
+
+**The promotion record is schema `whetstone-promotion/2`.** `candidate.training` and
+`incumbent.training` each carry `dataset_digest`, `base_repo_id`, `base_revision`; an untrained
+incumbent's `dataset_digest` is an explicit `null`. A `/1` record is refused by every reader and
+never upgraded. A trained side whose digest cannot be read makes `whetstone gate` exit 2 and
+write no record. The digest is **recorded provenance, not verified**: `provenance.json` sits
+outside the checkpoint's file-hash seal. The morning report now exits 2 with a message on any
+record the gate reader refuses; it was a traceback.
+
+**The runbook** orders `check-leakage` before the gate, halts on any non-zero exit, names the
+candidate's night through the recorded dataset digest, and its ROADMAP line citations are
+pinned by a guard.
+
+**The finding** (`docs/planning/gate-leakage-guard/finding.md`): the adapter in
+`checkpoints/portability-arm/` is refused — 4 of its 6 training examples touch a held-out task,
+of 12 held-out members. It is the arm's first checkpoint (digest `48eae99b0d32`, per
+`reports/portability-arm/report.md`). No gate was run in this unit, and no gate decision exists.
+The report's re-sealed sibling `aebae11f5c4b`, trained from the same dataset (`3416702298c3`),
+was gated as gate-001 and reduced to `UNVERIFIED` (0 of 12 on both sides, 2 unverified) against
+the held-out document as it stood before § 10.16: non-comparable, not a decision. Its provenance
+was not re-read here; the refusal is stated to apply to it because the report says the dataset
+is the same, not from a run. M2's exit criterion stays open.
+
+**Correction to the entry on the first `check-leakage` unit.** It said source A's overlap was
+"measured empty". It was a structural constant, not a measurement: the old code compared source A's
+ids against source B's held-out membership only, so the overlap was empty by construction.
+Since this unit source A is stated as not compared.
+
+**Open follow-ups.** Sealing `provenance.json` into the checkpoint's file-hash, so
+`dataset_digest` becomes verifiable. Whether to retrain on the 2 examples that are not held out
+(weak evidence; the operator's decision). sha12 identity cannot see near-duplicates: a clean
+run means no shared task identity, never no contamination. Stale ROADMAP line citations remain
+in `src/whetstone/loop/gate.py`, `tests/loop/test_gate*.py` and the `p3-promotion-gate` spec
+files. The runbook's header still names an old branch.
+
 **The whole-function replacement contract is being measured; its instruments shipped, its
 decision pending** (2026-10-01, the `edit-contract-finding` finding's § 6 lead). The lead was
 that a format which reduces the replacement text's surface — the model states an `EDIT` path

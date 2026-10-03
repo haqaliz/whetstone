@@ -55,6 +55,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -100,7 +101,14 @@ _UNCOVERED = bakeoff_report._UNCOVERED
 
 #: The promotion record's own schema string — the one answer to "what shape is this file":
 #: the writer emits it and the reader (`read_promotion_record`) refuses anything else.
-PROMOTION_SCHEMA = "whetstone-promotion/1"
+#: `/2` added `candidate.training` and `incumbent.training` (gate-record-provenance): the
+#: dataset digest and base each checkpoint's provenance records. A `/1` record predates that
+#: provenance and is refused by every reader, never upgraded — the missing digest is a fact
+#: about the run that wrote it, and no reader can supply it after the fact.
+PROMOTION_SCHEMA = "whetstone-promotion/2"
+
+#: The schema every record written before the training provenance existed declares.
+_PROMOTION_SCHEMA_BEFORE_PROVENANCE = "whetstone-promotion/1"
 
 #: The directory under `--runs` the promotion records live in.
 PROMOTIONS_DIR = "promotions"
@@ -313,6 +321,37 @@ def refuse_cross_backend(
     )
 
 
+@dataclass(frozen=True)
+class TrainingProvenance:
+    """What trained one side of a comparison, as its checkpoint's `provenance.json` records it.
+
+    **Recorded, not verified.** `provenance.json` sits outside the checkpoint's file-hash seal
+    (`verify_checkpoint` re-hashes the adapter files, not this document), so these values are
+    what the checkpoint *says* trained it. They are the leakage audit's input — which dataset
+    to compare against the held-out split — never a proof that the claim is true.
+    """
+
+    #: The sha256 of the training set, or `None` for an untrained checkpoint — stated, never
+    #: invented. A trained checkpoint without one is refused (`DatasetDigestUnrecorded`).
+    dataset_digest: str | None
+
+    #: The base the checkpoint names.
+    base_repo_id: str
+
+    #: The base revision the checkpoint names.
+    base_revision: str
+
+
+class DatasetDigestUnrecorded(ValueError):
+    """A trained checkpoint whose provenance does not record a well-formed dataset digest.
+
+    `sft.write_checkpoint` writes the digest of the training set into `provenance.json`. A
+    trained candidate without one cannot be audited against the held-out split, so the gate
+    refuses rather than record an empty or invented value. The refusal names the checkpoint
+    directory and the field.
+    """
+
+
 #: Every refusal `run_gate` raises that is an **operator's error** rather than a finding: a
 #: runs root pointed at a published directory, a checkpoint that cannot be re-hashed, an
 #: untrained checkpoint passed as the candidate, a held-out document that cannot be read or
@@ -326,6 +365,7 @@ REFUSALS: tuple[type[Exception], ...] = (
     CheckpointUnverified,
     UntrainedCandidate,
     MismatchedBackend,
+    DatasetDigestUnrecorded,
     HeldoutSchemaError,
     HeldoutDigestMismatch,
     EmptyHeldout,
@@ -718,6 +758,12 @@ def run_gate(
         candidate=candidate_checkpoint.backend, incumbent=incumbent_checkpoint.backend
     )
 
+    # Before anything is scored: a record that cannot name what trained each side is never
+    # written, so a checkpoint that cannot say is refused here rather than after an hour of
+    # generation. An untrained incumbent states its absence (`None`); a trained side cannot.
+    candidate_training = _checkpoint_training(candidate_checkpoint)
+    incumbent_training = _checkpoint_training(incumbent_checkpoint)
+
     fetched = load_weights(weights)
     candidate_base = _base_for(candidate_checkpoint, fetched, "candidate")
     incumbent_base = _base_for(incumbent_checkpoint, fetched, "incumbent")
@@ -806,6 +852,8 @@ def run_gate(
         recorded_on=recorded_on,
         candidate_digest=candidate_checkpoint.digest,
         incumbent_digest=incumbent_checkpoint.digest,
+        candidate_training=candidate_training,
+        incumbent_training=incumbent_training,
         heldout_digest=heldout_digest,
         candidate=candidate_side,
         incumbent=incumbent_side,
@@ -872,6 +920,8 @@ def write_promotion_record(
     recorded_on: str,
     candidate_digest: str,
     incumbent_digest: str,
+    candidate_training: TrainingProvenance,
+    incumbent_training: TrainingProvenance,
     heldout_digest: str,
     candidate: Side,
     incumbent: Side,
@@ -881,7 +931,12 @@ def write_promotion_record(
     retry_count: int,
     tool_versions: Mapping[str, str],
 ) -> Path:
-    """Write the promotion record — schema `whetstone-promotion/1` — deterministically.
+    """Write the promotion record — schema `whetstone-promotion/2` — deterministically.
+
+    Each side carries its `training` block — the dataset digest and the base its checkpoint's
+    `provenance.json` **records** (outside the file-hash seal, so recorded, never verified).
+    The untrained incumbent's `dataset_digest` is an explicit `null`. A candidate is always
+    trained, so a candidate with no digest is refused before anything is written.
 
     The record is local evidence, never published: the digests (re-hashed), the held-out
     document's digest, both sides' counts over both denominators — each source's six counts,
@@ -897,12 +952,24 @@ def write_promotion_record(
     difference between many tasks wobbling once and one task wobbling every time, and a
     promotion record that cannot be read against the machine is not evidence.
     """
+    if candidate_training.dataset_digest is None:
+        raise DatasetDigestUnrecorded(
+            f"promotion record {str(path)!r} would name no dataset_digest for the candidate; "
+            "a candidate is always trained, so a record that cannot say what trained it is "
+            "never written"
+        )
     document = {
         "schema": PROMOTION_SCHEMA,
         "run_id": run_id,
         "recorded_on": recorded_on,
-        "candidate": {"digest": candidate_digest},
-        "incumbent": {"digest": incumbent_digest},
+        "candidate": {
+            "digest": candidate_digest,
+            "training": _training_payload(candidate_training),
+        },
+        "incumbent": {
+            "digest": incumbent_digest,
+            "training": _training_payload(incumbent_training),
+        },
         "heldout": {"document_digest": heldout_digest},
         "sides": {
             "candidate": _side_payload(candidate),
@@ -941,6 +1008,15 @@ def write_promotion_record(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
+
+
+def _training_payload(training: TrainingProvenance) -> Mapping[str, Any]:
+    """One side's `training` block — every key always present, the digest `null` when absent."""
+    return {
+        "dataset_digest": training.dataset_digest,
+        "base_repo_id": training.base_repo_id,
+        "base_revision": training.base_revision,
+    }
 
 
 # --------------------------------------------------------------------------------------------
@@ -1026,6 +1102,12 @@ class PromotionRecord:
     #: The incumbent's re-hashed digest, as written.
     incumbent_digest: str
 
+    #: What the candidate's provenance recorded as training it — recorded, not verified.
+    candidate_training: TrainingProvenance
+
+    #: What the incumbent's provenance recorded; `dataset_digest` is `None` when untrained.
+    incumbent_training: TrainingProvenance
+
     #: The held-out document's digest, as written.
     heldout_digest: str
 
@@ -1080,6 +1162,15 @@ def read_promotion_record(path: Path) -> PromotionRecord:
             f"promotion record {str(location)!r} must be a JSON object, "
             f"got {type(raw).__name__}"
         )
+    if raw.get("schema") == _PROMOTION_SCHEMA_BEFORE_PROVENANCE:
+        raise ValueError(
+            f"promotion record {str(location)!r} declares schema "
+            f"{_PROMOTION_SCHEMA_BEFORE_PROVENANCE!r}, which predates the training provenance "
+            f"{PROMOTION_SCHEMA!r} records: it does not say what dataset trained the candidate, "
+            "so it cannot be audited for leakage against the held-out split. It is refused and "
+            "never upgraded — no reader can supply a digest the run did not record. Re-run the "
+            "gate to write a current record"
+        )
     if raw.get("schema") != PROMOTION_SCHEMA:
         raise ValueError(
             f"promotion record {str(location)!r} declares schema {raw.get('schema')!r}, "
@@ -1096,6 +1187,8 @@ def read_promotion_record(path: Path) -> PromotionRecord:
     recorded_on = _record_string(raw, "recorded_on", location)
     candidate_digest = _record_digest(raw.get("candidate"), "candidate.digest", location)
     incumbent_digest = _record_digest(raw.get("incumbent"), "incumbent.digest", location)
+    candidate_training = _record_training(raw["candidate"], "candidate", location)
+    incumbent_training = _record_training(raw["incumbent"], "incumbent", location)
     heldout_digest = _record_digest(raw.get("heldout"), "heldout.document_digest", location)
 
     sides_raw = raw.get("sides")
@@ -1191,6 +1284,8 @@ def read_promotion_record(path: Path) -> PromotionRecord:
         recorded_on=recorded_on,
         candidate_digest=candidate_digest,
         incumbent_digest=incumbent_digest,
+        candidate_training=candidate_training,
+        incumbent_training=incumbent_training,
         heldout_digest=heldout_digest,
         sides=sides,
         decision=dict(decision_raw),
@@ -1225,6 +1320,66 @@ def _record_digest(node: Any, where: str, location: Path) -> str:
             f"promotion record {str(location)!r} has a missing or non-string {where}"
         )
     return value
+
+
+#: Every field a checkpoint block (`candidate`, `incumbent`) may carry.
+_PROMOTION_SIDE_FIELDS = frozenset({"digest", "training"})
+
+#: Every field a `training` block must carry — all three, the digest `null` only when untrained.
+_PROMOTION_TRAINING_FIELDS = frozenset({"dataset_digest", "base_repo_id", "base_revision"})
+
+
+def _record_training(node: Mapping[str, Any], side: str, location: Path) -> TrainingProvenance:
+    """One side's `training` block, fail-closed: nothing missing, unknown or defaulted.
+
+    The candidate's `dataset_digest` must be a well-formed sha256 — a candidate is always
+    trained. The incumbent's is a well-formed sha256 or an explicit `null` (untrained); an
+    omitted key is refused, because absence would be an implication and `null` is a statement.
+    """
+    unexpected = sorted(set(node) - _PROMOTION_SIDE_FIELDS)
+    if unexpected:
+        raise ValueError(
+            f"promotion record {str(location)!r} carries unknown field {side}.{unexpected!r}; "
+            "a field this module does not read would be trusted by nobody and read by no one"
+        )
+    training = node.get("training")
+    if not isinstance(training, dict):
+        raise ValueError(
+            f"promotion record {str(location)!r} has a missing or non-object {side}.training"
+        )
+    unexpected = sorted(set(training) - _PROMOTION_TRAINING_FIELDS)
+    if unexpected:
+        raise ValueError(
+            f"promotion record {str(location)!r} carries unknown field "
+            f"{side}.training.{unexpected!r}; a field this module does not read would be "
+            "trusted by nobody and read by no one"
+        )
+    for field in sorted(_PROMOTION_TRAINING_FIELDS):
+        if field not in training:
+            raise ValueError(
+                f"promotion record {str(location)!r} is missing {side}.training.{field}; a "
+                "missing field is refused, never defaulted"
+            )
+    for field in ("base_repo_id", "base_revision"):
+        if not isinstance(training[field], str):
+            raise ValueError(
+                f"promotion record {str(location)!r} has a non-string {side}.training.{field}"
+            )
+    digest = training["dataset_digest"]
+    stated_untrained = digest is None and side == "incumbent"
+    if not stated_untrained and (
+        not isinstance(digest, str) or _DIGEST_SHAPE.fullmatch(digest) is None
+    ):
+        allowed = "a 64-digit lowercase sha256" + (" or null" if side == "incumbent" else "")
+        raise ValueError(
+            f"promotion record {str(location)!r} has {side}.training.dataset_digest "
+            f"{digest!r}; expected {allowed}"
+        )
+    return TrainingProvenance(
+        dataset_digest=digest,
+        base_repo_id=training["base_repo_id"],
+        base_revision=training["base_revision"],
+    )
 
 
 def _record_counts(node: Any, where: str, location: Path) -> SideCounts:
@@ -1466,6 +1621,50 @@ def _checkpoint_base(checkpoint: Checkpoint) -> Mapping[str, str]:
     )
     base = document["base"]
     return {"repo_id": str(base["repo_id"]), "revision": str(base["revision"])}
+
+
+_DIGEST_SHAPE = re.compile(r"[0-9a-f]{64}")
+
+
+def _checkpoint_dataset_digest(checkpoint: Checkpoint) -> str | None:
+    """The digest of the dataset that trained a checkpoint, as its provenance **records** it.
+
+    Precondition: `checkpoint` came from `verify_checkpoint`, so its adapter files re-hashed.
+    `dataset_digest` lives in `provenance.json`, which is outside that file-hash seal: the value
+    is recorded provenance, read as written, never verified against the training set.
+
+    `None` only for an untrained checkpoint, which was trained on nothing. A trained checkpoint
+    whose `dataset_digest` is missing, or is not the 64-hex sha256 `sft` writes, raises
+    `DatasetDigestUnrecorded`; never an empty string and never `None`.
+    """
+    if checkpoint.untrained:
+        return None
+    document: Any = json.loads(
+        (checkpoint.directory / "provenance.json").read_text(encoding="utf-8")
+    )
+    recorded = document.get("dataset_digest") if isinstance(document, dict) else None
+    if not isinstance(recorded, str) or _DIGEST_SHAPE.fullmatch(recorded) is None:
+        raise DatasetDigestUnrecorded(
+            f"checkpoint {str(checkpoint.directory)!r} is trained but its provenance.json "
+            f"records no well-formed `dataset_digest` (found {recorded!r}; expected a 64-digit "
+            "lowercase sha256). Without it the promotion record cannot name what trained the "
+            "candidate, so the gate refuses rather than invent one"
+        )
+    return recorded
+
+
+def _checkpoint_training(checkpoint: Checkpoint) -> TrainingProvenance:
+    """What a `verify_checkpoint` checkpoint's provenance records as training it (not verified).
+
+    The base is `_checkpoint_base`'s and the digest `_checkpoint_dataset_digest`'s, both read
+    from the one `provenance.json`; a trained checkpoint with no digest is refused there.
+    """
+    base = _checkpoint_base(checkpoint)
+    return TrainingProvenance(
+        dataset_digest=_checkpoint_dataset_digest(checkpoint),
+        base_repo_id=base["repo_id"],
+        base_revision=base["revision"],
+    )
 
 
 def _score_side(

@@ -292,3 +292,34 @@ def test_the_refusal_names_are_the_loops_own(tmp_path: Path) -> None:
     assert morning.RecordNotThisNight in morning.REFUSALS
     assert morning.LedgerUnreadable in morning.REFUSALS
     assert morning.TranscriptNotPrivate in morning.REFUSALS
+
+
+@pytest.mark.parametrize("doctor", ["unknown-field", "not-json"])
+def test_a_record_the_gate_reader_refuses_exits_two_never_a_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture, doctor: str
+) -> None:
+    """A `--record` the gate's fail-closed reader refuses is a named refusal, exit 2.
+
+    The reader raises `ValueError`; before `PromotionRecordRefused` the report door did not
+    catch it, so a doctored record reached the operator as a stack trace. Nothing is written.
+    """
+    import json
+
+    runs, record = _tree(tmp_path)
+    if doctor == "unknown-field":
+        raw = json.loads(record.read_text(encoding="utf-8"))
+        raw["sneaky"] = 1
+        record.write_text(json.dumps(raw), encoding="utf-8")
+    else:
+        record.write_text("{", encoding="utf-8")
+    out = tmp_path / "home"
+
+    code = cli.main(
+        ["report", "--last-night", "--runs", str(runs), "--record", str(record), "--out", str(out)]
+    )
+
+    assert code == cli.USAGE_ERROR
+    printed = capsys.readouterr().err
+    assert "whetstone report:" in printed and str(record) in printed, printed
+    assert not out.exists()
+    assert morning.PromotionRecordRefused in morning.REFUSALS

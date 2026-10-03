@@ -581,16 +581,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     check = commands.add_parser(
         "check-leakage",
-        help="prove a night's training set does not touch the held-out set",
+        help="check a night's training set shares no task identity with the held-out set",
         description=(
-            "Compare a night's training set with the held-out membership and exit 0 iff they "
-            "are disjoint (docs/ROADMAP.md:449-450). The night already excludes the held-out "
+            "Compare a night's source B training set with the held-out membership by task "
+            "identity (the trailing 12-hex of each id) and exit 0 iff no identity is shared "
+            "(docs/ROADMAP.md:459-460). Identity is all it compares: near-duplicate tasks "
+            "under different identities are not detected. The night already excludes the held-out "
             "ids at its partition seam; this proves it, because an exclusion nobody checks is "
             "a claim — and the one claim this project cannot make on trust is that its "
             "headline was not measured on its own training data. A leak exits 1 and names the "
-            "task; a run that cannot be identified or a document that cannot be trusted exits "
-            "2. There is no flag that narrows either set: a leakage proof that could be turned "
-            "green at the command line would prove nothing."
+            "task; a run with no dataset.json, an id it cannot read, or a document that "
+            "cannot be trusted, or a run that compared nothing (no source B training example), "
+            "exits 2. There is no flag that narrows either set: a check "
+            "that could be turned green at the command line would prove nothing."
         ),
     )
     check.add_argument(
@@ -599,9 +602,9 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         metavar="<runs/id>",
         help=(
-            "a night's run directory. Its ledger identifies it as a night's run and its "
-            "dataset.json is the training set — what was actually trained on, which is the "
-            "only thing that can reach an adapter's weights"
+            "a night's run directory. Its dataset.json is required and is the training set — "
+            "what was actually trained on, which is the only thing that can reach an "
+            "adapter's weights; a ledger, if present, is validated"
         ),
     )
     check.add_argument(
@@ -1165,9 +1168,11 @@ def run_check_leakage_cli(args: argparse.Namespace) -> int:
     reward's own entry path. `tests/test_reward_path_scope_is_partitioned.py` asserts these
     are the only five edges and that all five are function-local.
 
-    **The exits are the existing contract, no fifth code**: disjoint → 0, a named overlap →
+    **The exits are the existing contract, no fifth code**: disjoint (source B examples
+    compared, none shared) → 0, a named overlap →
     1 (a leak is a failure, not a mistyped command), and a refusal an operator can fix — a
-    directory that is not a night's run, an unreadable dataset, a held-out document whose
+    directory with no `dataset.json`, an unreadable dataset, a training set with no
+    source B example (nothing was compared; Amendment 2), a held-out document whose
     digest does not match its contents — → 2. There is no `UNVERIFIED` exit here: this
     command reads documents rather than running anything, so it either answers or refuses.
     """
