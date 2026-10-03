@@ -28,8 +28,9 @@ released version until it exists in the code.
 ### Fixed
 
 - `check-leakage` compared exact task-id strings, so a corpus re-mint made a leaked training
-  set look disjoint. Identity is now the trailing 12-hex per source; an id with no
-  recognisable sha12 is a refusal, exit 2. A leak names both causes and asserts neither;
+  set look disjoint. Identity is now the trailing 12-hex for source B training ids and held-out
+  members (source A ids are never parsed); a source B id with no recognisable sha12 is a
+  refusal, exit 2. A leak names both causes and asserts neither;
   source A is reported as not compared.
 - `check-leakage` refused a run with no `ledger.json`; it now reads `dataset.json` alone and
   says so.

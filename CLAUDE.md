@@ -49,11 +49,12 @@ This file orients a coding agent working in this repository. Read it first.
 > **Run once, and still without a model.** Night #1 (2026-09-05 → 09-07) was the loop's first
 > real execution: 496 rollouts over 26.6 hours, the control arm `INTACT` on **496 of 496
 > draws**, 6 strict-`PASS` examples selected — and then `KeyError: 'dropout'` from the pinned
-> `mlx-lm` inside the capacity probe, so **no checkpoint was written and no model has been
-> trained**. The three defects behind that are fixed in 0.14.1 (`docs/STATUS.md`), including
+> `mlx-lm` inside the capacity probe, so **night #1 wrote no checkpoint** (the one adapter
+> that exists was trained afterwards, for the portability arm, from the night's six selected
+> examples, and is in `checkpoints/portability-arm`). The three defects behind that are fixed in 0.14.1 (`docs/STATUS.md`), including
 > the one that mattered: a night's ledger is now written even when training raises, so 26
 > hours of verified rollouts can never again be lost to an exception in the final minutes.
-> `check-leakage` now matches by task identity and refuses the one trained adapter (4 of its 6
+> `check-leakage` now matches by task identity and refuses that adapter (4 of its 6
 > examples sit on a held-out task), so the gate still has not produced a decision on a real pair.
 > The gate has therefore **still never run on real checkpoints**. Its exits and refusals are proven against fixtures only — as are
 > `check-probe`'s, which has never been pointed at a real probe. `R = 3` is

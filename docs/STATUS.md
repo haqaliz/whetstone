@@ -17,8 +17,9 @@ Across the corpus re-mint that would have reported *disjoint* on night-001's tra
 the guard exists for. Independently it refused a run with no `ledger.json`, and night-001 has
 none.
 
-**The fixes.** Identity is the trailing 12-hex of a task id, compared per source, so a renamed
-task is still the same task. An id with no recognisable sha12 is a refusal, exit 2, saying a
+**The fixes.** Identity is the trailing 12-hex of a task id, compared per source for source B training ids and
+held-out members (source A ids are never parsed), so a renamed task is still the same task.
+A source B id with no recognisable sha12 is a refusal, exit 2, saying a
 re-mint changed the id scheme and an amendment is needed before the gate may run. A run with
 `dataset.json` and no ledger is accepted, and the output says the ledger was absent. A
 comparison that compared nothing (no source B examples) is a refusal, exit 2 — PRD Amendment 2,
@@ -45,8 +46,9 @@ of 12 held-out members. No gate was run, so there is no gate verdict of any kind
 exit criterion stays open.
 
 **Correction to the entry on the first `check-leakage` unit.** It said source A's overlap was
-"measured empty". It never was: source A was not compared, and the held-out membership is
-source B's list only.
+"measured empty". It was a structural constant, not a measurement: the old code compared source A's
+ids against source B's held-out membership only, so the overlap was empty by construction.
+Since this unit source A is stated as not compared.
 
 **Open follow-ups.** Sealing `provenance.json` into the checkpoint's file-hash, so
 `dataset_digest` becomes verifiable. Whether to retrain on the 2 examples that are not held out
