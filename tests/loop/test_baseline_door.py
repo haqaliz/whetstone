@@ -762,11 +762,9 @@ def test_two_untrained_bases_are_different_series(tmp_path: Path) -> None:
 
     measurement, second = _run_measure(tmp_path / "second", out=artifact.parent)
 
-    assert measurement.checkpoint_digest == untrained_digest, (
-        "WHY THIS IS A FAILURE: the fixture checkpoint is not the degenerate untrained "
-        "digest — this test is about two bases that cannot be told apart by digest"
-    )
-    assert second["checkpoint_obj"].digest == untrained_digest
+    # The untrained writer now seals `base` into its digest (v2), so the digest is no longer
+    # the constant; the series key is still the base identity, never the digest.
+    assert measurement.checkpoint_digest == second["checkpoint_obj"].digest
     evidence = _evidence(measurement)
     assert evidence["base"]["repo_id"] == _BASE
     provenance = json.loads(

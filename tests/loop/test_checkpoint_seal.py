@@ -590,3 +590,82 @@ def test_the_written_checkpoint_agrees_with_the_verified_one(tmp_path: Path) -> 
         name: getattr(verified, name) for name in fields
     }
     assert written.backend is not None
+
+
+def _untrained(directory: Path, *, revision: str = _BASE["revision"]) -> sft.Checkpoint:
+    return sft.write_baseline_checkpoint(
+        directory,
+        repo_id=_BASE["repo_id"],
+        revision=revision,
+        tool_versions={"python": "3.12.0"},
+    )
+
+
+def test_the_untrained_base_is_written_sealed(tmp_path: Path) -> None:
+    written = _untrained(tmp_path / "base")
+
+    assert _read(written.directory)["schema"] == sft.CHECKPOINT_SCHEMA_V2
+    verified = sft.verify_checkpoint(written.directory)
+    assert verified.untrained and verified.sealed
+    assert verified.dataset_digest is None
+    assert verified.files == ()
+
+
+def test_the_written_untrained_checkpoint_agrees_with_the_verified_one(tmp_path: Path) -> None:
+    written = _untrained(tmp_path / "base")
+    verified = sft.verify_checkpoint(written.directory)
+
+    fields = (
+        "digest",
+        "files",
+        "untrained",
+        "sealed",
+        "backend",
+        "base_repo_id",
+        "base_revision",
+        "dataset_digest",
+    )
+    assert {name: getattr(written, name) for name in fields} == {
+        name: getattr(verified, name) for name in fields
+    }
+    assert written.sealed and written.untrained
+
+
+def test_two_untrained_bases_at_different_revisions_have_different_digests(
+    tmp_path: Path,
+) -> None:
+    first = _untrained(tmp_path / "a", revision="1" * 40)
+    second = _untrained(tmp_path / "b", revision="2" * 40)
+
+    assert first.digest != second.digest
+
+
+def test_flipping_untrained_in_a_sealed_base_is_refused_naming_it(tmp_path: Path) -> None:
+    written = _untrained(tmp_path / "base")
+    document = _read(written.directory)
+    document["untrained"] = False
+    _write(written.directory, document)
+
+    with pytest.raises(sft.CheckpointUnverified, match="untrained"):
+        sft.verify_checkpoint(written.directory)
+
+
+def test_a_hand_built_v1_untrained_document_still_verifies_unsealed(tmp_path: Path) -> None:
+    directory = tmp_path / "base"
+    directory.mkdir()
+    constant = sft._digest_of(())
+    _write(
+        directory,
+        {
+            "schema": sft.CHECKPOINT_SCHEMA_V1,
+            "digest": constant,
+            "base": dict(_BASE),
+            "untrained": True,
+            "tool_versions": {"python": "3.12.0"},
+            "files": [],
+        },
+    )
+
+    verified = sft.verify_checkpoint(directory)
+    assert verified.untrained and not verified.sealed
+    assert verified.digest == constant

@@ -858,25 +858,37 @@ def write_baseline_checkpoint(
             "record an adapter beside a base that never trained — the contradiction the flag "
             "exists to exclude"
         )
-    digest = _digest_of(())
+    body: dict[str, Any] = {
+        "base": {"repo_id": repo_id, "revision": revision},
+        "untrained": True,
+        "tool_versions": dict(sorted(tool_versions.items())),
+        "files": [],
+    }
+    # Sealed like a trained checkpoint, so the base the gate compares cannot be swapped by
+    # editing `base` or flipping `untrained`. The digest therefore folds in `base`: it is no
+    # longer one constant for every untrained base, which is the point.
+    claims = _claim_hashes(body)
+    digest = _claims_digest(claims)
     directory.mkdir(parents=True, exist_ok=True)
     (directory / CHECKPOINT_FILE).write_text(
         json.dumps(
-            {
-                "schema": CHECKPOINT_SCHEMA_V1,
-                "digest": digest,
-                "base": {"repo_id": repo_id, "revision": revision},
-                "untrained": True,
-                "tool_versions": dict(sorted(tool_versions.items())),
-                "files": [],
-            },
+            {"schema": CHECKPOINT_SCHEMA_V2, "digest": digest, "claims": claims, **body},
             indent=2,
             sort_keys=True,
         )
         + "\n",
         encoding="utf-8",
     )
-    return Checkpoint(directory=directory, digest=digest, files=(), untrained=True)
+    return Checkpoint(
+        directory=directory,
+        digest=digest,
+        files=(),
+        untrained=True,
+        base_repo_id=repo_id,
+        base_revision=revision,
+        dataset_digest=None,
+        sealed=True,
+    )
 
 
 def verify_checkpoint(directory: Path) -> Checkpoint:

@@ -250,8 +250,9 @@ def test_write_baseline_checkpoint_round_trips(tmp_path: Path) -> None:
         tool_versions=tool_versions,
     )
 
+    # Written under v2 the digest folds in `base`, so it is no longer the empty set's constant.
     assert checkpoint.untrained is True
-    assert checkpoint.digest == EMPTY_DIGEST
+    assert checkpoint.sealed is True
     assert checkpoint.files == ()
     assert checkpoint.directory == directory
 
@@ -262,11 +263,12 @@ def test_write_baseline_checkpoint_round_trips(tmp_path: Path) -> None:
     assert provenance["files"] == []
     assert provenance["base"] == BASE
     assert provenance["tool_versions"] == {"python": "3.12.0", "uv": "0.6.0"}
-    assert provenance["digest"] == EMPTY_DIGEST
+    assert provenance["schema"] == sft.CHECKPOINT_SCHEMA_V2
+    assert provenance["digest"] == checkpoint.digest
 
     reverified = sft.verify_checkpoint(directory)
     assert reverified.untrained is True
-    assert reverified.digest == EMPTY_DIGEST
+    assert reverified.digest == checkpoint.digest
 
 
 def test_write_baseline_checkpoint_refuses_a_non_empty_directory(tmp_path: Path) -> None:
