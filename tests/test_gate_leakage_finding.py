@@ -199,3 +199,13 @@ def test_the_finding_equals_a_fresh_check_leakage_run(
     digest = json.loads(dataset.read_text(encoding="utf-8"))["digest"]
     assert recorded == digest, "the adapter's recorded dataset digest is not night-001's"
     assert digest[:12] in text, "the finding does not quote the dataset digest"
+
+
+def test_the_finding_names_both_checkpoints_and_does_not_deny_the_earlier_gate_run() -> None:
+    """The arm's report records gate-001 on the re-sealed sibling; the finding must not erase it."""
+    text = _finding()
+    for needed in ("48eae99b0d32", "aebae11f5c4b", "gate-001", "UNVERIFIED"):
+        assert needed in text, f"the finding does not name {needed!r}"
+    flat = " ".join(text.split())
+    assert "no gate verdict of any kind" not in flat, "the finding denies gate-001's UNVERIFIED"
+    assert "no gate decision exists" in flat

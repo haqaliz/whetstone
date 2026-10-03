@@ -42,8 +42,13 @@ pinned by a guard.
 
 **The finding** (`docs/planning/gate-leakage-guard/finding.md`): the adapter in
 `checkpoints/portability-arm/` is refused — 4 of its 6 training examples touch a held-out task,
-of 12 held-out members. No gate was run, so there is no gate verdict of any kind for it. M2's
-exit criterion stays open.
+of 12 held-out members. It is the arm's first checkpoint (digest `48eae99b0d32`, per
+`reports/portability-arm/report.md`). No gate was run in this unit, and no gate decision exists.
+The report's re-sealed sibling `aebae11f5c4b`, trained from the same dataset (`3416702298c3`),
+was gated as gate-001 and reduced to `UNVERIFIED` (0 of 12 on both sides, 2 unverified) against
+the held-out document as it stood before § 10.16: non-comparable, not a decision. Its provenance
+was not re-read here; the refusal is stated to apply to it because the report says the dataset
+is the same, not from a run. M2's exit criterion stays open.
 
 **Correction to the entry on the first `check-leakage` unit.** It said source A's overlap was
 "measured empty". It was a structural constant, not a measurement: the old code compared source A's

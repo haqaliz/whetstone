@@ -8,8 +8,8 @@ adapter) and **sha12-only identity matching** with a refusal on an unrecognisabl
 ## Problem Statement
 
 M2's exit criterion (`docs/ROADMAP.md` § 14) is a real `promoted`/`rejected` from
-`whetstone gate`. The only trained adapter cannot honestly supply one. Four of its six training
-examples come from `legacy-a-c6e4d4c4de87`, which the re-mint renamed `donor-a-c6e4d4c4de87`, a
+`whetstone gate`. The adapters trained from night-001's dataset cannot honestly supply one. Four of its six
+training examples come from `legacy-a-c6e4d4c4de87`, which the re-mint renamed `donor-a-c6e4d4c4de87`, a
 member of the re-derived held-out set. `whetstone check-leakage` compares exact `task_id`
 strings, so across the re-mint it reports disjoint (exit 0): a false clean on the case it
 exists for. Independently it refuses (exit 2) on night-001 because that run has no

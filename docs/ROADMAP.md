@@ -911,10 +911,13 @@ evidence for #60.
 `whetstone check-leakage` exits 0. No structural `UNVERIFIED` remains.
 
 > **Corrected 2026-10-03, when the leakage guard was fixed.** M2's exit criterion stands and
-> stays open. The adapter in `checkpoints/portability-arm` was examined by
-> `whetstone check-leakage`, now matching by task identity, and refused: 4 of its 6 training examples touch a held-out task
-> (`docs/planning/gate-leakage-guard/finding.md`). No gate was run, so no gate verdict of any
-> kind exists. The next step is a clean candidate, and whether to produce one is the operator's
+> stays open. The arm's first checkpoint (digest `48eae99b0d32`, in
+> `checkpoints/portability-arm`) was examined by `whetstone check-leakage`, now matching by
+> task identity, and refused: 4 of its 6 training examples touch a held-out task
+> (`docs/planning/gate-leakage-guard/finding.md`). No gate was run in this unit, and no gate
+> decision exists: the report's re-sealed sibling `aebae11f5c4b` (same dataset) reduced to
+> `UNVERIFIED` as gate-001, against the pre-§ 10.16 held-out document, so it is not a
+> decision. The next step is a clean candidate, and whether to produce one is the operator's
 > decision.
 
 ### M3 — Publish: the artifact and its page

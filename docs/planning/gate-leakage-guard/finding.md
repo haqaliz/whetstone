@@ -60,8 +60,9 @@ held-out member (`donor-a-c6e4d4c4de87`). A candidate trained on a held-out task
 that task honestly, so it is not gated, and the four examples are not dropped after the fact to
 make it gateable — the tool says so, and the runbook halts on its non-zero exit.
 
-**No gate was run.** There is therefore **no gate verdict of any kind** for this adapter — not a
-decision, not `UNVERIFIED`, nothing. Nothing in this finding is a gate outcome.
+**No gate was run in this unit, and no gate decision exists.** Nothing in this finding is a gate
+outcome. One earlier gate run does exist, on a sibling checkpoint, and is not a decision either
+(section 5).
 
 ## 4. Why this is not a seam regression
 
@@ -79,7 +80,9 @@ on the same sha12. Nothing here shows the seam failing on a split that existed w
 
 ## 5. The provenance link
 
-The adapter checked is the one in `checkpoints/portability-arm/`. Its `provenance.json` records
+The checkpoint examined is the one in `checkpoints/portability-arm/`, whose provenance `digest`
+begins `48eae99b0d32`; `reports/portability-arm/report.md` calls it the arm's **first**
+checkpoint. Its `provenance.json` records
 `dataset_digest` `3416702298c36a9a2ce8bada26295e54ddbd94f9666bff7b8088954ab6e4873b`, which **equals** the `digest`
 in night-001's `dataset.json`. That is how the candidate's night is named: the adapter says it was
 trained on night-001's dataset.
@@ -93,6 +96,15 @@ file-hash seal, so nothing proves the record was not edited after training. The 
 
 `checkpoints/night-001/` holds an adapter but no `provenance.json`, so it carries no recorded link to
 any dataset and was not the adapter examined here.
+
+**A sibling checkpoint was gated earlier, and was not examined here.** The same report records a
+re-sealed checkpoint, digest `aebae11f5c4b`, trained from the same sealed dataset (digest
+`3416702298c3`), and that it was gated as gate-001 (2026-09-26) against the untrained base and
+reduced to `UNVERIFIED`: 0 of 12 solved on both sides, 2 unverified. That run scored the
+held-out document as it stood **before** `PREREGISTRATION.md` § 10.16, so it is non-comparable
+and not a decision. Its provenance was **not re-read here**; only the report's statement is
+cited. That the leakage refusal applies to it follows from the report's statement that the
+dataset is the same, not from a run of `check-leakage` on it.
 
 ## 6. Limits
 
@@ -123,4 +135,5 @@ of scope and is not proposed.
 
 **M2's exit criterion therefore stays open.** `docs/ROADMAP.md` § 14 M2's exit criterion is a gate
 decision on a real pair, with `whetstone check-leakage` exiting 0, and no structural `UNVERIFIED`
-remaining. The only trained adapter is refused before the gate, so no gate decision exists.
+remaining. The checkpoint examined is refused before the gate, and gate-001's `UNVERIFIED` was scored
+against the pre-§ 10.16 document, so no gate decision exists.
