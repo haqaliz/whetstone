@@ -1,40 +1,39 @@
-# feat gate-first-decision — run the gate on a real checkpoint pair and commit the decision
+# feat checkpoint-provenance-seal — seal `provenance.json`'s own claims into the checkpoint digest
 
-**Core loop element:** ③ the never-regress promotion gate (the operator's chain). The reward
+**Core loop element:** ③ the never-regress promotion gate (the trust its inputs carry). The reward
 (①) does not change.
-**Roadmap:** M2 of `docs/ROADMAP.md` § 14 — "Make the gate able to answer" (issues #60, #62);
-follow-on of `docs/planning/heldout-scorable/`.
-**Source:** inline brief — the `whetstone-next` handoff (2026-10-02). No GitHub issue exists
-for this unit.
+**Roadmap:** M2 of `docs/ROADMAP.md` § 14 — "Make the gate able to answer"; follow-on of
+`docs/planning/gate-leakage-guard/` (its STATUS "Open follow-ups" lists this first).
+**Source:** inline brief — the `whetstone-next` handoff (2026-10-03). No GitHub issue exists for
+this unit.
 
 ## Brief
 
-The handoff brief from `whetstone-next` (2026-10-02), verbatim:
+A trained checkpoint's `provenance.json` is hashed for its files but not for its own claims.
+`sft.verify_checkpoint` re-hashes the listed files and checks that `digest` reduces from them, but
+`dataset_digest`, `base_repo_id`/`base_revision` and `backend` sit outside any seal.
+`check-leakage` and the `whetstone-promotion/2` record both trust `dataset_digest` to name the
+candidate's night, so a hand edit could hide a leak (`docs/planning/gate-leakage-guard/finding.md`
+§ 5: "RECORDED provenance, not verified"). Seal those fields into the checkpoint digest under a new
+checkpoint schema version, written test-first.
 
-> M2's exit criterion (docs/ROADMAP.md § 14) is that `whetstone gate` returns promoted/rejected
-> on a real checkpoint pair. The heldout-scorable unit made the held-out set scorable
-> (docs/planning/heldout-scorable/gate-runbook/runbook.md); no candidate has scored against it
-> yet. Use the existing 0.5B adapter (checkpoints/portability-arm on x131) vs its untrained
-> base, via the gate's untrained-incumbent dispatch. Caveat to dig first: the adapter was
-> trained on night-001's 6 strict-PASS examples from the pre-re-mint corpus. Determine whether
-> any of them now fall in the re-derived held-out split by running `whetstone check-leakage`,
-> and whether issue #42's non-reproducing tasks touch the split. Acceptance criteria, written as
-> tests/guards first: (1) the runbook guard refuses a gate run if check-leakage would not exit 0
-> or the adapter's training digest is not recorded in the evaluation; (2) the committed finding
-> states the verdict and exit code verbatim from `whetstone gate`, with counts from the ledger
-> only; (3) UNVERIFIED, rejected and refusal outcomes each have a documented, non-promoting
-> record path, with no verifier loosening; (4) STATUS.md, the CHANGELOG and ROADMAP § 14 M2 are
-> updated in the same commit as the finding, and no number appears that the verifier didn't
-> produce. The GPU/CPU run itself is operator-executed; plan the sheet, not the result.
+## Acceptance criteria (tests first)
 
-## Known caveats carried in from the handoff (unverified until Phase 2)
+1. Editing `dataset_digest`, the base repo or revision, or the backend in a v2 checkpoint's
+   `provenance.json` makes `verify_checkpoint` raise `CheckpointUnverified`, naming the field.
+2. A v1 checkpoint (the `checkpoints/portability-arm` shape) still verifies, and every consumer
+   (`gate`, `check-leakage`, the promotion record) reports its dataset link as "recorded, not
+   sealed", never "verified".
+3. A v2 checkpoint's dataset link is reported as verified by `check-leakage` and the promotion
+   record.
+4. Nothing under `verify/` or `tasks/` changes; the gate's rule and exits are byte-identical.
+5. The Torch and MLX trainers write the same v2 shape.
 
-- The only trained adapter was built from night-001's 6 strict-PASS examples on the
-  pre-re-mint corpus; the re-mint changed task identifiers and re-rolled the split, so some
-  of those 6 may now be held-out. Unchecked.
-- Issue #42 (four source-B tasks do not reproduce on Linux) may make some of the 6 examples
-  non-re-derivable on x131.
-- `rejected`, `UNVERIFIED` and a refusal are all valid outcomes; the gate is not to be tuned
-  toward `promoted`.
-- `docs/planning/_card/understanding.md` in the primary checkout carries uncommitted edits
-  from the previous unit; they were deliberately not carried into this worktree.
+## Known caveat (from the handoff)
+
+Changing what `digest` covers changes the digest of every existing checkpoint, and
+`checkpoints/portability-arm` (`48eae99b0d32`) is cited by that value in committed docs. Use a
+schema bump and leave v1 verifiable. Never rewrite an old checkpoint in place, and never let v1
+render as verified. Decide in the dig whether `whetstone-promotion/2` needs a bump or can carry a
+`sealed: bool`. Describe the tree as it ships and write nothing about in-flight work; append the
+STATUS entry in the same commit that lands the capability.

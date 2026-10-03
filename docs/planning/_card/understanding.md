@@ -1,61 +1,85 @@
-# Understanding — gate-first-decision (2026-10-02)
+# Understanding — checkpoint-provenance-seal
 
-Sources: `docs/planning/_card/issue.md` (the whetstone-next handoff, verbatim),
-`docs/ROADMAP.md` § 14 (M2), `PREREGISTRATION.md` § 10.16, the gate runbook
-(`docs/planning/p3-promotion-gate/gate-runbook/runbook.md`) and its guard
-(`tests/test_gate_runbook_guards.py`), `src/whetstone/loop/check_leakage.py`,
-`src/whetstone/loop/gate.py`, `src/whetstone/cli.py`, and a read-only look at the primary
-checkout's gitignored `runs/` and `tasks/`.
+**Core-loop element:** ③ the never-regress promotion gate, at the trust its inputs carry. ① the
+reward does not change; nothing under `verify/` or `tasks/` is touched. `UNVERIFIED` still counts
+as not a win, and the gate's rule and exits are untouched. Nothing leaves the machine.
 
 ## What the work is really asking
 
-M2's exit criterion (`docs/ROADMAP.md:910`) is that `whetstone gate` returns `promoted` or
-`rejected` on a real pair and `whetstone check-leakage` exits 0. The held-out set is now
-scorable (§ 10.16), and no candidate has scored against it. The handoff proposed using the one
-trained adapter (0.5B, 6 night-001 examples) against its untrained base.
+`sft.verify_checkpoint` (`src/whetstone/loop/sft.py:801`) re-hashes the files a checkpoint's
+`provenance.json` names and checks that `digest` reduces from those file hashes (`_digest_of`,
+`:926`). Everything else in the document is outside the seal: `base`, `dataset_digest`,
+`run_seed`, `backend`, `training_args`, `tool_versions`, `validation`, `capacity_probe`. The unit
+brings the claims consumers rely on inside the digest, under a new checkpoint schema, and keeps
+v1 verifiable but never "sealed".
 
-## Findings that change the unit
+## Facts the dig established
 
-1. **The existing adapter is contaminated against the re-derived held-out set.** Compared by
-   the 12-hex sha12 that survives the re-mint, night-001's `legacy-a-c6e4d4c4de87` is
-   `donor-a-c6e4d4c4de87`, a held-out member. That task supplies **4 of the 6** training
-   examples (verified directly against `runs/nights/night-001/dataset.json` and
-   `tasks/heldout/source-b.json`). The other two examples (`34daf85182d5`, `c3e132b7469b`)
-   are not held out. Issue #42's four tasks are none of the 6 and none of the 12.
-2. **`check-leakage` cannot see it.** It compares exact `task_id` strings
-   (`check_leakage.py`, `check_overlap`). The re-mint renamed `legacy-a-*`/`legacy-b-*` to
-   `donor-a-*`/`donor-b-*`, so on night-001's ids it would report **disjoint (exit 0)** — a
-   false clean on exactly the case it exists for. Separately it refuses (exit 2, `NotARun`)
-   because `runs/nights/night-001/` has no `ledger.json`.
-3. **The gate record does not name what trained the candidate.** `runs/promotions/<id>.json`
-   holds candidate/incumbent digests, held-out digest, per-side counts, decision, retries and
-   tool versions (`gate.py:900-942`) but not the training-dataset digest, base repo_id or
-   revision. Nothing ties a verdict to the night's `dataset.json`.
-4. **The runbook is written for a different pair.** It materialises a 32B incumbent
-   (`incumbent-base-001`), gates `checkpoints/night-002`, leaks against `runs/night-002`, and
-   its roadmap cites have drifted (rule now ~`ROADMAP.md:431`). It never says which night
-   trained the candidate, and "who writes the finding" is undefined (it authorises nothing in
-   `reports/`).
-5. **Exit codes differ from the brief.** `whetstone gate`: 0 promoted, 1 rejected, 3
-   `UNVERIFIED`, 2 refusal. `check-leakage`: 0/1/2.
+- **One writer for trained checkpoints.** MLX and Torch both go through `sft.write_checkpoint`
+  (`night.py:628`, `arm.py:158`); `torch_runtime.py` writes no provenance. Criterion 5 (same v2
+  shape) is therefore automatic, and the test is a pin rather than work.
+- **A second, separate writer:** `write_baseline_checkpoint` (`sft.py:759`) writes the untrained
+  checkpoint. It has no caller in `src/` and records `base` only. Whether v2 covers it is open.
+- **`Checkpoint` carries no dataset link** (`sft.py:337-360`: directory, digest, files, untrained,
+  backend). `gate.py` re-opens `provenance.json` a second time (`_checkpoint_base` `:1617`,
+  `_checkpoint_dataset_digest` `:1629`). A seal verified in one read and consumed from a second
+  read is a time-of-check/time-of-use gap; the consumers should take their values from the
+  verified object.
+- **The promotion record's `training` block is write-only.** `candidate_training` and
+  `incumbent_training` are populated on read and consumed by nothing in `src/`; `morning.py` and
+  `honest_report.py` do not print them.
+- **Strict readers.** `_PROMOTION_TRAINING_FIELDS` (`gate.py:1329`) is checked as both a subset
+  and a required set, so a new key under `/2` would make every existing `/2` record unreadable
+  while still claiming `/2`. That argues for a bump to `/3` over a silent field.
+- **A v2 checkpoint fails closed on an old reader**, since `verify_checkpoint` requires schema
+  equality (`:819`).
 
-## Contradictions flagged, not papered over
+## Contradictions with the brief
 
-- The brief's AC1 ("refuse a gate run if check-leakage would not exit 0") would, applied
-  honestly, **refuse this adapter** — which is the right answer, and makes the unit's first
-  deliverable a sound leakage guard rather than a verdict.
-- Issue #42 states the held-out 12 are all donor-A; the committed document has three
-  `donor-b-*` members. Not investigated further; does not affect the contamination finding.
+1. **Criterion 3 names a consumer that has no checkpoint.** `check-leakage` reads `--run` and
+   `--heldout` only (`cli.py:583-610`, `check_leakage.py:228`). It never opens a checkpoint, and
+   the link from a checkpoint's recorded digest to a night's `dataset.json` exists only as a
+   manual step in the gate runbook. "`check-leakage` reports a v2 dataset link as verified" has
+   nowhere to be true unless the command gains an optional `--checkpoint`. That is a CLI change
+   and a new refusal path, and it is a scope decision, not a detail.
+2. **"Verified" overclaims what a seal is.** The digest is an unkeyed hash. Anyone able to edit
+   `provenance.json` can also recompute the digest, and `verify_checkpoint` has this property for
+   the file hashes today. A v2 seal detects an edit that leaves the digest alone, and an edit
+   that disagrees with a digest cited elsewhere (reports, promotion records, the runbook). It does
+   not authenticate the writer, and it does not prove `dataset_digest` equals the digest of the
+   dataset the trainer actually read. The honest state is **sealed**, not **verified**. The flag
+   and every sentence that carries it should say `sealed`, and the docs must state this limit.
+   The brief's criteria 2 and 3 should be read with "verified" replaced by "sealed".
 
-## Guardrails
+## Consequences for the tests
 
-- Reward untouched: still deterministic re-execution. The gate's decision rule and the
-  `unverified == 0` requirement are untouched; § 8.3 forbids narrowing them.
-- `UNVERIFIED` and a refusal remain non-promoting. A contaminated `promoted` would be a
-  fabricated win; this is why the leakage fix is on the critical path.
-- Nothing leaves the box. Checkpoints and `runs/` are not copied into the worktree.
+- `tests/loop/test_baseline_checkpoint.py:179-193` (`TRAINED_KEYS`) pins `write_checkpoint`'s keys
+  byte-for-byte; it will change deliberately.
+- `tests/loop/test_gate_cli.py:258` (`_record_backend`) edits `provenance.json` after sealing and
+  assumes the seal covers files only; under v2 it must re-seal or the test must say why not.
+- `test_baseline_checkpoint.py:147` uses `whetstone-checkpoint/2` as its "wrong schema" value;
+  that value becomes legitimate.
+- `tests/test_gate_runbook_guards.py:523-541` pins the phrase "recorded, not verified" in the
+  runbook; it would still pass if the runbook went stale, so the guard needs tightening.
+- `tests/test_gate_leakage_finding.py` reads only the `dataset_digest` key of the real
+  `portability-arm` v1 checkpoint and does not call `verify_checkpoint`; it stays valid if v1
+  keeps verifying. It skips in a worktree.
 
-## Open questions for the requirements interview
+## What cannot be proven here
 
-See the interview; the scope decision (what to do about the contaminated adapter) is the
-first.
+`checkpoints/portability-arm` (`48eae99b0d32`) is v1 and stays v1: it is never rewritten in place.
+So **no real checkpoint will exist at v2 until a later night or arm writes one**, and this
+unit's v2 behavior is proven against fixtures only, as the gate's was. The docs must say so.
+
+## Open questions for the interview
+
+1. Promotion record: bump to `whetstone-promotion/3`, or add `sealed` under `/2`? (Recommendation
+   from the dig: bump.)
+2. Criterion 3: add `--checkpoint` to `check-leakage`, or limit the unit to the promotion record
+   and the runbook step, and leave the command alone?
+3. Does v2 also seal the untrained checkpoint's `base`, via `write_baseline_checkpoint`?
+4. Exactly which fields does the v2 digest cover? Candidates: `base`, `dataset_digest`, `backend`.
+   Others (`run_seed`, `training_args`, `tool_versions`, `validation`, `capacity_probe`) are
+   claims too, and a partial seal invites the question of why those were left out.
+5. Does the seal also govern `card.py`, which reads `base` and `backend` from the raw JSON and
+   discards `verify_checkpoint`'s return (`card.py:227-232`)?
