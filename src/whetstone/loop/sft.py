@@ -86,7 +86,13 @@ ADAPTER_CONFIG = "adapter_config.json"
 
 #: The checkpoint's own provenance document and its schema, in the `weights.py` shape.
 CHECKPOINT_FILE = "provenance.json"
-CHECKPOINT_SCHEMA = "whetstone-checkpoint/1"
+CHECKPOINT_SCHEMA_V1 = "whetstone-checkpoint/1"
+CHECKPOINT_SCHEMA_V2 = "whetstone-checkpoint/2"
+#: The schema written. Still V1 until the writer seals its claims; the flip to V2 is its own step.
+CHECKPOINT_SCHEMA = CHECKPOINT_SCHEMA_V1
+
+#: The document keys that are not claims: the schema label, the digest, and the claim hashes.
+_UNSEALED_KEYS = frozenset({"schema", "digest", "claims"})
 
 #: How much is read per digest step, matching `weights._CHUNK`: bound by the disk rather than by
 #: the loop, and never resident in the process that is about to hold a model.
@@ -138,6 +144,35 @@ class CheckpointUnverified(ValueError):
     compared a checkpoint it could not demonstrate it had read would publish a promotion decision
     about bytes nobody can identify.
     """
+
+
+def _canonical(value: Any) -> bytes:
+    """The bytes a claim is hashed over: what a reader will parse back, in one fixed encoding.
+
+    The inner round trip means the hashed value is the one `json.loads` returns from the written
+    document, never the in-memory object (a tuple hashes as the list it will be read back as).
+    """
+    return json.dumps(
+        json.loads(json.dumps(value)), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("ascii")
+
+
+def _claim_hashes(body: Mapping[str, Any]) -> dict[str, str]:
+    """One sha256 per claim in `body`, over that claim's canonical bytes.
+
+    `body` holds claims only. A key from `_UNSEALED_KEYS` here is a writer bug rather than an
+    operator error, so it raises: sealing the seal's own fields would make the digest circular.
+    """
+    stray = sorted(_UNSEALED_KEYS & body.keys())
+    if stray:
+        raise CheckpointUnverified(f"a checkpoint body must not carry {stray}; they are not claims")
+    return {key: hashlib.sha256(_canonical(value)).hexdigest() for key, value in body.items()}
+
+
+def _claims_digest(claims: Mapping[str, str]) -> str:
+    """The sha256 of the claim hashes, one `key:hash` line each in sorted key order."""
+    text = "\n".join(f"{key}:{claims[key]}" for key in sorted(claims))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 class NothingToTrain(ValueError):
@@ -729,7 +764,7 @@ def write_checkpoint(
     (directory / CHECKPOINT_FILE).write_text(
         json.dumps(
             {
-                "schema": CHECKPOINT_SCHEMA,
+                "schema": CHECKPOINT_SCHEMA_V1,
                 "digest": digest,
                 "base": {"repo_id": repo_id, "revision": revision},
                 "dataset_digest": dataset_digest,
@@ -782,7 +817,7 @@ def write_baseline_checkpoint(
     (directory / CHECKPOINT_FILE).write_text(
         json.dumps(
             {
-                "schema": CHECKPOINT_SCHEMA,
+                "schema": CHECKPOINT_SCHEMA_V1,
                 "digest": digest,
                 "base": {"repo_id": repo_id, "revision": revision},
                 "untrained": True,
@@ -816,9 +851,9 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
         raw: Any = json.loads(document.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise CheckpointUnverified(f"{str(document)!r} could not be read: {error}") from error
-    if not isinstance(raw, dict) or raw.get("schema") != CHECKPOINT_SCHEMA:
+    if not isinstance(raw, dict) or raw.get("schema") != CHECKPOINT_SCHEMA_V1:
         raise CheckpointUnverified(
-            f"{str(document)!r} does not declare schema {CHECKPOINT_SCHEMA!r}"
+            f"{str(document)!r} does not declare schema {CHECKPOINT_SCHEMA_V1!r}"
         )
 
     recorded = tuple(
@@ -945,6 +980,8 @@ __all__ = [
     "CAPACITY_PROBE_ITERS",
     "CHECKPOINT_FILE",
     "CHECKPOINT_SCHEMA",
+    "CHECKPOINT_SCHEMA_V1",
+    "CHECKPOINT_SCHEMA_V2",
     "HEADROOM_FRACTION",
     "MACHINE_BYTES",
     "NO_VALID_SPLIT",
