@@ -1171,7 +1171,7 @@ def run_check_leakage_cli(args: argparse.Namespace) -> int:
     **The exits are the existing contract, no fifth code**: disjoint (source B examples
     compared, none shared) → 0, a named overlap →
     1 (a leak is a failure, not a mistyped command), and a refusal an operator can fix — a
-    directory that is not a night's run, an unreadable dataset, a training set with no
+    directory with no `dataset.json`, an unreadable dataset, a training set with no
     source B example (nothing was compared; Amendment 2), a held-out document whose
     digest does not match its contents — → 2. There is no `UNVERIFIED` exit here: this
     command reads documents rather than running anything, so it either answers or refuses.

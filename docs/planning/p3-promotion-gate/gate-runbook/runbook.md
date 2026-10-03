@@ -48,11 +48,11 @@ state of a filesystem rather than on what the operator chose.
   started from, materialized by the checkpoint writer in Step 2 below —
   `$REPO/checkpoints/incumbent-base-001`.
 
-**§ 7.3 stays open.** The incumbent is the 32B (`mlx-community/Qwen2.5-Coder-32B-Instruct-4bit`),
+**§ 7.3 is closed** by the Type 1 amendment (`PREREGISTRATION.md` § 10.10). The incumbent is the 32B (`mlx-community/Qwen2.5-Coder-32B-Instruct-4bit`),
 the runbook-resolved candidate the night runbook retained on its evidence
 (`docs/planning/p2-rollouts/night-door/runbook.md`): the only candidate with evidence, never a
-base the pre-registration has pinned. Materializing it as the gate's incumbent is not a base
-selection, and § 7.3 closes only by a Type 1 amendment before the measurement it governs runs.
+base the pre-registration had pinned when this sheet was written. Materializing it as the
+gate's incumbent is not a base selection; a change of base is a further Type 1 amendment.
 
 **The candidate's night, and how it is found.** The gate takes a checkpoint and `check-leakage`
 takes a run directory, and nothing on either command line ties the two. The tie is the dataset
@@ -68,8 +68,8 @@ Both are re-hashed by `verify_checkpoint` before anything is compared, so the de
 statement about the bytes on disk and not about the directory names above. A checkpoint whose
 hash does not match its provenance refuses the run by name (exit 2).
 
-The first gated evaluation therefore needs **one** night: the candidate is night #1's
-checkpoint and the incumbent is the untrained base the night started from. This is the
+The first gated evaluation therefore needs **one** night: the candidate is a single night's
+checkpoint (the sheet's example types `night-002`) and the incumbent is the untrained base the night started from. This is the
 gate's incumbent, **not** the § 3 baseline measurement: different roles, different homes
 (`docs/ROADMAP.md:688-693`) — if the two figures disagree it is published as a finding,
 never reconciled.

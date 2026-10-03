@@ -1654,7 +1654,7 @@ def _checkpoint_dataset_digest(checkpoint: Checkpoint) -> str | None:
 
 
 def _checkpoint_training(checkpoint: Checkpoint) -> TrainingProvenance:
-    """What a verified checkpoint's provenance records as training it — recorded, not verified.
+    """What a `verify_checkpoint` checkpoint's provenance records as training it (not verified).
 
     The base is `_checkpoint_base`'s and the digest `_checkpoint_dataset_digest`'s, both read
     from the one `provenance.json`; a trained checkpoint with no digest is refused there.
