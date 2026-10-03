@@ -911,8 +911,8 @@ evidence for #60.
 `whetstone check-leakage` exits 0. No structural `UNVERIFIED` remains.
 
 > **Corrected 2026-10-03, when the leakage guard was fixed.** M2's exit criterion stands and
-> stays open. The one trained adapter was examined by `whetstone check-leakage`, now matching by
-> task identity, and refused: 4 of its 6 training examples touch a held-out task
+> stays open. The adapter in `checkpoints/portability-arm` was examined by
+> `whetstone check-leakage`, now matching by task identity, and refused: 4 of its 6 training examples touch a held-out task
 > (`docs/planning/gate-leakage-guard/finding.md`). No gate was run, so no gate verdict of any
 > kind exists. The next step is a clean candidate, and whether to produce one is the operator's
 > decision.

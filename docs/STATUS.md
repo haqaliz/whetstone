@@ -10,8 +10,8 @@ carries the current state and the rules that still bind.
 
 ---
 
-**The leakage guard matches by task identity, and the one trained adapter is refused**
-(2026-10-03, `gate-leakage-guard`). `whetstone check-leakage` compared exact task-id strings.
+**The leakage guard matches by task identity, and the adapter in
+`checkpoints/portability-arm` is refused** (2026-10-03, `gate-leakage-guard`). `whetstone check-leakage` compared exact task-id strings.
 Across the corpus re-mint that would have reported *disjoint* on night-001's training set while
 4 of its 6 examples sit on a task that is now a held-out member: a false clean on the one case
 the guard exists for. Independently it refused a run with no `ledger.json`, and night-001 has
@@ -40,8 +40,8 @@ record the gate reader refuses; it was a traceback.
 candidate's night through the recorded dataset digest, and its ROADMAP line citations are
 pinned by a guard.
 
-**The finding** (`docs/planning/gate-leakage-guard/finding.md`): the one trained adapter,
-`checkpoints/portability-arm/`, is refused — 4 of its 6 training examples touch a held-out task,
+**The finding** (`docs/planning/gate-leakage-guard/finding.md`): the adapter in
+`checkpoints/portability-arm/` is refused — 4 of its 6 training examples touch a held-out task,
 of 12 held-out members. No gate was run, so there is no gate verdict of any kind for it. M2's
 exit criterion stays open.
 
