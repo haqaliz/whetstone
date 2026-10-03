@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import resource
 import sys
 import time
@@ -96,6 +97,11 @@ CHECKPOINT_SCHEMA = CHECKPOINT_SCHEMA_V2
 
 #: The document keys that are not claims: the schema label, the digest, and the claim hashes.
 _UNSEALED_KEYS = frozenset({"schema", "digest", "claims"})
+
+#: A claim hash: exactly the lowercase hex `hexdigest()` writes. Fixed length and newline-free,
+#: so with newlines also banned from keys, every `key:hash` line `_claims_digest` joins splits
+#: back into exactly one key and one hash — the line format is injective.
+_CLAIM_HASH = re.compile(r"[0-9a-f]{64}")
 
 #: How much is read per digest step, matching `weights._CHUNK`: bound by the disk rather than by
 #: the loop, and never resident in the process that is about to hold a model.
@@ -169,6 +175,14 @@ def _claim_hashes(body: Mapping[str, Any]) -> dict[str, str]:
     stray = sorted(_UNSEALED_KEYS & body.keys())
     if stray:
         raise CheckpointUnverified(f"a checkpoint body must not carry {stray}; they are not claims")
+    # A newline in a key would let one claim line read as two in `_claims_digest`, so the
+    # writer refuses to seal one rather than produce a document whose lines are ambiguous.
+    broken = sorted(key for key in body if "\n" in key)
+    if broken:
+        raise CheckpointUnverified(
+            f"a checkpoint body must not carry the key {broken[0]!r}: a newline in a claim key "
+            "makes the digest's claim lines ambiguous"
+        )
     return {key: hashlib.sha256(_canonical(value)).hexdigest() for key, value in body.items()}
 
 
@@ -815,6 +829,7 @@ def write_checkpoint(
         directory=directory,
         digest=digest,
         files=files,
+        backend=body["backend"],
         base_repo_id=repo_id,
         base_revision=revision,
         dataset_digest=dataset_digest,
@@ -898,6 +913,13 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
     sealed = schema == CHECKPOINT_SCHEMA_V2
     if sealed:
         _verify_claims(document, raw)
+        # Sealed is not the same as complete: a document re-sealed without `files` is
+        # self-consistent and lists nothing to re-hash. Refused by name, never a `KeyError`.
+        if not isinstance(raw.get("files"), list):
+            raise CheckpointUnverified(
+                f"{str(document)!r} carries no 'files' list, so there are no bytes to re-hash "
+                "and verifying it would check nothing"
+            )
 
     recorded = tuple(
         CheckpointFile(name=str(one["name"]), bytes=int(one["bytes"]), sha256=str(one["sha256"]))
@@ -977,6 +999,21 @@ def _verify_claims(document: Path, raw: Mapping[str, Any]) -> None:
             f"{str(document)!r} declares schema {CHECKPOINT_SCHEMA_V2!r} and carries no claims "
             "mapping of key to sha256, so none of what it says about this checkpoint is sealed"
         )
+    # Checked explicitly, before anything is compared: the digest's `key:hash` lines are only
+    # injective while no key holds a newline and every hash is fixed-length hex. Without this a
+    # claim keyed "backend:<hash>\nbase" carrying `base`'s hash reproduces the honest digest
+    # with both keys deleted.
+    for key in sorted(claims):
+        if "\n" in key:
+            raise CheckpointUnverified(
+                f"{str(document)!r} records claim {key!r}, whose key holds a newline — one claim "
+                "line forged to read as two, which no writer produces"
+            )
+        if not _CLAIM_HASH.fullmatch(claims[key]):
+            raise CheckpointUnverified(
+                f"{str(document)!r}: claim {key!r} records {claims[key]!r}, which is not a "
+                "sha256 (64 lowercase hex characters)"
+            )
     body = {key: value for key, value in raw.items() if key not in _UNSEALED_KEYS}
     unclaimed = sorted(body.keys() - claims.keys())
     if unclaimed:

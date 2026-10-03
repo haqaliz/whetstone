@@ -503,3 +503,90 @@ def test_a_written_document_of_every_json_type_round_trips(tmp_path: Path) -> No
     verified = sft.verify_checkpoint(written.directory)
     assert verified.sealed is True
     assert claims == sft._claim_hashes(json.loads(json.dumps(body)))
+
+
+# --- The claim lines must split back one way only. ------------------------------------------
+
+
+def _resealed(document: dict[str, Any]) -> dict[str, Any]:
+    """`document` with its claims and digest recomputed the way any writer can (PRD § 3)."""
+    document["claims"] = sft._claim_hashes(
+        {key: value for key, value in document.items() if key not in sft._UNSEALED_KEYS}
+    )
+    document["digest"] = sft._claims_digest(document["claims"])
+    return document
+
+
+def test_a_merged_claim_key_cannot_delete_two_keys_under_one_digest(tmp_path: Path) -> None:
+    """Cheat 3(b) through the line format: two claim lines forged into one key.
+
+    `_claims_digest` joins `key:hash` lines with a newline, so one claim keyed
+    `"backend:<H_backend>\\nbase"` carrying `base`'s hash produces the same digest text as the
+    two honest claims. With both keys deleted the digest is unchanged — unless a newline in a
+    claim key is refused. The file-only seal accepts the same edit, so the refusal is the new
+    check doing the work.
+    """
+    written = _written(tmp_path / "cp")
+    document = _read(written.directory)
+    claims = document["claims"]
+    merged = f"backend:{claims['backend']}\nbase"
+    forged_claims = {key: value for key, value in claims.items() if key not in {"backend", "base"}}
+    forged_claims[merged] = claims["base"]
+    assert sft._claims_digest(forged_claims) == document["digest"], "the forgery's premise"
+    # The merged key carries `base`'s value, so its hash is the claim beside it and the orphan
+    # and re-hash checks are both satisfied: only the key's own shape gives it away.
+    document[merged] = document.pop("base")
+    del document["backend"]
+    document["claims"] = forged_claims
+    _write(written.directory, document)
+
+    # Matched on the verifier's own refusal, not just the key: `_claim_hashes` refuses the same
+    # key when the body is re-hashed, and that second guard must not be what makes this pass.
+    with pytest.raises(sft.CheckpointUnverified, match="one claim line forged to read as two"):
+        sft.verify_checkpoint(written.directory)
+
+    accepted = _under_file_only_seal(written.directory, document)
+    assert (accepted.backend, accepted.base_repo_id) == (None, None)
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["0" * 63, "0" * 65, "A" * 64, "g" * 64],
+    ids=["short", "long", "upper", "non-hex"],
+)
+def test_a_claim_value_that_is_not_a_sha256_is_refused(tmp_path: Path, value: str) -> None:
+    written = _written(tmp_path / "cp")
+    document = _read(written.directory)
+    document["claims"]["run_seed"] = value
+    _write(written.directory, document)
+
+    with pytest.raises(sft.CheckpointUnverified, match=r"claim 'run_seed' .* not a sha256"):
+        sft.verify_checkpoint(written.directory)
+
+
+def test_a_body_key_with_a_newline_is_refused_at_write_time() -> None:
+    with pytest.raises(sft.CheckpointUnverified, match=re.escape(repr("a\nb"))):
+        sft._claim_hashes({"ok": 1, "a\nb": 2})
+
+
+def test_a_consistently_resealed_v2_document_with_no_files_is_refused(tmp_path: Path) -> None:
+    """Without `files` there is nothing to re-hash: refused by name, never a `KeyError`."""
+    written = _written(tmp_path / "cp")
+    document = _read(written.directory)
+    del document["files"]
+    _write(written.directory, _resealed(document))
+
+    with pytest.raises(sft.CheckpointUnverified, match="'files'"):
+        sft.verify_checkpoint(written.directory)
+
+
+def test_the_written_checkpoint_agrees_with_the_verified_one(tmp_path: Path) -> None:
+    """What `write_checkpoint` returns and what `verify_checkpoint` reads back are one record."""
+    written = _written(tmp_path / "cp")
+    verified = sft.verify_checkpoint(written.directory)
+
+    fields = ("base_repo_id", "base_revision", "dataset_digest", "sealed", "backend")
+    assert {name: getattr(written, name) for name in fields} == {
+        name: getattr(verified, name) for name in fields
+    }
+    assert written.backend is not None

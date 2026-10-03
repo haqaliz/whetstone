@@ -257,12 +257,12 @@ def test_a_doctored_held_out_document_exits_two(
 def _record_backend(checkpoint: Any, name: str, *, reseal: bool = True) -> str:
     """Name the runtime that trained a fixture checkpoint, and return the digest it now carries.
 
-    Under `whetstone-checkpoint/2` `backend` is a sealed claim, so recording it re-seals the
-    document: the claim hashes and the digest are recomputed with `sft._claim_hashes` and
-    `sft._claims_digest`. That simulates the legitimate re-seal a trainer's own writer performs
-    when it records the backend — it is NOT a bypass of the seal, and
-    `test_an_unresealed_backend_edit_exits_two_naming_the_claim` pins that the same edit
-    without it is refused. `reseal=False` is that edit.
+    Under `whetstone-checkpoint/2` `backend` is a sealed claim, so this fixture rewrite re-seals
+    the document: the claim hashes and the digest are recomputed with `sft._claim_hashes` and
+    `sft._claims_digest`, the way any writer can (the digest is unkeyed — PRD § 3). It is a
+    fixture shortcut, not a path production takes: a real checkpoint records its backend once,
+    inside `sft.write_checkpoint`. `test_an_unresealed_backend_edit_exits_two_naming_the_claim`
+    pins that the same edit without the re-seal is refused. `reseal=False` is that edit.
     """
     document = Path(checkpoint) / "provenance.json"
     raw = json.loads(document.read_text(encoding="utf-8"))
