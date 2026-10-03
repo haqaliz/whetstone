@@ -8,7 +8,7 @@ adapter) and **sha12-only identity matching** with a refusal on an unrecognisabl
 ## Problem Statement
 
 M2's exit criterion (`docs/ROADMAP.md` § 14) is a real `promoted`/`rejected` from
-`whetstone gate`. The adapters trained from night-001's dataset cannot honestly supply one. Four of its six
+`whetstone gate`. The adapters trained from night-001's dataset cannot honestly supply one. Four of that dataset's six
 training examples come from `legacy-a-c6e4d4c4de87`, which the re-mint renamed `donor-a-c6e4d4c4de87`, a
 member of the re-derived held-out set. `whetstone check-leakage` compares exact `task_id`
 strings, so across the re-mint it reports disjoint (exit 0): a false clean on the case it
@@ -88,7 +88,7 @@ Should-have
 - **Documented residual: near-duplicates.** sha12 identity cannot see a candidate trained on a
   near-identical task (same function, adjacent commit). A clean `check-leakage` means "no
   shared task identity", never "no contamination"; the finding and the runbook say so.
-- **M2 stays open.** The only adapter is refused, so M2 needs a clean candidate (option B, an
+- **M2 stays open.** The adapter examined is refused, so M2 needs a clean candidate (option B, an
   operator-run retrain), recorded in the finding as the next unit.
 - **The finding is not reproducible without gitignored artefacts** (`runs/nights/night-001/`);
   it says so.

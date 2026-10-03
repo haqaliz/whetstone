@@ -99,8 +99,9 @@ any dataset and was not the adapter examined here.
 
 **A sibling checkpoint was gated earlier, and was not examined here.** The same report records a
 re-sealed checkpoint, digest `aebae11f5c4b`, trained from the same sealed dataset (digest
-`3416702298c3`), and that it was gated as gate-001 (2026-09-26) against the untrained base and
-reduced to `UNVERIFIED`: 0 of 12 solved on both sides, 2 unverified. That run scored the
+`3416702298c3`), and that it was gated (2026-09-26) against the untrained base and reduced to
+`UNVERIFIED`: 0 of 12 solved on both sides, 2 unverified. The label gate-001 for that run comes
+from `docs/STATUS.md`; the report does not use it. That run scored the
 held-out document as it stood **before** `PREREGISTRATION.md` § 10.16, so it is non-comparable
 and not a decision. Its provenance was **not re-read here**; only the report's statement is
 cited. That the leakage refusal applies to it follows from the report's statement that the
