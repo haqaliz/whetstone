@@ -254,12 +254,15 @@ def test_a_doctored_held_out_document_exits_two(
     assert "document" in capsys.readouterr().err.lower(), capsys.readouterr().err
 
 
-def _record_backend(checkpoint: Any, name: str) -> None:
-    """Name the runtime that trained a fixture checkpoint, leaving its seal alone.
+def _record_backend(checkpoint: Any, name: str, *, reseal: bool = True) -> str:
+    """Name the runtime that trained a fixture checkpoint, and return the digest it now carries.
 
-    A checkpoint's digest is taken over its files and never over the rest of this document
-    (`sft.write_checkpoint`), so recording the backend does not re-seal it and
-    `verify_checkpoint` still accepts what is on disk.
+    Under `whetstone-checkpoint/2` `backend` is a sealed claim, so recording it re-seals the
+    document: the claim hashes and the digest are recomputed with `sft._claim_hashes` and
+    `sft._claims_digest`. That simulates the legitimate re-seal a trainer's own writer performs
+    when it records the backend — it is NOT a bypass of the seal, and
+    `test_an_unresealed_backend_edit_exits_two_naming_the_claim` pins that the same edit
+    without it is refused. `reseal=False` is that edit.
     """
     document = Path(checkpoint) / "provenance.json"
     raw = json.loads(document.read_text(encoding="utf-8"))
@@ -270,7 +273,50 @@ def _record_backend(checkpoint: Any, name: str) -> None:
         "name": name,
         "version": "2.14.0+cpu",
     }
+    if reseal:
+        raw["claims"] = sft._claim_hashes(
+            {key: value for key, value in raw.items() if key not in sft._UNSEALED_KEYS}
+        )
+        raw["digest"] = sft._claims_digest(raw["claims"])
     document.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return str(raw["digest"])
+
+
+def _torch_backed(fixtures: dict[str, Any]) -> Any:
+    """Record Torch on both fixture checkpoints, and the stub engine keyed on the new digests.
+
+    The stub chooses its answers by checkpoint digest, and the re-seal in `_record_backend`
+    moved both digests, so each new digest is mapped back to the checkpoint the stub was built
+    over. The mapping is total: a digest the gate did not get from a re-sealed fixture raises.
+    """
+    resealed = {
+        _record_backend(fixtures["candidate"], "torch-cpu"): fixtures["candidate_checkpoint"],
+        _record_backend(fixtures["incumbent"], "torch-cpu"): fixtures["incumbent_checkpoint"],
+    }
+
+    def engine(weights: Any, checkpoint: sft.Checkpoint, max_tokens: int) -> Any:
+        return fixtures["engine"](weights, resealed[checkpoint.digest], max_tokens)
+
+    return engine
+
+
+def test_an_unresealed_backend_edit_exits_two_naming_the_claim(
+    tmp_path: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The edit `_record_backend` re-seals, left unsealed, is a doctored checkpoint: exit 2.
+
+    The counterpart that keeps the helper's re-seal honest. Under the files-only seal this very
+    edit verified, which is how a checkpoint's recorded runtime could be rewritten without a
+    trace; now the gate refuses it and names the moved claim.
+    """
+    fixtures = _gate_fixtures(tmp_path, incumbent_solve=6)
+    _record_backend(fixtures["candidate"], "torch-cpu", reseal=False)
+
+    assert cli.main(_argv(fixtures)) == cli.USAGE_ERROR, (
+        "WHY THIS IS A FAILURE: a backend rewritten after the checkpoint was sealed did not "
+        "refuse with exit 2, so the runtime a gate dispatches on can be edited by hand"
+    )
+    assert "'backend'" in capsys.readouterr().err
 
 
 def test_the_door_dispatches_the_engine_on_the_checkpoints_own_recorded_backend(
@@ -290,8 +336,7 @@ def test_the_door_dispatches_the_engine_on_the_checkpoints_own_recorded_backend(
     from whetstone.loop import torch_runtime
 
     fixtures = _gate_fixtures(tmp_path, incumbent_solve=6)
-    _record_backend(fixtures["candidate"], "torch-cpu")
-    _record_backend(fixtures["incumbent"], "torch-cpu")
+    engine = _torch_backed(fixtures)
 
     def _mlx_engine_refused(*_args: Any, **_kwargs: Any) -> Any:
         raise AssertionError(
@@ -299,7 +344,7 @@ def test_the_door_dispatches_the_engine_on_the_checkpoints_own_recorded_backend(
         )
 
     monkeypatch.setattr(gate, "gate_engine", _mlx_engine_refused)
-    monkeypatch.setattr(torch_runtime, "torch_gate_engine", fixtures["engine"])
+    monkeypatch.setattr(torch_runtime, "torch_gate_engine", engine)
 
     assert cli.main(_argv(fixtures)) == cli.PASS_EXIT, (
         "WHY THIS IS A FAILURE: the door did not dispatch on the candidate's own backend. "
@@ -325,9 +370,7 @@ def test_the_promotion_record_names_the_runtime_that_actually_ran(
     from whetstone.loop import torch_runtime
 
     fixtures = _gate_fixtures(tmp_path, incumbent_solve=6)
-    _record_backend(fixtures["candidate"], "torch-cpu")
-    _record_backend(fixtures["incumbent"], "torch-cpu")
-    monkeypatch.setattr(torch_runtime, "torch_gate_engine", fixtures["engine"])
+    monkeypatch.setattr(torch_runtime, "torch_gate_engine", _torch_backed(fixtures))
 
     assert cli.main(_argv(fixtures)) == cli.PASS_EXIT
 

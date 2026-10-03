@@ -47,7 +47,7 @@ def _untrained(directory: Path, *, untrained: bool = True) -> Path:
     same provenance with one field omitted, byte-identical in every other respect.
     """
     payload: dict[str, object] = {
-        "schema": sft.CHECKPOINT_SCHEMA,
+        "schema": sft.CHECKPOINT_SCHEMA_V1,
         "base": dict(BASE),
         "files": [],
         "digest": EMPTY_DIGEST,
@@ -101,7 +101,7 @@ def test_untrained_with_files_is_refused(tmp_path: Path) -> None:
         sha256=hashlib.sha256(b"not a tensor").hexdigest(),
     )
     payload: dict[str, object] = {
-        "schema": sft.CHECKPOINT_SCHEMA,
+        "schema": sft.CHECKPOINT_SCHEMA_V1,
         "untrained": True,
         "base": dict(BASE),
         "files": [{"name": record.name, "bytes": record.bytes, "sha256": record.sha256}],
@@ -144,7 +144,7 @@ def test_the_existing_refusals_hold_for_untrained(tmp_path: Path) -> None:
     _write_provenance(
         wrong_schema,
         {
-            "schema": "whetstone-checkpoint/2",
+            "schema": "whetstone-checkpoint/3",
             "untrained": True,
             "base": dict(BASE),
             "files": [],
@@ -175,12 +175,14 @@ def test_an_untrained_checkpoint_without_the_flag_is_refused(tmp_path: Path) -> 
         sft.verify_checkpoint(directory)
 
 
-#: The pre-extension key set of a trained provenance — the byte-identity pin for the trained path.
-#: Any key added to `write_checkpoint`'s document fails this test, and `untrained` is exactly the
-#: key this aspect must not add there.
+#: The key set of a trained provenance — the byte-identity pin for the trained path. Any key
+#: added to `write_checkpoint`'s document fails this test, and `untrained` is exactly the key this
+#: aspect must not add there. Now the `whetstone-checkpoint/2` set: `claims` was added on purpose
+#: (the per-key hashes `digest` reduces from), and this pin updated with it.
 TRAINED_KEYS = {
     "schema",
     "digest",
+    "claims",
     "base",
     "dataset_digest",
     "run_seed",

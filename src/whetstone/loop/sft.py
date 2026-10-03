@@ -86,10 +86,13 @@ ADAPTER_CONFIG = "adapter_config.json"
 
 #: The checkpoint's own provenance document and its schema, in the `weights.py` shape.
 CHECKPOINT_FILE = "provenance.json"
+#: The files-only seal: `digest` reduces from the file hashes, and every other key rides outside
+#: it. Still read, never sealed — see `Checkpoint.sealed`.
 CHECKPOINT_SCHEMA_V1 = "whetstone-checkpoint/1"
+#: The claims seal: every top-level key is hashed into `claims`, and `digest` reduces from those.
 CHECKPOINT_SCHEMA_V2 = "whetstone-checkpoint/2"
-#: The schema written. Still V1 until the writer seals its claims; the flip to V2 is its own step.
-CHECKPOINT_SCHEMA = CHECKPOINT_SCHEMA_V1
+#: The schema written.
+CHECKPOINT_SCHEMA = CHECKPOINT_SCHEMA_V2
 
 #: The document keys that are not claims: the schema label, the digest, and the claim hashes.
 _UNSEALED_KEYS = frozenset({"schema", "digest", "claims"})
@@ -377,8 +380,9 @@ class Checkpoint:
     #: The directory under `checkpoints/`.
     directory: Path
 
-    #: A digest over the file digests, in sorted order. The value the run ledger records, and the
-    #: one P3's gate will name when it says which two checkpoints it compared.
+    #: The checkpoint's identity: under v2 a digest over the claim hashes (the `files` list is one
+    #: claim), under v1 a digest over the file digests alone, in sorted order. The value the run
+    #: ledger records, and the one P3's gate names when it says which two checkpoints it compared.
     digest: str
 
     #: Every file, with its own digest.
@@ -393,6 +397,24 @@ class Checkpoint:
     #: — in both cases an absence, which the gate treats as unknown rather than as a mismatch.
     #: Defaulted for the same reason `untrained` is; only `verify_checkpoint` populates it.
     backend: Mapping[str, Any] | None = None
+
+    #: The base's repo id, read back from `base` in the provenance. `None` when the document
+    #: records no `base` mapping or no string under it.
+    base_repo_id: str | None = None
+
+    #: The base's immutable revision, read back from `base` like `base_repo_id`.
+    base_revision: str | None = None
+
+    #: The provenance's `dataset_digest` **as recorded, unvalidated** — possibly an int or a list
+    #: in a hand-edited v1 document, and `None` when absent. Its shape is the gate's check, which
+    #: is why this is `Any`: a field typed `str` would have to reject or coerce, and either would
+    #: hide from the gate's message the value it is refusing.
+    dataset_digest: Any = None
+
+    #: `True` only for a v2 checkpoint whose every claim re-hashed; a v1 checkpoint is never
+    #: sealed. Sealed means PRD § 3 and no more: the digest is unkeyed, so it catches a document
+    #: changed after it was written, never a writer who recomputes it.
+    sealed: bool = False
 
 
 def projected_seconds(capacity: CapacityProbe, *, iters: int) -> float:
@@ -760,35 +782,44 @@ def write_checkpoint(
     existing.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     files = _hash_directory(directory)
-    digest = _digest_of(files)
+    body: dict[str, Any] = {
+        "base": {"repo_id": repo_id, "revision": revision},
+        "dataset_digest": dataset_digest,
+        "run_seed": run_seed,
+        # The runtime that produced this adapter. The gate loads two checkpoints and scores one
+        # against the other; two from different backends differ by the backend before they
+        # differ by anything the night did, so the provenance — the only document that travels
+        # with the adapter — has to carry it.
+        "backend": backend.recorded(),
+        "training_args": args.recorded(),
+        "tool_versions": dict(sorted(tool_versions.items())),
+        "validation": valid_split or "validated against the run's own valid split",
+        "capacity_probe": capacity.recorded(),
+        "files": [{"name": one.name, "bytes": one.bytes, "sha256": one.sha256} for one in files],
+    }
+    # Every key above is a claim, sealed into the digest — `files` among them, so the digest
+    # still covers the bytes, now through the claim that lists them. Under v1 only `files` was
+    # sealed, and a hand-edited `dataset_digest` or `base` verified as if the night had said it.
+    claims = _claim_hashes(body)
+    digest = _claims_digest(claims)
     (directory / CHECKPOINT_FILE).write_text(
         json.dumps(
-            {
-                "schema": CHECKPOINT_SCHEMA_V1,
-                "digest": digest,
-                "base": {"repo_id": repo_id, "revision": revision},
-                "dataset_digest": dataset_digest,
-                "run_seed": run_seed,
-                # The runtime that produced this adapter. The gate loads two checkpoints and
-                # scores one against the other; two from different backends differ by the
-                # backend before they differ by anything the night did, so the provenance —
-                # the only document that travels with the adapter — has to carry it.
-                "backend": backend.recorded(),
-                "training_args": args.recorded(),
-                "tool_versions": dict(sorted(tool_versions.items())),
-                "validation": valid_split or "validated against the run's own valid split",
-                "capacity_probe": capacity.recorded(),
-                "files": [
-                    {"name": one.name, "bytes": one.bytes, "sha256": one.sha256} for one in files
-                ],
-            },
+            {"schema": CHECKPOINT_SCHEMA_V2, "digest": digest, "claims": claims, **body},
             indent=2,
             sort_keys=True,
         )
         + "\n",
         encoding="utf-8",
     )
-    return Checkpoint(directory=directory, digest=digest, files=files)
+    return Checkpoint(
+        directory=directory,
+        digest=digest,
+        files=files,
+        base_repo_id=repo_id,
+        base_revision=revision,
+        dataset_digest=dataset_digest,
+        sealed=True,
+    )
 
 
 def write_baseline_checkpoint(
@@ -840,6 +871,13 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
     nobody re-reads renders in a review exactly like a checked one, and a gitignored directory can
     be rebuilt, truncated or hand-edited between the night that wrote it and the gate that reads
     it.
+
+    Both schemas are read. A v2 document's claims are re-hashed **before** its `files` list is
+    trusted, so a moved claim is refused by name rather than surfacing as whatever the edited
+    list happens to break. A v1 document verifies exactly as it always did and comes back with
+    `sealed=False` — including one that carries a `claims` key, which v1 never defined. The
+    claims returned (`base_repo_id`, `base_revision`, `dataset_digest`, `backend`) come from the
+    one parse just checked, never a second read of a file that could change in between.
     """
     document = directory / CHECKPOINT_FILE
     if not document.is_file():
@@ -851,10 +889,15 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
         raw: Any = json.loads(document.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise CheckpointUnverified(f"{str(document)!r} could not be read: {error}") from error
-    if not isinstance(raw, dict) or raw.get("schema") != CHECKPOINT_SCHEMA_V1:
+    schema = raw.get("schema") if isinstance(raw, dict) else None
+    if schema not in (CHECKPOINT_SCHEMA_V1, CHECKPOINT_SCHEMA_V2):
         raise CheckpointUnverified(
-            f"{str(document)!r} does not declare schema {CHECKPOINT_SCHEMA_V1!r}"
+            f"{str(document)!r} does not declare schema {CHECKPOINT_SCHEMA_V1!r} or "
+            f"{CHECKPOINT_SCHEMA_V2!r}"
         )
+    sealed = schema == CHECKPOINT_SCHEMA_V2
+    if sealed:
+        _verify_claims(document, raw)
 
     recorded = tuple(
         CheckpointFile(name=str(one["name"]), bytes=int(one["bytes"]), sha256=str(one["sha256"]))
@@ -889,20 +932,79 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
                 f"{str(path)!r} has sha256 {seen} and {CHECKPOINT_FILE} records {one.sha256}. "
                 "The bytes in this checkpoint are not the bytes the night wrote"
             )
-    digest = _digest_of(recorded)
-    if digest != raw["digest"]:
-        raise CheckpointUnverified(
-            f"{str(document)!r} records digest {raw['digest']!r} and its own file digests reduce "
-            f"to {digest!r}. The document disagrees with itself, which a hand edit produces and a "
-            "night does not"
-        )
+    if sealed:
+        # The digest was already shown to reduce from the claims, and `files` is one of them.
+        # It no longer reduces from the file hashes alone, so the v1 comparison below would
+        # refuse every honest v2 document.
+        digest = str(raw["digest"])
+    else:
+        digest = _digest_of(recorded)
+        if digest != raw["digest"]:
+            raise CheckpointUnverified(
+                f"{str(document)!r} records digest {raw['digest']!r} and its own file digests "
+                f"reduce to {digest!r}. The document disagrees with itself, which a hand edit "
+                "produces and a night does not"
+            )
+    base = raw.get("base")
+    repo_id = base.get("repo_id") if isinstance(base, dict) else None
+    revision = base.get("revision") if isinstance(base, dict) else None
     return Checkpoint(
         directory=directory,
         digest=digest,
         files=recorded,
         untrained=untrained,
         backend=recorded_backend,
+        base_repo_id=repo_id if isinstance(repo_id, str) else None,
+        base_revision=revision if isinstance(revision, str) else None,
+        dataset_digest=raw.get("dataset_digest"),
+        sealed=sealed,
     )
+
+
+def _verify_claims(document: Path, raw: Mapping[str, Any]) -> None:
+    """Refuse a v2 document whose claims do not re-hash, naming the first key that moved.
+
+    Every key except `_UNSEALED_KEYS` is a claim and must have exactly one hash; a key with no
+    hash, a hash with no key, and a hash the key no longer produces are each refused by name.
+    Then the digest must reduce from the claims — which is what catches a key deleted together
+    with its hash, since the remaining claims are consistent with each other and not with it.
+    """
+    claims = raw.get("claims")
+    if not isinstance(claims, dict) or not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in claims.items()
+    ):
+        raise CheckpointUnverified(
+            f"{str(document)!r} declares schema {CHECKPOINT_SCHEMA_V2!r} and carries no claims "
+            "mapping of key to sha256, so none of what it says about this checkpoint is sealed"
+        )
+    body = {key: value for key, value in raw.items() if key not in _UNSEALED_KEYS}
+    unclaimed = sorted(body.keys() - claims.keys())
+    if unclaimed:
+        raise CheckpointUnverified(
+            f"{str(document)!r} carries {unclaimed[0]!r}, which no claim seals. A key added "
+            "after the checkpoint was sealed reads exactly like one the night wrote"
+        )
+    orphaned = sorted(claims.keys() - body.keys())
+    if orphaned:
+        raise CheckpointUnverified(
+            f"{str(document)!r} records claim {orphaned[0]!r} and carries no {orphaned[0]!r}. "
+            "A sealed key was removed after the checkpoint was sealed"
+        )
+    rehashed = _claim_hashes(body)
+    for key in sorted(body):
+        if rehashed[key] != claims[key]:
+            raise CheckpointUnverified(
+                f"{str(document)!r}: claim {key!r} records sha256 {claims[key]} and the "
+                f"document's {key!r} hashes to {rehashed[key]} — the document's {key!r} was "
+                "changed after the checkpoint was sealed"
+            )
+    digest = _claims_digest(claims)
+    if digest != raw.get("digest"):
+        raise CheckpointUnverified(
+            f"{str(document)!r} records digest {raw.get('digest')!r} and its claims reduce to "
+            f"{digest!r}. The document disagrees with itself, which a hand edit produces and a "
+            "night does not"
+        )
 
 
 def training_peak_bytes(*, mlx_peak: int, resident: int) -> int:
