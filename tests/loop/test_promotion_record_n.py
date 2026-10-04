@@ -167,20 +167,22 @@ def _sides() -> dict[str, Side]:
 
 
 def _trainings() -> dict[str, Any]:
-    """The fixture's training provenance, per side — schema 2's `candidate.training` and
+    """The fixture's training provenance, per side — the record's `candidate.training` and
     `incumbent.training`.
 
     Updated deliberately when the record moved to `whetstone-promotion/2` (gate-record-
     provenance): the trained candidate names its dataset digest and base, the untrained
-    incumbent names its base and an explicit `None` digest — the first-night shape.
+    incumbent names its base and an explicit `None` digest — the first-night shape. Updated
+    again for `whetstone-promotion/3` (gate-sealed-record): both sides are v2 checkpoints, so
+    both state `sealed=True`.
     """
     base = {
         "base_repo_id": "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit",
         "base_revision": "main",
     }
     return {
-        "candidate": gate.TrainingProvenance(dataset_digest="d" * 64, **base),
-        "incumbent": gate.TrainingProvenance(dataset_digest=None, **base),
+        "candidate": gate.TrainingProvenance(dataset_digest="d" * 64, sealed=True, **base),
+        "incumbent": gate.TrainingProvenance(dataset_digest=None, sealed=True, **base),
     }
 
 
@@ -298,9 +300,10 @@ def test_invalid_json_is_refused_by_name(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "schema",
-    # `/2` is today's schema (gate-record-provenance), so the "wrong" case is a future one;
-    # the `/1` refusal has its own wording and its own tests in `test_gate_provenance.py`.
-    ["whetstone-promotion/3", None],
+    # `/3` is today's schema (gate-sealed-record), so the "wrong" case is a future one; the
+    # `/1` and `/2` refusals have their own wording and their own tests
+    # (`test_gate_provenance.py`, `test_gate_sealed_record.py`).
+    ["whetstone-promotion/4", None],
     ids=["wrong", "missing"],
 )
 def test_a_record_with_a_wrong_or_missing_schema_is_refused_by_name(

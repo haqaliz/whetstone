@@ -101,14 +101,24 @@ _UNCOVERED = bakeoff_report._UNCOVERED
 
 #: The promotion record's own schema string — the one answer to "what shape is this file":
 #: the writer emits it and the reader (`read_promotion_record`) refuses anything else.
-#: `/2` added `candidate.training` and `incumbent.training` (gate-record-provenance): the
-#: dataset digest and base each checkpoint's provenance records. A `/1` record predates that
-#: provenance and is refused by every reader, never upgraded — the missing digest is a fact
-#: about the run that wrote it, and no reader can supply it after the fact.
-PROMOTION_SCHEMA = "whetstone-promotion/2"
+#: Three schemas have existed:
+#:
+#: - `/1` — the decision, the counts and the retry facts, with no training provenance.
+#: - `/2` added `candidate.training` and `incumbent.training` (gate-record-provenance): the
+#:   dataset digest and base each checkpoint's provenance records.
+#: - `/3` added `training.sealed` per side (gate-sealed-record): whether that side's dataset
+#:   link was sealed into its checkpoint's digest (a v2 checkpoint) or only recorded beside it
+#:   (v1). Recorded information, never a condition of the decision.
+#:
+#: Every older record is refused by every reader, never upgraded — what it does not state is a
+#: fact about the run that wrote it, and no reader can supply it after the fact.
+PROMOTION_SCHEMA = "whetstone-promotion/3"
 
 #: The schema every record written before the training provenance existed declares.
 _PROMOTION_SCHEMA_BEFORE_PROVENANCE = "whetstone-promotion/1"
+
+#: The schema every record written before `training.sealed` existed declares.
+_PROMOTION_SCHEMA_BEFORE_SEAL = "whetstone-promotion/2"
 
 #: The directory under `--runs` the promotion records live in.
 PROMOTIONS_DIR = "promotions"
@@ -340,6 +350,11 @@ class TrainingProvenance:
 
     #: The base revision the checkpoint names.
     base_revision: str
+
+    #: Whether the checkpoint's digest seals these claims (`Checkpoint.sealed`: a v2 checkpoint
+    #: whose claims all re-hashed) or they are only recorded beside it (v1). Required, never
+    #: defaulted — absence is not a statement. Recorded, never decisive: no gate decision reads it.
+    sealed: bool
 
 
 class DatasetDigestUnrecorded(ValueError):
@@ -931,7 +946,7 @@ def write_promotion_record(
     retry_count: int,
     tool_versions: Mapping[str, str],
 ) -> Path:
-    """Write the promotion record — schema `whetstone-promotion/2` — deterministically.
+    """Write the promotion record — schema `whetstone-promotion/3` — deterministically.
 
     Each side carries its `training` block — the dataset digest and the base its checkpoint's
     `provenance.json` **records** (outside the file-hash seal, so recorded, never verified).
@@ -1016,6 +1031,7 @@ def _training_payload(training: TrainingProvenance) -> Mapping[str, Any]:
         "dataset_digest": training.dataset_digest,
         "base_repo_id": training.base_repo_id,
         "base_revision": training.base_revision,
+        "sealed": training.sealed,
     }
 
 
@@ -1166,10 +1182,19 @@ def read_promotion_record(path: Path) -> PromotionRecord:
         raise ValueError(
             f"promotion record {str(location)!r} declares schema "
             f"{_PROMOTION_SCHEMA_BEFORE_PROVENANCE!r}, which predates the training provenance "
-            f"{PROMOTION_SCHEMA!r} records: it does not say what dataset trained the candidate, "
-            "so it cannot be audited for leakage against the held-out split. It is refused and "
-            "never upgraded — no reader can supply a digest the run did not record. Re-run the "
-            "gate to write a current record"
+            f"{_PROMOTION_SCHEMA_BEFORE_SEAL!r} introduced: it does not say what dataset trained "
+            "the candidate, so it cannot be audited for leakage against the held-out split. It "
+            "is refused and never upgraded — no reader can supply a digest the run did not "
+            "record. Re-run the gate to write a current record"
+        )
+    if raw.get("schema") == _PROMOTION_SCHEMA_BEFORE_SEAL:
+        raise ValueError(
+            f"promotion record {str(location)!r} declares schema "
+            f"{_PROMOTION_SCHEMA_BEFORE_SEAL!r}, which predates the `training.sealed` statement "
+            f"{PROMOTION_SCHEMA!r} records: it does not say whether either side's dataset link "
+            "was sealed into its checkpoint's digest or only recorded beside it. It is refused "
+            "and never upgraded — no reader can supply a statement the run did not make. Re-run "
+            "the gate to write a current record"
         )
     if raw.get("schema") != PROMOTION_SCHEMA:
         raise ValueError(
@@ -1325,8 +1350,10 @@ def _record_digest(node: Any, where: str, location: Path) -> str:
 #: Every field a checkpoint block (`candidate`, `incumbent`) may carry.
 _PROMOTION_SIDE_FIELDS = frozenset({"digest", "training"})
 
-#: Every field a `training` block must carry — all three, the digest `null` only when untrained.
-_PROMOTION_TRAINING_FIELDS = frozenset({"dataset_digest", "base_repo_id", "base_revision"})
+#: Every field a `training` block must carry — all four, the digest `null` only when untrained.
+_PROMOTION_TRAINING_FIELDS = frozenset(
+    {"dataset_digest", "base_repo_id", "base_revision", "sealed"}
+)
 
 
 def _record_training(node: Mapping[str, Any], side: str, location: Path) -> TrainingProvenance:
@@ -1365,6 +1392,13 @@ def _record_training(node: Mapping[str, Any], side: str, location: Path) -> Trai
             raise ValueError(
                 f"promotion record {str(location)!r} has a non-string {side}.training.{field}"
             )
+    # `isinstance(x, bool)`, never truthiness: `1`, `"true"` and `null` are not a statement
+    # that the link was sealed, and `0` is not one that it was not.
+    if not isinstance(training["sealed"], bool):
+        raise ValueError(
+            f"promotion record {str(location)!r} has {side}.training.sealed "
+            f"{training['sealed']!r}; expected true or false"
+        )
     digest = training["dataset_digest"]
     stated_untrained = digest is None and side == "incumbent"
     if not stated_untrained and (
@@ -1379,6 +1413,7 @@ def _record_training(node: Mapping[str, Any], side: str, location: Path) -> Trai
         dataset_digest=digest,
         base_repo_id=training["base_repo_id"],
         base_revision=training["base_revision"],
+        sealed=training["sealed"],
     )
 
 
@@ -1666,6 +1701,7 @@ def _checkpoint_training(checkpoint: Checkpoint) -> TrainingProvenance:
         dataset_digest=_checkpoint_dataset_digest(checkpoint),
         base_repo_id=base["repo_id"],
         base_revision=base["revision"],
+        sealed=checkpoint.sealed,
     )
 
 

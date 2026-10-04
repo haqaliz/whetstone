@@ -117,12 +117,13 @@ def test_a_trained_checkpoint_without_a_well_formed_digest_is_a_refusal(
 
 
 # --------------------------------------------------------------------------------------------
-# Phase 2: the promotion record carries what it read, under schema 2, and nothing older reads.
+# Phase 2: the promotion record carries what it read, under the current schema (`/3` since
+# gate-sealed-record), and nothing older reads.
 # --------------------------------------------------------------------------------------------
 
 
 def _recorded(checkpoint: sft.Checkpoint) -> dict[str, object]:
-    """The three values as the checkpoint's own `provenance.json` records them — the oracle.
+    """The four values as the checkpoint's own `provenance.json` records them — the oracle.
 
     Read straight off the file `sft` wrote, never through the gate's helpers, so the
     assertion compares the record against the checkpoint rather than the code against itself.
@@ -134,6 +135,7 @@ def _recorded(checkpoint: sft.Checkpoint) -> dict[str, object]:
         "dataset_digest": None if checkpoint.untrained else document["dataset_digest"],
         "base_repo_id": document["base"]["repo_id"],
         "base_revision": document["base"]["revision"],
+        "sealed": document["schema"] == sft.CHECKPOINT_SCHEMA_V2,
     }
 
 
@@ -153,7 +155,7 @@ def test_a_gate_runs_record_names_what_trained_each_side(
     outcome, fixtures = _run_gate(tmp_path, untrained_incumbent=untrained_incumbent)
     document = json.loads(outcome.record.read_text(encoding="utf-8"))
 
-    assert document["schema"] == "whetstone-promotion/2"
+    assert document["schema"] == "whetstone-promotion/3"
     assert document["candidate"] == {
         "digest": fixtures["candidate_checkpoint"].digest,
         "training": _recorded(fixtures["candidate_checkpoint"]),
@@ -392,7 +394,7 @@ def test_the_writer_refuses_a_candidate_with_no_training_digest(tmp_path: Path) 
         _write_fixture_record(
             tmp_path,
             candidate_training=gate.TrainingProvenance(
-                dataset_digest=None, base_repo_id=REPO, base_revision="d1e3b69"
+                dataset_digest=None, base_repo_id=REPO, base_revision="d1e3b69", sealed=True
             ),
         )
     assert not (tmp_path / "record.json").exists()
