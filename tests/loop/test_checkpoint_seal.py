@@ -12,6 +12,7 @@ unkeyed digest is not caught, and a test below says so by name.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import re
@@ -669,3 +670,164 @@ def test_a_hand_built_v1_untrained_document_still_verifies_unsealed(tmp_path: Pa
     verified = sft.verify_checkpoint(directory)
     assert verified.untrained and not verified.sealed
     assert verified.digest == constant
+
+
+# --- One writer, one shape: criterion 8. ---------------------------------------------------
+
+
+def _written_on(directory: Path, runtime: backend.Backend) -> dict[str, Any]:
+    """The document `write_checkpoint` leaves for a run on `runtime` — no trainer, no GPU."""
+    directory.mkdir(parents=True)
+    (directory / sft.ADAPTER_FILE).write_bytes(b"not a tensor")
+    sft.write_checkpoint(
+        directory,
+        repo_id=_BASE["repo_id"],
+        revision=_BASE["revision"],
+        dataset_digest=_DATASET_DIGEST,
+        run_seed=20261003,
+        args=sft.TrainingArgs(),
+        tool_versions={"python": "3.12.0"},
+        valid_split="",
+        capacity=sft.CapacityProbe(
+            iters=sft.CAPACITY_PROBE_ITERS,
+            headroom_bytes=sft.CAPACITY_HEADROOM_BYTES,
+            peak_bytes=4 * 1024**3,
+            seconds=0.25,
+        ),
+        backend=runtime,
+    )
+    return _read(directory)
+
+
+def test_both_backends_write_the_same_document_shape(tmp_path: Path) -> None:
+    """Criterion 8: a key written for one runtime only is a claim the other never makes."""
+    mlx = _written_on(
+        tmp_path / "mlx",
+        backend.Backend(
+            name=backend.MLX,
+            library="mlx-lm",
+            version="0.31.3",
+            device="Apple M4 Max",
+            device_memory_bytes=38654705664,
+        ),
+    )
+    torch = _written_on(
+        tmp_path / "torch",
+        backend.Backend(
+            name=backend.TORCH,
+            library="torch",
+            version="2.4.0",
+            device="NVIDIA A100-SXM4-40GB",
+            device_memory_bytes=42949672960,
+        ),
+    )
+
+    assert mlx["backend"]["name"] != torch["backend"]["name"]
+    assert set(mlx) == set(torch)
+    assert set(mlx["claims"]) == set(torch["claims"])
+    assert mlx["schema"] == torch["schema"] == sft.CHECKPOINT_SCHEMA_V2
+
+
+_SEALED_FILE_MARKERS = frozenset({"CHECKPOINT_FILE"})
+_WRITE_METHODS = frozenset({"write_text", "write_bytes"})
+
+
+def _names_the_file(node: ast.AST, aliases: set[str], *, literal: bool = True) -> bool:
+    """Whether an expression mentions the checkpoint document by name, literal or alias.
+
+    `literal=False` ignores the bare string, which is how aliases are seeded: a module that binds
+    `"provenance.json"` to its own constant (the weights fetch does, for a different document)
+    has not bound the checkpoint's. An inline `/ "provenance.json"` on a write is still flagged.
+    """
+    for each in ast.walk(node):
+        if isinstance(each, ast.Name) and (each.id in _SEALED_FILE_MARKERS or each.id in aliases):
+            return True
+        if isinstance(each, ast.Attribute) and each.attr in _SEALED_FILE_MARKERS:
+            return True
+        if literal and isinstance(each, ast.Constant) and each.value == "provenance.json":
+            return True
+    return False
+
+
+def _opens_for_writing(call: ast.Call, *, mode_at: int) -> bool:
+    """Whether an `open` call carries a write, append or exclusive mode (`mode_at` positional)."""
+    modes = [
+        *call.args[mode_at : mode_at + 1],
+        *(one.value for one in call.keywords if one.arg == "mode"),
+    ]
+    return any(
+        isinstance(mode, ast.Constant)
+        and isinstance(mode.value, str)
+        and set(mode.value) & set("wax+")
+        for mode in modes
+    )
+
+
+def _writes_of_the_checkpoint_file(source: str) -> list[int]:
+    """Line numbers where `source` writes the checkpoint document; reads and prose are not."""
+    tree = ast.parse(source)
+    aliases: set[str] = set()
+    for _ in range(3):  # a name bound from a name bound from the file, a few steps deep
+        for each in ast.walk(tree):
+            if isinstance(each, ast.Assign) and _names_the_file(each.value, aliases, literal=False):
+                aliases.update(t.id for t in each.targets if isinstance(t, ast.Name))
+    lines: list[int] = []
+    for each in ast.walk(tree):
+        if not isinstance(each, ast.Call):
+            continue
+        func = each.func
+        if isinstance(func, ast.Attribute) and func.attr in _WRITE_METHODS:
+            written = _names_the_file(func.value, aliases)
+        elif isinstance(func, ast.Attribute) and func.attr == "open":
+            written = _names_the_file(func.value, aliases) and _opens_for_writing(each, mode_at=0)
+        elif isinstance(func, ast.Name) and func.id == "open" and each.args:
+            written = _names_the_file(each.args[0], aliases) and _opens_for_writing(each, mode_at=1)
+        else:
+            written = False
+        if written:
+            lines.append(each.lineno)
+    return sorted(lines)
+
+
+def test_the_scanner_flags_a_writer_and_passes_a_reader() -> None:
+    writers = [
+        "(directory / CHECKPOINT_FILE).write_text('x')",
+        "(d / sft.CHECKPOINT_FILE).write_bytes(b'x')",
+        "(d / 'provenance.json').write_text('x')",
+        "open(d / CHECKPOINT_FILE, 'w')",
+        "open(d / 'provenance.json', mode='a')",
+        "(d / CHECKPOINT_FILE).open('w')",
+        "target = d / CHECKPOINT_FILE\ntarget.write_text('x')",
+    ]
+    for source in writers:
+        assert _writes_of_the_checkpoint_file(source), source
+
+    clean = [
+        "json.loads((c / CHECKPOINT_FILE).read_text())",
+        "open(c / CHECKPOINT_FILE).read()",
+        "open(c / CHECKPOINT_FILE, 'r')",
+        '"""Writes provenance.json via CHECKPOINT_FILE.write_text."""\nx = 1',
+        "# (d / CHECKPOINT_FILE).write_text('x')\nx = 1",
+        "(d / 'other.json').write_text('x')",
+        "PROVENANCE_FILE = 'provenance.json'",
+    ]
+    for source in clean:
+        assert _writes_of_the_checkpoint_file(source) == [], source
+
+
+def test_only_sft_writes_the_checkpoint_document() -> None:
+    """Criterion 8: one writer. A second one would be a second shape, sealed or not."""
+    root = Path(sft.__file__).resolve().parents[1]  # src/whetstone
+    writer = Path(sft.__file__).resolve()
+    sources = sorted(root.rglob("*.py"))
+    assert writer in sources
+
+    offenders = {
+        str(path.relative_to(root)): lines
+        for path in sources
+        if path != writer
+        and (lines := _writes_of_the_checkpoint_file(path.read_text(encoding="utf-8")))
+    }
+
+    assert offenders == {}
+    assert _writes_of_the_checkpoint_file(writer.read_text(encoding="utf-8"))
