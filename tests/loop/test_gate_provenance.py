@@ -49,11 +49,22 @@ def _trained(directory: Path) -> sft.Checkpoint:
     )
 
 
-def _rewrite(checkpoint: sft.Checkpoint, mutate: object) -> None:
+def _rewrite(checkpoint: sft.Checkpoint, mutate: object) -> sft.Checkpoint:
+    """Re-issue `checkpoint` as a hand-made v1 document with `mutate` applied, and verify it.
+
+    These tests are about the gate's shape check on a recorded digest, not the seal: a v2
+    document edited after sealing is refused by `verify_checkpoint` before the gate looks. So
+    the document is downgraded to v1 (files-only seal, digest recomputed from the files) and
+    the edit is made on that, which `verify_checkpoint` accepts and the gate then examines.
+    """
     path = checkpoint.directory / sft.CHECKPOINT_FILE
     document = json.loads(path.read_text(encoding="utf-8"))
+    document["schema"] = sft.CHECKPOINT_SCHEMA_V1
+    document.pop("claims", None)
+    document["digest"] = sft._digest_of(checkpoint.files)
     mutate(document)  # type: ignore[operator]
     path.write_text(json.dumps(document), encoding="utf-8")
+    return sft.verify_checkpoint(checkpoint.directory)
 
 
 def test_a_trained_checkpoint_yields_the_digest_it_recorded(tmp_path: Path) -> None:
@@ -94,8 +105,7 @@ def _drop(document: dict[str, object]) -> None:
 def test_a_trained_checkpoint_without_a_well_formed_digest_is_a_refusal(
     tmp_path: Path, label: str, mutate: object
 ) -> None:
-    checkpoint = _trained(tmp_path / "cp")
-    _rewrite(checkpoint, mutate)
+    checkpoint = _rewrite(_trained(tmp_path / "cp"), mutate)
 
     with pytest.raises(gate.DatasetDigestUnrecorded) as caught:
         gate._checkpoint_dataset_digest(checkpoint)

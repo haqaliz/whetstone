@@ -1615,12 +1615,17 @@ def _base_for(checkpoint: Checkpoint, fetched: Sequence[Weights], label: str) ->
 
 
 def _checkpoint_base(checkpoint: Checkpoint) -> Mapping[str, str]:
-    """The base a checkpoint's provenance names — read after `verify_checkpoint` accepted it."""
-    document: Any = json.loads(
-        (checkpoint.directory / "provenance.json").read_text(encoding="utf-8")
-    )
-    base = document["base"]
-    return {"repo_id": str(base["repo_id"]), "revision": str(base["revision"])}
+    """The base a verified checkpoint names, from the claims `verify_checkpoint` returned.
+
+    Never a second read of the provenance file: the object is what was checked. A checkpoint
+    whose provenance names no base is refused by name, not left to surface as a `KeyError`.
+    """
+    if checkpoint.base_repo_id is None or checkpoint.base_revision is None:
+        raise CheckpointUnverified(
+            f"checkpoint {str(checkpoint.directory)!r} verified, but its provenance names no "
+            "base (a repo_id and a revision), so the gate cannot say which weights it adapts"
+        )
+    return {"repo_id": checkpoint.base_repo_id, "revision": checkpoint.base_revision}
 
 
 _DIGEST_SHAPE = re.compile(r"[0-9a-f]{64}")
@@ -1639,10 +1644,7 @@ def _checkpoint_dataset_digest(checkpoint: Checkpoint) -> str | None:
     """
     if checkpoint.untrained:
         return None
-    document: Any = json.loads(
-        (checkpoint.directory / "provenance.json").read_text(encoding="utf-8")
-    )
-    recorded = document.get("dataset_digest") if isinstance(document, dict) else None
+    recorded = checkpoint.dataset_digest
     if not isinstance(recorded, str) or _DIGEST_SHAPE.fullmatch(recorded) is None:
         raise DatasetDigestUnrecorded(
             f"checkpoint {str(checkpoint.directory)!r} is trained but its provenance.json "
