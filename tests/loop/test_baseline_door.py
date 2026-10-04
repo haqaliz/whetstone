@@ -167,6 +167,7 @@ def _fixtures(
     repo_id: str = _BASE,
     revision: str | None = None,
     canary: str | None = None,
+    legacy_v1: bool = False,
 ) -> dict[str, Any]:
     """Everything one `measure()` invocation needs on disk — checkpoint, document, corpus,
     weights — plus the stub engine keyed on the checkpoint's digest.
@@ -174,6 +175,9 @@ def _fixtures(
     The checkpoint is the aspect-1 writer's real artefact (`write_baseline_checkpoint`), so
     `verify_checkpoint` re-hashes the bytes the measurement names; the engine asserts it is
     handed exactly that checkpoint's digest.
+
+    `legacy_v1` swaps the writer's v2 artefact for a hand-built v1 untrained document — the
+    shape a checkpoint written before the seal still has, with the constant `_digest_of(())`.
     """
     subjects = None
     if canary is not None:
@@ -189,12 +193,35 @@ def _fixtures(
     doc = _heldout_document(tmp_path / "doc", _MEMBERS)
     weights_root = harness_weights(tmp_path / "weights", _BASE)
     base = load_weights(weights_root)[0]
-    checkpoint = sft.write_baseline_checkpoint(
-        tmp_path / "checkpoint",
-        repo_id=repo_id,
-        revision=base.revision if revision is None else revision,
-        tool_versions={"python": "3.12.0"},
-    )
+    revision_used = base.revision if revision is None else revision
+    if legacy_v1:
+        legacy = tmp_path / "checkpoint"
+        legacy.mkdir(parents=True)
+        (legacy / sft.CHECKPOINT_FILE).write_text(
+            json.dumps(
+                {
+                    "schema": sft.CHECKPOINT_SCHEMA_V1,
+                    "digest": sft._digest_of(()),
+                    "base": {"repo_id": repo_id, "revision": revision_used},
+                    "untrained": True,
+                    "tool_versions": {"python": "3.12.0"},
+                    "files": [],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        checkpoint = sft.verify_checkpoint(legacy)
+        assert not checkpoint.sealed
+    else:
+        checkpoint = sft.write_baseline_checkpoint(
+            tmp_path / "checkpoint",
+            repo_id=repo_id,
+            revision=revision_used,
+            tool_versions={"python": "3.12.0"},
+        )
 
     used_checkpoints: list[str] = []
     stub = Answers(answers)
@@ -264,6 +291,7 @@ def _run_measure(
     repo_id: str = _BASE,
     revision: str | None = None,
     canary: str | None = None,
+    legacy_v1: bool = False,
     **overrides: Any,
 ) -> tuple[baseline.BaselineMeasurement, dict[str, Any]]:
     """One full measurement over the shared fixtures — see `_fixtures`."""
@@ -275,6 +303,7 @@ def _run_measure(
         repo_id=repo_id,
         revision=revision,
         canary=canary,
+        legacy_v1=legacy_v1,
     )
     return _measure(fixtures, **overrides), fixtures
 
@@ -738,17 +767,20 @@ def test_a_same_series_artifact_is_refused_by_name(tmp_path: Path) -> None:
 
 
 def test_two_untrained_bases_are_different_series(tmp_path: Path) -> None:
-    """Two untrained bases at different revisions are different series, though every
-    untrained checkpoint's digest is the same constant (`sha256(b"")`).
+    """Two untrained bases at different revisions are different series, though a LEGACY v1
+    untrained checkpoint's digest is the same constant (`sha256(b"")`) for every base.
 
-    `write_baseline_checkpoint` records no files, so an untrained checkpoint's digest is
-    `_digest_of(())` — identical for every untrained base, whatever the repo id or
-    revision. The measured-once guard keys on the series, and the series cannot be the
-    checkpoint digest: the changed-base-revision case § 3 names as its legitimate new
-    series (`PREREGISTRATION.md:133-135`) would read as a same-series second measurement
-    and be refused. The key is the base identity + the held-out document digest.
+    A v1 untrained checkpoint records no files, so its digest is `_digest_of(())` whatever the
+    repo id or revision (a v2 one folds in `base`, so it no longer collides). Such checkpoints
+    still verify, unsealed. The measured-once guard keys on the series, and the series cannot be
+    the checkpoint digest: the changed-base-revision case § 3 names as its legitimate new series
+    (`PREREGISTRATION.md:133-135`) would read as a same-series second measurement and be
+    refused. The key is the base identity + the held-out document digest.
+
+    The first artifact below records the constant digest at `rev-one`; the second run is a
+    hand-built v1 untrained checkpoint (same constant digest) at a different revision.
     """
-    fixtures = _fixtures(tmp_path)
+    fixtures = _fixtures(tmp_path, legacy_v1=True)
     untrained_digest = hashlib.sha256(b"").hexdigest()
     heldout_digest = heldout.document_digest_of(
         json.loads(fixtures["doc"].read_text(encoding="utf-8"))
@@ -760,11 +792,14 @@ def test_two_untrained_bases_are_different_series(tmp_path: Path) -> None:
         heldout={"document_digest": heldout_digest},
     )
 
-    measurement, second = _run_measure(tmp_path / "second", out=artifact.parent)
+    measurement, second = _run_measure(tmp_path / "second", legacy_v1=True, out=artifact.parent)
 
-    # The untrained writer now seals `base` into its digest (v2), so the digest is no longer
-    # the constant; the series key is still the base identity, never the digest.
-    assert measurement.checkpoint_digest == second["checkpoint_obj"].digest
+    assert measurement.checkpoint_digest == untrained_digest, (
+        "WHY THIS IS A FAILURE: the fixture checkpoint is not the degenerate untrained "
+        "digest — this test is about two bases that cannot be told apart by digest"
+    )
+    assert second["checkpoint_obj"].digest == untrained_digest
+    assert second["checkpoint_obj"].sealed is False
     evidence = _evidence(measurement)
     assert evidence["base"]["repo_id"] == _BASE
     provenance = json.loads(
@@ -782,6 +817,13 @@ def test_two_untrained_bases_are_different_series(tmp_path: Path) -> None:
         revision=provenance["base"]["revision"],
         heldout_digest=heldout_digest,
     )
+
+    # A v2 untrained checkpoint for the same base is likewise a distinct series from `rev-one`,
+    # and its sealed digest is not the constant.
+    v2_measurement, v2_run = _run_measure(tmp_path / "third", out=artifact.parent)
+    assert v2_run["checkpoint_obj"].sealed is True
+    assert v2_measurement.checkpoint_digest != untrained_digest
+    assert _evidence(v2_measurement)["base"]["revision"] != "rev-one"
 
 
 def test_a_different_series_is_a_new_baseline(tmp_path: Path) -> None:
@@ -878,8 +920,8 @@ def test_series_identity_equality() -> None:
     The environment pins and tool versions are aspect 3's provenance, recorded in the
     artifact and part of § 3's pinned inputs, but they are not the refusal's key: the
     measured-once guard keys on the series, never on the clock and never on the toolchain.
-    The checkpoint digest is not the key either: an untrained checkpoint's digest is the
-    same constant for every base, so it cannot tell two bases apart.
+    The checkpoint digest is not the key either: a v1 untrained checkpoint's digest is the
+    same constant for every base (a v2 one folds in `base`), so it cannot tell two bases apart.
     """
     first = baseline.SeriesIdentity(repo_id="r", revision="v1", heldout_digest="b" * 64)
     assert first == baseline.SeriesIdentity(

@@ -25,8 +25,10 @@ from whetstone.loop import backend, sft
 #: the operator's, recorded in the runbook, never decided in this aspect.
 BASE = {"repo_id": "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit", "revision": "d1e3b69"}
 
-#: The digest of an empty adapter set — `_digest_of(())` — computed here for the fixture, so the
-#: honest untrained provenance and a doctored one differ only in what the test intends.
+#: The digest of an empty adapter set — `_digest_of(())` — computed here for the hand-built v1
+#: fixtures, so the honest untrained provenance and a doctored one differ only in what the test
+#: intends. It is NOT what `write_baseline_checkpoint` writes now: that is a v2 document whose
+#: digest folds in `base`.
 EMPTY_DIGEST = hashlib.sha256(b"").hexdigest()
 
 
@@ -117,9 +119,10 @@ def test_a_doctored_untrained_digest_is_refused(tmp_path: Path) -> None:
     """A hand-edited digest is refused for the untrained shape too: the document disagrees with
     itself.
 
-    The digest check already covers the empty case — `_digest_of(())` is a fixed value, so a
-    doctored untrained provenance cannot rescue itself by claiming any other digest. The refusal
-    is the pre-existing one, reached now through the untrained branch.
+    The digest check already covers the empty case — for this hand-built v1 document
+    `_digest_of(())` is a fixed value (`EMPTY_DIGEST`), so a doctored untrained provenance
+    cannot rescue itself by claiming any other digest. The refusal is the pre-existing one,
+    reached now through the untrained branch.
     """
     directory = tmp_path / "doctored"
     _untrained(directory)

@@ -646,7 +646,7 @@ def test_flipping_untrained_in_a_sealed_base_is_refused_naming_it(tmp_path: Path
     document["untrained"] = False
     _write(written.directory, document)
 
-    with pytest.raises(sft.CheckpointUnverified, match="untrained"):
+    with pytest.raises(sft.CheckpointUnverified, match=r"claim 'untrained' .*'untrained' was"):
         sft.verify_checkpoint(written.directory)
 
 
