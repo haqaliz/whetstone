@@ -592,7 +592,8 @@ def build_parser() -> argparse.ArgumentParser:
             "headline was not measured on its own training data. A leak exits 1 and names the "
             "task; a run with no dataset.json, an id it cannot read, or a document that "
             "cannot be trusted, or a run that compared nothing (no source B training example), "
-            "exits 2. There is no flag that narrows either set: a check "
+            "exits 2, as does a --checkpoint that is tampered, untrained or trained on another "
+            "night. There is no flag that narrows either set (--checkpoint does not): a check "
             "that could be turned green at the command line would prove nothing."
         ),
     )
@@ -616,6 +617,18 @@ def build_parser() -> argparse.ArgumentParser:
             "the committed held-out document (tasks/heldout/source-b.json) whose membership "
             "the training set must not touch. Read through its own fail-closed loader: a "
             "hand-edited membership refuses before anything is compared"
+        ),
+    )
+    check.add_argument(
+        "--checkpoint",
+        type=Path,
+        default=None,
+        metavar="<checkpoints/id>",
+        help=(
+            "optional: verifies the checkpoint and compares its recorded dataset_digest to the "
+            "run's. A v2 checkpoint's link is reported as sealed, a v1 checkpoint's as "
+            "recorded, not sealed; a tampered, untrained or foreign checkpoint exits 2. It can "
+            "add a refusal or a line and can never change the leakage verdict"
         ),
     )
 
@@ -1173,13 +1186,16 @@ def run_check_leakage_cli(args: argparse.Namespace) -> int:
     1 (a leak is a failure, not a mistyped command), and a refusal an operator can fix — a
     directory with no `dataset.json`, an unreadable dataset, a training set with no
     source B example (nothing was compared; Amendment 2), a held-out document whose
-    digest does not match its contents — → 2. There is no `UNVERIFIED` exit here: this
+    digest does not match its contents, or a `--checkpoint` that is tampered or unreadable
+    (`sft.CheckpointUnverified`), untrained (`CheckpointHasNoDataset`) or trained on another
+    night (`CheckpointNotThisRun`) — → 2. A checkpoint can add a refusal or a link line and can
+    never change the leakage verdict. There is no `UNVERIFIED` exit here: this
     command reads documents rather than running anything, so it either answers or refuses.
     """
     from whetstone.loop.check_leakage import REFUSALS, disclosure, run_check
 
     try:
-        report = run_check(args.run, args.heldout)
+        report = run_check(args.run, args.heldout, args.checkpoint)
     except REFUSALS as refusal:
         print(f"whetstone check-leakage: {refusal}", file=sys.stderr)
         return USAGE_ERROR

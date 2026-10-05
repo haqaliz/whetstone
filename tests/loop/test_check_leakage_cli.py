@@ -22,9 +22,16 @@ from pathlib import Path
 import pytest
 
 from loop.test_check_leakage import _MEMBERS, _SURVIVOR, _heldout_document, _id, _run
+from loop.test_check_leakage_checkpoint import (
+    OTHER_DIGEST,
+    RUN_DIGEST,
+    _as_v1,
+    _fixture,
+    _trained,
+)
 from loop.test_gate import _heldout_document as _gate_heldout_document
 from whetstone import cli
-from whetstone.loop import dataset, night
+from whetstone.loop import check_leakage, dataset, night, sft
 
 
 def _argv(run: Path, document: Path) -> list[str]:
@@ -195,12 +202,14 @@ def test_a_night_that_trained_on_nothing_exits_zero_and_says_why(
     assert "disjoint by truth" in out, out
 
 
-def test_the_door_offers_exactly_the_two_flags_the_runbook_pins() -> None:
-    """`--run` and `--heldout`, and nothing that could change what is compared.
+def test_the_door_offers_exactly_the_three_flags_the_runbook_pins() -> None:
+    """`--run`, `--heldout` and the optional `--checkpoint`; nothing that changes what is compared.
 
-    The flag surface is pinned because the operator's sheet spells the command out. A third
-    flag that narrowed the training set or the membership would let a failing check be turned
-    green at the command line, which is the one thing a leakage proof must not allow.
+    The flag surface is pinned because the operator's sheet spells the command out. A flag that
+    narrowed the training set or the membership would let a failing check be turned green at the
+    command line, which is the one thing a leakage proof must not allow. `--checkpoint` is the
+    third and is optional: it narrows neither set and cannot turn a failing check green (a leaked
+    run with a matching checkpoint still exits 1; a mismatching one exits 2, never 0).
     """
     import argparse
 
@@ -216,7 +225,7 @@ def test_the_door_offers_exactly_the_two_flags_the_runbook_pins() -> None:
         if option.startswith("--")
     )
 
-    assert offered == ["--heldout", "--help", "--run"], offered
+    assert offered == ["--checkpoint", "--heldout", "--help", "--run"], offered
 
 
 def test_the_sources_the_door_reports_are_the_nights_own() -> None:
@@ -288,3 +297,153 @@ def test_the_description_states_the_identity_only_limit(
 
     assert "12-hex" in text and "near-duplicate" in text, text
     assert "an id it cannot read" in text, text
+
+
+def _with_checkpoint(run: Path, document: Path, checkpoint: Path) -> list[str]:
+    return [*_argv(run, document), "--checkpoint", str(checkpoint)]
+
+
+def test_a_matching_v2_checkpoint_on_a_clean_run_exits_zero_with_the_sealed_link(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fails if the flag is not parsed or `args.checkpoint` is not passed to `run_check`."""
+    run, held = _fixture(tmp_path)
+    cp = _trained(tmp_path / "cp")
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    out = capsys.readouterr().out
+
+    assert code == 0, out
+    assert "dataset link:" in out and "sealed (whetstone-checkpoint/2)" in out, out
+    assert RUN_DIGEST[:12] in out
+    assert out.index(check_leakage._RESIDUAL) < out.index("dataset link:"), (
+        "the link lines must follow the verdict and its residual, never precede them"
+    )
+
+
+def test_a_matching_checkpoint_cannot_make_a_leaked_run_pass(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fails if a matching link short-circuits the verdict (exit 0) or drops the leak lines."""
+    run, held = _fixture(tmp_path, leaked=True)
+    cp = _trained(tmp_path / "cp")
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    out = capsys.readouterr().out
+
+    assert code == 1, out
+    assert "LEAKED" in out and _MEMBERS[0] in out
+    assert "dataset link:" in out
+
+
+def test_a_matching_v1_checkpoint_is_recorded_not_sealed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fails if a v1 link is rendered as sealed or as verified."""
+    for leaked, expected in ((False, 0), (True, 1)):
+        base = tmp_path / str(leaked)
+        base.mkdir()
+        run, held = _fixture(base, leaked=leaked)
+        cp = _as_v1(_trained(base / "cp"))
+
+        code = cli.main(_with_checkpoint(run, held, cp.directory))
+        out = capsys.readouterr().out
+
+        assert code == expected, out
+        assert "recorded, not sealed" in out, out
+        link_lines = [line for line in out.splitlines() if "link" in line.lower()]
+        assert link_lines
+        assert not any("verified" in line.lower() for line in link_lines), link_lines
+
+
+@pytest.mark.parametrize("leaked", [False, True], ids=["clean-run", "leaked-run"])
+def test_a_mismatching_checkpoint_exits_two_with_nothing_on_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], leaked: bool
+) -> None:
+    """Fails if the comparison precedes the digest check, or the refusal leaves REFUSALS."""
+    run, held = _fixture(tmp_path, leaked=leaked)
+    cp = _trained(tmp_path / "cp", OTHER_DIGEST)
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == "", captured.out
+    assert captured.err.startswith("whetstone check-leakage: "), captured.err
+    assert "not trained on this run" in captured.err
+
+
+def test_a_tampered_v2_checkpoint_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fails if the checkpoint is read without verifying its seal."""
+    run, held = _fixture(tmp_path)
+    cp = _trained(tmp_path / "cp", OTHER_DIGEST)
+    path = cp.directory / sft.CHECKPOINT_FILE
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["dataset_digest"] = RUN_DIGEST
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == "" and captured.err.startswith("whetstone check-leakage: ")
+
+
+def test_an_untrained_checkpoint_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fails if CheckpointHasNoDataset is not a refusal at the door."""
+    run, held = _fixture(tmp_path)
+    base = tmp_path / "base"
+    sft.write_baseline_checkpoint(
+        base, repo_id="m/x", revision="abc", tool_versions={"python": "3.12.0"}
+    )
+
+    code = cli.main(_with_checkpoint(run, held, base))
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == "" and "no dataset to compare" in captured.err
+
+
+@pytest.mark.parametrize("shape", ["missing", "no-provenance"])
+def test_an_unusable_checkpoint_directory_exits_two_not_a_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], shape: str
+) -> None:
+    """Fails if sft.CheckpointUnverified escapes the handler."""
+    run, held = _fixture(tmp_path)
+    directory = tmp_path / "cp-missing"
+    if shape == "no-provenance":
+        directory.mkdir()
+
+    code = cli.main(_with_checkpoint(run, held, directory))
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == ""
+    assert captured.err.startswith("whetstone check-leakage: ") and len(captured.err) > 30
+
+
+def test_cli_has_no_module_scope_import_of_the_loop() -> None:
+    """Fails if `--checkpoint` is wired by importing whetstone.loop at module scope."""
+    import ast
+
+    tree = ast.parse(Path(cli.__file__).read_text(encoding="utf-8"))
+    offenders: list[str] = []
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("whetstone.loop"):
+            offenders.append(node.module or "")
+        if isinstance(node, ast.Import):
+            offenders += [a.name for a in node.names if a.name.startswith("whetstone.loop")]
+    assert offenders == [], offenders
+
+
+def test_the_help_names_the_checkpoint_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    """Fails if the flag lacks help or the description omits the new exit 2."""
+    cli.main(["check-leakage", "--help"])
+    text = " ".join(capsys.readouterr().out.split())
+
+    assert "--checkpoint" in text, text
+    assert "tampered, untrained or trained on another night" in text, text
