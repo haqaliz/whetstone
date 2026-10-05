@@ -10,6 +10,71 @@ carries the current state and the rules that still bind.
 
 ---
 
+**A v2 checkpoint seals every claim in `provenance.json`, and `check-leakage` can compare a checkpoint's dataset link** (2026-10-05, `checkpoint-provenance-seal`). The previous entry said the
+dataset digest was "recorded provenance, not verified … outside the file-hash seal". That describes
+`whetstone-promotion/2` and v1 checkpoints; for a v2 checkpoint it is no longer the state of the tree.
+
+**What shipped.**
+- **Checkpoint schema `whetstone-checkpoint/2`** (`src/whetstone/loop/sft.py`). `provenance.json`
+  carries a `claims` map: a sha256 over the canonical JSON (after a JSON round trip) of every
+  top-level key except `schema`, `digest` and `claims` — `base`, `dataset_digest`, `run_seed`,
+  `backend`, `training_args`, `tool_versions`, `validation`, `capacity_probe`, and `files` (the
+  per-file hashes are sealed as one claim). `digest` reduces from the sorted `key:hash` claim lines.
+  `verify_checkpoint` still re-hashes every file on disk, and names the first claim that moved, an
+  unclaimed key, or an orphaned claim. A claim key containing a newline is refused (a reviewer found
+  the merged-claim forgery, two claims merged into one under an unchanged digest, and a test pins
+  it); every claim hash must be 64 lowercase hex. `write_checkpoint` and the untrained-base writer
+  both write v2; a v2 untrained digest folds in `base`, so it is no longer the constant
+  `sha256(b"")` (a v1 untrained digest still is).
+- **v1 stays verifiable and is never sealed.** `verify_checkpoint` accepts both. `Checkpoint` now
+  carries `base_repo_id`, `base_revision`, `dataset_digest` (as recorded, unvalidated) and `sealed`
+  (True only for a verified v2). A v2 document whose schema string is rewritten to `/1` fails. An
+  older reader refuses v2 (schema equality).
+- **The gate and the card read the verified object**, not `provenance.json` a second time; a
+  source-reading test pins it for `gate.py` and `card.py`.
+- **Promotion record `whetstone-promotion/3`.** Each side's `training` block gains `sealed: bool`
+  (required; absent or non-bool is refused). `/2` and `/1` records are refused by the record reader,
+  the morning report and the honest report, never upgraded. `sealed` is recorded information and
+  **never enters the decision**: a differential test runs identical counts over a (v2, v2) and a
+  (v1, v1) pair, including a retry case, and asserts the decision blocks equal field for field. The
+  gate's rule, exits and retry discipline are unchanged.
+- **`whetstone check-leakage --run <runs/id> --heldout <doc> [--checkpoint <checkpoints/id>]`.**
+  `--checkpoint` is optional. It verifies the checkpoint, then compares its recorded
+  `dataset_digest` to the run's `dataset.json` `digest` before the overlap comparison. A mismatch, an
+  untrained checkpoint, or a tampered or missing checkpoint each exit 2, even when the run is leaked:
+  a leaked run plus another night's checkpoint can never exit 0 or 1. It can never change the
+  leakage verdict, and without the flag the output and exits are byte-identical. It prints whether
+  the link is sealed (v2) or "recorded, not sealed" (v1), and that the run's `dataset.json` is not
+  sealed.
+- **The gate runbook** replaces the by-eye digest comparison with `--checkpoint`; its guard is split
+  into seven one-property tests, each shown to fail against the previous sheet.
+
+**What "sealed" means, and does not.** Tamper-evidence against an edit that does not also recompute
+the digest. It is not authentication: a forger who rewrites the claim, `claims` and `digest`
+together is not caught (`test_a_forger_who_recomputes_the_digest_is_not_caught` documents this). It
+does not prove `dataset_digest` equals the digest of the dataset the trainer read. The run's own
+`dataset.json` at the other end of the link is not sealed. sha12 identity still cannot see
+near-duplicate tasks.
+
+**No real v2 checkpoint exists.** `checkpoints/portability-arm` (digest `48eae99b0d32`) is a v1
+checkpoint and was not rewritten, so its dataset link is recorded, not sealed. v2 behaviour is
+proven against fixtures and the real `sft.write_checkpoint` with fake adapter files, never against
+a night. `tests/test_gate_leakage_finding.py` ran (it resolves the primary checkout through git's
+common dir) against the real `runs/nights/night-001` and the real v1 checkpoints, and its output is
+byte-identical because `--checkpoint` was not passed.
+
+**M2's exit criterion stays open.** The gate has still never produced a decision on a real pair,
+and this unit ran no gate.
+
+**Open follow-ups.** The gate's printed note for an unsealed (v1) side: `GateOutcome` does not carry
+the per-side `TrainingProvenance`, so `disclosure` cannot see `sealed`; it is recorded in the
+promotion record only. Sealing the run's own documents (`dataset.json`, `ledger.json`). The
+one-writer test is syntactic and misses a tmp-and-rename write or a literal bound to a module's own
+constant. The card on an untrained checkpoint raises `KeyError` rather than a clean refusal (the
+night's `NothingToPublish` guard normally prevents reaching it). A stale "same constant for every
+untrained base" sentence remains in `src/whetstone/bakeoff/report.py` (true of v1 only). Whether to
+retrain on the 2 non-held-out examples is still the operator's decision.
+
 **The leakage guard matches by task identity, and the adapter in
 `checkpoints/portability-arm` is refused** (2026-10-03, `gate-leakage-guard`). `whetstone check-leakage` compared exact task-id strings.
 Across the corpus re-mint that would have reported *disjoint* on night-001's training set while
@@ -55,8 +120,7 @@ is the same, not from a run. M2's exit criterion stays open.
 ids against source B's held-out membership only, so the overlap was empty by construction.
 Since this unit source A is stated as not compared.
 
-**Open follow-ups.** Sealing `provenance.json` into the checkpoint's file-hash, so
-`dataset_digest` becomes verifiable. Whether to retrain on the 2 examples that are not held out
+**Open follow-ups.** Whether to retrain on the 2 examples that are not held out
 (weak evidence; the operator's decision). sha12 identity cannot see near-duplicates: a clean
 run means no shared task identity, never no contamination. Stale ROADMAP line citations remain
 in `src/whetstone/loop/gate.py`, `tests/loop/test_gate*.py` and the `p3-promotion-gate` spec

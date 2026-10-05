@@ -920,6 +920,14 @@ evidence for #60.
 > decision. The next step is a clean candidate, and whether to produce one is the operator's
 > decision.
 
+> **Corrected 2026-10-05, when the checkpoint seal landed.** M2's exit criterion stands and
+> stays open. For a v2 checkpoint the dataset link a candidate carries is now sealed against an
+> edit that does not recompute the digest (tamper-evidence, not authentication), and
+> `whetstone check-leakage --checkpoint` compares it to the run's dataset digest before the
+> overlap check. The one real checkpoint (`checkpoints/portability-arm`) is v1, so for it the
+> link is still only recorded, not sealed. No gate was run in this unit, and no gate decision
+> exists.
+
 ### M3 — Publish: the artifact and its page
 
 Only reachable with M1 and M2 done, and short once they are.

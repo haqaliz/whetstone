@@ -9,6 +9,36 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Added
+
+- **Checkpoint schema `whetstone-checkpoint/2`.** `provenance.json` carries a `claims` map, one
+  sha256 per top-level key (the per-file hashes are sealed as one claim), and `digest` reduces
+  from the sorted claim lines. `verify_checkpoint` names the first claim that moved, an unclaimed
+  key, or an orphaned claim. v1 checkpoints stay verifiable and are never sealed.
+- **`Checkpoint.sealed`, `base_repo_id`, `base_revision` and `dataset_digest`**, read from the
+  verified object. `sealed` is True only for a verified v2.
+- **`whetstone check-leakage --checkpoint <checkpoints/id>`** (optional). It verifies the
+  checkpoint and compares its recorded `dataset_digest` to the run's before the overlap
+  comparison; a mismatch, an untrained checkpoint, or a tampered or missing checkpoint exit 2. It
+  never changes the leakage verdict, and without the flag the output is unchanged. It prints
+  whether the link is sealed (v2) or recorded, not sealed (v1), and that the run's `dataset.json`
+  is not sealed.
+
+### Changed
+
+- The gate and the card read the verified `Checkpoint` instead of re-reading `provenance.json`.
+- The gate runbook's leakage step uses `check-leakage --checkpoint` instead of comparing digests
+  by eye.
+- **BREAKING: the promotion record is schema `whetstone-promotion/3`.** Each side's `training`
+  block carries a required `sealed` bool; `/2` and `/1` records are refused by readers and never
+  upgraded. `sealed` is recorded information and never enters the gate's decision.
+- **BREAKING: a v2 checkpoint is refused by any older reader** (schema equality).
+- **BREAKING: an untrained v2 checkpoint's digest folds in `base`**, so it is no longer the
+  constant `sha256(b"")`. A v1 untrained digest still is.
+- **BREAKING: `TrainingProvenance.sealed` is required.**
+
 ## [0.19.0] - 2026-10-03
 
 ### Changed
