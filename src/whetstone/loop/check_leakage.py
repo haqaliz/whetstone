@@ -392,7 +392,8 @@ def _link_lines(link: DatasetLink | None) -> tuple[str, ...]:
     if link.sealed:
         tail = (
             "the checkpoint's claims are sealed (whetstone-checkpoint/2), so an edit to that "
-            "digest after training would have been refused"
+            "dataset_digest that did not also recompute the checkpoint's digest would have been "
+            "refused (tamper-evidence, not authentication)"
         )
     else:
         tail = (

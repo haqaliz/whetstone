@@ -115,8 +115,9 @@ describes, and no result it produces on the real pair may be recorded.
 ## Step 2 — materialize the untrained incumbent
 
 The checkpoint writer (`sft.write_baseline_checkpoint`; the module has no door) records the
-untrained base as a `whetstone-checkpoint/1` provenance over no adapter, from the weights
-root's provenance — the 32B's `repo_id` and its immutable revision:
+untrained base as a `whetstone-checkpoint/2` provenance over no adapter (every claim, `base`
+among them, sealed into its digest), from the weights root's provenance — the 32B's `repo_id`
+and its immutable revision:
 
 ```bash
 uv run python -c "from pathlib import Path; from whetstone.loop.ledger import tool_versions; from whetstone.loop.sft import write_baseline_checkpoint; write_baseline_checkpoint(Path('$REPO/checkpoints/incumbent-base-001'), repo_id='mlx-community/Qwen2.5-Coder-32B-Instruct-4bit', revision='<the revision recorded in $REPO/weights/provenance.json>', tool_versions=tool_versions())"
@@ -253,9 +254,11 @@ Into the operator's log, from the record itself and never from memory:
   checked; the untrained incumbent's is an explicit `null`, because nothing trained it. This
   block is copied from `provenance.json`: **sealed** for a v2 checkpoint (tamper-evidence, not
   authentication) and **recorded, not sealed** for a v1 one — the `sealed` field says which;
-- both checkpoint digests, as re-hashed — the incumbent's is the constant untrained digest
-  (sha256 over the empty file set, the same for every untrained base), so the record is read
-  by role and by base identity, never by digest equality;
+- both checkpoint digests, as re-hashed — the incumbent's is the untrained digest: for the
+  `whetstone-checkpoint/2` checkpoint Step 2 writes it folds in `base`, so it differs per base;
+  only a legacy `whetstone-checkpoint/1` untrained checkpoint carries the constant digest
+  (sha256 over the empty file set, the same for every v1 untrained base). Either way the record
+  is read by role and by base identity, never by digest equality;
 - the held-out document digest — it must equal the digest of the committed
   `tasks/heldout/source-b.json`, whose split is fixed by `PREREGISTRATION.md` § 10.16 (Type 1,
   2026-09-27), re-derived under the scorable rule — a member is held out only if its oracle

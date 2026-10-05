@@ -14,11 +14,17 @@ released version until it exists in the code.
 ### Added
 
 - **Checkpoint schema `whetstone-checkpoint/2`.** `provenance.json` carries a `claims` map, one
-  sha256 per top-level key (the per-file hashes are sealed as one claim), and `digest` reduces
-  from the sorted claim lines. `verify_checkpoint` names the first claim that moved, an unclaimed
-  key, or an orphaned claim. v1 checkpoints stay verifiable and are never sealed. Sealed means
-  tamper-evident against an edit that does not also recompute the digest; it is not
-  authentication and does not prove the digest is that of the dataset the trainer read.
+  sha256 per top-level key (the per-file hashes are sealed as one claim), and `digest` is the
+  sha256 over the schema tag, a NUL, then the sorted `key:hash` claim lines — domain-separated,
+  so no v1 file list can reproduce a v2 digest. `verify_checkpoint` names the first claim that
+  moved, an unclaimed key, or an orphaned claim; a malformed `files` entry is refused (exit 2
+  from `check-leakage --checkpoint`) under either schema. v1 checkpoints stay verifiable and are
+  never sealed. Sealed means tamper-evident against an edit that does not also recompute the
+  digest; it is not authentication and does not prove the digest is that of the dataset the
+  trainer read. A v2 document downgraded to v1 with a recomputed v1 digest verifies, unsealed.
+- **No real v2 checkpoint exists yet.** `checkpoints/portability-arm` is v1 and was not
+  rewritten, so v2 is exercised against fixtures and the real `sft.write_checkpoint` with fake
+  adapter files only.
 - **`Checkpoint.sealed`, `base_repo_id`, `base_revision` and `dataset_digest`**, read from the
   verified object. `sealed` is True only for a verified v2.
 - **`whetstone check-leakage --checkpoint <checkpoints/id>`** (optional). It verifies the

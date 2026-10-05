@@ -437,7 +437,8 @@ class Checkpoint:
 
     #: `True` only for a v2 checkpoint whose every claim re-hashed; a v1 checkpoint is never
     #: sealed. Sealed means PRD § 3 and no more: the digest is unkeyed, so it catches a document
-    #: changed after it was written, never a writer who recomputes it.
+    #: changed after it was written, never a writer who recomputes it. Only `verify_checkpoint`
+    #: computes the flag; both writers set it True for the v2 document they have just sealed.
     sealed: bool = False
 
 

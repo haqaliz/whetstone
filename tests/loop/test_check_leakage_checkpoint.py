@@ -201,8 +201,9 @@ def test_the_new_refusals_are_operator_fixable() -> None:
 D12 = RUN_DIGEST[:12]
 SEALED_LINE = (
     f"dataset link: the checkpoint's dataset_digest ({D12}) matches this run's dataset.json; "
-    "the checkpoint's claims are sealed (whetstone-checkpoint/2), so an edit to that digest "
-    "after training would have been refused"
+    "the checkpoint's claims are sealed (whetstone-checkpoint/2), so an edit to that "
+    "dataset_digest that did not also recompute the checkpoint's digest would have been "
+    "refused (tamper-evidence, not authentication)"
 )
 V1_LINE = (
     f"dataset link: the checkpoint's dataset_digest ({D12}) matches this run's dataset.json; "

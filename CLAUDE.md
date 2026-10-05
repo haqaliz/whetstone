@@ -53,9 +53,11 @@ This file orients a coding agent working in this repository. Read it first.
 > defects behind that are fixed in 0.14.1 (`docs/STATUS.md`), including the one that mattered:
 > a night's ledger is now written even when training raises, so 26 hours of verified rollouts
 > can never again be lost to an exception in the final minutes. `check-leakage` now matches by
-> task identity (`--checkpoint` compares a checkpoint's sealed v2 or merely recorded v1 dataset link; tamper-evidence, not authentication) and refuses the arm's first checkpoint (`checkpoints/portability-arm`, which
-> records night #1's dataset digest — recorded, not sealed: a v1 checkpoint): 4 of its 6 examples sit on a
-> held-out task. The gate has **never produced a decision on a real pair**; its one real run
+> task identity (`--checkpoint` compares a checkpoint's sealed v2 or merely recorded v1 dataset
+> link; tamper-evidence, not authentication) and refuses the arm's first checkpoint
+> (`checkpoints/portability-arm`, which records night #1's dataset digest — recorded, not
+> sealed: a v1 checkpoint): 4 of its 6 examples sit on a held-out task. The gate has **never
+> produced a decision on a real pair**; its one real run
 > (gate-001) reduced to `UNVERIFIED` against the held-out document as it stood before
 > `PREREGISTRATION.md` § 10.16. Its decision exits and refusals are otherwise proven against
 > fixtures only — as are

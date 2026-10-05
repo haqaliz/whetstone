@@ -1217,7 +1217,7 @@ def build_baseline_report(
     the held-out split, measured once, re-measured never, with provenance beside it. The
     measured document records the series identity (the base identity and the held-out
     document digest the measured-once guard keys on — never the checkpoint digest, which
-    is the same constant for every untrained base), the § 7.3-open sentence, both sources
+    is the same constant for every untrained v1 base), the § 7.3-open sentence, both sources
     over their own denominators — never one without the other
     (`PREREGISTRATION.md:142-143`) — `N` with the pre-registered `_N_SENTENCE` **by
     identity**, the retry facts, the evidence pointer (a digest, never contents), the

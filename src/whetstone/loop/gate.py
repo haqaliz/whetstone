@@ -765,9 +765,10 @@ def run_gate(
         raise UntrainedCandidate(
             f"candidate ({str(candidate_checkpoint.directory)!r}) is an untrained "
             "checkpoint. A night's candidate is always trained: an untrained checkpoint "
-            "holds no adapter, and its digest is the constant sha256 over the empty file "
-            "set — the same for every untrained base, whatever the repo id or revision — "
-            "so a comparison keyed on it could not discriminate bases"
+            "holds no adapter to score. Under whetstone-checkpoint/1 its digest is the "
+            "constant sha256 over the empty file set — the same for every untrained v1 base, "
+            "whatever the repo id or revision — so a comparison keyed on it could not "
+            "discriminate bases; a whetstone-checkpoint/2 untrained digest folds in `base`"
         )
 
     # Before a token is generated, and before the base weights are even fetched: two
