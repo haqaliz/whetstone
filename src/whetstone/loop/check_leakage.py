@@ -347,6 +347,7 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
                 subject,
                 _source_line(report.private),
                 _source_line(report.public),
+                *_link_lines(report.link),
             ),
         )
     # The denominator is the compared examples only: source A's are not matched against the
@@ -371,7 +372,39 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
             "so the night could not have excluded these ids. Either way the candidate "
             "trained on these tasks is not gated; do not exclude these examples after the fact"
         )
+    lines.extend(_link_lines(report.link))
     return _with_notice(report, lines)
+
+
+def _link_lines(link: DatasetLink | None) -> tuple[str, ...]:
+    """What the checkpoint link was, and was not: sealed on one side, never on the other.
+
+    The checkpoint's files are verified either way; the *link* is sealed only when the
+    checkpoint's claims are (v2). Neither case says the checkpoint's dataset is what it was
+    trained on, and the run's `dataset.json` is an unsealed document.
+    """
+    if link is None:
+        return ()
+    head = (
+        f"dataset link: the checkpoint's dataset_digest ({link.digest[:12]}) "
+        f"matches this run's {DATASET_FILE}; "
+    )
+    if link.sealed:
+        tail = (
+            "the checkpoint's claims are sealed (whetstone-checkpoint/2), so an edit to that "
+            "digest after training would have been refused"
+        )
+    else:
+        tail = (
+            "it is recorded, not sealed (whetstone-checkpoint/1) — provenance.json was outside "
+            "that checkpoint's digest, so this is what the document says and not something "
+            "that was checked"
+        )
+    return (
+        head + tail,
+        f"the run's {DATASET_FILE} is not sealed, so this compares a checkpoint claim to a "
+        "document that anyone with write access to the run can edit",
+    )
 
 
 #: What a clean verdict rules out, and what it does not. Identity is all the check compares.
