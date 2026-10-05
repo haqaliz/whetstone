@@ -31,6 +31,14 @@ in a notice (a night can write its dataset and raise before its ledger lands).
 records what was actually trained on — the strict-PASS selection — and the ledger's task set
 records what was *considered*. Only the first can leak into an adapter's weights.
 
+**The `--checkpoint` link.** Given a checkpoint, `run_check` verifies it and compares the
+`dataset_digest` it records with the digest in the run's `dataset.json`; a mismatch is a
+refusal, decided before any overlap is compared. The checkpoint's claim is sealed only when it
+is a v2 checkpoint (v1 records it unsealed, and the report says which). The run's
+`dataset.json` is NOT sealed, so this is a sealed (or merely recorded) claim compared against a
+document anyone with write access to the run can edit. It is not authentication, and not proof
+that the recorded digest equals the digest of what was actually trained on.
+
 This module prevents nothing. If it ever exits nonzero, the disclosure names two possible
 causes and asserts neither: the night's partition seam failed to exclude held-out ids, or
 the held-out document was derived or re-derived after the night ran. It says so in those
@@ -57,6 +65,7 @@ from whetstone.loop.heldout import (
 from whetstone.loop.ledger import LEDGER_FILE, LedgerUnreadable
 from whetstone.loop.ledger import read as read_ledger
 from whetstone.loop.night import DATASET_FILE, PRIVATE, PUBLIC
+from whetstone.loop.sft import CheckpointUnverified, verify_checkpoint
 
 #: The two sources, by identity from the night that writes them. A third name here would be a
 #: second answer to "which sources exist", and the check would then be able to disagree with
@@ -108,6 +117,23 @@ class NothingCompared(ValueError):
     """
 
 
+class CheckpointHasNoDataset(ValueError):
+    """The checkpoint is the untrained base: it was trained on nothing, so there is no dataset.
+
+    Refused rather than reported: there is no recorded training set to compare with the run's,
+    and a link that cannot exist must not read as one that was checked and found clean.
+    """
+
+
+class CheckpointNotThisRun(ValueError):
+    """The checkpoint's recorded dataset digest is not the run's: another night trained it.
+
+    A verdict about this run says nothing about that checkpoint, so none is given. The fix is
+    to point `--checkpoint` at the checkpoint this night wrote, or `--run` at the night that
+    wrote this checkpoint.
+    """
+
+
 #: What the CLI turns into a usage error rather than a traceback: everything an operator can
 #: fix by retyping the command or by pointing at a different directory.
 REFUSALS: tuple[type[Exception], ...] = (
@@ -120,6 +146,9 @@ REFUSALS: tuple[type[Exception], ...] = (
     EmptyHeldout,
     HeldoutSchemaError,
     HeldoutDigestMismatch,
+    CheckpointUnverified,
+    CheckpointHasNoDataset,
+    CheckpointNotThisRun,
 )
 
 
@@ -148,6 +177,14 @@ class SourceLeak:
 
 
 @dataclass(frozen=True)
+class DatasetLink:
+    """The digest a checkpoint and a run agreed on, and whether the checkpoint's claim is sealed."""
+
+    digest: str
+    sealed: bool
+
+
+@dataclass(frozen=True)
 class LeakReport:
     """What the check found, over both sources, with every count over its own denominator."""
 
@@ -163,6 +200,9 @@ class LeakReport:
     #: Whether the run directory held no `ledger.json`. The check read the dataset alone and
     #: says so; it is never a reason to pass or to fail.
     ledger_absent: bool = False
+
+    #: Set only when a checkpoint was given and its recorded dataset digest matched the run's.
+    link: DatasetLink | None = None
 
     @property
     def examples(self) -> int:
@@ -225,7 +265,7 @@ def check_overlap(
     )
 
 
-def run_check(run: Path, heldout: Path) -> LeakReport:
+def run_check(run: Path, heldout: Path, checkpoint: Path | None = None) -> LeakReport:
     """Read a night's training set and a held-out document, and compare them.
 
     The contract: `dataset.json` is required (without it there is nothing to check); the
@@ -235,6 +275,10 @@ def run_check(run: Path, heldout: Path) -> LeakReport:
     aspect 1's fail-closed loader by identity (a doctored membership or a digest mismatch
     refuses before any comparison), and only then are the two sets compared. A check that
     read a doctored document and reported "clean" would be worse than no check.
+
+    With a `checkpoint`, it is verified and its recorded dataset digest is compared with the
+    run's before the overlap is compared, so another night's checkpoint is refused even when
+    the run is leaked.
     """
     dataset_path = run / DATASET_FILE
     if not dataset_path.is_file():
@@ -254,8 +298,35 @@ def run_check(run: Path, heldout: Path) -> LeakReport:
 
     document = _read_dataset(dataset_path)
     training = _training_of(document, dataset_path)
+    link = _link_of(document, dataset_path, checkpoint) if checkpoint is not None else None
     report = check_overlap(training, read_heldout(heldout).membership)
-    return replace(report, ledger_absent=ledger_absent)
+    return replace(report, ledger_absent=ledger_absent, link=link)
+
+
+def _link_of(document: Mapping[str, object], path: Path, checkpoint: Path) -> DatasetLink:
+    """Verify the checkpoint and match its recorded dataset digest to the run's, exactly."""
+    cp = verify_checkpoint(checkpoint)
+    if cp.untrained:
+        raise CheckpointHasNoDataset(
+            f"{str(checkpoint)!r} is the untrained base: it was trained on nothing, so there is "
+            "no dataset to compare with the run's. Point --checkpoint at a night's adapter"
+        )
+    run_digest = document.get("digest")
+    if not isinstance(run_digest, str):
+        raise DatasetUnreadable(
+            f"{str(path)!r} records no 'digest' string (found {run_digest!r}), so the run "
+            "cannot be linked to a checkpoint"
+        )
+    recorded = cp.dataset_digest
+    if recorded != run_digest:
+        found = recorded[:12] if isinstance(recorded, str) else repr(recorded)
+        raise CheckpointNotThisRun(
+            f"{str(checkpoint)!r} records training dataset {found} and this run's dataset is "
+            f"{run_digest[:12]}: the checkpoint was not trained on this run, so a verdict about "
+            "the run says nothing about it. Point --checkpoint at the checkpoint this night "
+            "wrote, or --run at the night that wrote this checkpoint"
+        )
+    return DatasetLink(digest=run_digest, sealed=cp.sealed)
 
 
 def disclosure(report: LeakReport) -> tuple[str, ...]:
