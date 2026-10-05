@@ -187,9 +187,19 @@ def _claim_hashes(body: Mapping[str, Any]) -> dict[str, str]:
 
 
 def _claims_digest(claims: Mapping[str, str]) -> str:
-    """The sha256 of the claim hashes, one `key:hash` line each in sorted key order."""
+    """The sha256 of the schema tag, a NUL, then the claim hashes as sorted `key:hash` lines.
+
+    The tag is the domain separation. Without it the material is the same shape `_digest_of`
+    hashes for v1 — `name:sha256` lines — so a v1 document listing one file per claim key, each
+    holding that claim's canonical bytes, reduced to an honest v2 digest while its adapter sat
+    outside the list. A v1 digest's input is `"\\n".join(f"{name}:{sha256}")` and so begins with
+    a file name. A NUL can never appear in a path, and `verify_checkpoint` refuses a listed file
+    that is not on disk (a name carrying a NUL is never `is_file()`), so no v1 file list that
+    verifies can produce an input with the NUL the v2 input carries right after its tag: the two
+    digests cannot coincide.
+    """
     text = "\n".join(f"{key}:{claims[key]}" for key in sorted(claims))
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return hashlib.sha256((CHECKPOINT_SCHEMA_V2 + "\0" + text).encode("utf-8")).hexdigest()
 
 
 class NothingToTrain(ValueError):
@@ -933,10 +943,7 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
                 "and verifying it would check nothing"
             )
 
-    recorded = tuple(
-        CheckpointFile(name=str(one["name"]), bytes=int(one["bytes"]), sha256=str(one["sha256"]))
-        for one in raw["files"]
-    )
+    recorded = _recorded_files(document, raw.get("files"))
     untrained = raw.get("untrained") is True
     trained_by = raw.get("backend")
     recorded_backend = trained_by if isinstance(trained_by, dict) else None
@@ -993,6 +1000,36 @@ def verify_checkpoint(directory: Path) -> Checkpoint:
         dataset_digest=raw.get("dataset_digest"),
         sealed=sealed,
     )
+
+
+def _recorded_files(document: Path, files: Any) -> tuple[CheckpointFile, ...]:
+    """The `files` list as records, or a refusal naming the document and the entry that broke.
+
+    Shared by both schemas. A v1 document is unsealed, so one hand edit reaches an entry; a v2
+    one re-sealed consistently does too. Either way a malformed entry is a `CheckpointUnverified`
+    — the refusal `check-leakage --checkpoint` exits 2 on — never a stray `KeyError`,
+    `TypeError` or `ValueError`, which escapes the command and exits 1, the code for a leak.
+    """
+    if not isinstance(files, list):
+        raise CheckpointUnverified(
+            f"{str(document)!r} carries no 'files' list, so there are no bytes to re-hash "
+            "and verifying it would check nothing"
+        )
+    recorded: list[CheckpointFile] = []
+    for index, one in enumerate(files):
+        try:
+            recorded.append(
+                CheckpointFile(
+                    name=str(one["name"]), bytes=int(one["bytes"]), sha256=str(one["sha256"])
+                )
+            )
+        except (KeyError, TypeError, ValueError, AttributeError) as error:
+            raise CheckpointUnverified(
+                f"{str(document)!r} files entry {index} is malformed ({type(error).__name__}: "
+                f"{error}): every entry is a mapping with a 'name', an integer 'bytes' and a "
+                "'sha256'"
+            ) from error
+    return tuple(recorded)
 
 
 def _verify_claims(document: Path, raw: Mapping[str, Any]) -> None:

@@ -44,7 +44,7 @@ _FIXED_CLAIM_HASHES = {
     "none": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
     "nested": "84afbf1d4853005f9dd0c81cb1819b53ce86978340764c062160f6e8356665de",
 }
-_FIXED_CLAIMS_DIGEST = "565de2bb2f4566ed90594ecb87f4aff5614f6eb8a4f0a485bba9445db129ded8"
+_FIXED_CLAIMS_DIGEST = "513b6622b1738659179c0ad585ee147341da5d55d06098b62918bed679376776"
 
 
 def test_schema_constants() -> None:
@@ -341,6 +341,132 @@ def test_a_forger_who_recomputes_the_digest_is_not_caught(tmp_path: Path) -> Non
     assert forged.sealed is True
     assert forged.dataset_digest == "e" * 64
     assert forged.digest != written.digest
+
+
+def _v1_files_reproducing_the_claims(directory: Path, document: Mapping[str, Any]) -> list[Any]:
+    """One file per claim key whose bytes are that claim's canonical encoding — the v1 shape
+    whose file-hash lines read exactly like the v2 document's `key:hash` claim lines."""
+    directory.mkdir(parents=True)
+    files: list[Any] = []
+    for key, value in document.items():
+        if key in sft._UNSEALED_KEYS:
+            continue
+        encoded = sft._canonical(value)
+        (directory / key).write_bytes(encoded)
+        files.append(
+            {"name": key, "bytes": len(encoded), "sha256": hashlib.sha256(encoded).hexdigest()}
+        )
+    return files
+
+
+def test_a_v1_document_cannot_reproduce_a_v2_digest(tmp_path: Path) -> None:
+    """The cross-schema forgery: a v1 file list built to read like a v2 checkpoint's claims.
+
+    Without a domain tag both digests are sha256 over `name:hex` lines, so a v1 document listing
+    one file per claim key, each file holding that claim's canonical bytes, reduces to the honest
+    v2 digest — and carries any `base` or `dataset_digest` it likes beside it, with the adapter
+    nowhere in its list. The ledger, the promotion record and the honest report would then name
+    the same checkpoint for different bytes. The v2 digest is domain-separated, so the v1 file
+    reduction can never equal it and the document disagrees with the digest it claims.
+    """
+    written = _written(tmp_path / "cp")
+    document = _read(written.directory)
+    forged_directory = tmp_path / "forged"
+    files = _v1_files_reproducing_the_claims(forged_directory, document)
+    _write(
+        forged_directory,
+        {
+            "schema": sft.CHECKPOINT_SCHEMA_V1,
+            "digest": written.digest,
+            "files": files,
+            "base": {"repo_id": "evil", "revision": "r9"},
+            "dataset_digest": "e" * 64,
+            "backend": document["backend"],
+        },
+    )
+
+    with pytest.raises(sft.CheckpointUnverified, match="disagrees with itself"):
+        sft.verify_checkpoint(forged_directory)
+
+    # The forger limit (PRD § 3): the same v1 document with its digest recomputed from its own
+    # files verifies — unsealed, and under a digest that is not the v2 checkpoint's.
+    downgraded = _read(forged_directory)
+    downgraded["digest"] = sft._digest_of(
+        tuple(sft.CheckpointFile(**one) for one in downgraded["files"])
+    )
+    _write(forged_directory, downgraded)
+    accepted = sft.verify_checkpoint(forged_directory)
+    assert accepted.sealed is False
+    assert accepted.digest != written.digest
+
+
+# --- A malformed `files` entry is a refusal, never a stray exception (exit 2, not 1). ----------
+
+
+def _bytes_not_a_number(files: list[Any]) -> None:
+    files[0]["bytes"] = "abc"
+
+
+def _bytes_missing(files: list[Any]) -> None:
+    del files[0]["bytes"]
+
+
+def _sha256_missing(files: list[Any]) -> None:
+    del files[0]["sha256"]
+
+
+def _name_missing(files: list[Any]) -> None:
+    del files[0]["name"]
+
+
+def _entry_not_a_mapping(files: list[Any]) -> None:
+    files[0] = sft.ADAPTER_FILE
+
+
+def _entries_are_ints(files: list[Any]) -> None:
+    files[:] = [1, 2]
+
+
+_MALFORMED_ENTRIES = pytest.mark.parametrize(
+    "malform",
+    [
+        _bytes_not_a_number,
+        _bytes_missing,
+        _sha256_missing,
+        _name_missing,
+        _entry_not_a_mapping,
+        _entries_are_ints,
+    ],
+    ids=["bytes-abc", "bytes-missing", "sha256-missing", "name-missing", "not-a-mapping", "ints"],
+)
+
+
+@_MALFORMED_ENTRIES
+def test_a_malformed_v1_files_entry_is_refused(
+    tmp_path: Path, malform: Callable[[list[Any]], None]
+) -> None:
+    """v1 is unsealed, so one edit suffices — and must still be a `CheckpointUnverified`."""
+    directory = _portability_arm_shaped(tmp_path / "arm")
+    document = _read(directory)
+    malform(document["files"])
+    _write(directory, document)
+
+    with pytest.raises(sft.CheckpointUnverified, match=r"files entry 0"):
+        sft.verify_checkpoint(directory)
+
+
+@_MALFORMED_ENTRIES
+def test_a_malformed_v2_files_entry_consistently_resealed_is_refused(
+    tmp_path: Path, malform: Callable[[list[Any]], None]
+) -> None:
+    """Re-sealed so the claims check passes: the entry itself must be what is refused."""
+    written = _written(tmp_path / "cp")
+    document = _read(written.directory)
+    malform(document["files"])
+    _write(written.directory, _resealed(document))
+
+    with pytest.raises(sft.CheckpointUnverified, match=r"files entry 0"):
+        sft.verify_checkpoint(written.directory)
 
 
 @pytest.mark.parametrize(

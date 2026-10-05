@@ -391,6 +391,29 @@ def test_a_tampered_v2_checkpoint_exits_two(
     assert captured.out == "" and captured.err.startswith("whetstone check-leakage: ")
 
 
+def test_a_v1_checkpoint_with_a_malformed_files_entry_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fails if a malformed entry escapes as a ValueError, which exits 1 — the leak code.
+
+    v1 is unsealed, so one hand edit reaches the entry: `bytes` set to a non-number.
+    """
+    run, held = _fixture(tmp_path)
+    cp = _as_v1(_trained(tmp_path / "cp"))
+    path = cp.directory / sft.CHECKPOINT_FILE
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["files"][0]["bytes"] = "abc"
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == "", captured.out
+    assert captured.err.startswith("whetstone check-leakage: "), captured.err
+    assert "files entry 0" in captured.err, captured.err
+
+
 def test_an_untrained_checkpoint_exits_two(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
