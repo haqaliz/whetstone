@@ -21,9 +21,8 @@ dataset digest was "recorded provenance, not verified … outside the file-hash 
   `backend`, `training_args`, `tool_versions`, `validation`, `capacity_probe`, and `files` (the
   per-file hashes are sealed as one claim). `digest` reduces from the sorted `key:hash` claim lines.
   `verify_checkpoint` still re-hashes every file on disk, and names the first claim that moved, an
-  unclaimed key, or an orphaned claim. A claim key containing a newline is refused (a reviewer found
-  the merged-claim forgery, two claims merged into one under an unchanged digest, and a test pins
-  it); every claim hash must be 64 lowercase hex. `write_checkpoint` and the untrained-base writer
+  unclaimed key, or an orphaned claim. A claim key containing a newline is refused (the merged-claim forgery, two claims merged into one under an unchanged digest, is
+  pinned by `test_a_merged_claim_key_cannot_delete_two_keys_under_one_digest`); every claim hash must be 64 lowercase hex. `write_checkpoint` and the untrained-base writer
   both write v2; a v2 untrained digest folds in `base`, so it is no longer the constant
   `sha256(b"")` (a v1 untrained digest still is).
 - **v1 stays verifiable and is never sealed.** `verify_checkpoint` accepts both. `Checkpoint` now
@@ -42,7 +41,7 @@ dataset digest was "recorded provenance, not verified … outside the file-hash 
   `--checkpoint` is optional. It verifies the checkpoint, then compares its recorded
   `dataset_digest` to the run's `dataset.json` `digest` before the overlap comparison. A mismatch, an
   untrained checkpoint, or a tampered or missing checkpoint each exit 2, even when the run is leaked:
-  a leaked run plus another night's checkpoint can never exit 0 or 1. It can never change the
+  a checkpoint recording another night's dataset digest never lets a run exit 0 or 1. It can never change the
   leakage verdict, and without the flag the output and exits are byte-identical. It prints whether
   the link is sealed (v2) or "recorded, not sealed" (v1), and that the run's `dataset.json` is not
   sealed.
@@ -64,14 +63,16 @@ common dir) against the real `runs/nights/night-001` and the real v1 checkpoints
 byte-identical because `--checkpoint` was not passed.
 
 **M2's exit criterion stays open.** The gate has still never produced a decision on a real pair,
-and this unit ran no gate.
+and this unit ran no gate. No version was cut: the changes sit under `[Unreleased]` in the
+CHANGELOG.
 
 **Open follow-ups.** The gate's printed note for an unsealed (v1) side: `GateOutcome` does not carry
 the per-side `TrainingProvenance`, so `disclosure` cannot see `sealed`; it is recorded in the
 promotion record only. Sealing the run's own documents (`dataset.json`, `ledger.json`). The
 one-writer test is syntactic and misses a tmp-and-rename write or a literal bound to a module's own
-constant. The card on an untrained checkpoint raises `KeyError` rather than a clean refusal (the
-night's `NothingToPublish` guard normally prevents reaching it). A stale "same constant for every
+constant. The card on an untrained checkpoint raises `KeyError` rather than a clean refusal: a night
+never writes an untrained checkpoint, but `card` does not check that the `--checkpoint` it is given
+belongs to the night, and `NothingToPublish` fires only when the night itself wrote none. A stale "same constant for every
 untrained base" sentence remains in `src/whetstone/bakeoff/report.py` (true of v1 only). Whether to
 retrain on the 2 non-held-out examples is still the operator's decision.
 

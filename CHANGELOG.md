@@ -16,7 +16,9 @@ released version until it exists in the code.
 - **Checkpoint schema `whetstone-checkpoint/2`.** `provenance.json` carries a `claims` map, one
   sha256 per top-level key (the per-file hashes are sealed as one claim), and `digest` reduces
   from the sorted claim lines. `verify_checkpoint` names the first claim that moved, an unclaimed
-  key, or an orphaned claim. v1 checkpoints stay verifiable and are never sealed.
+  key, or an orphaned claim. v1 checkpoints stay verifiable and are never sealed. Sealed means
+  tamper-evident against an edit that does not also recompute the digest; it is not
+  authentication and does not prove the digest is that of the dataset the trainer read.
 - **`Checkpoint.sealed`, `base_repo_id`, `base_revision` and `dataset_digest`**, read from the
   verified object. `sealed` is True only for a verified v2.
 - **`whetstone check-leakage --checkpoint <checkpoints/id>`** (optional). It verifies the
