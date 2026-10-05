@@ -18,7 +18,7 @@ import pytest
 
 from loop.test_gate import _gate_fixtures
 from loop.test_gate_provenance import _rewrite
-from whetstone.loop import gate, sft
+from whetstone.loop import card, gate, sft
 
 _NAMES = ("provenance.json", "CHECKPOINT_FILE")
 
@@ -52,17 +52,31 @@ def _reads_of_the_file(tree: ast.AST) -> list[str]:
     return found
 
 
-def test_the_gate_holds_no_read_of_provenance_json() -> None:
-    """Outside docstrings and comments, `gate.py` names neither the file nor its constant.
+#: The one literal in `gate.py` allowed to name the file: the constant part of the refusal of a
+#: trained checkpoint whose provenance records no well-formed digest (the AST holds the f-string's
+#: constant segments joined, so this is the whole segment after the interpolated directory).
+#: It is matched by exact equality; any other literal that names the file is a read.
+_GATE_REFUSAL_LITERAL = (
+    " is trained but its provenance.json records no well-formed `dataset_digest` (found "
+)
 
-    String literals in the refusal messages are exempt only by content: any literal that
-    mentions the file is reported, so a message must say 'provenance' without the filename.
+
+@pytest.mark.parametrize("module", [gate, card], ids=["gate", "card"])
+def test_the_gate_and_the_card_hold_no_read_of_provenance_json(module: Any) -> None:
+    """Outside docstrings and comments, neither module names the file nor its constant.
+
+    `gate.py` is allowed exactly one literal that mentions the file: the refusal message
+    `_GATE_REFUSAL_LITERAL`, matched by exact string equality. Every other literal that
+    mentions it is reported, and `card.py` has no exemption at all.
     """
-    source = Path(gate.__file__).read_text(encoding="utf-8")
+    source = Path(module.__file__).read_text(encoding="utf-8")
 
     reads = _reads_of_the_file(_code_without_docstrings(source))
 
-    assert reads == [] or all("is trained but its provenance.json" in one for one in reads), reads
+    if module is gate:
+        assert all(one == _GATE_REFUSAL_LITERAL for one in reads), reads
+    else:
+        assert reads == [], reads
 
 
 def _arguments(fixtures: dict[str, Any]) -> dict[str, Any]:
@@ -74,6 +88,9 @@ def _arguments(fixtures: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_a_v2_digest_edited_after_sealing_is_refused_before_any_scoring(tmp_path: Path) -> None:
+    # An end-to-end pin, not a discriminator: it also passes on the pre-aspect-2 code, because
+    # aspect 1's `verify_checkpoint` already refuses this edit. The source-reading test and the
+    # check-then-use test below are what separate the object read from the file read.
     fixtures = _gate_fixtures(tmp_path)
     path = fixtures["candidate"] / sft.CHECKPOINT_FILE
     document = json.loads(path.read_text(encoding="utf-8"))
@@ -123,6 +140,70 @@ def test_the_gate_answers_from_the_object_not_from_the_file_on_disk(tmp_path: Pa
         "repo_id": checkpoint.base_repo_id,
         "revision": checkpoint.base_revision,
     }
+    assert gate._checkpoint_base(checkpoint)["repo_id"] != "someone/else"
+
+
+def _mapping_of(checkpoint: sft.Checkpoint) -> dict[str, Any]:
+    """The mapping `build_model_card` takes, spelled out from the claims a v2 seal carries."""
+    return {
+        "base": {"repo_id": checkpoint.base_repo_id, "revision": checkpoint.base_revision},
+        "backend": checkpoint.backend,
+    }
+
+
+def test_the_card_for_a_v2_checkpoint_is_the_card_over_the_equivalent_mapping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The writer's page is byte-identical to the pure renderer's over the verified claims."""
+    from loop.test_model_card import _night
+    from whetstone.loop import morning
+
+    fixtures = _gate_fixtures(tmp_path)
+    verified = sft.verify_checkpoint(fixtures["candidate"])
+    night = _night()
+    monkeypatch.setattr(morning, "load_named_run", lambda run: night)
+
+    out = card.render_card(
+        run=tmp_path / "night",
+        checkpoint=fixtures["candidate"],
+        out=tmp_path / "card" / "README.md",
+    )
+
+    expected = card.build_model_card(night=night, checkpoint=_mapping_of(verified))
+    assert out.read_text(encoding="utf-8") == expected
+
+
+def test_the_card_renders_from_the_object_not_from_the_file_on_disk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Check-then-use: a provenance edited or removed after verification cannot change the page."""
+    from loop.test_model_card import _night
+    from whetstone.loop import morning
+
+    fixtures = _gate_fixtures(tmp_path)
+    directory = fixtures["candidate"]
+    verified = sft.verify_checkpoint(directory)
+    night = _night()
+    real = sft.verify_checkpoint
+
+    def verify_then_tamper(path: Path) -> sft.Checkpoint:
+        checked = real(path)
+        document = json.loads((path / sft.CHECKPOINT_FILE).read_text(encoding="utf-8"))
+        document["base"] = {"repo_id": "someone/else", "revision": "0000000"}
+        (path / sft.CHECKPOINT_FILE).write_text(json.dumps(document), encoding="utf-8")
+        return checked
+
+    monkeypatch.setattr(morning, "load_named_run", lambda run: night)
+    monkeypatch.setattr(sft, "verify_checkpoint", verify_then_tamper)
+
+    out = card.render_card(
+        run=tmp_path / "night", checkpoint=directory, out=tmp_path / "c" / "R.md"
+    )
+
+    page = out.read_text(encoding="utf-8")
+    assert "someone/else" not in page
+    assert f"`{verified.base_repo_id}`" in page
+    assert page == card.build_model_card(night=night, checkpoint=_mapping_of(verified))
 
 
 # --------------------------------------------------------------------------------------------

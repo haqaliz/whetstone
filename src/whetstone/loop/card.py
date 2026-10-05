@@ -27,7 +27,6 @@ promotion gate. A card silent on that reads as though it had passed one.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -210,6 +209,29 @@ def _yield_sentence(counts: Any) -> str:
     )
 
 
+def _claims_of(verified: Any) -> dict[str, Any]:
+    """The mapping `build_model_card` renders, built from the claims `verify_checkpoint` verified.
+
+    The file is never re-opened: the page is about the object the seal vouched for. `backend` is
+    omitted when the checkpoint records none, so an untrained checkpoint fails in the renderer
+    where it always did.
+    """
+    from whetstone.loop.sft import CheckpointUnverified
+
+    if verified.base_repo_id is None or verified.base_revision is None:
+        raise CheckpointUnverified(
+            f"checkpoint {str(verified.directory)!r} names no base "
+            f"(repo_id={verified.base_repo_id!r}, revision={verified.base_revision!r}), so a "
+            "card cannot say what it was trained from"
+        )
+    claims: dict[str, Any] = {
+        "base": {"repo_id": verified.base_repo_id, "revision": verified.base_revision}
+    }
+    if verified.backend is not None:
+        claims["backend"] = verified.backend
+    return claims
+
+
 def render_card(*, run: Path, checkpoint: Path, out: Path) -> Path:
     """The door: read the night and the sealed checkpoint, render, write, return the path.
 
@@ -224,14 +246,13 @@ def render_card(*, run: Path, checkpoint: Path, out: Path) -> Path:
     sealed it and the moment somebody publishes a page about it.
     """
     from whetstone.loop.morning import load_named_run, refuse_published_out
-    from whetstone.loop.sft import CHECKPOINT_FILE, verify_checkpoint
+    from whetstone.loop.sft import verify_checkpoint
 
     refuse_published_out(out.parent, "--out")
     night = load_named_run(run)
-    verify_checkpoint(checkpoint)
-    sealed = json.loads((checkpoint / CHECKPOINT_FILE).read_text(encoding="utf-8"))
+    verified = verify_checkpoint(checkpoint)
 
-    page = build_model_card(night=night, checkpoint=sealed)
+    page = build_model_card(night=night, checkpoint=_claims_of(verified))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(page, encoding="utf-8")
     return out
