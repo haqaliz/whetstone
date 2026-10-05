@@ -515,58 +515,97 @@ def test_every_roadmap_cite_points_at_the_rule_it_names() -> None:
         )
 
 
-def test_the_sheet_has_the_leakage_step_compare_the_checkpoint_mechanically() -> None:
-    """The candidate's night is tied by `--checkpoint`, and the sheet says what that is and is not.
+def _leak_and_gate() -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    blocks = _bash_blocks(_runbook())
+    leak = _values(_door_blocks(blocks, "whetstone check-leakage")[0], "whetstone check-leakage")
+    gate = _values(_door_blocks(blocks, "whetstone gate")[0], "whetstone gate")
+    return leak, gate
 
-    `check-leakage` takes a run directory, the gate takes a checkpoint, and a leakage proof over
-    the wrong night proves nothing about the candidate. The command now ties them: its
-    `--checkpoint` must name the same directory the gate's `--candidate` does. The sheet must
-    say the link is **sealed** for a v2 checkpoint and **recorded, not sealed** for a v1 one,
-    that sealed is tamper-evidence and not authentication, that the run's `dataset.json` is not
-    sealed, that a non-zero exit halts before the gate, and must never call the dataset link
-    verified.
+
+def test_the_leakage_block_names_the_gates_candidate_as_its_checkpoint() -> None:
+    """`--checkpoint` is typed in the check-leakage block and names the gate's `--candidate`.
+
+    A leakage proof over the wrong night proves nothing about the candidate; the typed example
+    must tie the two doors mechanically, and name the same night on both.
     """
-    text = _runbook()
-    flat = _flat(text)
-    blocks = _bash_blocks(text)
-    leak = _door_blocks(blocks, "whetstone check-leakage")[0]
-    run = _values(leak, "whetstone check-leakage")
-    candidate = _values(_door_blocks(blocks, "whetstone gate")[0], "whetstone gate")
-    assert "--checkpoint" in run and len(run["--checkpoint"]) == 1, (
+    leak, gate = _leak_and_gate()
+    assert "--checkpoint" in leak and len(leak["--checkpoint"]) == 1, (
         "WHY THIS IS A FAILURE: the check-leakage block carries no --checkpoint, so nothing "
         "mechanical ties the checked night to the candidate and the operator compares by eye"
     )
-    assert Path(run["--checkpoint"][0]).name == Path(candidate["--candidate"][0]).name, (
-        f"WHY THIS IS A FAILURE: leakage names checkpoint {run['--checkpoint'][0]!r} but the "
-        f"gate scores {candidate['--candidate'][0]!r}; the typed example must name one candidate"
+    assert Path(leak["--checkpoint"][0]).name == Path(gate["--candidate"][0]).name, (
+        f"WHY THIS IS A FAILURE: leakage names checkpoint {leak['--checkpoint'][0]!r} but the "
+        f"gate scores {gate['--candidate'][0]!r}; the typed example must name one candidate"
     )
-    assert Path(run["--run"][0]).name == Path(candidate["--candidate"][0]).name, (
-        f"WHY THIS IS A FAILURE: the sheet checks leakage over {run['--run'][0]!r} and gates "
-        f"{candidate['--candidate'][0]!r}. The typed example must name the same night on both "
-        "doors, or the operator copies a mismatch"
+    assert Path(leak["--run"][0]).name == Path(gate["--candidate"][0]).name, (
+        f"WHY THIS IS A FAILURE: leakage runs over {leak['--run'][0]!r} and the gate scores "
+        f"{gate['--candidate'][0]!r}; the typed example must name the same night on both doors"
     )
-    assert "recorded, not sealed" in flat and "sealed" in flat, (
-        "WHY THIS IS A FAILURE: the sheet does not distinguish a sealed (v2) link from a "
-        "recorded, not sealed (v1) one"
+
+
+def test_the_sheet_says_a_v2_checkpoints_link_is_sealed() -> None:
+    """The v2 statement is its own sentence: a `whetstone-checkpoint/2` link is sealed."""
+    flat = _flat(_runbook()).replace("*", "")
+    assert (
+        "For a v2 checkpoint (`whetstone-checkpoint/2`) the recorded digest is sealed" in flat
+    ), "WHY THIS IS A FAILURE: the sheet never says a v2 checkpoint's dataset link is sealed"
+
+
+def test_the_sheet_says_a_v1_checkpoints_link_is_recorded_not_sealed() -> None:
+    """The v1 statement: a v1 checkpoint's link is recorded, not sealed."""
+    flat = _flat(_runbook()).replace("*", "")
+    assert "For a v1 checkpoint it is recorded, not sealed" in flat, (
+        "WHY THIS IS A FAILURE: the sheet never says a v1 checkpoint's dataset link is "
+        "recorded, not sealed"
     )
-    assert "tamper-evidence" in flat and "not authentication" in flat, (
-        "WHY THIS IS A FAILURE: the sheet does not say what sealed means: tamper-evidence "
-        "against an edit that does not recompute the digest, not authentication"
+
+
+def test_the_sheet_says_sealed_is_tamper_evidence_not_authentication() -> None:
+    """What sealed means: tamper-evidence against an edit that does not recompute the digest."""
+    flat = _flat(_runbook()).replace("*", "")
+    assert "Sealed means tamper-evidence against an edit that does not also recompute" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not say what sealed means"
     )
-    assert "`dataset.json` is not sealed" in flat, (
+    assert "it is not authentication" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not say sealed is not authentication"
+    )
+
+
+def test_the_sheet_says_the_runs_dataset_json_is_not_sealed() -> None:
+    flat = _flat(_runbook())
+    assert "The run's `dataset.json` is not sealed" in flat, (
         "WHY THIS IS A FAILURE: the sheet does not say the run's dataset.json is not sealed"
     )
-    assert "non-zero exit halts" in flat or "Halt on any non-zero exit" in flat, (
+
+
+def test_the_sheet_says_a_non_zero_leakage_exit_halts_before_the_gate() -> None:
+    flat = _flat(_runbook())
+    assert (
+        "A non-zero exit halts the operator before the gate, which is not run until this exits 0"
+        in flat
+    ), (
         "WHY THIS IS A FAILURE: the sheet does not say a non-zero check-leakage exit halts "
-        "before the gate"
+        "the operator before the gate"
     )
+
+
+def test_the_sheet_never_calls_the_dataset_link_verified() -> None:
+    """The stale "recorded, not verified" is gone, and no tie/link/digest sentence says verified.
+
+    Case-sensitive with word boundaries, so UNVERIFIED and "unverified" (the gate's own terms)
+    are not hits.
+    """
+    flat = _flat(_runbook()).replace("*", "")
     assert "recorded, not verified" not in flat, (
         "WHY THIS IS A FAILURE: the stale phrase 'recorded, not verified' still describes the "
         "dataset link; it is sealed (v2) or recorded, not sealed (v1)"
     )
-    assert not re.search(r"link[^.]{0,40}\bverified\b", flat.replace("never verified", "")), (
-        "WHY THIS IS A FAILURE: the sheet calls the dataset link verified; sealed is "
-        "tamper-evidence, not authentication"
+    hit = re.search(r"\b(?:tie|link|digest)\b[^.]{0,80}\bverified\b", flat)
+    assert hit is None, (
+        "WHY THIS IS A FAILURE: the sheet calls the dataset link verified "
+        f"({hit.group(0)!r}); sealed is tamper-evidence, not authentication"
+        if hit
+        else ""
     )
 
 
