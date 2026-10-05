@@ -204,28 +204,78 @@ def _decided(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+#: The retry case's flaky table: the candidate's first held-out task outlasts the budget (so
+#: `unverified_after_retries` is non-empty and the eval reduces to `UNVERIFIED`), while the
+#: incumbent's verifies on its one retry — both sides spend retries, on both pairs.
+_FLAKY = "flaky"
+
+
 @pytest.mark.parametrize(
     "options",
-    [{}, {"candidate_solve": 6}],
-    ids=["promoted", "rejected"],
+    [{}, {"candidate_solve": 6}, {_FLAKY: True}],
+    ids=["promoted", "rejected", "retried"],
 )
-def test_sealed_never_enters_the_decision(tmp_path: Path, options: dict[str, Any]) -> None:
+def test_sealed_never_enters_the_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, options: dict[str, Any]
+) -> None:
     """DIFFERENTIAL: the same counts over a sealed pair and an unsealed pair decide identically.
 
     `sealed` is recorded information, never a condition of promotion. The two runs share the
     fixtures, the answers and the engine; only the checkpoints' schema differs, so every field
     of the decision — exit, denominator, solved/regressed/unverified, detail — and every count
     and retry fact must match. A gate that promoted only a sealed candidate (or rejected an
-    unsealed one, or wrote a different `detail` for it) fails here.
+    unsealed one, or wrote a different `detail` for it) fails here; so, in the `retried` case,
+    does one that skipped or shortened the retry budget for an unsealed side (e.g.
+    `retry_count = 0 if not training.sealed else RETRY_COUNT`), because `retries`,
+    `retries_used` and `unverified_after_retries` would then differ between the two runs.
     """
-    sealed = _gated(tmp_path / "sealed", **options)
-    unsealed = _gated(tmp_path / "unsealed", v1=("candidate", "incumbent"), **options)
+    from loop.test_gate import _MEMBERS
+    from loop.test_gate_retry import _flaky
+
+    flaky = options.pop(_FLAKY, False)
+    real = gate._score_one
+
+    def run(where: Path, v1: tuple[str, ...] = ()) -> dict[str, Any]:
+        if flaky:
+            # A fresh table per run: `_flaky` counts down, so each pair gets the same wobble.
+            monkeypatch.setattr(gate, "_score_one", real)
+            _flaky(
+                monkeypatch,
+                {("candidate", _MEMBERS[0]): 1 + gate.RETRY_COUNT, ("incumbent", _MEMBERS[0]): 1},
+            )
+        return _gated(where, v1=v1, **options)
+
+    sealed = run(tmp_path / "sealed")
+    unsealed = run(tmp_path / "unsealed", v1=("candidate", "incumbent"))
 
     assert sealed["candidate"]["training"]["sealed"] is True
     assert unsealed["candidate"]["training"]["sealed"] is False
     assert unsealed["incumbent"]["training"]["sealed"] is False
     assert _decided(sealed) == _decided(unsealed)
-    assert sealed["decision"]["exit"] == ("promoted" if not options else "rejected")
+    expected = "UNVERIFIED" if flaky else ("promoted" if not options else "rejected")
+    assert sealed["decision"]["exit"] == expected
+    if flaky:
+        assert sealed["retries_used"] == gate.RETRY_COUNT + 1, sealed["retries"]
+        assert {one["side"] for one in sealed["retries"]} == {"candidate", "incumbent"}
+        assert sealed["unverified_after_retries"] != []
+
+
+def test_a_v1_candidates_unsealed_record_reads_back_as_written(tmp_path: Path) -> None:
+    """`sealed: false` is a statement the reader accepts and returns — never refused, never flipped.
+
+    End to end: a gate run over a hand-built v1 candidate and an untrained v2 incumbent writes
+    the record; `read_promotion_record` must hand back `False` for the candidate and the
+    incumbent's own `True`. A reader that refused (or coerced) a false `sealed` fails here.
+    """
+    document = _gated(tmp_path, v1=("candidate",), untrained_incumbent=True)
+    path = tmp_path / "runs" / gate.PROMOTIONS_DIR / "gate-001.json"
+
+    read = gate.read_promotion_record(path)
+
+    assert read.candidate_training.sealed is False
+    assert read.incumbent_training.sealed is True
+    assert read.incumbent_training.sealed is document["incumbent"]["training"]["sealed"]
+    assert read.incumbent_training.dataset_digest is None
 
 
 # --- readers: `/2` and `/1` predate the statement, and are refused, never upgraded. ----------

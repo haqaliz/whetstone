@@ -589,8 +589,9 @@ def test_a_leakage_refusal_is_a_halt_and_never_a_pass() -> None:
 def test_the_record_read_back_names_the_shipped_schema_and_its_training_block() -> None:
     """The read-back names `gate.PROMOTION_SCHEMA` by identity and the `training` block's fields.
 
-    The record is now schema `/2`: each side carries what trained it. A sheet that reads back a
-    `/1` record shape skips the one block that says which dataset the candidate trained on.
+    The record is now schema `/3`: each side carries what trained it (since `/2`) and whether
+    that link was sealed (`/3`). A sheet that reads back an older record shape skips the block
+    that says which dataset the candidate trained on, or whether that claim was sealed.
     """
     flat = _flat(_runbook())
     assert gate.PROMOTION_SCHEMA in flat, (

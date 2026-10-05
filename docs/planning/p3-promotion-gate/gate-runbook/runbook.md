@@ -177,7 +177,7 @@ uv run whetstone gate \
 ```
 
 The promotion record lands at `runs/promotions/promote-001.json` — gitignored local evidence,
-never published. Its schema is `whetstone-promotion/2`. It carries both re-hashed digests, each
+never published. Its schema is `whetstone-promotion/3`. It carries both re-hashed digests, each
 side's `training` block, the held-out document's digest, both sides'
 counts over both denominators, the decision with every count it was read from, the retry
 discipline's three facts, the tool versions, and `recorded_on`.
@@ -236,9 +236,11 @@ Into the operator's log, from the record itself and never from memory:
 
 - the decision and its three terms (`solved_new`, `solved_old`, `regressed`, `unverified`), each
   over the shared denominator;
-- the schema — it must be `whetstone-promotion/2`; a `/1` record is refused by every reader,
-  never upgraded;
-- each side's `training` block — `dataset_digest`, `base_repo_id`, `base_revision`. The
+- the schema — it must be `whetstone-promotion/3`; a `/1` or `/2` record is refused by every
+  reader, never upgraded;
+- each side's `training` block — `dataset_digest`, `base_repo_id`, `base_revision`, and
+  `sealed` (whether that side's checkpoint seals the link; recorded information, never part of
+  the decision). The
   candidate's `dataset_digest` must equal the night's `dataset.json` `digest` that Step 3
   checked; the untrained incumbent's is an explicit `null`, because nothing trained it. This
   block is **recorded** provenance, copied from `provenance.json`, which is outside the
