@@ -244,6 +244,9 @@ def render_card(*, run: Path, checkpoint: Path, out: Path) -> Path:
     nobody can demonstrate they read is `verify_checkpoint`'s own argument applied to a published
     page: a gitignored directory can be rebuilt, truncated or hand-edited between the night that
     sealed it and the moment somebody publishes a page about it.
+
+    The page is built from that one verified object (`_claims_of(verified)`), not from a second
+    read of the checkpoint's files.
     """
     from whetstone.loop.morning import load_named_run, refuse_published_out
     from whetstone.loop.sft import verify_checkpoint

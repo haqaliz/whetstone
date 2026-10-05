@@ -287,10 +287,11 @@ class UntrainedCandidate(ValueError):
     """A checkpoint passed as the gate's candidate that has no adapter to score.
 
     A night's candidate is trained, always. A checkpoint whose provenance declares
-    `untrained: true` holds no adapter, and its digest is the constant sha256 over the
-    empty file set — the same for every untrained base, whatever the repo id or revision —
-    so a comparison keyed on it could not discriminate bases. The refusal names the side
-    and the checkpoint path.
+    `untrained: true` holds no adapter. Under `whetstone-checkpoint/1` its digest is the
+    constant sha256 over the empty file set — the same for every untrained v1 base, whatever
+    the repo id or revision — so a comparison keyed on it could not discriminate bases; a
+    `/2` untrained digest folds in `base`, so it does differ per base. The refusal names the
+    side and the checkpoint path.
     """
 
 
@@ -335,10 +336,13 @@ def refuse_cross_backend(
 class TrainingProvenance:
     """What trained one side of a comparison, as its checkpoint's `provenance.json` records it.
 
-    **Recorded, not verified.** `provenance.json` sits outside the checkpoint's file-hash seal
-    (`verify_checkpoint` re-hashes the adapter files, not this document), so these values are
-    what the checkpoint *says* trained it. They are the leakage audit's input — which dataset
-    to compare against the held-out split — never a proof that the claim is true.
+    Lead with `sealed`: whether the checkpoint's claims were sealed into its digest. Sealed
+    (a verified `whetstone-checkpoint/2`) means an edit to these values that did not also
+    recompute the digest was caught before the gate scored anything — tamper-evidence, not
+    authentication, and not proof that `dataset_digest` equals the dataset actually trained
+    on. For a `/1` checkpoint `provenance.json` sits outside the file-hash seal, so these
+    values are recorded, not sealed: what the checkpoint *says* trained it. Either way they
+    are the leakage audit's input — which dataset to compare against the held-out split.
     """
 
     #: The sha256 of the training set, or `None` for an untrained checkpoint — stated, never
@@ -948,8 +952,9 @@ def write_promotion_record(
 ) -> Path:
     """Write the promotion record — schema `whetstone-promotion/3` — deterministically.
 
-    Each side carries its `training` block — the dataset digest and the base its checkpoint's
-    `provenance.json` **records** (outside the file-hash seal, so recorded, never verified).
+    Each side carries its `training` block — the dataset digest and the base its checkpoint
+    records, and `sealed`: True when the claims were sealed into a verified `/2` checkpoint's
+    digest (tamper-evident), False for a `/1` checkpoint, whose claims are recorded, not sealed.
     The untrained incumbent's `dataset_digest` is an explicit `null`. A candidate is always
     trained, so a candidate with no digest is refused before anything is written.
 
@@ -1118,7 +1123,8 @@ class PromotionRecord:
     #: The incumbent's re-hashed digest, as written.
     incumbent_digest: str
 
-    #: What the candidate's provenance recorded as training it — recorded, not verified.
+    #: What the candidate's checkpoint claims trained it; `sealed` says whether those claims
+    #: are sealed into its digest (`/2`) or only recorded (`/1`).
     candidate_training: TrainingProvenance
 
     #: What the incumbent's provenance recorded; `dataset_digest` is `None` when untrained.
@@ -1667,11 +1673,12 @@ _DIGEST_SHAPE = re.compile(r"[0-9a-f]{64}")
 
 
 def _checkpoint_dataset_digest(checkpoint: Checkpoint) -> str | None:
-    """The digest of the dataset that trained a checkpoint, as its provenance **records** it.
+    """The digest of the dataset that trained a checkpoint, as its provenance claims it.
 
-    Precondition: `checkpoint` came from `verify_checkpoint`, so its adapter files re-hashed.
-    `dataset_digest` lives in `provenance.json`, which is outside that file-hash seal: the value
-    is recorded provenance, read as written, never verified against the training set.
+    Reads the verified `Checkpoint` object, never the file a second time. For a `/2`
+    checkpoint (`checkpoint.sealed`) the claim is sealed into the digest, so an edit that did
+    not recompute it was already refused; for `/1` it is recorded, not sealed. Either way it is
+    never checked against the training set itself.
 
     `None` only for an untrained checkpoint, which was trained on nothing. A trained checkpoint
     whose `dataset_digest` is missing, or is not the 64-hex sha256 `sft` writes, raises
@@ -1691,10 +1698,11 @@ def _checkpoint_dataset_digest(checkpoint: Checkpoint) -> str | None:
 
 
 def _checkpoint_training(checkpoint: Checkpoint) -> TrainingProvenance:
-    """What a `verify_checkpoint` checkpoint's provenance records as training it (not verified).
+    """What a verified checkpoint's provenance claims trained it, and whether it is sealed.
 
     The base is `_checkpoint_base`'s and the digest `_checkpoint_dataset_digest`'s, both read
-    from the one `provenance.json`; a trained checkpoint with no digest is refused there.
+    from the one verified `Checkpoint`; `sealed` is its `sealed` flag (True only for a verified
+    `/2`). A trained checkpoint with no digest is refused there.
     """
     base = _checkpoint_base(checkpoint)
     return TrainingProvenance(

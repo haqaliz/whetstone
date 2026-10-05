@@ -125,6 +125,18 @@ def test_a_checkpoint_naming_no_base_is_unverified_not_a_key_error(tmp_path: Pat
         gate._checkpoint_base(checkpoint)
 
 
+@pytest.mark.parametrize("missing", ["base_repo_id", "base_revision"])
+def test_the_card_refuses_a_checkpoint_naming_no_base(tmp_path: Path, missing: str) -> None:
+    """`card._claims_of` names the missing base as `CheckpointUnverified`, never a bad render."""
+    from dataclasses import replace
+
+    fixtures = _gate_fixtures(tmp_path)
+    checkpoint = replace(fixtures["candidate_checkpoint"], **{missing: None})
+
+    with pytest.raises(sft.CheckpointUnverified, match="names no base"):
+        card._claims_of(checkpoint)
+
+
 def test_the_gate_answers_from_the_object_not_from_the_file_on_disk(tmp_path: Path) -> None:
     """Check-then-use: a file edited after `verify_checkpoint` cannot change what the gate reads."""
     fixtures = _gate_fixtures(tmp_path)

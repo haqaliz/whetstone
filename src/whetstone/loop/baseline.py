@@ -36,9 +36,10 @@ input, e.g. a new base revision or a new held-out split — is § 3's legitimate
 (`PREREGISTRATION.md:133-135`), allowed, with the change recorded in the new evidence.
 The series key is the base identity (`repo_id`/`revision`, from the checkpoint's own
 provenance) plus the held-out document digest, never the checkpoint digest: an untrained
-checkpoint records no files, so its digest is `_digest_of(())` — the same constant for
-every untrained base — and a key that cannot tell two bases apart would refuse the
-changed-base revision § 3 names as its legitimate new series.
+checkpoint records no files, so its `/1` digest is `_digest_of(())` — the same constant for
+every untrained v1 base (a `/2` untrained digest folds in `base`, so it differs) — and a key
+that cannot tell two bases apart would refuse the changed-base revision § 3 names as its
+legitimate new series.
 
 The render door (`spec.md` requirement 4) is the post-run chain's committed step:
 `render_artifact` reads a measurement's evidence document (`whetstone-baseline-run/1`,
@@ -166,8 +167,9 @@ class SeriesIdentity:
     `PREREGISTRATION.md` § 3's baseline is measured once, re-measured never, and the series
     is what "once" keys on — the base's repo id and revision and the held-out document's
     digest, nothing else. The checkpoint digest is deliberately NOT part of the identity:
-    an untrained checkpoint records no files, so its digest is `_digest_of(())` — the same
-    constant for every untrained base, whatever the repo id or revision — and a series
+    an untrained checkpoint records no files, so its `/1` digest is `_digest_of(())` — the
+    same constant for every untrained v1 base, whatever the repo id or revision (a `/2`
+    untrained digest folds in `base`) — and a series
     keyed on it could not tell two bases apart, refusing the changed-base-revision new
     series § 3 names (`PREREGISTRATION.md:133-135`). The environment pins and tool
     versions are part of § 3's pinned inputs and are recorded in the artifact's
