@@ -515,37 +515,58 @@ def test_every_roadmap_cite_points_at_the_rule_it_names() -> None:
         )
 
 
-def test_the_sheet_names_how_the_candidates_night_is_identified() -> None:
-    """Which night trained the candidate is found by digest, and the sheet says so.
+def test_the_sheet_has_the_leakage_step_compare_the_checkpoint_mechanically() -> None:
+    """The candidate's night is tied by `--checkpoint`, and the sheet says what that is and is not.
 
-    `check-leakage` takes a run directory, the gate takes a checkpoint, and nothing on the
-    command line ties the two. A leakage proof over the wrong night proves nothing about the
-    candidate. The tie is the dataset digest: the checkpoint's `provenance.json` records the
-    digest of the dataset it trained on, and the night's `dataset.json` carries its own. It is
-    **recorded** provenance — `provenance.json` sits outside the checkpoint's file-hash seal —
-    so the sheet must not call it verified.
+    `check-leakage` takes a run directory, the gate takes a checkpoint, and a leakage proof over
+    the wrong night proves nothing about the candidate. The command now ties them: its
+    `--checkpoint` must name the same directory the gate's `--candidate` does. The sheet must
+    say the link is **sealed** for a v2 checkpoint and **recorded, not sealed** for a v1 one,
+    that sealed is tamper-evidence and not authentication, that the run's `dataset.json` is not
+    sealed, that a non-zero exit halts before the gate, and must never call the dataset link
+    verified.
     """
     text = _runbook()
     flat = _flat(text)
-    assert (
-        "the checkpoint's `provenance.json` `dataset_digest` equals the night's `dataset.json` "
-        "`digest`" in flat
-    ), (
-        "WHY THIS IS A FAILURE: the sheet never says how the candidate's night is identified. "
-        "A leakage proof over a different night's dataset says nothing about this candidate"
-    )
-    assert "recorded, not verified" in flat, (
-        "WHY THIS IS A FAILURE: the sheet does not say the dataset digest tie is recorded "
-        "provenance, not verified. `provenance.json` is outside the checkpoint's file-hash "
-        "seal, and calling it verified overstates what the bytes prove"
-    )
     blocks = _bash_blocks(text)
-    run = _values(_door_blocks(blocks, "whetstone check-leakage")[0], "whetstone check-leakage")
+    leak = _door_blocks(blocks, "whetstone check-leakage")[0]
+    run = _values(leak, "whetstone check-leakage")
     candidate = _values(_door_blocks(blocks, "whetstone gate")[0], "whetstone gate")
+    assert "--checkpoint" in run and len(run["--checkpoint"]) == 1, (
+        "WHY THIS IS A FAILURE: the check-leakage block carries no --checkpoint, so nothing "
+        "mechanical ties the checked night to the candidate and the operator compares by eye"
+    )
+    assert Path(run["--checkpoint"][0]).name == Path(candidate["--candidate"][0]).name, (
+        f"WHY THIS IS A FAILURE: leakage names checkpoint {run['--checkpoint'][0]!r} but the "
+        f"gate scores {candidate['--candidate'][0]!r}; the typed example must name one candidate"
+    )
     assert Path(run["--run"][0]).name == Path(candidate["--candidate"][0]).name, (
         f"WHY THIS IS A FAILURE: the sheet checks leakage over {run['--run'][0]!r} and gates "
         f"{candidate['--candidate'][0]!r}. The typed example must name the same night on both "
         "doors, or the operator copies a mismatch"
+    )
+    assert "recorded, not sealed" in flat and "sealed" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not distinguish a sealed (v2) link from a "
+        "recorded, not sealed (v1) one"
+    )
+    assert "tamper-evidence" in flat and "not authentication" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not say what sealed means: tamper-evidence "
+        "against an edit that does not recompute the digest, not authentication"
+    )
+    assert "`dataset.json` is not sealed" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not say the run's dataset.json is not sealed"
+    )
+    assert "non-zero exit halts" in flat or "Halt on any non-zero exit" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not say a non-zero check-leakage exit halts "
+        "before the gate"
+    )
+    assert "recorded, not verified" not in flat, (
+        "WHY THIS IS A FAILURE: the stale phrase 'recorded, not verified' still describes the "
+        "dataset link; it is sealed (v2) or recorded, not sealed (v1)"
+    )
+    assert not re.search(r"link[^.]{0,40}\bverified\b", flat.replace("never verified", "")), (
+        "WHY THIS IS A FAILURE: the sheet calls the dataset link verified; sealed is "
+        "tamper-evidence, not authentication"
     )
 
 

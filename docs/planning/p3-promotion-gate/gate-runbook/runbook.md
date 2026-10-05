@@ -55,13 +55,17 @@ base the pre-registration had pinned when this sheet was written. Materializing 
 gate's incumbent is not a base selection; a change of base is a further Type 1 amendment.
 
 **The candidate's night, and how it is found.** The gate takes a checkpoint and `check-leakage`
-takes a run directory, and nothing on either command line ties the two. The tie is the dataset
-digest: the night that trained the candidate is the one where the checkpoint's `provenance.json`
-`dataset_digest` equals the night's `dataset.json` `digest`. Read both before Step 3 and write
-the night's id into the operator's log; a leakage proof over any other night says nothing about
-this candidate. The tie is **recorded, not verified**: `provenance.json` sits outside the
-checkpoint's file-hash seal, so it states what the writer recorded about its dataset, and no
-re-hash proves it. Here the candidate is `night-002`, and its night is
+takes a run directory, and a leakage proof over any other night says nothing about this
+candidate. The tie is the dataset digest: the night that trained the candidate is the one where
+the checkpoint's `provenance.json` `dataset_digest` equals the night's `dataset.json` `digest`.
+Step 3 hands `check-leakage` the checkpoint with `--checkpoint`, and the command compares the
+two digests for you; write the night's id into the operator's log. For a **v2** checkpoint
+(`whetstone-checkpoint/2`) the recorded digest is **sealed**: part of the checkpoint's own
+digest, so the command reports the link as sealed. For a **v1** checkpoint it is **recorded, not
+sealed**, and the command says so. Sealed means tamper-evidence against an edit that does not
+also recompute the digest; it is not authentication, and it is not proof that the digest equals
+the dataset the trainer read. The run's `dataset.json` is not sealed. None of this catches a
+near-duplicate task (see Step 3). Here the candidate is `night-002`, and its night is
 `$REPO/runs/nights/night-002` — the home the night door writes to.
 
 Both are re-hashed by `verify_checkpoint` before anything is compared, so the decision is a
@@ -131,10 +135,14 @@ makes the clean exit a P3 exit criterion in its own right. Run it over the night
 ```bash
 uv run whetstone check-leakage \
   --run $REPO/runs/nights/night-002 \
-  --heldout $REPO/tasks/heldout/source-b.json
+  --heldout $REPO/tasks/heldout/source-b.json \
+  --checkpoint $REPO/checkpoints/night-002
 ```
 
-**Halt on any non-zero exit.** The gate is not run until this exits 0.
+**Halt on any non-zero exit.** A non-zero exit halts the operator before the gate, which is not
+run until this exits 0. `--checkpoint` can add a refusal (a tampered, untrained or foreign
+checkpoint is exit 2) or a line saying the link is sealed or recorded, not sealed; it can never
+change the leakage verdict.
 
 - **Exit 0** — source B training examples were compared with the held-out membership by task
   identity (the trailing 12-hex of each id), and none shared one. A clean check means
@@ -243,8 +251,8 @@ Into the operator's log, from the record itself and never from memory:
   the decision). The
   candidate's `dataset_digest` must equal the night's `dataset.json` `digest` that Step 3
   checked; the untrained incumbent's is an explicit `null`, because nothing trained it. This
-  block is **recorded** provenance, copied from `provenance.json`, which is outside the
-  checkpoint's file-hash seal — read it as what the writer recorded, never as verified;
+  block is copied from `provenance.json`: **sealed** for a v2 checkpoint (tamper-evidence, not
+  authentication) and **recorded, not sealed** for a v1 one — the `sealed` field says which;
 - both checkpoint digests, as re-hashed — the incumbent's is the constant untrained digest
   (sha256 over the empty file set, the same for every untrained base), so the record is read
   by role and by base identity, never by digest equality;

@@ -426,18 +426,47 @@ def test_an_unusable_checkpoint_directory_exits_two_not_a_traceback(
     assert captured.err.startswith("whetstone check-leakage: ") and len(captured.err) > 30
 
 
-def test_cli_has_no_module_scope_import_of_the_loop() -> None:
-    """Fails if `--checkpoint` is wired by importing whetstone.loop at module scope."""
+def _module_scope_loop_imports(source: str) -> list[str]:
+    """Imports of `whetstone.loop` at module scope, including under `if`/`try` (not in defs)."""
     import ast
 
-    tree = ast.parse(Path(cli.__file__).read_text(encoding="utf-8"))
     offenders: list[str] = []
-    for node in tree.body:
-        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("whetstone.loop"):
-            offenders.append(node.module or "")
-        if isinstance(node, ast.Import):
-            offenders += [a.name for a in node.names if a.name.startswith("whetstone.loop")]
-    assert offenders == [], offenders
+
+    def walk(body: list[ast.stmt]) -> None:
+        for node in body:
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if module.startswith("whetstone.loop") or (
+                    module == "whetstone" and any(a.name == "loop" for a in node.names)
+                ):
+                    offenders.append(module)
+            elif isinstance(node, ast.Import):
+                offenders.extend(a.name for a in node.names if a.name.startswith("whetstone.loop"))
+            elif isinstance(node, ast.If):
+                walk(node.body)
+                walk(node.orelse)
+            elif isinstance(node, ast.Try):
+                walk(node.body)
+                walk(node.orelse)
+                walk(node.finalbody)
+                for handler in node.handlers:
+                    walk(handler.body)
+
+    walk(ast.parse(source).body)
+    return offenders
+
+
+def test_cli_has_no_module_scope_import_of_the_loop() -> None:
+    """Fails if `--checkpoint` is wired by importing whetstone.loop at module scope."""
+    assert _module_scope_loop_imports(Path(cli.__file__).read_text(encoding="utf-8")) == []
+
+
+def test_the_module_scope_scan_sees_hidden_imports_and_ignores_function_bodies() -> None:
+    hidden = "if TYPE_CHECKING:\n    from whetstone.loop import night\n"
+    assert _module_scope_loop_imports(hidden) == ["whetstone.loop"]
+    assert _module_scope_loop_imports("try:\n    from whetstone import loop\nexcept E:\n    pass\n")
+    assert _module_scope_loop_imports("import whetstone.loop.night\n") == ["whetstone.loop.night"]
+    assert _module_scope_loop_imports("def f():\n    from whetstone.loop import night\n") == []
 
 
 def test_the_help_names_the_checkpoint_flag(capsys: pytest.CaptureFixture[str]) -> None:
@@ -447,3 +476,4 @@ def test_the_help_names_the_checkpoint_flag(capsys: pytest.CaptureFixture[str]) 
 
     assert "--checkpoint" in text, text
     assert "tampered, untrained or trained on another night" in text, text
+    assert "dataset.json is not sealed" in text, text

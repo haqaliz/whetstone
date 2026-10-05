@@ -625,8 +625,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="<checkpoints/id>",
         help=(
-            "optional: verifies the checkpoint and compares its recorded dataset_digest to the "
-            "run's. A v2 checkpoint's link is reported as sealed, a v1 checkpoint's as "
+            "optional: verifies the checkpoint (its own files and its seal, not the link) and "
+            "compares its recorded dataset_digest to the run's; the run's dataset.json is not "
+            "sealed. A v2 checkpoint's link is reported as sealed, a v1 checkpoint's as "
             "recorded, not sealed; a tampered, untrained or foreign checkpoint exits 2. It can "
             "add a refusal or a line and can never change the leakage verdict"
         ),
