@@ -38,7 +38,9 @@ that link was sealed.
 ## Acceptance criteria (written first)
 
 1. Without `--checkpoint`, stdout and the exit code for every existing fixture are byte-identical to
-   before; `tests/test_gate_leakage_finding.py` passes unedited (or skips loudly in a worktree).
+   before; `tests/test_gate_leakage_finding.py` passes unedited. (Corrected 2026-10-06: this said
+   "or skips loudly in a worktree". It does not skip: it resolves the primary checkout through git's
+   common dir, so it runs in a worktree and passed against the real night-001.)
 2. A v2 checkpoint trained from the run: exit as the verdict dictates, with the "sealed, matches the
    run" line.
 3. A v1 checkpoint trained from the run: same verdict, with the "recorded, not sealed" line, and

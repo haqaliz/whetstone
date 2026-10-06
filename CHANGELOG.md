@@ -29,7 +29,8 @@ released version until it exists in the code.
   verified object. `sealed` is True only for a verified v2.
 - **`whetstone check-leakage --checkpoint <checkpoints/id>`** (optional). It verifies the
   checkpoint and compares its recorded `dataset_digest` to the run's before the overlap
-  comparison; a mismatch, an untrained checkpoint, or a tampered or missing checkpoint exit 2. It
+  comparison; a mismatch, an untrained checkpoint, or a tampered or missing checkpoint exit 2
+  (known defect: four malformed-document shapes still exit 1; see `docs/STATUS.md`). It
   never changes the leakage verdict, and without the flag the output is unchanged. It prints
   whether the link is sealed (v2) or recorded, not sealed (v1), and that the run's `dataset.json`
   is not sealed.

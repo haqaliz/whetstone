@@ -32,9 +32,10 @@ dataset digest was "recorded provenance, not verified … outside the file-hash 
   carries `base_repo_id`, `base_revision`, `dataset_digest` (as recorded, unvalidated) and `sealed`
   (True only for a verified v2). A v2 document whose schema string is rewritten to `/1` fails; one
   downgraded to `/1` with its v1 digest recomputed from its files verifies, as unsealed — part of
-  the forger limit below. A malformed `files` entry (a non-integer `bytes`, a missing field, an entry
+  the forger limit below. A malformed `files` entry (a non-numeric `bytes`, a missing field, an entry
   that is not a mapping) is a `CheckpointUnverified` under either schema, so it exits 2 rather than
-  escaping as an exception that exits 1, the leak code. An older reader refuses v2 (schema equality).
+  escaping as an exception that exits 1, the leak code. Four malformed shapes still escape; see the
+  open follow-ups. An older reader refuses v2 (schema equality).
 - **The gate and the card read the verified object**, not `provenance.json` a second time; a
   source-reading test pins it for `gate.py` and `card.py`.
 - **Promotion record `whetstone-promotion/3`.** Each side's `training` block gains `sealed: bool`
@@ -46,7 +47,8 @@ dataset digest was "recorded provenance, not verified … outside the file-hash 
 - **`whetstone check-leakage --run <runs/id> --heldout <doc> [--checkpoint <checkpoints/id>]`.**
   `--checkpoint` is optional. It verifies the checkpoint, then compares its recorded
   `dataset_digest` to the run's `dataset.json` `digest` before the overlap comparison. A mismatch, an
-  untrained checkpoint, or a tampered or missing checkpoint each exit 2, even when the run is leaked:
+  untrained checkpoint, or a tampered or missing checkpoint each exit 2 (bar the four malformed shapes
+  in the open follow-ups, which still exit 1), even when the run is leaked:
   a checkpoint recording another night's dataset digest never lets a run exit 0 or 1. It can never change the
   leakage verdict, and without the flag the output and exits are byte-identical. It prints whether
   the link is sealed (v2) or "recorded, not sealed" (v1), and that the run's `dataset.json` is not
@@ -81,6 +83,24 @@ constant. The card on an untrained checkpoint raises `KeyError` rather than a cl
 never writes an untrained checkpoint, but `card` does not check that the `--checkpoint` it is given
 belongs to the night, and `NothingToPublish` fires only when the night itself wrote none. Whether to
 retrain on the 2 non-held-out examples is still the operator's decision.
+
+**Known defect: four malformed-checkpoint shapes still make `check-leakage --checkpoint` exit 1, the
+leak code, instead of 2.** `verify_checkpoint` lets them escape as exceptions: a `files` entry whose
+`bytes` is `1e400` or `Infinity` (`OverflowError`), a v1 document with `digest` deleted
+(`KeyError`), a file `name` longer than the filesystem allows (`OSError`), and an adapter file the
+process cannot read (`PermissionError`). None accepts a checkpoint, so nothing is promoted or
+reported clean; and the gate runbook halts on any non-zero exit, so the operator is stopped either
+way. But an exit code of 1 is also what a leak prints, so an operator reading only the code could
+take a crash for a leak until they read stderr. The `--help` text still says a tampered or
+unreadable checkpoint exits 2, which holds for every other malformed shape and not these four. The
+fix is small: `OverflowError` in the except tuple, `raw.get("digest")`, and wrapping the per-file
+`OSError`, with a test per shape. It was found by the last review of the seal unit and not fixed in
+that unit.
+
+**Test prose that is now stale.** Docstrings and comments in `tests/loop/test_gate.py`,
+`tests/loop/test_gate_cli.py` and `tests/bakeoff/test_baseline_report.py` still call an untrained
+checkpoint's digest "the constant" `sha256("")`. That holds for a v1 untrained checkpoint only; a v2
+one folds in `base`. They are prose, not assertions.
 
 **The previous entry's first follow-up is done.** Sealing `provenance.json` into the checkpoint's
 digest is done for a v2 checkpoint, where `dataset_digest` is sealed (tamper-evidence, not

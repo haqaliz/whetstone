@@ -43,8 +43,11 @@ verified `Checkpoint`, and the record carries `sealed` per side under `whetstone
    each with a message naming the old schema; none upgrades it.
 5. A `training` block with a missing or non-bool `sealed` is refused, never defaulted.
 6. **Adversarial:** a v2 checkpoint whose `dataset_digest` was edited after sealing never reaches the
-   record — `run_gate` raises `CheckpointUnverified` first. Under the old code the same edit
-   produced a record that named the edited digest.
+   record — `run_gate` raises `CheckpointUnverified` first. (Corrected 2026-10-06: this said that
+   under the old code the same edit produced a record naming the edited digest. That held for a v1
+   checkpoint, but for a v2 one the edit is already refused by `verify_checkpoint` from aspect 1,
+   so this test passes on the pre-aspect-2 code too. It is an end-to-end pin, not the
+   discriminator; the discriminators are criteria 7 and the check-then-use test.)
 7. **Adversarial:** a source-reading test asserts `gate.py` and `card.py` contain no read of
    `CHECKPOINT_FILE` outside `sft.py`, so the second-read path cannot return.
 8. The gate's exit codes and `solved_new > solved_old AND regressed == 0 AND unverified == 0` rule

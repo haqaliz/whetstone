@@ -178,7 +178,9 @@ privately, and who will not trust a gain they cannot check.
   `test_promotion_record_n.py`, and `tests/test_gate_runbook_guards.py:523-541`.
 - **Existing tests that must stay green unedited:** `tests/test_gate_leakage_finding.py` (reads only
   the `dataset_digest` key of the real v1 checkpoint and re-runs `check-leakage` without
-  `--checkpoint`; it skips in a worktree).
+  `--checkpoint`). *Corrected 2026-10-06: this said it skips in a worktree. It does not: it
+  resolves the primary checkout through git's common dir, so it runs in a worktree and passed
+  against the real night-001.*
 - **Locality.** Everything is offline file reading and hashing. Nothing leaves the machine.
 - **Release.** The unit lands the capability and its docs (STATUS, CHANGELOG `Unreleased`, ROADMAP
   M2 note). The version bump is a separate release commit, as `d43cd26` was.

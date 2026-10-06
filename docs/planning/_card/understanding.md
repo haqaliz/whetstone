@@ -63,7 +63,8 @@ v1 verifiable but never "sealed".
   runbook; it would still pass if the runbook went stale, so the guard needs tightening.
 - `tests/test_gate_leakage_finding.py` reads only the `dataset_digest` key of the real
   `portability-arm` v1 checkpoint and does not call `verify_checkpoint`; it stays valid if v1
-  keeps verifying. It skips in a worktree.
+  keeps verifying. (Corrected 2026-10-06: it does not skip in a worktree. It resolves the primary
+  checkout through git's common dir, so it ran here and passed against the real night-001.)
 
 ## What cannot be proven here
 
