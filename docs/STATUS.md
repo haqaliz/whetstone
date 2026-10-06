@@ -72,8 +72,8 @@ common dir) against the real `runs/nights/night-001` and the real v1 checkpoints
 byte-identical because `--checkpoint` was not passed.
 
 **M2's exit criterion stays open.** The gate has still never produced a decision on a real pair,
-and this unit ran no gate. No version was cut: the changes sit under `[Unreleased]` in the
-CHANGELOG.
+and this unit ran no gate. The unit's own commits cut no version; the release commit that followed
+moves its CHANGELOG notes into the `[0.20.0]` section.
 
 **Open follow-ups.** The gate's printed note for an unsealed (v1) side: `GateOutcome` does not carry
 the per-side `TrainingProvenance`, so `disclosure` cannot see `sealed`; it is recorded in the
