@@ -16,6 +16,7 @@ unsealed, exactly as it always read.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 from collections.abc import Mapping
@@ -25,8 +26,8 @@ from typing import Any
 import pytest
 
 from whetstone.bakeoff.scoring import Outcome
+from whetstone.loop import backend, seal, sft
 from whetstone.loop import dataset as training
-from whetstone.loop import seal
 from whetstone.verify.verdict import Status
 
 #: The seal digest of `_built()`, computed once from the finished helper and pasted; never
@@ -403,3 +404,134 @@ def test_a_v1_document_reads_unsealed_and_byte_unchanged(tmp_path: Path) -> None
         "WHY THIS IS A FAILURE: reading a v1 document rewrote it. The real night-001 dataset "
         "is an operator artifact that must never move"
     )
+
+
+# --- The link's far end, and one writer --------------------------------------------------------
+
+
+def test_a_checkpoint_records_the_dataset_documents_own_seal(tmp_path: Path) -> None:
+    """Criterion 6: a checkpoint over a `build`-produced dataset records its emitted digest.
+
+    The fake-adapter pattern the checkpoint tests use — no trainer, no weights — so the far end
+    of `check-leakage --checkpoint` is asserted end to end: the value `write_checkpoint` records
+    is exactly `json.loads(dataset.document(...))["digest"]`, the document's own seal.
+    """
+    built = _built()
+    path = training.write_document(tmp_path / "run" / "dataset.json", built)
+
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    (checkpoint / sft.ADAPTER_FILE).write_bytes(b"not a tensor")
+    written = sft.write_checkpoint(
+        checkpoint,
+        repo_id="m/x",
+        revision="d1e3b69",
+        dataset_digest=built.digest,
+        run_seed=20261008,
+        args=sft.TrainingArgs(),
+        tool_versions={"python": "3.12.0"},
+        valid_split="",
+        capacity=sft.CapacityProbe(
+            iters=sft.CAPACITY_PROBE_ITERS,
+            headroom_bytes=sft.CAPACITY_HEADROOM_BYTES,
+            peak_bytes=1,
+            seconds=0.25,
+        ),
+        backend=backend.Backend(
+            name=backend.MLX,
+            library="mlx-lm",
+            version="0.31.3",
+            device="Apple M4 Max",
+            device_memory_bytes=38654705664,
+        ),
+    )
+
+    emitted = json.loads(path.read_text(encoding="utf-8"))["digest"]
+    assert written.dataset_digest == emitted
+    assert sft.verify_checkpoint(checkpoint).dataset_digest == emitted
+
+
+#: The write methods a module could use to put bytes on disk directly, and the marker names a
+#: dataset-document path could be spelled under. Reads are not scanned: only writes can produce
+#: a second shape of document.
+_WRITE_METHODS = frozenset({"write_text", "write_bytes"})
+
+
+def _mentions_dataset_document(node: ast.AST, names: set[str], *, literal: bool = True) -> bool:
+    for each in ast.walk(node):
+        if isinstance(each, ast.Name) and each.id in names:
+            return True
+        if isinstance(each, ast.Attribute) and each.attr == "DATASET_FILE":
+            return True
+        if literal and isinstance(each, ast.Constant) and each.value == "dataset.json":
+            return True
+    return False
+
+
+def _direct_writes_of_the_dataset_document(source: str) -> list[int]:
+    """Line numbers where `source` writes `dataset.json` directly, bypassing `write_document`.
+
+    The one-writer guard's scanner: a call to `write_text`/`write_bytes` whose target mentions
+    the dataset document by the literal, by `DATASET_FILE`, or by a name bound from either.
+    """
+    tree = ast.parse(source)
+    names: set[str] = {"DATASET_FILE"}
+    for each in ast.walk(tree):
+        if isinstance(each, ast.ImportFrom):
+            for alias in each.names:
+                if alias.name == "DATASET_FILE":
+                    names.add(alias.asname or alias.name)
+    for _ in range(3):  # a name bound from a name bound from the file, a few steps deep
+        for each in ast.walk(tree):
+            if isinstance(each, ast.Assign) and _mentions_dataset_document(
+                each.value, names, literal=False
+            ):
+                names.update(t.id for t in each.targets if isinstance(t, ast.Name))
+    lines: list[int] = []
+    for each in ast.walk(tree):
+        if not isinstance(each, ast.Call):
+            continue
+        func = each.func
+        if not isinstance(func, ast.Attribute) or func.attr not in _WRITE_METHODS:
+            continue
+        if _mentions_dataset_document(func.value, names):
+            lines.append(each.lineno)
+    return sorted(lines)
+
+
+def test_the_scanner_flags_a_direct_writer_and_passes_the_writer_module() -> None:
+    direct = [
+        "(run / DATASET_FILE).write_text('x')",
+        "(run / 'dataset.json').write_text('x')",
+        "target = run / DATASET_FILE\ntarget.write_bytes(b'x')",
+        "from whetstone.loop.night import DATASET_FILE as D\n(run / D).write_text('x')",
+    ]
+    for source in direct:
+        assert _direct_writes_of_the_dataset_document(source), source
+
+    clean = [
+        "write_document(run / DATASET_FILE, built)",
+        "json.loads((run / DATASET_FILE).read_text())",
+        '"""Writes dataset.json via write_document."""\nx = 1',
+        "(run / 'other.json').write_text('x')",
+    ]
+    for source in clean:
+        assert _direct_writes_of_the_dataset_document(source) == [], source
+
+
+def test_only_dataset_py_writes_the_dataset_document() -> None:
+    """Phase-4 guard: one writer, and the writer emits the sealed schema."""
+    root = Path(training.__file__).resolve().parents[1]  # src/whetstone
+    writer = Path(training.__file__).resolve()
+    sources = sorted(root.rglob("*.py"))
+    assert writer in sources
+
+    offenders = {
+        str(path.relative_to(root)): lines
+        for path in sources
+        if path != writer
+        and (lines := _direct_writes_of_the_dataset_document(path.read_text(encoding="utf-8")))
+    }
+
+    assert offenders == {}
+    assert training.DATASET_SCHEMA == training.DATASET_SCHEMA_V2
