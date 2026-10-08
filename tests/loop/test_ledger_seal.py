@@ -17,6 +17,7 @@ it is not caught). The consumers' half — identity imports and refusals through
 
 from __future__ import annotations
 
+import ast
 import copy
 import hashlib
 import json
@@ -637,4 +638,198 @@ def test_the_morning_reader_knows_every_key_the_ledger_writer_emits() -> None:
         f"the writer emits {sorted(set(document) - morning._KNOWN_FIELDS)} and the morning "
         "reader does not know them; every genuine v3 report would refuse as an unknown-key "
         "change"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: one writer, and the fuser never sees a run document
+# ---------------------------------------------------------------------------
+
+
+_LEDGER_FILE_MARKERS = frozenset({"LEDGER_FILE"})
+_WRITE_METHODS = frozenset({"write_text", "write_bytes"})
+
+
+def _names_the_ledger_file(node: ast.AST, aliases: set[str], *, literal: bool = True) -> bool:
+    """Whether an expression names the ledger document: the constant, an alias, or the bytes.
+
+    `literal=False` ignores the bare string, which is how aliases are seeded: a module that
+    binds `"ledger.json"` to its own constant (`honest_report.py:52`, read-only) has not
+    bound a write. The literal is matched **exactly** — never as a substring — so
+    `tasks/mine.py` and `remint_apply.py`'s `local-ledger.json`, a different ledger's staged
+    evidence, are not the run ledger.
+    """
+    for each in ast.walk(node):
+        if isinstance(each, ast.Name) and (each.id in _LEDGER_FILE_MARKERS or each.id in aliases):
+            return True
+        if isinstance(each, ast.Attribute) and each.attr in _LEDGER_FILE_MARKERS:
+            return True
+        if literal and isinstance(each, ast.Constant) and each.value == "ledger.json":
+            return True
+    return False
+
+
+def _opens_for_writing(call: ast.Call, *, mode_at: int) -> bool:
+    """Whether an `open` call carries a write, append or exclusive mode (`mode_at` positional)."""
+    modes = [
+        *call.args[mode_at : mode_at + 1],
+        *(one.value for one in call.keywords if one.arg == "mode"),
+    ]
+    return any(
+        isinstance(mode, ast.Constant)
+        and isinstance(mode.value, str)
+        and set(mode.value) & set("wax+")
+        for mode in modes
+    )
+
+
+def _writes_of_the_ledger_file(source: str) -> list[int]:
+    """Line numbers where `source` writes the run ledger; reads and prose are not."""
+    tree = ast.parse(source)
+    aliases: set[str] = set()
+    for _ in range(3):  # a name bound from a name bound from the file, a few steps deep
+        for each in ast.walk(tree):
+            if isinstance(each, ast.Assign) and _names_the_ledger_file(
+                each.value, aliases, literal=False
+            ):
+                aliases.update(t.id for t in each.targets if isinstance(t, ast.Name))
+    lines: list[int] = []
+    for each in ast.walk(tree):
+        if not isinstance(each, ast.Call):
+            continue
+        func = each.func
+        if isinstance(func, ast.Attribute) and func.attr in _WRITE_METHODS:
+            written = _names_the_ledger_file(func.value, aliases)
+        elif isinstance(func, ast.Attribute) and func.attr == "open":
+            written = _names_the_ledger_file(func.value, aliases) and _opens_for_writing(
+                each, mode_at=0
+            )
+        elif isinstance(func, ast.Name) and func.id == "open" and each.args:
+            written = _names_the_ledger_file(each.args[0], aliases) and _opens_for_writing(
+                each, mode_at=1
+            )
+        else:
+            written = False
+        if written:
+            lines.append(each.lineno)
+    return sorted(lines)
+
+
+def test_the_scanner_flags_a_writer_and_passes_a_reader() -> None:
+    writers = [
+        "(directory / LEDGER_FILE).write_text('x')",
+        "(d / run_ledger.LEDGER_FILE).write_bytes(b'x')",
+        "(d / 'ledger.json').write_text('x')",
+        "open(d / LEDGER_FILE, 'w')",
+        "open(d / 'ledger.json', mode='a')",
+        "(d / LEDGER_FILE).open('w')",
+        "target = d / LEDGER_FILE\ntarget.write_text('x')",
+    ]
+    for source in writers:
+        assert _writes_of_the_ledger_file(source), source
+
+    clean = [
+        "payload = json.loads((c / LEDGER_FILE).read_text())",
+        "open(c / LEDGER_FILE).read()",
+        "open(c / LEDGER_FILE, 'r')",
+        '"""Writes ledger.json via LEDGER_FILE.write_text."""\nx = 1',
+        "# (d / LEDGER_FILE).write_text('x')\nx = 1",
+        "(d / 'other.json').write_text('x')",
+        "LEDGER_FILE = 'ledger.json'",
+        "(d / 'local-ledger.json').write_text('x')",
+        "LEDGER_NAME = 'local-ledger.json'",
+    ]
+    for source in clean:
+        assert _writes_of_the_ledger_file(source) == [], source
+
+
+def test_only_the_ledger_module_writes_the_ledger_document() -> None:
+    """In scope 11: one writer. A second one would be a second document shape, sealed or not.
+
+    The `test_only_sft_writes_the_checkpoint_document` shape (`test_checkpoint_seal.py:944`):
+    no source under `src/whetstone/` outside `ledger.py` writes `LEDGER_FILE` — by the
+    constant, by an alias bound from it, or by the exact literal `"ledger.json"`, never a
+    substring, so the miner's and `remint_apply.py`'s `local-ledger.json` (a different
+    ledger's staged evidence) are not flagged and `honest_report.py:52`'s read-only spelling
+    of the constant is not a write. The writer's own write is parameterized by path, so its
+    teeth are asserted separately: the module holds the write primitive the guard is about.
+    """
+    root = Path(run_ledger.__file__).resolve().parents[1]  # src/whetstone
+    writer = Path(run_ledger.__file__).resolve()
+    sources = sorted(root.rglob("*.py"))
+    assert writer in sources
+
+    offenders = {
+        str(path.relative_to(root)): lines
+        for path in sources
+        if path != writer
+        and (lines := _writes_of_the_ledger_file(path.read_text(encoding="utf-8")))
+    }
+    assert offenders == {}, (
+        f"WHY THIS IS A FAILURE: {sorted(offenders)} write the run ledger. A second writer "
+        "is a second document shape, and the seal has no way to tell the two apart"
+    )
+    assert run_ledger.LEDGER_SCHEMA == run_ledger.LEDGER_SCHEMA_V3, (
+        "WHY THIS IS A FAILURE: the writer's declared schema is not the sealed one, so a "
+        "new ledger is written unsealed under the v3 name"
+    )
+    tree = ast.parse(writer.read_text(encoding="utf-8"))
+    write_primitives = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in _WRITE_METHODS
+    ]
+    assert write_primitives, (
+        "WHY THIS IS A FAILURE: the ledger module itself holds no write primitive, so the "
+        "one-writer guard is asserting about a writer that does not write"
+    )
+
+
+def test_the_fuser_reads_no_run_document() -> None:
+    """AC 11: `fuse` is checkpoint-only — its bytes carry no run-document seam.
+
+    A full read finds no `ledger.json` / `dataset.json` literal, no `LEDGER_FILE` /
+    `DATASET_FILE` name, and no import of the run-document modules: the fuser's one
+    document read is the checkpoint's own provenance through `sft.verify_checkpoint`, and
+    its one write is `fusion.json`. A second read of a run document here would grow a
+    second answer to what the night recorded. The `whetstone-run/2` mention at
+    `fuse.py:85` is a checkpoint-side naming inaccuracy this aspect records and
+    deliberately does not fix.
+    """
+    from whetstone.loop import fuse
+
+    source = Path(fuse.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    markers = frozenset({"LEDGER_FILE", "DATASET_FILE"})
+    used = set()
+    for each in ast.walk(tree):
+        if isinstance(each, ast.Name) and each.id in markers:
+            used.add(each.id)
+        if isinstance(each, ast.Attribute) and each.attr in markers:
+            used.add(each.attr)
+        if isinstance(each, ast.Constant) and each.value in ("ledger.json", "dataset.json"):
+            used.add(str(each.value))
+    assert not used, (
+        f"WHY THIS IS A FAILURE: the fuser names a run document: {sorted(used)}. Fusing "
+        "needs the checkpoint's provenance and nothing beside it"
+    )
+    imported = set()
+    for each in ast.walk(tree):
+        if isinstance(each, ast.Import):
+            imported.update(alias.name for alias in each.names)
+        elif isinstance(each, ast.ImportFrom):
+            if each.module:
+                imported.add(each.module)
+            imported.update(alias.name for alias in each.names)
+    run_document_modules = {
+        name
+        for name in imported
+        if name.split(".")[-1] in ("ledger", "dataset")
+    }
+    assert not run_document_modules, (
+        f"WHY THIS IS A FAILURE: the fuser imports run-document modules "
+        f"{sorted(run_document_modules)}; the checkpoint is its only document"
     )

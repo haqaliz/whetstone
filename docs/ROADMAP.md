@@ -928,6 +928,14 @@ evidence for #60.
 > link is still only recorded, not sealed. No gate was run in this unit, and no gate decision
 > exists.
 
+> **Corrected 2026-10-08, when the run-document seal unit landed.** M2's exit criterion stands
+> and stays open. A night's ledger is now `whetstone-run/3`, sealing every claim it makes with
+> the same unkeyed, tamper-evident digest the checkpoint carries, and every consumer reads it
+> through the verifying reader by identity — so a ledger edited after the night is a named
+> exit-2 refusal before any decision, count, link or render. The one real ledger
+> (`runs/night-probe/probe-001`) is `whetstone-run/1`, predates the `/2` bump, and remains
+> refused by name; it was never rewritten, and no gate decision exists.
+
 ### M3 — Publish: the artifact and its page
 
 Only reachable with M1 and M2 done, and short once they are.

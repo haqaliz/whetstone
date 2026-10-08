@@ -9,6 +9,32 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Added
+
+- **Run ledger schema `whetstone-run/3`.** A night's `runs/<id>/ledger.json` now seals every
+  top-level key except `schema`, `claims` and `digest`: `claims` maps each body key to the
+  sha256 of its canonical JSON, and `digest` reduces from the sorted `key:hash` claim lines,
+  domain-separated by the schema tag exactly as `whetstone-checkpoint/2` is. `read` verifies
+  a v3 document before any consumer sees it and names the first claim that moved; a
+  `whetstone-run/2` ledger still reads, unsealed and byte-unchanged, behind a downgrade guard
+  that refuses one carrying the seal's keys. Sealed means tamper-evident against an edit that
+  does not recompute `claims` and `digest`; it is not authentication, and a writer who
+  recomputes both is not caught (the documented unkeyed-hash boundary). Every consumer
+  (`check-probe`, `check-leakage`, the morning report, the honest-number door) reads the
+  ledger through the verifying reader by identity, so a tampered v3 ledger is exit 2 before
+  any decision, count, link or render. The morning report's seal sentence states both
+  generations.
+
+### Changed
+
+- **BREAKING: a `whetstone-run/3` ledger is refused by any older reader** by schema equality,
+  exactly as a v2 checkpoint already is. The ledger lives under the gitignored `runs/` root
+  and no existing document is rewritten: the one real ledger
+  (`runs/night-probe/probe-001/ledger.json`) is `whetstone-run/1`, predates the `/2` bump, and
+  stays refused as it always was.
+
 ## [0.20.0] - 2026-10-07
 
 ### Added
