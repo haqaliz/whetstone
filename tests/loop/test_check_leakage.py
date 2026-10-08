@@ -585,6 +585,41 @@ def test_a_night_001_shaped_run_is_leaked_by_identity(tmp_path: Path) -> None:
     assert "donor-a-34daf85182d5" not in text and "donor-b-c3e132b7469b" not in text
 
 
+def test_the_no_checkpoint_v1_disclosure_is_byte_identical(tmp_path: Path) -> None:
+    """The finding's block cannot drift: the no-checkpoint v1 lines are pinned here.
+
+    `docs/planning/gate-leakage-guard/finding.md` quotes what `check-leakage` printed over
+    night-001's v1 dataset, and `tests/test_gate_leakage_finding.py` re-checks that quote against
+    the primary checkout's gitignored artefacts, unedited. This tuple is pasted once from a single
+    run over the night-001-shaped fixture below — the same eight lines, in the same order, that
+    the finding quotes (redaction apart, over the fixture's own membership) — and is never
+    recomputed here, so a drift in the no-checkpoint v1 path fails in-unit before it can reach a
+    finding that must not move.
+    """
+    run, document = _night_001(tmp_path)
+    _as_v1_run(run)
+
+    lines = check_leakage.disclosure(check_leakage.run_check(run, document))
+
+    assert lines == (
+        "leakage: LEAKED — 4 of 6 training examples touch a held-out task",
+        "held-out membership: 10 task(s)",
+        "source B (private): 4 of 6 training examples touch a held-out task; leaked task(s): "
+        "donor-a-c6e4d4c4de87",
+        "source A (public): 0 training examples, not compared — the held-out membership is "
+        "source B's",
+        "leaked task(s): donor-a-c6e4d4c4de87",
+        "matched by identity: trained on legacy-a-c6e4d4c4de87, held out as donor-a-c6e4d4c4de87",
+        "A leak means one of two things, and the operator must find out which: (a) the night's "
+        "partition seam failed to exclude held-out ids, or (b) the held-out document was derived "
+        "or re-derived after the night ran (e.g. a corpus re-mint), so the night could not have "
+        "excluded these ids. Either way the candidate trained on these tasks is not gated; do "
+        "not exclude these examples after the fact",
+        "notice: ledger.json was absent from the run; the training set was read from dataset.json "
+        "alone, and the run was not identified as complete by its ledger",
+    )
+
+
 def test_a_dataset_that_does_not_declare_the_schema_is_refused(tmp_path: Path) -> None:
     """AC3: an unreadable training set is refused, never treated as empty.
 
