@@ -53,7 +53,12 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from whetstone.loop.dataset import DATASET_SCHEMA, read_document
+from whetstone.loop.dataset import (
+    DATASET_SCHEMA,
+    DatasetUnverified,
+    VerifiedDataset,
+    verify_document,
+)
 from whetstone.loop.heldout import (
     EmptyHeldout,
     HeldoutDigestMismatch,
@@ -140,6 +145,7 @@ REFUSALS: tuple[type[Exception], ...] = (
     NotARun,
     UnknownSource,
     DatasetUnreadable,
+    DatasetUnverified,
     UnrecognisedIdentity,
     NothingCompared,
     LedgerUnreadable,
@@ -276,6 +282,11 @@ def run_check(run: Path, heldout: Path, checkpoint: Path | None = None) -> LeakR
     refuses before any comparison), and only then are the two sets compared. A check that
     read a doctored document and reported "clean" would be worse than no check.
 
+    The dataset is read through the verifying reader: a v2 document's claims are re-hashed
+    before any field is used, so a tampered sealed document refuses before the link and before
+    any overlap is compared, with or without a checkpoint. A v1 document performs none of that
+    and reads exactly as it always did.
+
     With a `checkpoint`, it is verified and its recorded dataset digest is compared with the
     run's before the overlap is compared, so another night's checkpoint is refused even when
     the run is leaked.
@@ -296,7 +307,8 @@ def run_check(run: Path, heldout: Path, checkpoint: Path | None = None) -> LeakR
     if not ledger_absent:
         read_ledger(ledger)
 
-    document = _read_dataset(dataset_path)
+    verified = _read_dataset(dataset_path)
+    document = verified.document
     training = _training_of(document, dataset_path)
     link = _link_of(document, dataset_path, checkpoint) if checkpoint is not None else None
     report = check_overlap(training, read_heldout(heldout).membership)
@@ -489,10 +501,20 @@ def _leak_of(source: str, ids: Sequence[str], by_identity: Mapping[str, str]) ->
     )
 
 
-def _read_dataset(path: Path) -> Mapping[str, object]:
-    """The run's dataset document, through `dataset.read_document` by identity."""
+def _read_dataset(path: Path) -> VerifiedDataset:
+    """The run's dataset document, through the verifying reader, seal refusals unwrapped.
+
+    A v2 document's claims are re-hashed before any field is read, so a tampered sealed
+    document refuses here — before the link and before any overlap comparison, with or without
+    a checkpoint. `DatasetUnverified` is deliberately re-raised unchanged: it is a `ValueError`
+    subclass, and the wrap below would otherwise rename the seal's refusal as an unreadable
+    document, reporting the right claim under the wrong type. A v1 document performs no claims
+    check and reads exactly as it always did, `sealed=False`.
+    """
     try:
-        return read_document(path)
+        return verify_document(path)
+    except DatasetUnverified:
+        raise
     except (OSError, ValueError) as error:
         raise DatasetUnreadable(
             f"{str(path)!r} could not be read as a {DATASET_SCHEMA!r} document: {error}"

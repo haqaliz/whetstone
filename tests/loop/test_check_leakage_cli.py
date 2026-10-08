@@ -30,10 +30,12 @@ from loop.test_check_leakage import (
     _run_digest,
 )
 from loop.test_check_leakage_checkpoint import (
+    _TAMPERED_FIELDS,
     OTHER_DIGEST,
     RUN_DIGEST,
     _as_v1,
     _fixture,
+    _tamper,
     _trained,
 )
 from loop.test_gate import _heldout_document as _gate_heldout_document
@@ -193,6 +195,38 @@ def test_an_unreadable_dataset_is_a_usage_error(
 
     assert code == 2
     assert dataset.DATASET_SCHEMA in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("field", _TAMPERED_FIELDS)
+@pytest.mark.parametrize("with_checkpoint", [False, True], ids=["plain", "with-checkpoint"])
+def test_a_tampered_v2_dataset_is_a_usage_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    with_checkpoint: bool,
+) -> None:
+    """AC1/AC4 at the door: exit 2, nothing on stdout, the moved field named on stderr.
+
+    The checkpoint arm proves the refusal precedes the link at the process boundary too: the
+    command is handed a matching checkpoint and still refuses instead of printing a link.
+    """
+    run, held = _fixture(tmp_path)
+    argv = _argv(run, held)
+    if with_checkpoint:
+        cp = _trained(tmp_path / "cp", _run_digest(run))
+        argv = _with_checkpoint(run, held, cp.directory)
+    path = run / "dataset.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    _tamper(document, field)
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    code = cli.main(argv)
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == "", captured.out
+    assert captured.err.startswith("whetstone check-leakage: "), captured.err
+    assert field in captured.err, captured.err
 
 
 def test_a_night_that_trained_on_nothing_exits_zero_and_says_why(

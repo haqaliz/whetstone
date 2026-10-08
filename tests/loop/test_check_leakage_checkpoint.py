@@ -24,9 +24,21 @@ from loop.test_check_leakage import (
     _run,
     _run_digest,
 )
-from whetstone.loop import backend, check_leakage, sft
+from whetstone.loop import backend, check_leakage, dataset, sft
 
 OTHER_DIGEST = "e" * 64
+
+#: A v2 document's four payload claims. `examples` is emptied rather than edited in place so a
+#: moved claim is unmistakable; the three counters are moved by one.
+_TAMPERED_FIELDS = ("denominator", "unverified", "coverage", "examples")
+
+
+def _tamper(document: dict[str, Any], field: str) -> None:
+    """Move one payload claim in a written document, without recomputing `claims` or `digest`."""
+    if field == "examples":
+        document[field] = []
+    else:
+        document[field] = document[field] + 1
 
 
 def _trained(directory: Path, dataset_digest: str = RUN_DIGEST) -> sft.Checkpoint:
@@ -179,7 +191,13 @@ def test_a_non_string_recorded_digest_is_a_mismatch(tmp_path: Path) -> None:
     assert "12345" in str(refusal.value)
 
 
-def test_a_run_whose_document_carries_no_digest_is_unreadable(tmp_path: Path) -> None:
+def test_a_run_whose_document_carries_no_digest_is_unverified(tmp_path: Path) -> None:
+    """A popped `digest` is a malformed v2 shape: the seal refuses it, not the schema reader.
+
+    It exits 2 either way; `DatasetUnverified` is the more precise type and the one the CLI
+    docstring now lists, because a v2 document whose digest does not reduce from its claims is
+    exactly what a hand edit produces.
+    """
     held = _heldout_document(tmp_path / "doc", _MEMBERS)
     run = _run(tmp_path / "run", private=(_SURVIVOR,))
     path = run / "dataset.json"
@@ -188,14 +206,41 @@ def test_a_run_whose_document_carries_no_digest_is_unreadable(tmp_path: Path) ->
     path.write_text(json.dumps(document), encoding="utf-8")
     cp = _trained(tmp_path / "cp")
 
-    with pytest.raises(check_leakage.DatasetUnreadable):
+    with pytest.raises(dataset.DatasetUnverified):
         check_leakage.run_check(run, held, cp.directory)
+
+
+@pytest.mark.parametrize("field", _TAMPERED_FIELDS)
+@pytest.mark.parametrize("with_checkpoint", [False, True], ids=["plain", "with-checkpoint"])
+def test_a_tampered_v2_dataset_refuses_by_field(
+    tmp_path: Path, field: str, with_checkpoint: bool
+) -> None:
+    """A moved payload claim refuses through the verifying reader, naming the key.
+
+    The checkpoint arm is the adversarial half: a checkpoint recording the run's pre-tamper
+    digest would otherwise link and produce a verdict, so the refusal firing before a link is
+    what proves the verified read precedes `_link_of`, with or without `--checkpoint`.
+    """
+    run, held = _fixture(tmp_path)
+    checkpoint: Path | None = None
+    if with_checkpoint:
+        checkpoint = _trained(tmp_path / "cp", _run_digest(run)).directory
+    path = run / "dataset.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    _tamper(document, field)
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(dataset.DatasetUnverified) as refusal:
+        check_leakage.run_check(run, held, checkpoint)
+
+    assert field in str(refusal.value), refusal.value
 
 
 def test_the_new_refusals_are_operator_fixable() -> None:
     for refusal in (
         check_leakage.CheckpointHasNoDataset,
         check_leakage.CheckpointNotThisRun,
+        dataset.DatasetUnverified,
         sft.CheckpointUnverified,
     ):
         assert refusal in check_leakage.REFUSALS

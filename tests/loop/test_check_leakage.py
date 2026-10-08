@@ -577,10 +577,16 @@ def test_a_dataset_that_does_not_declare_the_schema_is_refused(tmp_path: Path) -
 
 
 def test_a_dataset_missing_its_examples_list_is_refused(tmp_path: Path) -> None:
-    """A document declaring the schema and carrying no examples list is refused, not defaulted."""
+    """A document declaring the schema and carrying no examples list is refused, not defaulted.
+
+    v1 on purpose: the missing-examples refusal lives in `_training_of`, and a v2 document with
+    no claims is refused by the seal before that reader runs (the same reason the third-source
+    fixture below declares v1). A v1 document performs no claims check, so this reaches the
+    shape under test.
+    """
     run = _run(
         tmp_path / "runs" / "night-1",
-        dataset_text=json.dumps({"schema": dataset.DATASET_SCHEMA}),
+        dataset_text=json.dumps({"schema": dataset.DATASET_SCHEMA_V1}),
     )
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
 
