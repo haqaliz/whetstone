@@ -184,10 +184,17 @@ class SourceLeak:
 
 @dataclass(frozen=True)
 class DatasetLink:
-    """The digest a checkpoint and a run agreed on, and whether the checkpoint's claim is sealed."""
+    """The digest a checkpoint and a run agreed on, and each side's seal state.
+
+    `sealed` is the checkpoint's claim state (from `verify_checkpoint`: v2 only); `run_sealed`
+    is the run document's, from the verifying reader (v2 only; a v1 document is never sealed).
+    The link itself is digest equality — neither side's seal is the link, and neither seal
+    authenticates a writer or proves what was trained on.
+    """
 
     digest: str
     sealed: bool
+    run_sealed: bool
 
 
 @dataclass(frozen=True)
@@ -310,12 +317,18 @@ def run_check(run: Path, heldout: Path, checkpoint: Path | None = None) -> LeakR
     verified = _read_dataset(dataset_path)
     document = verified.document
     training = _training_of(document, dataset_path)
-    link = _link_of(document, dataset_path, checkpoint) if checkpoint is not None else None
+    link = (
+        _link_of(document, dataset_path, checkpoint, verified.sealed)
+        if checkpoint is not None
+        else None
+    )
     report = check_overlap(training, read_heldout(heldout).membership)
     return replace(report, ledger_absent=ledger_absent, link=link)
 
 
-def _link_of(document: Mapping[str, object], path: Path, checkpoint: Path) -> DatasetLink:
+def _link_of(
+    document: Mapping[str, object], path: Path, checkpoint: Path, run_sealed: bool
+) -> DatasetLink:
     """Verify the checkpoint and match its recorded dataset digest to the run's, exactly."""
     cp = verify_checkpoint(checkpoint)
     if cp.untrained:
@@ -338,7 +351,7 @@ def _link_of(document: Mapping[str, object], path: Path, checkpoint: Path) -> Da
             "the run says nothing about it. Point --checkpoint at the checkpoint this night "
             "wrote, or --run at the night that wrote this checkpoint"
         )
-    return DatasetLink(digest=run_digest, sealed=cp.sealed)
+    return DatasetLink(digest=run_digest, sealed=cp.sealed, run_sealed=run_sealed)
 
 
 def disclosure(report: LeakReport) -> tuple[str, ...]:
@@ -389,11 +402,13 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
 
 
 def _link_lines(link: DatasetLink | None) -> tuple[str, ...]:
-    """What the checkpoint link was, and was not: sealed on one side, never on the other.
+    """What the checkpoint link was, and was not: one line per side, sealed or recorded.
 
-    The checkpoint's files are verified either way; the *link* is sealed only when the
-    checkpoint's claims are (v2). Neither case says the checkpoint's dataset is what it was
-    trained on, and the run's `dataset.json` is an unsealed document.
+    Each side's files are verified either way; the *link* is digest equality and is never itself
+    sealed, authenticated or "verified". The checkpoint's claims are sealed when it is a v2
+    checkpoint; the run's document is sealed when it is a v2 dataset. A v1 document on either
+    side is recorded, not sealed — anyone with write access can edit it — and neither side's
+    seal is proof of what was actually trained on.
     """
     if link is None:
         return ()
@@ -413,11 +428,19 @@ def _link_lines(link: DatasetLink | None) -> tuple[str, ...]:
             "that checkpoint's digest, so this is what the document says and not something "
             "that was checked"
         )
-    return (
-        head + tail,
-        f"the run's {DATASET_FILE} is not sealed, so this compares a checkpoint claim to a "
-        "document that anyone with write access to the run can edit",
-    )
+    if link.run_sealed:
+        run_line = (
+            f"the run's {DATASET_FILE} is sealed (whetstone-training-set/2), so an edit to it "
+            "that did not also recompute its claims and digest would have been refused "
+            "(tamper-evidence, not authentication)"
+        )
+    else:
+        run_line = (
+            f"the run's {DATASET_FILE} is recorded, not sealed (whetstone-training-set/1), so "
+            "this compares the checkpoint's claim to a document that anyone with write access "
+            "to the run can edit"
+        )
+    return (head + tail, run_line)
 
 
 #: What a clean verdict rules out, and what it does not. Identity is all the check compares.

@@ -24,6 +24,8 @@ import pytest
 from loop.test_check_leakage import (
     _MEMBERS,
     _SURVIVOR,
+    V1_RUN_DIGEST,
+    _as_v1_run,
     _heldout_document,
     _id,
     _run,
@@ -356,10 +358,35 @@ def test_a_matching_v2_checkpoint_on_a_clean_run_exits_zero_with_the_sealed_link
 
     assert code == 0, out
     assert "dataset link:" in out and "sealed (whetstone-checkpoint/2)" in out, out
+    assert "sealed (whetstone-training-set/2)" in out, (
+        f"the run's side of the link does not say its v2 document is sealed: {out!r}"
+    )
     assert RUN_DIGEST[:12] in out
     assert out.index(check_leakage._RESIDUAL) < out.index("dataset link:"), (
         "the link lines must follow the verdict and its residual, never precede them"
     )
+
+
+def test_a_matching_v1_run_and_v1_checkpoint_report_recorded_on_both_sides(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fails if the run side ignores its document's generation, or either side says verified."""
+    run, held = _fixture(tmp_path)
+    _as_v1_run(run)
+    cp = _as_v1(_trained(tmp_path / "cp", _run_digest(run)))
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    out = capsys.readouterr().out
+
+    assert code == 0, out
+    assert V1_RUN_DIGEST[:12] in out, out
+    assert "recorded, not sealed (whetstone-checkpoint/1)" in out, out
+    assert "recorded, not sealed (whetstone-training-set/1)" in out, (
+        f"the run's side of the link does not say its v1 document is recorded: {out!r}"
+    )
+    link_lines = [line for line in out.splitlines() if "link" in line.lower()]
+    assert link_lines
+    assert not any("verified" in line.lower() for line in link_lines), link_lines
 
 
 def test_a_matching_checkpoint_cannot_make_a_leaked_run_pass(

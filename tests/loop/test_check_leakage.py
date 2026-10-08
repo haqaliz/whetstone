@@ -403,6 +403,29 @@ def _run_digest(run: Path) -> str:
 #: `_run_digest(run)` at the call site.
 RUN_DIGEST = _sealed_digest(private=(_SURVIVOR,))
 
+#: The recorded (unsealed) digest a hand-made v1 run document carries. A chosen constant rather
+#: than a derived value: v1 verifies nothing, so the document holds whatever its writer wrote,
+#: and a checkpoint links to it only by recording exactly this value.
+V1_RUN_DIGEST = "d" * 64
+
+
+def _as_v1_run(run: Path, *, digest: str = V1_RUN_DIGEST) -> Path:
+    """Rewrite a `_run` document to the genuine v1 shape, deliberately dropping `claims`.
+
+    v1 is the generation seal-core's dual-read accepts unsealed, exactly as before it: no claims
+    check, no digest recomputation. Dropping `claims` (rather than leaving them) proves a real
+    v1 document, not the v1-ignores-claims tolerance. The digest is whatever the writer wrote —
+    v1 recomputes nothing — so the caller chooses it and a checkpoint links only by recording
+    the same value.
+    """
+    path = run / night.DATASET_FILE
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["schema"] = dataset.DATASET_SCHEMA_V1
+    document.pop("claims", None)
+    document["digest"] = digest
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return run
+
 
 def test_a_disjoint_run_reads_clean_end_to_end(tmp_path: Path) -> None:
     """AC1: a real dataset document and a real held-out document, compared.
