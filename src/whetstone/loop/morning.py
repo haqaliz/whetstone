@@ -216,6 +216,13 @@ _KNOWN_FIELDS: frozenset[str] = frozenset(
         # machine that produced them. It is in the ledger for the gate's cross-backend refusal,
         # and this reader has to know the key exists or it refuses the document outright.
         "backend",
+        # The seal's own two fields (`whetstone-run/3`). Declared rather than rendered, for the
+        # same reason as `backend`: they are the document's integrity, not a figure this report
+        # asserts — and a reader that did not know them would refuse every genuine v3 ledger as
+        # an unknown-key change. They are checked before this reader ever sees the payload
+        # (`ledger.read` verifies the claims by identity).
+        "claims",
+        "digest",
         *REQUIRED_FIELDS,
     }
 )
@@ -488,15 +495,20 @@ GATE_EXITS: tuple[str, ...] = tuple(one.value for one in Exit)
 #: The sentence that keeps the report's claim the size of what the code can actually check.
 #: `VISION.md:12` promises "a signed proof"; there is no signing key in this project and
 #: `pyproject.toml` declares zero runtime dependencies, so the honest claim is narrower — and the
-#: narrowness is the point. Re-rendering proves the report matches the evidence. Nothing here
-#: proves the evidence matches the run: a hand-edited ledger re-renders perfectly consistently,
-#: because a ledger is not self-sealing. A document whose claim to be sealed is larger than what
-#: it can check is the precise failure this project names in everyone else's work.
+#: narrowness is the point. Re-rendering proves the report matches the evidence. Whether it also
+#: proves the evidence matches the run depends on the ledger's generation: a `whetstone-run/2`
+#: ledger is not self-sealing, so for one of those nothing here checks it at all, while a
+#: `whetstone-run/3` ledger is tamper-evident against an edit that does not recompute its claims
+#: and digest — never authentication, because anyone who can edit the file can recompute both.
+#: A document whose claim to be sealed is larger than what it can check is the precise failure
+#: this project names in everyone else's work.
 SEAL_SENTENCE = (
     "This report is sealed to its evidence and is not cryptographically signed: re-rendering it "
     "from the same documents reproduces these bytes, which proves the report matches the "
-    "evidence. It does not prove the evidence matches the run — a ledger is not self-sealing, "
-    "and only the checkpoint's own digest is re-derivable from bytes."
+    "evidence. It does not prove the evidence matches the run — a `whetstone-run/2` ledger is "
+    "not self-sealing, while a `whetstone-run/3` ledger is tamper-evident against an edit that "
+    "does not recompute its claims and digest. That is not authentication: anyone who can edit "
+    "the file can recompute both."
 )
 
 

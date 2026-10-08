@@ -609,3 +609,32 @@ def test_the_real_probe_ledger_is_v1_and_still_refused() -> None:
         "WHY THIS IS A FAILURE: a read rewrote the primary checkout's live record. No "
         "document under runs/ is ever touched"
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: the report's reader knows every key the writer emits
+# ---------------------------------------------------------------------------
+
+
+def test_the_morning_reader_knows_every_key_the_ledger_writer_emits() -> None:
+    """AC 9: the writer's key set and the report reader's known set cannot drift apart.
+
+    A key added later would make every genuine v3 report refuse as an unknown-key change — the
+    writer and the report reader would stop describing the same document. Asserted on the
+    emitted document, so the writer's actual output bounds the set, with the two seal keys
+    named explicitly so the assertion cannot go vacuous on a document that lost them.
+    """
+    from whetstone.loop import morning
+
+    document = json.loads(run_ledger.document(_ledger()))
+
+    assert {"claims", "digest"} <= set(document), (
+        "the emitted document carries no seal keys, so the coverage assertion below would "
+        "prove nothing about the generation the writer emits"
+    )
+    assert {"claims", "digest"} <= morning._KNOWN_FIELDS
+    assert set(document) <= morning._KNOWN_FIELDS, (
+        f"the writer emits {sorted(set(document) - morning._KNOWN_FIELDS)} and the morning "
+        "reader does not know them; every genuine v3 report would refuse as an unknown-key "
+        "change"
+    )

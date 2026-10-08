@@ -66,14 +66,41 @@ def _rewrite(path: Path, payload: Mapping[str, Any]) -> Path:
     return path
 
 
+def _written_unsealed(
+    root: Path, *, run_id: str = "night-001", recorded_on: str = "2026-08-20"
+) -> Path:
+    """A `/2` document: the writer's body, seal keys stripped, schema rewritten.
+
+    A genuine v3 document cannot lose or mistype a field without the seal refusing first, so
+    the reader's own field refusals would stop being exercised. The `/2` generation reads
+    unsealed and carries no claims or digest, which is where those checks live now.
+    """
+    path = _written(root, run_id=run_id, recorded_on=recorded_on)
+    payload = _payload(path)
+    del payload["claims"]
+    del payload["digest"]
+    payload["schema"] = run_ledger.LEDGER_SCHEMA_V2
+    _rewrite(path, payload)
+    return path
+
+
 # ---------------------------------------------------------------------------
 # Phase 1 — the typed document and its fail-closed reader
 # ---------------------------------------------------------------------------
 
 
 def test_a_well_formed_ledger_reads_field_for_field(tmp_path: Path) -> None:
-    """The happy path, asserted against the values the writer actually wrote."""
+    """The happy path, asserted against the values the writer actually wrote.
+
+    On the genuine `whetstone-run/3` generation: the seal keys are in the document and the
+    report's reader knows them, so the report reads a sealed v3 ledger exactly as it read the
+    generation before it, field for field.
+    """
     path = _written(tmp_path)
+    assert run_ledger.verify_document(path).sealed is True, (
+        "the fixture is no longer a sealed v3 ledger, so this happy path would be reading "
+        "through the `/2` dual-read instead of the generation the writer emits"
+    )
     document = morning.read_ledger(path)
 
     assert document.run_id == "night-001"
@@ -119,8 +146,12 @@ def test_every_required_field_is_refused_when_absent(tmp_path: Path, field: str)
     This is the anti-staleness half: the reader's own list drives the parameterisation, so the
     only way to add a field the reader reads without a refusal for it is to leave it out of
     `REQUIRED_FIELDS`, which the document-shape assertion below then catches.
+
+    A `/2` document rather than a v3 one: on a sealed generation the seal refuses a deleted
+    field first (`LedgerUnverified`), which is asserted separately below, so field-level
+    refusals can only be exercised on the generation that has no seal.
     """
-    path = _written(tmp_path)
+    path = _written_unsealed(tmp_path)
     payload = _payload(path)
     del payload[field]
     _rewrite(path, payload)
@@ -129,6 +160,23 @@ def test_every_required_field_is_refused_when_absent(tmp_path: Path, field: str)
         morning.read_ledger(path)
     assert field in str(refused.value), refused.value
     assert str(path) in str(refused.value), refused.value
+
+
+def test_a_sealed_document_missing_a_field_is_refused_by_the_seal_first(tmp_path: Path) -> None:
+    """The ordering on the sealed generation: the seal refuses before the reader's field check.
+
+    Deleting `run_seed` from a genuine v3 document leaves its claim in place, so the document
+    is tampered rather than merely short a field, and the refusal is `LedgerUnverified` — not
+    a `LedgerFieldMissing` the reader would raise for a `/2` document missing the same key.
+    """
+    path = _written(tmp_path)
+    payload = _payload(path)
+    del payload["run_seed"]
+    _rewrite(path, payload)
+
+    with pytest.raises(run_ledger.LedgerUnverified) as refused:
+        morning.read_ledger(path)
+    assert "run_seed" in str(refused.value), refused.value
 
 
 def test_the_required_fields_cover_every_field_the_document_carries() -> None:
@@ -152,9 +200,10 @@ def test_a_boolean_is_not_an_integer(tmp_path: Path) -> None:
     """`bool` is an `int` subclass, so `isinstance(x, int)` accepts `true` for a count.
 
     The gate's own reader refuses this by name (`gate.py:911-912`); a count that reads back as
-    `True` would render as `1` and nobody would see it.
+    `True` would render as `1` and nobody would see it. On a `/2` document, because a v3
+    document mistyped this way is refused by the seal before the reader's type check.
     """
-    path = _written(tmp_path)
+    path = _written_unsealed(tmp_path)
     payload = _payload(path)
     payload["draws"] = True
     _rewrite(path, payload)
@@ -165,8 +214,12 @@ def test_a_boolean_is_not_an_integer(tmp_path: Path) -> None:
 
 
 def test_an_unknown_top_level_field_is_refused(tmp_path: Path) -> None:
-    """A key the reader does not know is a schema change nobody declared."""
-    path = _written(tmp_path)
+    """A key the reader does not know is a schema change nobody declared.
+
+    On a `/2` document: a v3 document carrying an unclaimed extra key is refused by the seal
+    first, as an unclaimed key rather than a field the reader must judge.
+    """
+    path = _written_unsealed(tmp_path)
     payload = _payload(path)
     payload["surprise"] = 1
     _rewrite(path, payload)
@@ -202,7 +255,7 @@ def test_recorded_on_must_be_an_iso_date(tmp_path: Path) -> None:
     calling the greater one "last night" is an ordering that looks like a measurement, so the
     shape is refused at read time — before any comparison happens.
     """
-    path = _written(tmp_path)
+    path = _written_unsealed(tmp_path)
     payload = _payload(path)
     payload["recorded_on"] = "20 August 2026"
     _rewrite(path, payload)
