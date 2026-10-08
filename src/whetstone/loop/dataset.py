@@ -382,15 +382,31 @@ def write_document(path: Path, dataset: Dataset) -> Path:
     return path
 
 
-def read_document(path: Path) -> Mapping[str, object]:
-    """Read a dataset document back, refusing anything not written to a declared schema.
+@dataclass(frozen=True)
+class VerifiedDataset:
+    """A dataset document that has been read: the parse, and whether its claims were checked.
 
-    Both schemas are accepted here, ahead of the verifying reader, because a real v1 document —
-    night-001's, on disk and never rewritten — must keep reading the moment the writer starts
-    emitting v2. A v1 document is returned exactly as it always was, unsealed: its examples-only
-    digest is not recomputed and nothing about it is claimed. A v2 document is returned raw for
-    now; the phase that teaches the reader to verify its claims replaces this check with the
-    verifying one, and until then the schema string is what tells the two generations apart.
+    One object rather than a bare mapping, because the two generations of document are read under
+    different guarantees and every consumer has to be able to say which one it holds. `sealed` is
+    True only for a v2 document whose every claim re-hashed; a v1 document is never sealed.
+    """
+
+    #: The parsed document — the one parse every reader reads, never re-parsed elsewhere.
+    document: Mapping[str, Any]
+
+    #: True only for a v2 document whose claims were verified. Sealed means PRD § 3 and no more:
+    #: the digest is unkeyed, so it catches a document changed after it was written, never a
+    #: writer who recomputes it, and it does not prove what a trainer actually read.
+    sealed: bool
+
+
+def verify_document(path: Path) -> VerifiedDataset:
+    """Read a dataset document, verifying a sealed one's claims before anyone reads its fields.
+
+    Both schemas are read. A v2 document's claims are re-hashed first, so a moved claim is
+    refused by name rather than surfacing as whatever the edited body happens to break; a v1
+    document (night-001's shape) performs none of that — it is exactly today's parse — and comes
+    back `sealed=False`. Any other schema is refused, naming both.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict) or raw.get("schema") not in (
@@ -403,7 +419,26 @@ def read_document(path: Path) -> Mapping[str, object]:
             "partial read would default is one that makes this document verify nothing and "
             "return successfully"
         )
-    return raw
+    sealed = raw["schema"] == DATASET_SCHEMA_V2
+    if sealed:
+        seal.verify_claims(
+            path,
+            raw,
+            schema=DATASET_SCHEMA_V2,
+            subject="training set",
+            refuse=DatasetUnverified,
+        )
+    return VerifiedDataset(document=raw, sealed=sealed)
+
+
+def read_document(path: Path) -> Mapping[str, object]:
+    """The run's dataset document, through the verifying reader by identity.
+
+    Delegates to `verify_document(path).document`, so this public reader and the verifying one
+    cannot disagree about what a document says — a second parse path is how a tampered document
+    gets read by one caller and refused by another.
+    """
+    return verify_document(path).document
 
 
 def _body(dataset: Dataset) -> dict[str, Any]:
@@ -477,12 +512,14 @@ __all__ = [
     "NotTrainable",
     "Split",
     "TrainingText",
+    "VerifiedDataset",
     "build",
     "document",
     "example_of",
     "read_document",
     "split",
     "trainable",
+    "verify_document",
     "write_document",
     "write_local",
 ]

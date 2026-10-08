@@ -21,7 +21,14 @@ from pathlib import Path
 
 import pytest
 
-from loop.test_check_leakage import _MEMBERS, _SURVIVOR, _heldout_document, _id, _run
+from loop.test_check_leakage import (
+    _MEMBERS,
+    _SURVIVOR,
+    _heldout_document,
+    _id,
+    _run,
+    _run_digest,
+)
 from loop.test_check_leakage_checkpoint import (
     OTHER_DIGEST,
     RUN_DIGEST,
@@ -326,7 +333,7 @@ def test_a_matching_checkpoint_cannot_make_a_leaked_run_pass(
 ) -> None:
     """Fails if a matching link short-circuits the verdict (exit 0) or drops the leak lines."""
     run, held = _fixture(tmp_path, leaked=True)
-    cp = _trained(tmp_path / "cp")
+    cp = _trained(tmp_path / "cp", _run_digest(run))
 
     code = cli.main(_with_checkpoint(run, held, cp.directory))
     out = capsys.readouterr().out
@@ -344,7 +351,7 @@ def test_a_matching_v1_checkpoint_is_recorded_not_sealed(
         base = tmp_path / str(leaked)
         base.mkdir()
         run, held = _fixture(base, leaked=leaked)
-        cp = _as_v1(_trained(base / "cp"))
+        cp = _as_v1(_trained(base / "cp", _run_digest(run)))
 
         code = cli.main(_with_checkpoint(run, held, cp.directory))
         out = capsys.readouterr().out

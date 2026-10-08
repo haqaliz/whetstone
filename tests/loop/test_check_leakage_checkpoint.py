@@ -16,10 +16,16 @@ from typing import Any
 
 import pytest
 
-from loop.test_check_leakage import _MEMBERS, _SURVIVOR, _heldout_document, _run
+from loop.test_check_leakage import (
+    _MEMBERS,
+    _SURVIVOR,
+    RUN_DIGEST,
+    _heldout_document,
+    _run,
+    _run_digest,
+)
 from whetstone.loop import backend, check_leakage, sft
 
-RUN_DIGEST = "d" * 64  # what `_run` writes into dataset.json
 OTHER_DIGEST = "e" * 64
 
 
@@ -110,7 +116,7 @@ def test_a_mismatching_checkpoint_is_refused_even_when_the_run_is_leaked(
     with pytest.raises(check_leakage.CheckpointNotThisRun) as refusal:
         check_leakage.run_check(run, held, cp.directory)
 
-    assert RUN_DIGEST[:12] in str(refusal.value)
+    assert _run_digest(run)[:12] in str(refusal.value)
     assert OTHER_DIGEST[:12] in str(refusal.value)
     assert "not trained on this run" in str(refusal.value)
 
@@ -198,13 +204,24 @@ def test_the_new_refusals_are_operator_fixable() -> None:
 
 # --- what it prints -------------------------------------------------------------------------
 
+
+def _sealed_line(digest: str) -> str:
+    """The `dataset link:` line for a sealed checkpoint recording `digest`.
+
+    A function rather than one literal because the digest is over the run's whole document now,
+    so the clean fixture, the leaked fixture and the empty fixture each carry a different one;
+    the constant below is the clean fixture's, which is what most of these tests use.
+    """
+    return (
+        f"dataset link: the checkpoint's dataset_digest ({digest[:12]}) matches this run's "
+        "dataset.json; the checkpoint's claims are sealed (whetstone-checkpoint/2), so an edit "
+        "to that dataset_digest that did not also recompute the checkpoint's digest would have "
+        "been refused (tamper-evidence, not authentication)"
+    )
+
+
 D12 = RUN_DIGEST[:12]
-SEALED_LINE = (
-    f"dataset link: the checkpoint's dataset_digest ({D12}) matches this run's dataset.json; "
-    "the checkpoint's claims are sealed (whetstone-checkpoint/2), so an edit to that "
-    "dataset_digest that did not also recompute the checkpoint's digest would have been "
-    "refused (tamper-evidence, not authentication)"
-)
+SEALED_LINE = _sealed_line(RUN_DIGEST)
 V1_LINE = (
     f"dataset link: the checkpoint's dataset_digest ({D12}) matches this run's dataset.json; "
     "it is recorded, not sealed (whetstone-checkpoint/1) \u2014 provenance.json was outside that "
@@ -268,27 +285,27 @@ def test_no_link_line_claims_verification(tmp_path: Path, sealed: bool) -> None:
 def test_a_leaked_run_keeps_its_leak_lines_and_the_link_comes_after(tmp_path: Path) -> None:
     """Fails if the link changes the verdict or lands before the leak lines."""
     run, held = _fixture(tmp_path, leaked=True)
-    cp = _trained(tmp_path / "cp")
+    cp = _trained(tmp_path / "cp", _run_digest(run))
     plain = check_leakage.disclosure(check_leakage.run_check(run, held))
     report = check_leakage.run_check(run, held, cp.directory)
     lines = check_leakage.disclosure(report)
 
     assert report.clean is False
     assert lines[: len(plain)] == plain
-    assert list(lines[len(plain) :]) == [SEALED_LINE, FAR_END_LINE]
+    assert list(lines[len(plain) :]) == [_sealed_line(_run_digest(run)), FAR_END_LINE]
 
 
 def test_the_empty_training_set_branch_also_prints_the_link(tmp_path: Path) -> None:
     """Fails if the early-return branch skips the link lines."""
     held = _heldout_document(tmp_path / "doc", _MEMBERS)
     run = _run(tmp_path / "run", private=())
-    cp = _trained(tmp_path / "cp")
+    cp = _trained(tmp_path / "cp", _run_digest(run))
     report = check_leakage.run_check(run, held, cp.directory)
     lines = check_leakage.disclosure(report)
 
     assert report.examples == 0
     assert lines[0].startswith("leakage: clean \u2014 the run has no training examples")
-    assert lines[-2:] == (SEALED_LINE, FAR_END_LINE)
+    assert lines[-2:] == (_sealed_line(_run_digest(run)), FAR_END_LINE)
 
 
 def test_with_no_ledger_the_notice_is_still_last_after_the_link(tmp_path: Path) -> None:

@@ -350,10 +350,9 @@ def _run(
         for source, ids in ((night.PRIVATE, private), (night.PUBLIC, public))
         for task_id in ids
     )
-    document = dataset.Dataset(
-        examples=examples, digest="d" * 64, denominator=len(examples), unverified=0
-    )
-    dataset.write_document(root / night.DATASET_FILE, document)
+    texts = tuple(dataset.TrainingText(example=one, prompt="", completion="") for one in examples)
+    built = dataset.build(texts, denominator=len(examples), unverified=0)
+    dataset.write_document(root / night.DATASET_FILE, built)
     return root
 
 
@@ -370,6 +369,39 @@ def _example(task_id: str, source: str) -> dataset.Example:
         outcome=Outcome.SOLVED,
         control=Status.PASS,
     )
+
+
+def _sealed_digest(*, private: tuple[str, ...] = (), public: tuple[str, ...] = ()) -> str:
+    """The seal digest a `_run` document with these examples carries — derived, never pasted.
+
+    Through the real `dataset.build`, the same path `_run` writes with. The dataset's digest is
+    over the whole document now, so a literal would silently stop describing the fixture the
+    link assertions are about, and the clean and leaked fixtures have different digests.
+    """
+    examples = tuple(
+        _example(task_id, source)
+        for source, ids in ((night.PRIVATE, private), (night.PUBLIC, public))
+        for task_id in ids
+    )
+    texts = tuple(dataset.TrainingText(example=one, prompt="", completion="") for one in examples)
+    return dataset.build(texts, denominator=len(examples), unverified=0).digest
+
+
+def _run_digest(run: Path) -> str:
+    """The seal digest the run's **written** document carries, read back from the file.
+
+    Per run rather than per fixture: the clean run and the leaked run hold different examples,
+    so they have different digests, and a checkpoint must record the digest of the run it is
+    being linked to.
+    """
+    document = json.loads((run / night.DATASET_FILE).read_text(encoding="utf-8"))
+    return str(document["digest"])
+
+
+#: What `_run` writes for its one clean private example (`_SURVIVOR`). The checkpoint and CLI
+#: files import this for their clean-fixture link assertions; a leaked run's digest comes from
+#: `_run_digest(run)` at the call site.
+RUN_DIGEST = _sealed_digest(private=(_SURVIVOR,))
 
 
 def test_a_disjoint_run_reads_clean_end_to_end(tmp_path: Path) -> None:
@@ -589,7 +621,10 @@ def test_a_night_that_trained_on_nothing_is_clean_and_says_so(tmp_path: Path) ->
 def test_a_dataset_naming_a_third_source_is_refused(tmp_path: Path) -> None:
     """A source this check cannot report over is refused, never filed under one of the two."""
     payload = {
-        "schema": dataset.DATASET_SCHEMA,
+        # v1 on purpose: this fixture exercises the source check, and a v1 document performs no
+        # claims check — exactly the old read — so `UnknownSource` is reached unchanged. A v2
+        # document without claims would be refused by the seal first, testing nothing here.
+        "schema": dataset.DATASET_SCHEMA_V1,
         "digest": "d" * 64,
         "denominator": 1,
         "unverified": 0,

@@ -8,13 +8,21 @@ checkpoint's is. `Dataset.digest` becomes that seal, so what a checkpoint record
 `dataset_digest` names the whole document.
 
 This file starts with the writer's half: the round trip, determinism, the pinned seal digest,
-and the rule that the writer never repairs a digest it was handed. The verifying reader — every
-adversarial shape refused by name — lands in this file in the reader's phase.
+and the rule that the writer never repairs a digest it was handed. The reader's half follows:
+`verify_document` re-hashes a v2 document's claims before anyone reads its fields, refuses every
+adversarial shape by name, and returns a v1 document — night-001's real shape, never rewritten —
+unsealed, exactly as it always read.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+import pytest
 
 from whetstone.bakeoff.scoring import Outcome
 from whetstone.loop import dataset as training
@@ -161,3 +169,237 @@ def test_the_writer_never_repairs_a_digest_it_was_handed() -> None:
 
     assert document["digest"] == "0" * 64
     assert seal.claims_digest(claims, schema=training.DATASET_SCHEMA_V2) != document["digest"]
+
+
+# --- The verifying reader: v2 is checked claim by claim, v1 reads exactly as it always did -----
+
+
+def _written_v2(tmp_path: Path) -> tuple[Path, dict[str, Any]]:
+    """A v2 document through the real writer, its path and its parse."""
+    path = training.write_document(tmp_path / "run" / "dataset.json", _built())
+    return path, json.loads(path.read_text(encoding="utf-8"))
+
+
+def _rewrite(path: Path, document: Mapping[str, Any]) -> None:
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def test_a_v2_document_verifies_sealed(tmp_path: Path) -> None:
+    path, document = _written_v2(tmp_path)
+    verified = training.verify_document(path)
+
+    assert isinstance(verified, training.VerifiedDataset)
+    assert verified.sealed is True
+    assert verified.document == document
+    assert training.read_document(path) == document, (
+        "WHY THIS IS A FAILURE: the public reader does not go through the verifying one, so "
+        "check_leakage would read a tampered document that verify_document would refuse"
+    )
+
+
+_MOVES: dict[str, Any] = {
+    "denominator": lambda one: one.update(denominator=5),
+    "unverified": lambda one: one.update(unverified=0),
+    "coverage": lambda one: one.update(coverage=4),
+    "examples": lambda one: one.update(examples=[]),
+}
+
+
+@pytest.mark.parametrize("key", sorted(_MOVES))
+def test_a_moved_claim_is_refused_by_name(tmp_path: Path, key: str) -> None:
+    path, document = _written_v2(tmp_path)
+    _MOVES[key](document)
+    _rewrite(path, document)
+
+    with pytest.raises(training.DatasetUnverified, match=rf"claim '{key}'"):
+        training.verify_document(path)
+
+
+def test_an_unclaimed_key_is_refused_by_name(tmp_path: Path) -> None:
+    path, document = _written_v2(tmp_path)
+    document["promoted"] = True
+    _rewrite(path, document)
+
+    with pytest.raises(training.DatasetUnverified, match=r"'promoted', which no claim seals"):
+        training.verify_document(path)
+
+
+def test_a_deleted_claim_is_refused_by_name(tmp_path: Path) -> None:
+    path, document = _written_v2(tmp_path)
+    del document["claims"]["unverified"]
+    _rewrite(path, document)
+
+    with pytest.raises(training.DatasetUnverified, match=r"'unverified', which no claim seals"):
+        training.verify_document(path)
+
+
+def test_an_orphaned_claim_is_refused_by_name(tmp_path: Path) -> None:
+    path, document = _written_v2(tmp_path)
+    del document["unverified"]
+    _rewrite(path, document)
+
+    with pytest.raises(
+        training.DatasetUnverified, match=r"records claim 'unverified' and carries no 'unverified'"
+    ):
+        training.verify_document(path)
+
+
+def test_a_key_and_its_claim_deleted_together_are_refused(tmp_path: Path) -> None:
+    """The digest is what catches this one: the remaining claims agree with each other."""
+    path, document = _written_v2(tmp_path)
+    del document["denominator"]
+    del document["claims"]["denominator"]
+    _rewrite(path, document)
+
+    with pytest.raises(training.DatasetUnverified, match="disagrees with itself"):
+        training.verify_document(path)
+
+
+def test_two_swapped_claim_values_are_refused(tmp_path: Path) -> None:
+    path, document = _written_v2(tmp_path)
+    claims = document["claims"]
+    claims["denominator"], claims["unverified"] = claims["unverified"], claims["denominator"]
+    _rewrite(path, document)
+
+    with pytest.raises(
+        training.DatasetUnverified, match="was changed after the training set was sealed"
+    ):
+        training.verify_document(path)
+
+
+@pytest.mark.parametrize("value", ["g" * 64, "0" * 63, "A" * 64], ids=["non-hex", "short", "upper"])
+def test_a_claim_hash_that_is_not_a_sha256_is_refused(tmp_path: Path, value: str) -> None:
+    path, document = _written_v2(tmp_path)
+    document["claims"]["coverage"] = value
+    _rewrite(path, document)
+
+    with pytest.raises(training.DatasetUnverified, match=r"claim 'coverage' .* not a sha256"):
+        training.verify_document(path)
+
+
+def test_a_newline_bearing_claim_key_is_refused(tmp_path: Path) -> None:
+    path, document = _written_v2(tmp_path)
+    document["claims"]["a\nb"] = "0" * 64
+    _rewrite(path, document)
+
+    with pytest.raises(training.DatasetUnverified, match="holds a newline"):
+        training.verify_document(path)
+
+
+@pytest.mark.parametrize(
+    "claims",
+    [None, "x", ["denominator"], {"denominator": 1}],
+    ids=["missing", "string", "list", "int-hash"],
+)
+def test_a_v2_document_without_a_claims_mapping_is_refused(tmp_path: Path, claims: Any) -> None:
+    path, document = _written_v2(tmp_path)
+    if claims is None:
+        del document["claims"]
+    else:
+        document["claims"] = claims
+    _rewrite(path, document)
+
+    with pytest.raises(training.DatasetUnverified, match="claims mapping"):
+        training.verify_document(path)
+
+
+def test_an_unknown_schema_is_refused_naming_both(tmp_path: Path) -> None:
+    path, document = _written_v2(tmp_path)
+    document["schema"] = "whetstone-training-set/3"
+    _rewrite(path, document)
+
+    with pytest.raises(ValueError, match="does not declare schema") as caught:
+        training.verify_document(path)
+
+    assert training.DATASET_SCHEMA_V1 in str(caught.value)
+    assert training.DATASET_SCHEMA_V2 in str(caught.value)
+
+
+def test_a_hand_built_dataset_with_a_wrong_digest_is_refused_on_read(tmp_path: Path) -> None:
+    """The Phase-2 writer rule, exercised through the reader: no repair, so a refusal."""
+    built = _built()
+    forged = training.Dataset(
+        examples=built.examples,
+        digest="0" * 64,
+        denominator=built.denominator,
+        unverified=built.unverified,
+    )
+    path = training.write_document(tmp_path / "dataset.json", forged)
+
+    with pytest.raises(training.DatasetUnverified, match="disagrees with itself"):
+        training.verify_document(path)
+
+
+# --- The limit, pinned rather than implied -----------------------------------------------------
+
+
+def test_a_forger_who_recomputes_the_claims_is_not_caught(tmp_path: Path) -> None:
+    """PRD § 3's stated limit: an unkeyed digest does not catch a writer who recomputes it.
+
+    Rewriting a claim, its hash and the digest consistently produces a document that verifies
+    and reports `sealed`. The seal catches accident-shaped edits and disagreement with a digest
+    cited elsewhere; it is never authentication.
+    """
+    path, document = _written_v2(tmp_path)
+    document["denominator"] = 5
+    document["claims"] = seal.claim_hashes(
+        _body_of(document), subject="training set", refuse=training.DatasetUnverified
+    )
+    document["digest"] = seal.claims_digest(document["claims"], schema=training.DATASET_SCHEMA_V2)
+    _rewrite(path, document)
+
+    forged = training.verify_document(path)
+
+    assert forged.sealed is True
+    assert forged.document["denominator"] == 5
+
+
+def test_a_v2_document_relabelled_v1_reads_unsealed_the_downgrade_limit(tmp_path: Path) -> None:
+    """A schema downgrade is not caught: the v1 path performs no digest check at all.
+
+    This is the other half of the forger limit, pinned so nobody reads `sealed=False` as "this
+    is a genuine v1". A reader that accepts v1 documents — which it must, night-001's is one —
+    cannot tell a downgraded v2 from an original, and a downgraded document's edits ride along.
+    """
+    path, document = _written_v2(tmp_path)
+    document["schema"] = training.DATASET_SCHEMA_V1
+    document["digest"] = hashlib.sha256(
+        json.dumps(document["examples"], indent=2, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    _rewrite(path, document)
+
+    verified = training.verify_document(path)
+
+    assert verified.sealed is False
+    assert verified.document == document
+
+
+def _v1_document(tmp_path: Path) -> tuple[Path, dict[str, Any]]:
+    """A document in night-001's shape: `/1`, an examples-only digest, no claims."""
+    path, v2 = _written_v2(tmp_path)
+    body = _body_of(v2)
+    v1 = {
+        "schema": training.DATASET_SCHEMA_V1,
+        "digest": hashlib.sha256(
+            json.dumps(body["examples"], indent=2, sort_keys=True).encode("utf-8")
+        ).hexdigest(),
+        **body,
+    }
+    _rewrite(path, v1)
+    return path, v1
+
+
+def test_a_v1_document_reads_unsealed_and_byte_unchanged(tmp_path: Path) -> None:
+    """Criterion 5: v1 reads exactly as today, is never reported sealed, and never rewritten."""
+    path, document = _v1_document(tmp_path)
+    before = path.read_bytes()
+
+    verified = training.verify_document(path)
+
+    assert verified.sealed is False
+    assert verified.document == document
+    assert training.read_document(path) == document
+    assert path.read_bytes() == before, (
+        "WHY THIS IS A FAILURE: reading a v1 document rewrote it. The real night-001 dataset "
+        "is an operator artifact that must never move"
+    )
