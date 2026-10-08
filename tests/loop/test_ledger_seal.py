@@ -457,3 +457,155 @@ def test_a_forger_who_recomputes_the_claims_is_not_caught(tmp_path: Path) -> Non
 
     assert forged.sealed is True
     assert forged.document["run_seed"] == 7
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: every consumer verifies by identity; probe-001's real record corrected
+# ---------------------------------------------------------------------------
+
+
+def test_every_consumer_reads_the_ledger_through_the_ledgers_reader() -> None:
+    """The spec's "by identity not by edit" (In scope 4): one read path, four consumers.
+
+    Each name is asserted `is` rather than called: a consumer that re-spelled the reader — a
+    second parse, an optimistic `json.loads` — would read a tampered document while the
+    verifying path refused it, and the day the two disagreed neither would say so.
+    """
+    from whetstone.loop import check_leakage, check_probe, honest_report, morning
+
+    assert check_probe.read_ledger is run_ledger.read
+    assert morning._read_ledger_payload is run_ledger.read
+    assert honest_report.read_ledger is run_ledger.read
+    assert check_leakage.read_ledger is run_ledger.read
+
+
+def test_every_consumer_refusal_tuple_holds_the_base_refusal() -> None:
+    """`LedgerUnverified` subclasses `LedgerUnreadable`, so a tamper is exit 2 by identity."""
+    from whetstone.loop import check_leakage, check_probe, honest_report, morning
+
+    for refusals in (
+        check_probe.REFUSALS,
+        check_leakage.REFUSALS,
+        honest_report.REFUSALS,
+        morning.REFUSALS,
+    ):
+        assert run_ledger.LedgerUnreadable in refusals
+
+
+def _doctored(tmp_path: Path) -> Path:
+    """A genuine v3 write with one body key moved: the tamper every consumer must refuse."""
+    path = _written(tmp_path)
+    document = _parse(path)
+    document["run_seed"] = [document["run_seed"]]
+    _rewrite(path, document)
+    return path
+
+
+def test_the_probe_check_refuses_a_doctored_v3_ledger_before_any_decision(tmp_path: Path) -> None:
+    """Through the consumer's own door: a doctored run refuses before the fold is read."""
+    from loop.test_check_probe import _probe_run
+    from whetstone.loop import check_probe
+
+    run = _probe_run(tmp_path)
+    path = run / run_ledger.LEDGER_FILE
+    document = _parse(path)
+    document["run_seed"] = [document["run_seed"]]
+    _rewrite(path, document)
+
+    with pytest.raises(run_ledger.LedgerUnverified) as refusal:
+        check_probe.run_check(run)
+    assert "run_seed" in str(refusal.value)
+
+
+def test_morning_refuses_a_doctored_v3_ledger_by_name(tmp_path: Path) -> None:
+    from whetstone.loop import morning
+
+    with pytest.raises(run_ledger.LedgerUnverified) as refusal:
+        morning.read_ledger(_doctored(tmp_path))
+    assert "run_seed" in str(refusal.value)
+
+
+def test_the_honest_report_reader_refuses_a_doctored_v3_ledger_by_name(tmp_path: Path) -> None:
+    from whetstone.loop import honest_report
+
+    with pytest.raises(run_ledger.LedgerUnverified) as refusal:
+        honest_report.read_ledger(_doctored(tmp_path))
+    assert "run_seed" in str(refusal.value)
+
+
+def test_the_leakage_check_refuses_a_doctored_v3_ledger_before_the_comparison(
+    tmp_path: Path,
+) -> None:
+    """The check's own door: dataset valid, comparison would be clean, ledger tampered.
+
+    `check_leakage.run_check`'s body is unchanged — the dataset read and the overlap
+    comparison are the same code — and the tamper refuses only because the module reads the
+    ledger through `ledger.read` by identity.
+    """
+    from loop.test_check_leakage import _MEMBERS, _SURVIVOR, _heldout_document, _run
+    from whetstone.loop import check_leakage
+
+    run = _run(tmp_path / "runs" / "night-001", private=(_SURVIVOR,), ledger=False)
+    path = run_ledger.write(run / run_ledger.LEDGER_FILE, _ledger())
+    document = _parse(path)
+    document["run_seed"] = [document["run_seed"]]
+    _rewrite(path, document)
+    heldout = _heldout_document(tmp_path, _MEMBERS)
+
+    with pytest.raises(run_ledger.LedgerUnverified) as refusal:
+        check_leakage.run_check(run, heldout)
+    assert "run_seed" in str(refusal.value)
+
+
+def _primary() -> Path:
+    """The primary checkout, resolved from git — a worktree holds none of `runs/`.
+
+    The `test_gate_leakage_finding.py:63-74` pattern, so the gitignored artefact is found
+    rather than named by a literal path that only holds on this machine.
+    """
+    root = Path(__file__).resolve().parents[2]
+    try:
+        common = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError) as error:
+        pytest.skip(
+            "SKIPPED LOUDLY: git could not name the primary checkout, so the real "
+            f"probe-001 ledger cannot be re-checked ({error})"
+        )
+    return Path(common).parent
+
+
+def test_the_real_probe_ledger_is_v1_and_still_refused() -> None:
+    """AC 4, the corrected premise: the one real probe ledger predates `/2`.
+
+    The PRD recorded the probe-001 ledger as `/2`; the primary checkout's bytes say `/1` —
+    verified, not assumed — and `/1` is refused by schema equality, exactly as before the
+    seal. Skips loudly, naming the artefact, when the primary checkout holds no `runs/`
+    (a fresh clone, CI); it never passes silently and never rewrites the byte.
+    """
+    primary = _primary()
+    ledger_path = primary / "runs" / "night-probe" / "probe-001" / "ledger.json"
+    if not ledger_path.is_file():
+        pytest.skip(
+            "SKIPPED LOUDLY: the primary checkout holds no "
+            "runs/night-probe/probe-001/ledger.json, so the corrected premise cannot be "
+            "re-checked against the real artefact"
+        )
+    before = ledger_path.read_bytes()
+    document = json.loads(before.decode("utf-8"))
+
+    assert document["schema"] == run_ledger.LEDGER_SCHEMA_V1
+
+    with pytest.raises(run_ledger.LedgerUnreadable) as refusal:
+        run_ledger.verify_document(ledger_path)
+    assert not isinstance(refusal.value, run_ledger.LedgerUnverified)
+    assert run_ledger.LEDGER_SCHEMA_V1 in str(refusal.value)
+    assert ledger_path.read_bytes() == before, (
+        "WHY THIS IS A FAILURE: a read rewrote the primary checkout's live record. No "
+        "document under runs/ is ever touched"
+    )

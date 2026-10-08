@@ -19,6 +19,7 @@ No model, no `mlx`, no network. The inputs are one run directory and the verdict
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -52,6 +53,7 @@ def _probe_run(
     recorded: tuple[run_ledger.DrawRecord, ...] | None = None,
     journals: bool = True,
     ledger: bool = True,
+    unsealed: bool = False,
 ) -> Path:
     """A probe-shaped run directory: a real written `Ledger` plus one journal per draw.
 
@@ -59,7 +61,10 @@ def _probe_run(
     `replace` and written through `run_ledger.write`, so the check under test reads exactly
     what the night would write — a doctored variant is a mutation of a real document, never
     a hand-rolled payload that could drift from the writer. Journal paths come from
-    `evidence_paths` by identity, never re-typed.
+    `evidence_paths` by identity, never re-typed. With `unsealed`, the written document is
+    re-based on the shipped generation before the seal: `claims` and `digest` dropped and the
+    schema rewritten to `LEDGER_SCHEMA_V2`, the same way `_v2` re-bases the ledger suite's
+    fixture. No real `/2` ledger exists, so this fixture is the tolerance's only carrier.
     """
     run = tmp_path / "runs" / "probe-001"
     run.mkdir(parents=True, exist_ok=True)
@@ -86,6 +91,13 @@ def _probe_run(
         draws_recorded=recorded,
     )
     run_ledger.write(run / run_ledger.LEDGER_FILE, candidate)
+    if unsealed:
+        path = run / run_ledger.LEDGER_FILE
+        document = json.loads(path.read_text(encoding="utf-8"))
+        del document["claims"]
+        del document["digest"]
+        document["schema"] = run_ledger.LEDGER_SCHEMA_V2
+        path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if journals:
         for attempt in range(1, draws + 1):
             journal, _ = run_draws.evidence_paths(run / night.EVIDENCE_DIR, attempt)
@@ -170,6 +182,28 @@ def test_a_valid_probe_proceeds(tmp_path: Path) -> None:
     assert report.sources == 2
     assert report.probe == 1
     assert report.seeds == 1
+
+
+def test_a_v2_probe_ledger_reads_unsealed_and_still_decides(tmp_path: Path) -> None:
+    """Phase 2: no real `/2` ledger exists, so the probe's dual-read tolerance is pinned here.
+
+    `_probe_run` writes through `run_ledger.write`, so its ordinary shape exercises the sealed
+    path; this fixture is the generation before the seal, in the probe's own shape. The
+    decision must be read from it exactly as before — unsealed, byte-unchanged, and deciding.
+    """
+    run = _probe_run(tmp_path, unsealed=True)
+    path = run / run_ledger.LEDGER_FILE
+    before = path.read_bytes()
+
+    verified = run_ledger.verify_document(path)
+
+    assert verified.sealed is False
+    report = check_probe.run_check(run)
+    assert report.proceed is True
+    assert path.read_bytes() == before, (
+        "WHY THIS IS A FAILURE: reading a `/2` probe ledger rewrote it. No existing document "
+        "is upgraded in place"
+    )
 
 
 def test_a_non_pass_harness_is_a_named_violation(tmp_path: Path) -> None:
