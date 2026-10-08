@@ -98,9 +98,14 @@ file-hash seal, so nothing proves the record was not edited after training. The 
 any dataset and was not the adapter examined here.
 
 **A sibling checkpoint was gated earlier, and was not examined here.** The same report records a
-re-sealed checkpoint, digest `aebae11f5c4b`, trained from the same sealed dataset (digest
-`3416702298c3`), and that it was gated (2026-09-26) against the untrained base and reduced to
-`UNVERIFIED`: 0 of 12 solved on both sides, 2 unverified. The label gate-001 for that run comes
+re-sealed checkpoint, digest `aebae11f5c4b`, trained from the same dataset (digest
+`3416702298c3` — night-001's `whetstone-training-set/1` document, recorded, not sealed), and
+that it was gated (2026-09-26) against the untrained base and reduced to
+`UNVERIFIED`: 0 of 12 solved on both sides, 2 unverified. *Corrected 2026-10-08: this said
+"trained from the same sealed dataset". Night-001's dataset is a v1 document, which re-hashes
+nothing on read, so "sealed" was false of it; the run-document-seal unit makes the generation
+explicit on every surface, and this sentence now names it. The quoted block above does not move:
+no-checkpoint output is unchanged.* The label gate-001 for that run comes
 from `docs/STATUS.md`; the report does not use it. That run scored the
 held-out document as it stood **before** `PREREGISTRATION.md` § 10.16, so it is non-comparable
 and not a decision. Its provenance was **not re-read here**; only the report's statement is

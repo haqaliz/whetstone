@@ -571,10 +571,19 @@ def test_the_sheet_says_sealed_is_tamper_evidence_not_authentication() -> None:
     )
 
 
-def test_the_sheet_says_the_runs_dataset_json_is_not_sealed() -> None:
+def test_the_sheet_says_the_runs_dataset_json_is_sealed_when_v2() -> None:
+    """The run's side is conditional: sealed for a v2 dataset, recorded for a v1 one.
+
+    The standing "is not sealed" sentence is false for a v2 dataset, so the sheet states both
+    generations rather than one — and never calls the link verified (`sealed` is tamper-evidence).
+    """
     flat = _flat(_runbook())
-    assert "The run's `dataset.json` is not sealed" in flat, (
-        "WHY THIS IS A FAILURE: the sheet does not say the run's dataset.json is not sealed"
+    assert (
+        "For a v2 dataset (`whetstone-training-set/2`) the run's `dataset.json` is itself "
+        "sealed and the command says so; for a v1 dataset it is recorded, not sealed."
+    ) in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not state the run's dataset.json seal state "
+        "conditionally (sealed when v2, recorded when v1)"
     )
 
 

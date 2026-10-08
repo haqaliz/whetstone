@@ -1,11 +1,12 @@
 """`run_check` can link a checkpoint to the night it claims to have been trained on.
 
 The checkpoint's recorded `dataset_digest` is compared with the digest in the run's
-`dataset.json`. The checkpoint's claim is sealed only when it is a v2 checkpoint; the run's
-document is not sealed at all, so this is tamper-evidence on one side, not authentication.
-The order is the design: the checkpoint is verified and both digests are read before the
-overlap comparison, so a leaked run plus another night's checkpoint is a refusal, never a
-verdict about the wrong night.
+`dataset.json`. Either side is sealed only when it is v2: a v1 checkpoint's claim and a v1 run
+document are recorded, not sealed, and the two link lines say which is which. The link is
+digest equality and is never called "verified" — tamper-evidence, not authentication. The
+order is the design: the checkpoint is verified and both digests are read before the overlap
+comparison, so a leaked run plus another night's checkpoint is a refusal, never a verdict about
+the wrong night.
 """
 
 from __future__ import annotations

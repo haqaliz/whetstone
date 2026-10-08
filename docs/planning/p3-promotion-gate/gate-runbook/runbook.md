@@ -64,7 +64,9 @@ two digests for you; write the night's id into the operator's log. For a **v2** 
 digest, so the command reports the link as sealed. For a **v1** checkpoint it is **recorded, not
 sealed**, and the command says so. Sealed means tamper-evidence against an edit that does not
 also recompute the digest; it is not authentication, and it is not proof that the digest equals
-the dataset the trainer read. The run's `dataset.json` is not sealed. None of this catches a
+the dataset the trainer read. For a v2 dataset (`whetstone-training-set/2`) the run's
+`dataset.json` is itself sealed and the command says so; for a v1 dataset it is recorded, not
+sealed. None of this catches a
 near-duplicate task (see Step 3). Here the candidate is `night-002`, and its night is
 `$REPO/runs/nights/night-002` — the home the night door writes to.
 

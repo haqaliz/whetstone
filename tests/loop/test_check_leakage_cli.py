@@ -561,10 +561,18 @@ def test_the_module_scope_scan_sees_hidden_imports_and_ignores_function_bodies()
 
 
 def test_the_help_names_the_checkpoint_flag(capsys: pytest.CaptureFixture[str]) -> None:
-    """Fails if the flag lacks help or the description omits the new exit 2."""
+    """Fails if the flag lacks help, names a false "not sealed" claim, or omits the tamper exit.
+
+    The standing claim is gone: the run's document is sealed when it is v2 and recorded, not
+    sealed, when it is v1, and the help says so conditionally rather than one way.
+    """
     cli.main(["check-leakage", "--help"])
     text = " ".join(capsys.readouterr().out.split())
 
     assert "--checkpoint" in text, text
     assert "tampered, untrained or trained on another night" in text, text
-    assert "dataset.json is not sealed" in text, text
+    assert (
+        "a v2 dataset's link is reported as sealed, a v1 dataset's as recorded, not sealed" in text
+    ), text
+    assert "a tampered v2 dataset exits 2" in text, text
+    assert "dataset.json is not sealed" not in text, text

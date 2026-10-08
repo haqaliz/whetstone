@@ -33,11 +33,12 @@ records what was *considered*. Only the first can leak into an adapter's weights
 
 **The `--checkpoint` link.** Given a checkpoint, `run_check` verifies it and compares the
 `dataset_digest` it records with the digest in the run's `dataset.json`; a mismatch is a
-refusal, decided before any overlap is compared. The checkpoint's claim is sealed only when it
-is a v2 checkpoint (v1 records it unsealed, and the report says which). The run's
-`dataset.json` is NOT sealed, so this is a sealed (or merely recorded) claim compared against a
-document anyone with write access to the run can edit. It is not authentication, and not proof
-that the recorded digest equals the digest of what was actually trained on.
+refusal, decided before any overlap is compared. Each side's seal state is conditional on its
+generation: the checkpoint's claim is sealed when it is a v2 checkpoint and recorded, not
+sealed, when it is v1; the run's document is read through the verifying reader and is sealed
+when it is a v2 dataset, recorded, not sealed, when it is v1. The two link lines say which is
+which. Neither side's seal authenticates a writer, and neither is proof that the recorded digest
+equals the digest of what was actually trained on.
 
 This module prevents nothing. If it ever exits nonzero, the disclosure names two possible
 causes and asserts neither: the night's partition seam failed to exclude held-out ids, or
