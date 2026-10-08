@@ -331,16 +331,19 @@ def _run(
 ) -> Path:
     """A night-shaped run directory: a ledger to identify it and a dataset to read.
 
-    The ledger is written as the minimum `ledger.read` accepts, deliberately. This check
-    **identifies** a run by its ledger and reads its training set from the dataset document;
-    it never reads the ledger's contents, and a fixture that built a whole `Ledger` would
-    suggest otherwise. The dataset goes through the real `write_document`, because that half
-    *is* read field by field and a hand-written fixture could drift from the writer.
+    The ledger is written as the minimum `ledger.read` accepts, deliberately, pinned to
+    `LEDGER_SCHEMA_V2` — the generation before the seal. This check **identifies** a run by
+    its ledger and reads its training set from the dataset document; it never reads the
+    ledger's contents, and a fixture that built a whole `Ledger` would suggest otherwise.
+    A `/3` minimum document cannot be honest (it needs the complete claims map a sealed
+    document carries), and it would stop every run in this file from being identified.
+    The dataset goes through the real `write_document`, because that half *is* read field
+    by field and a hand-written fixture could drift from the writer.
     """
     root.mkdir(parents=True, exist_ok=True)
     if ledger:
         (root / run_ledger.LEDGER_FILE).write_text(
-            json.dumps({"schema": run_ledger.LEDGER_SCHEMA}), encoding="utf-8"
+            json.dumps({"schema": run_ledger.LEDGER_SCHEMA_V2}), encoding="utf-8"
         )
     if dataset_text is not None:
         (root / night.DATASET_FILE).write_text(dataset_text, encoding="utf-8")

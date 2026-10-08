@@ -30,7 +30,7 @@ import pytest
 
 from whetstone.bakeoff import report as bakeoff_report
 from whetstone.bakeoff.report import build_baseline_report, write_baseline_report
-from whetstone.loop import backend, baseline, gate, heldout, ledger, sft
+from whetstone.loop import backend, baseline, gate, heldout, ledger, seal, sft
 from whetstone.verify.verdict import Status
 
 #: The repository root — the committed funnel ledger and the subprocess half live here.
@@ -224,18 +224,21 @@ def _checkpoint(root: Path, label: str, *, revision: str = _REVISION) -> sft.Che
 
 
 def _ledger(root: Path, *, run_id: str = _RUN_ID) -> Path:
-    """A schema-valid run ledger the door reads for the generation contract.
+    """A run ledger the door reads for the generation contract, pinned to `/2`.
 
-    `ledger.read` validates the schema and nothing else, so the fixture carries the
-    fields the door reads — the generation contract, the task set, the run seed and the
-    applied seeds — in the ledger's own shape.
+    This fixture exists to feed the door's generation-contract read, not to exercise the
+    seal: every door test wants the ledger **accepted**, so it pins the shipped
+    generation before the seal (`LEDGER_SCHEMA_V2`), which `ledger.read` accepts unsealed.
+    A `/3` document here would need a complete claims map this hand-built body cannot
+    carry honestly; the sealed generation's door path is exercised separately, by
+    `test_a_doctored_v3_ledger_is_refused_on_read_end_to_end`.
     """
     path = root / "runs" / run_id / "ledger.json"
     path.parent.mkdir(parents=True)
     path.write_text(
         json.dumps(
             {
-                "schema": ledger.LEDGER_SCHEMA,
+                "schema": ledger.LEDGER_SCHEMA_V2,
                 "run_id": run_id,
                 "recorded_on": _RECORDED_ON,
                 "run_seed": 20260827,
@@ -1102,6 +1105,48 @@ def test_a_doctored_record_is_refused_on_read_end_to_end(
     assert not fixtures["out"].exists(), (
         "WHY THIS IS A FAILURE: a refused render wrote artifacts — a record that "
         "cannot be trusted is not evidence"
+    )
+
+
+def test_a_doctored_v3_ledger_is_refused_on_read_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC 8, the sealed generation: the door's ledger read verifies by identity.
+
+    The fixture's ledger is first raised to a genuine `whetstone-run/3` document — sealed
+    through `seal.sealed_document`, the real writer path — and then one body key is moved.
+    The door reads it through `ledger.read` by identity, so `LedgerUnverified` refuses
+    before any provenance is composed: exit 2, nothing written. A `/2` ledger could not
+    show this, because it is accepted unsealed.
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path / "one")
+    path = fixtures["ledger"]
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    body = {key: value for key, value in raw.items() if key != "schema"}
+    sealed = seal.sealed_document(
+        body,
+        schema=ledger.LEDGER_SCHEMA_V3,
+        subject="ledger",
+        refuse=ledger.LedgerUnverified,
+    )
+    path.write_text(json.dumps(sealed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    assert ledger.verify_document(path).sealed is True, (
+        "the fixture is not a genuine v3 ledger, so the refusal below could be about a "
+        "malformed document rather than one edited after it was sealed"
+    )
+    sealed["run_seed"] = [sealed["run_seed"]]
+    path.write_text(json.dumps(sealed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    code = honest_report.main(_argv(fixtures))
+
+    assert code == 2
+    message = capsys.readouterr().err
+    assert "run_seed" in message, message
+    assert not fixtures["out"].exists(), (
+        "WHY THIS IS A FAILURE: a refused render wrote artifacts — a ledger edited after "
+        "it was sealed is not evidence"
     )
 
 
