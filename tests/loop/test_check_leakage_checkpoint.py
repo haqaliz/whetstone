@@ -28,7 +28,7 @@ from loop.test_check_leakage import (
     _run,
     _run_digest,
 )
-from whetstone.loop import backend, check_leakage, dataset, sft
+from whetstone.loop import backend, check_leakage, dataset, seal, sft
 
 OTHER_DIGEST = "e" * 64
 
@@ -43,6 +43,23 @@ def _tamper(document: dict[str, Any], field: str) -> None:
         document[field] = []
     else:
         document[field] = document[field] + 1
+
+
+def _reseal(path: Path, mutate: Any) -> None:
+    """Recompute a v2 document's claims and digest after `mutate` — a re-sealer, not a bypass.
+
+    The primitives are production code (`seal.claim_hashes`/`seal.claims_digest`), so the edited
+    document verifies: this simulates an author who recomputes the unkeyed seal, which the seal
+    cannot catch. What catches the edit is the checkpoint link, and that is the test.
+    """
+    document = json.loads(path.read_text(encoding="utf-8"))
+    mutate(document)
+    body = {key: value for key, value in document.items() if key not in seal.UNSEALED_KEYS}
+    document["claims"] = seal.claim_hashes(
+        body, subject="training set", refuse=dataset.DatasetUnverified
+    )
+    document["digest"] = seal.claims_digest(document["claims"], schema=dataset.DATASET_SCHEMA_V2)
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _trained(directory: Path, dataset_digest: str = RUN_DIGEST) -> sft.Checkpoint:
@@ -215,6 +232,61 @@ def test_a_non_string_recorded_digest_is_a_mismatch(tmp_path: Path) -> None:
         check_leakage.run_check(run, held, cp.directory)
 
     assert "12345" in str(refusal.value)
+
+
+def test_a_re_sealed_v2_dataset_is_refused_by_the_link(tmp_path: Path) -> None:
+    """A forger who recomputes the seal still breaks the checkpoint link.
+
+    The document is edited and re-sealed with the production primitives, so it verifies — this
+    simulates a re-sealer, not a verification bypass, because the seal is unkeyed. The
+    checkpoint recorded the pre-edit digest, so the refusal is the link's
+    (`CheckpointNotThisRun`), and it names both 12-char prefixes.
+    """
+    run, held = _fixture(tmp_path)
+    original = _run_digest(run)
+    cp = _trained(tmp_path / "cp", original)
+    _reseal(run / "dataset.json", lambda d: d.update(denominator=d["denominator"] + 1))
+    moved = _run_digest(run)
+    assert moved != original
+
+    with pytest.raises(check_leakage.CheckpointNotThisRun) as refusal:
+        check_leakage.run_check(run, held, cp.directory)
+
+    assert original[:12] in str(refusal.value) and moved[:12] in str(refusal.value)
+
+
+def test_a_v1_checkpoint_never_links_a_v2_document(tmp_path: Path) -> None:
+    """A mixed-generation pair is refused, and the two values are asserted apart first.
+
+    A v1 checkpoint's recorded examples digest and a v2 document's seal digest are different
+    values by construction; asserting the difference before the refusal makes the guarantee a
+    tested property rather than an accident of two digest computations differing.
+    """
+    run, held = _fixture(tmp_path)
+    derived = _run_digest(run)
+    cp = _as_v1(_trained(tmp_path / "cp", V1_RUN_DIGEST))
+    assert derived != V1_RUN_DIGEST
+
+    with pytest.raises(check_leakage.CheckpointNotThisRun) as refusal:
+        check_leakage.run_check(run, held, cp.directory)
+
+    assert V1_RUN_DIGEST[:12] in str(refusal.value)
+    assert derived[:12] in str(refusal.value)
+
+
+def test_a_v2_checkpoint_never_links_a_v1_document(tmp_path: Path) -> None:
+    """The reverse mix: a v2 checkpoint against a v1 document, refused by the same comparison."""
+    run, held = _fixture(tmp_path)
+    derived = _run_digest(run)
+    cp = _trained(tmp_path / "cp", derived)
+    _as_v1_run(run)
+    assert _run_digest(run) == V1_RUN_DIGEST != derived
+
+    with pytest.raises(check_leakage.CheckpointNotThisRun) as refusal:
+        check_leakage.run_check(run, held, cp.directory)
+
+    assert derived[:12] in str(refusal.value)
+    assert V1_RUN_DIGEST[:12] in str(refusal.value)
 
 
 def test_a_run_whose_document_carries_no_digest_is_unverified(tmp_path: Path) -> None:

@@ -37,6 +37,7 @@ from loop.test_check_leakage_checkpoint import (
     RUN_DIGEST,
     _as_v1,
     _fixture,
+    _reseal,
     _tamper,
     _trained,
 )
@@ -457,6 +458,56 @@ def test_a_tampered_v2_checkpoint_exits_two(
 
     assert code == 2, captured
     assert captured.out == "" and captured.err.startswith("whetstone check-leakage: ")
+
+
+def test_a_re_sealed_v2_dataset_exits_two_with_nothing_on_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The re-sealer's document verifies; the link refuses at the door: exit 2, stdout empty."""
+    run, held = _fixture(tmp_path)
+    cp = _trained(tmp_path / "cp", _run_digest(run))
+    _reseal(run / "dataset.json", lambda d: d.update(denominator=d["denominator"] + 1))
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == "", captured.out
+    assert captured.err.startswith("whetstone check-leakage: "), captured.err
+    assert "not trained on this run" in captured.err
+
+
+def test_a_v1_checkpoint_against_a_v2_document_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The mixed pair in one direction is a door refusal, never a link and a verdict."""
+    run, held = _fixture(tmp_path)
+    cp = _as_v1(_trained(tmp_path / "cp", V1_RUN_DIGEST))
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == "", captured.out
+    assert captured.err.startswith("whetstone check-leakage: "), captured.err
+    assert "not trained on this run" in captured.err
+
+
+def test_a_v2_checkpoint_against_a_v1_document_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The mixed pair in the other direction is refused by the same comparison at the door."""
+    run, held = _fixture(tmp_path)
+    cp = _trained(tmp_path / "cp", _run_digest(run))
+    _as_v1_run(run)
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == "", captured.out
+    assert captured.err.startswith("whetstone check-leakage: "), captured.err
+    assert "not trained on this run" in captured.err
 
 
 def test_a_v1_checkpoint_with_a_malformed_files_entry_exits_two(
