@@ -37,6 +37,7 @@ from whetstone.bakeoff import report as bakeoff_report
 from whetstone.bakeoff import run as bakeoff_run
 from whetstone.bakeoff.report import GenerationContract
 from whetstone.bakeoff.scoring import Rollout
+from whetstone.loop import seal
 from whetstone.loop.backend import RUNTIME_DISTRIBUTIONS
 from whetstone.loop.backend import Backend as BackendRecord
 from whetstone.loop.dataset import TRAINABLE, Dataset
@@ -46,11 +47,20 @@ from whetstone.verify.verdict import Status
 #: The document's own version, checked on read. A schema string rather than a shape check for the
 #: reason `weights.PROVENANCE_SCHEMA` gives: every field this reader needs is one an optimistic
 #: parse would default, and a defaulted seed map or task set records nothing while succeeding.
-LEDGER_SCHEMA = "whetstone-run/2"
-#: Bumped from `whetstone-run/1` when `backend` was added. A required field under the old
-#: version would have made its presence optional in practice: a reader could not tell a night
-#: that recorded no backend from one written before the field existed, and the whole value of
-#: the field is that its absence is impossible.
+#:
+#: **v3** seals every claim: `claims` maps each of the fifteen body keys to the sha256 of its
+#: canonical JSON, and `digest` reduces from the sorted `key:hash` lines, domain-separated by
+#: the schema tag — the `whetstone-checkpoint/2` pattern through the shared `seal` module.
+#: **v2** is the generation before the seal: it still reads, unsealed and byte-unchanged, and
+#: carries no `claims` or `digest`. **v1** is declared only and still refused: the real probe
+#: ledger is one (`runs/night-probe/probe-001`), and the `backend` field's invariant — its
+#: absence under the declared schema is impossible — is what `whetstone-run/2` exists to carry.
+#: Bumped from `/1` when `backend` was added, and from `/2` when the seal was: a required field
+#: under an old version would have made its presence optional in practice.
+LEDGER_SCHEMA_V1 = "whetstone-run/1"
+LEDGER_SCHEMA_V2 = "whetstone-run/2"
+LEDGER_SCHEMA_V3 = "whetstone-run/3"
+LEDGER_SCHEMA = LEDGER_SCHEMA_V3
 
 #: What the ledger is called inside a run directory.
 LEDGER_FILE = "ledger.json"
@@ -64,6 +74,18 @@ ENVIRONMENT_PINS = bakeoff_run._ENVIRONMENT_PINS
 
 class LedgerUnreadable(ValueError):
     """The ledger is absent, malformed, or written to a schema this cannot read."""
+
+
+class LedgerUnverified(LedgerUnreadable):
+    """A sealed ledger's claims do not re-hash: the document changed after it was written.
+
+    Subclasses `LedgerUnreadable` deliberately: every consumer's refusal tuple already holds
+    that base class (`check_probe.py`, `check_leakage.py`, `morning.py`, `honest_report.py`),
+    so the named tamper refusal maps through the same exit-2 refusals with no per-consumer
+    tuple edit. It is not authentication (PRD § 3): the digest is an unkeyed hash, and a writer
+    who recomputes `claims` and `digest` consistently is not caught — the seal catches the
+    accident-shaped edit and the document that disagrees with a digest cited elsewhere.
+    """
 
 
 @dataclass(frozen=True)
@@ -243,7 +265,10 @@ class Ledger:
 
 def document(ledger: Ledger) -> str:
     """The ledger as the exact bytes that get written. Text, because the artefact is the bytes."""
-    return json.dumps(_payload(ledger), indent=2, sort_keys=True) + "\n"
+    sealed = seal.sealed_document(
+        _body(ledger), schema=LEDGER_SCHEMA_V3, subject="ledger", refuse=LedgerUnverified
+    )
+    return json.dumps(sealed, indent=2, sort_keys=True) + "\n"
 
 
 def write(path: Path, ledger: Ledger) -> Path:
@@ -253,20 +278,79 @@ def write(path: Path, ledger: Ledger) -> Path:
     return path
 
 
-def read(path: Path) -> Mapping[str, Any]:
-    """Read a ledger back, refusing anything not written to the declared schema."""
+@dataclass(frozen=True)
+class VerifiedLedger:
+    """A ledger that has been read: the parse, and whether its claims were checked.
+
+    One object rather than a bare mapping, because the two generations are read under
+    different guarantees and every consumer has to be able to say which one it holds. `sealed`
+    is True only for a v3 document whose every claim re-hashed; a v2 document is never sealed.
+    Sealed means PRD § 3 and no more: the digest is unkeyed, so it catches a document changed
+    after it was written, never a writer who recomputes it.
+    """
+
+    #: The parsed document — the one parse every reader reads, never re-parsed elsewhere.
+    document: Mapping[str, Any]
+
+    #: True only for a v3 document whose claims were verified.
+    sealed: bool
+
+
+def verify_document(path: Path) -> VerifiedLedger:
+    """Read a ledger, verifying a sealed one's claims before any consumer reads its fields.
+
+    Both generations are read. A v3 document's claims are re-hashed first, so a moved claim is
+    refused by name rather than surfacing as whatever the edited body happens to break; a v2
+    document performs none of that and comes back `sealed=False` — after the downgrade guard,
+    because no v2 writer ever emitted `claims` or a top-level `digest` and a v2 ledger has no
+    self-digest to fall back on. Any other schema is refused, naming both accepted ones.
+    """
+    location = Path(path)
     try:
-        raw: Any = json.loads(path.read_text(encoding="utf-8"))
+        raw: Any = json.loads(location.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
-        raise LedgerUnreadable(f"{str(path)!r} could not be read as JSON: {error}") from error
-    if not isinstance(raw, dict) or raw.get("schema") != LEDGER_SCHEMA:
+        raise LedgerUnreadable(f"{str(location)!r} could not be read as JSON: {error}") from error
+    if not isinstance(raw, dict) or raw.get("schema") not in (
+        LEDGER_SCHEMA_V2,
+        LEDGER_SCHEMA_V3,
+    ):
         raise LedgerUnreadable(
-            f"{str(path)!r} does not declare schema {LEDGER_SCHEMA!r}; it declares "
+            f"{str(location)!r} does not declare schema {LEDGER_SCHEMA_V2!r} or "
+            f"{LEDGER_SCHEMA_V3!r}; it declares "
             f"{raw.get('schema') if isinstance(raw, dict) else type(raw).__name__!r}. Refused "
             "rather than parsed optimistically: a defaulted seed map or task set records nothing "
             "and returns successfully"
         )
-    return raw
+    if raw["schema"] == LEDGER_SCHEMA_V3:
+        seal.verify_claims(
+            location,
+            raw,
+            schema=LEDGER_SCHEMA_V3,
+            subject="ledger",
+            refuse=LedgerUnverified,
+        )
+        return VerifiedLedger(document=raw, sealed=True)
+    stray = sorted({"claims", "digest"} & raw.keys())
+    if stray:
+        raise LedgerUnverified(
+            f"{str(location)!r} declares schema {LEDGER_SCHEMA_V2!r} and carries {stray}. No "
+            f"{LEDGER_SCHEMA_V2!r} writer ever emitted claims or a top-level digest, and a "
+            f"{LEDGER_SCHEMA_V2!r} ledger has no self-digest to check, so a document that kept "
+            "its seal keys while relabelling to the old schema is refused rather than read as "
+            "unsealed"
+        )
+    return VerifiedLedger(document=raw, sealed=False)
+
+
+def read(path: Path) -> Mapping[str, Any]:
+    """Read a ledger back through the verifying reader.
+
+    This is `verify_document(path).document` by delegation, so the verifying path is the only
+    path: a second parse here is how one consumer would read a tampered document while another
+    refused it. A v3 document's claims have been re-hashed by the time this returns; a v2
+    document is read exactly as it was before the seal existed.
+    """
+    return verify_document(path).document
 
 
 def tool_versions(*, backend: BackendRecord | None = None) -> dict[str, str]:
@@ -296,14 +380,15 @@ def tool_versions(*, backend: BackendRecord | None = None) -> dict[str, str]:
     return versions
 
 
-def _payload(ledger: Ledger) -> dict[str, Any]:
-    """The document's plain-JSON body, written field by field.
+def _body(ledger: Ledger) -> dict[str, Any]:
+    """The document's plain-JSON body — its claims, written field by field.
 
     `dataclasses.asdict` would carry a field added later into the file with no reader for it, so a
     schema change would round-trip lossily rather than failing — the `journal.py` codec rule.
+    `schema`, `claims` and `digest` are the seal's own and are added by `seal.sealed_document`,
+    never here.
     """
     return {
-        "schema": LEDGER_SCHEMA,
         "run_id": ledger.run_id,
         "recorded_on": ledger.recorded_on,
         "run_seed": ledger.run_seed,
@@ -401,15 +486,21 @@ __all__ = [
     "ENVIRONMENT_PINS",
     "LEDGER_FILE",
     "LEDGER_SCHEMA",
+    "LEDGER_SCHEMA_V1",
+    "LEDGER_SCHEMA_V2",
+    "LEDGER_SCHEMA_V3",
     "DrawRecord",
     "HeldoutRecord",
     "Ledger",
     "LedgerUnreadable",
+    "LedgerUnverified",
     "Model",
     "TaskSet",
+    "VerifiedLedger",
     "counts_of",
     "document",
     "read",
     "tool_versions",
+    "verify_document",
     "write",
 ]

@@ -26,6 +26,7 @@ from typing import Any
 import pytest
 
 from whetstone import cli
+from whetstone.loop import dataset as training
 from whetstone.loop import night as loop_night
 from whetstone.verify.verdict import Status
 
@@ -72,6 +73,7 @@ class _Night:
     status: Status = Status.FAIL
     dataset: Any = None
     heldout: Any = None
+    dataset_schema: str = training.DATASET_SCHEMA
 
 
 @dataclass(frozen=True)

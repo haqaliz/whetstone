@@ -928,6 +928,24 @@ evidence for #60.
 > link is still only recorded, not sealed. No gate was run in this unit, and no gate decision
 > exists.
 
+> **Corrected 2026-10-08, when the run documents were sealed** (`run-document-seal`). M2's exit
+> criterion stands and stays open. The run side of the link is itself sealed now: `dataset.json`
+> (`whetstone-training-set/2`) and `ledger.json` (`whetstone-run/3`) carry the checkpoint's claims
+> discipline behind one shared `loop.seal` module (tamper-evidence, not authentication), and
+> `check-leakage --checkpoint` compares a sealed checkpoint claim to a **verified** run document,
+> printing each side's seal state; a tampered v2 dataset refuses before any comparison. The real
+> artifacts are v1 — night-001's dataset, probe-001's ledger (`whetstone-run/1`, predating the
+> `/2` bump), the v1 portability-arm checkpoint — and none was rewritten. No gate was run in this
+> unit, and no gate decision exists.
+
+> **Corrected 2026-10-08, when the run-document seal unit landed.** M2's exit criterion stands
+> and stays open. A night's ledger is now `whetstone-run/3`, sealing every claim it makes with
+> the same unkeyed, tamper-evident digest the checkpoint carries, and every consumer reads it
+> through the verifying reader by identity — so a ledger edited after the night is a named
+> exit-2 refusal before any decision, count, link or render. The one real ledger
+> (`runs/night-probe/probe-001`) is `whetstone-run/1`, predates the `/2` bump, and remains
+> refused by name; it was never rewritten, and no gate decision exists.
+
 ### M3 — Publish: the artifact and its page
 
 Only reachable with M1 and M2 done, and short once they are.

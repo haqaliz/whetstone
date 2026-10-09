@@ -32,20 +32,21 @@ door on a CUDA host with a larger base is the same call with different arguments
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from whetstone.loop import backend as backend_module
+from whetstone.loop import dataset as training
 from whetstone.loop import ledger as run_ledger
 from whetstone.loop import sft
 from whetstone.loop.backend import Backend as BackendRecord
 
-#: The night run's sealed selection, and the directory of files the trainer reads. Both are
-#: produced by `run_night` and read here rather than rebuilt, so the arm trains on exactly the
-#: examples a night selected — a second selection path would be a second answer to "what did this
-#: train on" with nothing comparing them.
+#: The night run's recorded selection — sealed under `whetstone-training-set/2`, recorded and
+#: unsealed under `/1` — and the directory of files the trainer reads. Both are produced by
+#: `run_night` and read here rather than rebuilt, so the arm trains on exactly the examples a
+#: night selected — a second selection path would be a second answer to "what did this train on"
+#: with nothing comparing them.
 DATASET_FILE = "dataset.json"
 DATA_DIR = "data"
 
@@ -83,28 +84,30 @@ class ArmRun:
 def read_selection(run: Path) -> tuple[str, int]:
     """The night's dataset digest and how many examples it selected.
 
-    Read from the sealed document rather than by counting the files the trainer will read: the
-    digest is what the checkpoint's provenance publishes, and deriving the count from a different
-    source than the digest is how the two come to describe different sets.
+    Read through `dataset.verify_document`, so a sealed v2 document has its claims re-hashed
+    before the digest or the count is taken from it, and a tampered one is refused by name
+    rather than reaching a training run. A v1 document (night-001's shape) is accepted exactly
+    as it always was, unsealed: this returns what it records and claims no more. The count and
+    the digest come from the one parse, so they cannot describe different sets.
     """
     document = run / DATASET_FILE
     data = run / DATA_DIR
     missing = [str(one) for one in (document, data) if not one.exists()]
     if missing:
         raise RunIncomplete(
-            f"{str(run)!r} is missing {missing}, so there is no sealed selection to train on. A "
-            "night writes both; pointing this door at a directory holding neither would train on "
-            "whatever happened to be there and seal it as though a night had chosen it"
+            f"{str(run)!r} is missing {missing}, so there is no recorded selection to train on. "
+            "A night writes both; pointing this door at a directory holding neither would train "
+            "on whatever happened to be there and seal it as though a night had chosen it"
         )
-    sealed = json.loads(document.read_text(encoding="utf-8"))
-    examples = sealed.get("examples") or []
+    verified = training.verify_document(document).document
+    examples = verified.get("examples") or []
     if not examples:
         raise NothingSelected(
             f"the night at {str(run)!r} selected no strict-PASS rollout, so this arm has nothing "
             "to train on and no candidate to emit. The response is to raise the number of draws, "
             "never to loosen what counts as a win"
         )
-    return str(sealed["digest"]), len(examples)
+    return str(verified["digest"]), len(examples)
 
 
 def run_arm(

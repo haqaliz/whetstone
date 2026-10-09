@@ -21,12 +21,24 @@ from pathlib import Path
 
 import pytest
 
-from loop.test_check_leakage import _MEMBERS, _SURVIVOR, _heldout_document, _id, _run
+from loop.test_check_leakage import (
+    _MEMBERS,
+    _SURVIVOR,
+    V1_RUN_DIGEST,
+    _as_v1_run,
+    _heldout_document,
+    _id,
+    _run,
+    _run_digest,
+)
 from loop.test_check_leakage_checkpoint import (
+    _TAMPERED_FIELDS,
     OTHER_DIGEST,
     RUN_DIGEST,
     _as_v1,
     _fixture,
+    _reseal,
+    _tamper,
     _trained,
 )
 from loop.test_gate import _heldout_document as _gate_heldout_document
@@ -188,6 +200,38 @@ def test_an_unreadable_dataset_is_a_usage_error(
     assert dataset.DATASET_SCHEMA in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("field", _TAMPERED_FIELDS)
+@pytest.mark.parametrize("with_checkpoint", [False, True], ids=["plain", "with-checkpoint"])
+def test_a_tampered_v2_dataset_is_a_usage_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    with_checkpoint: bool,
+) -> None:
+    """AC1/AC4 at the door: exit 2, nothing on stdout, the moved field named on stderr.
+
+    The checkpoint arm proves the refusal precedes the link at the process boundary too: the
+    command is handed a matching checkpoint and still refuses instead of printing a link.
+    """
+    run, held = _fixture(tmp_path)
+    argv = _argv(run, held)
+    if with_checkpoint:
+        cp = _trained(tmp_path / "cp", _run_digest(run))
+        argv = _with_checkpoint(run, held, cp.directory)
+    path = run / "dataset.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    _tamper(document, field)
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    code = cli.main(argv)
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == "", captured.out
+    assert captured.err.startswith("whetstone check-leakage: "), captured.err
+    assert field in captured.err, captured.err
+
+
 def test_a_night_that_trained_on_nothing_exits_zero_and_says_why(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -315,10 +359,35 @@ def test_a_matching_v2_checkpoint_on_a_clean_run_exits_zero_with_the_sealed_link
 
     assert code == 0, out
     assert "dataset link:" in out and "sealed (whetstone-checkpoint/2)" in out, out
+    assert "sealed (whetstone-training-set/2)" in out, (
+        f"the run's side of the link does not say its v2 document is sealed: {out!r}"
+    )
     assert RUN_DIGEST[:12] in out
     assert out.index(check_leakage._RESIDUAL) < out.index("dataset link:"), (
         "the link lines must follow the verdict and its residual, never precede them"
     )
+
+
+def test_a_matching_v1_run_and_v1_checkpoint_report_recorded_on_both_sides(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fails if the run side ignores its document's generation, or either side says verified."""
+    run, held = _fixture(tmp_path)
+    _as_v1_run(run)
+    cp = _as_v1(_trained(tmp_path / "cp", _run_digest(run)))
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    out = capsys.readouterr().out
+
+    assert code == 0, out
+    assert V1_RUN_DIGEST[:12] in out, out
+    assert "recorded, not sealed (whetstone-checkpoint/1)" in out, out
+    assert "recorded, not sealed (whetstone-training-set/1)" in out, (
+        f"the run's side of the link does not say its v1 document is recorded: {out!r}"
+    )
+    link_lines = [line for line in out.splitlines() if "link" in line.lower()]
+    assert link_lines
+    assert not any("verified" in line.lower() for line in link_lines), link_lines
 
 
 def test_a_matching_checkpoint_cannot_make_a_leaked_run_pass(
@@ -326,7 +395,7 @@ def test_a_matching_checkpoint_cannot_make_a_leaked_run_pass(
 ) -> None:
     """Fails if a matching link short-circuits the verdict (exit 0) or drops the leak lines."""
     run, held = _fixture(tmp_path, leaked=True)
-    cp = _trained(tmp_path / "cp")
+    cp = _trained(tmp_path / "cp", _run_digest(run))
 
     code = cli.main(_with_checkpoint(run, held, cp.directory))
     out = capsys.readouterr().out
@@ -344,7 +413,7 @@ def test_a_matching_v1_checkpoint_is_recorded_not_sealed(
         base = tmp_path / str(leaked)
         base.mkdir()
         run, held = _fixture(base, leaked=leaked)
-        cp = _as_v1(_trained(base / "cp"))
+        cp = _as_v1(_trained(base / "cp", _run_digest(run)))
 
         code = cli.main(_with_checkpoint(run, held, cp.directory))
         out = capsys.readouterr().out
@@ -389,6 +458,56 @@ def test_a_tampered_v2_checkpoint_exits_two(
 
     assert code == 2, captured
     assert captured.out == "" and captured.err.startswith("whetstone check-leakage: ")
+
+
+def test_a_re_sealed_v2_dataset_exits_two_with_nothing_on_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The re-sealer's document verifies; the link refuses at the door: exit 2, stdout empty."""
+    run, held = _fixture(tmp_path)
+    cp = _trained(tmp_path / "cp", _run_digest(run))
+    _reseal(run / "dataset.json", lambda d: d.update(denominator=d["denominator"] + 1))
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == "", captured.out
+    assert captured.err.startswith("whetstone check-leakage: "), captured.err
+    assert "not trained on this run" in captured.err
+
+
+def test_a_v1_checkpoint_against_a_v2_document_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The mixed pair in one direction is a door refusal, never a link and a verdict."""
+    run, held = _fixture(tmp_path)
+    cp = _as_v1(_trained(tmp_path / "cp", V1_RUN_DIGEST))
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == "", captured.out
+    assert captured.err.startswith("whetstone check-leakage: "), captured.err
+    assert "not trained on this run" in captured.err
+
+
+def test_a_v2_checkpoint_against_a_v1_document_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The mixed pair in the other direction is refused by the same comparison at the door."""
+    run, held = _fixture(tmp_path)
+    cp = _trained(tmp_path / "cp", _run_digest(run))
+    _as_v1_run(run)
+
+    code = cli.main(_with_checkpoint(run, held, cp.directory))
+    captured = capsys.readouterr()
+
+    assert code == 2, captured
+    assert captured.out == "", captured.out
+    assert captured.err.startswith("whetstone check-leakage: "), captured.err
+    assert "not trained on this run" in captured.err
 
 
 def test_a_v1_checkpoint_with_a_malformed_files_entry_exits_two(
@@ -493,10 +612,18 @@ def test_the_module_scope_scan_sees_hidden_imports_and_ignores_function_bodies()
 
 
 def test_the_help_names_the_checkpoint_flag(capsys: pytest.CaptureFixture[str]) -> None:
-    """Fails if the flag lacks help or the description omits the new exit 2."""
+    """Fails if the flag lacks help, names a false "not sealed" claim, or omits the tamper exit.
+
+    The standing claim is gone: the run's document is sealed when it is v2 and recorded, not
+    sealed, when it is v1, and the help says so conditionally rather than one way.
+    """
     cli.main(["check-leakage", "--help"])
     text = " ".join(capsys.readouterr().out.split())
 
     assert "--checkpoint" in text, text
     assert "tampered, untrained or trained on another night" in text, text
-    assert "dataset.json is not sealed" in text, text
+    assert (
+        "a v2 dataset's link is reported as sealed, a v1 dataset's as recorded, not sealed" in text
+    ), text
+    assert "a tampered v2 dataset exits 2" in text, text
+    assert "dataset.json is not sealed" not in text, text

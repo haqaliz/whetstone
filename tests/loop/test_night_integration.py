@@ -274,9 +274,12 @@ def test_the_disclosure_names_the_document_and_its_membership_count(
 def test_an_older_ledger_without_the_heldout_record_still_reads(tmp_path: Path) -> None:
     """The record's absence from older ledgers is tolerated, never assumed.
 
-    No real night has run, so every ledger in existence was written by the current code —
-    but a ledger written before this aspect landed, or by a tool that omits the record,
-    must still read: `read` answers the schema question and nothing else.
+    The fixture is the generation before the seal (`whetstone-run/2`, the one read path
+    that tolerates a field's absence): build the document from a genuine writer, drop
+    `claims`/`digest`, rewrite the schema, and then delete the held-out record. A `/2`
+    ledger reads unsealed and the omission is carried, not defaulted; on a genuine v3
+    document the same deletion is a claim change and is refused — the companion test below
+    pins that ordering.
     """
     from loop.test_run_ledger import _ledger
 
@@ -286,12 +289,37 @@ def test_an_older_ledger_without_the_heldout_record_still_reads(tmp_path: Path) 
         "no-op and this test would prove nothing"
     )
     del document["task_set"]["heldout"]
+    assert "claims" in document and "digest" in document, (
+        "the fixture is not a sealed v3 document, so relabelling it to `/2` would not "
+        "exercise the downgrade it is supposed to be the tolerance of"
+    )
+    del document["claims"]
+    del document["digest"]
+    document["schema"] = run_ledger.LEDGER_SCHEMA_V2
     path = tmp_path / "old-ledger.json"
     path.write_text(json.dumps(document))
 
     recorded = run_ledger.read(path)
-    assert recorded["schema"] == run_ledger.LEDGER_SCHEMA
+    assert recorded["schema"] == run_ledger.LEDGER_SCHEMA_V2
     assert "heldout" not in recorded["task_set"]
+
+
+def test_the_same_deletion_on_a_sealed_ledger_is_a_refusal(tmp_path: Path) -> None:
+    """The tolerance above is a property of the `/2` generation, never of any ledger.
+
+    On a genuine `whetstone-run/3` document the held-out record is a claim like any
+    other: deleting it while its claim remains is a tampered document, refused by name —
+    never read as an older ledger that merely lacked the record.
+    """
+    from loop.test_run_ledger import _ledger
+
+    document = json.loads(run_ledger.document(_ledger()))
+    del document["task_set"]["heldout"]
+    path = tmp_path / "doctored-ledger.json"
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    with pytest.raises(run_ledger.LedgerUnverified, match="task_set"):
+        run_ledger.read(path)
 
 
 def test_an_empty_scored_private_set_after_the_overlays_is_refused_before_freeze(

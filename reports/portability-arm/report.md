@@ -24,7 +24,7 @@ machine that produced it.
 | Base license | Apache-2.0 |
 | Runtime | Torch / PEFT (`whetstone.loop.torch_runtime`) |
 | Device | CPU — a Linux host with 16 GB of RAM and no accelerator |
-| Training data | night #1's sealed training set, digest `3416702298c36a9a2ce8bada26295e54ddbd94f9666bff7b8088954ab6e4873b` |
+| Training data | night #1's training set (a `whetstone-training-set/1` document — recorded, not sealed), digest `3416702298c36a9a2ce8bada26295e54ddbd94f9666bff7b8088954ab6e4873b` |
 
 The revision is the immutable commit sha, never a tag: two people resolving the same tag at
 different times do not load the same weights.

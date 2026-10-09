@@ -170,6 +170,11 @@ class Night:
     #: so the disclosure can name the document without reopening the file that is its home.
     heldout: run_ledger.HeldoutRecord | None = None
 
+    #: The schema tag the night's writer emitted. The disclosure names the generation so the
+    #: dataset's seal state does not live only in the tag: v2 is sealed (its claims re-hash on
+    #: read), v1 is recorded, not sealed. Defaulted like the tag the shipped writer emits.
+    dataset_schema: str = training.DATASET_SCHEMA
+
 
 def run_night(
     *,
@@ -403,7 +408,23 @@ def run_night(
         checkpoint_absent=absent,
         status=_status(drawn),
         heldout=heldout_record,
+        # The writer's own constant, so a writer bump moves the disclosure with the writer
+        # rather than leaving a sentence about a generation the run did not emit.
+        dataset_schema=training.DATASET_SCHEMA,
     )
+
+
+def _dataset_seal_state(night: Night) -> str:
+    """How the disclosure names the dataset's generation and what its read guaranteed.
+
+    v2 (`whetstone-training-set/2`) is sealed: its claims were re-hashed when the document was
+    read back. v1 is recorded, not sealed: it re-hashes nothing, and anyone with write access can
+    edit it. Any tag that is not v2 renders recorded-not-sealed, the fail-safe direction — a new
+    generation is never claimed sealed until a reader verifies its claims.
+    """
+    if night.dataset_schema == training.DATASET_SCHEMA_V2:
+        return f"sealed, {night.dataset_schema}"
+    return f"recorded, not sealed: {night.dataset_schema}"
 
 
 def disclosure(night: Night) -> tuple[str, ...]:
@@ -424,7 +445,7 @@ def disclosure(night: Night) -> tuple[str, ...]:
         f"run {night.run_id}: {len(night.dataset.examples)} strict-PASS training examples "
         f"from {night.dataset.denominator} rollout records "
         f"(coverage {night.dataset.coverage}, unverified {night.dataset.unverified})",
-        f"dataset digest {night.dataset.digest}",
+        f"dataset digest {night.dataset.digest} ({_dataset_seal_state(night)})",
     ]
     if night.heldout is not None:
         lines.append(

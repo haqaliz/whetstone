@@ -331,16 +331,19 @@ def _run(
 ) -> Path:
     """A night-shaped run directory: a ledger to identify it and a dataset to read.
 
-    The ledger is written as the minimum `ledger.read` accepts, deliberately. This check
-    **identifies** a run by its ledger and reads its training set from the dataset document;
-    it never reads the ledger's contents, and a fixture that built a whole `Ledger` would
-    suggest otherwise. The dataset goes through the real `write_document`, because that half
-    *is* read field by field and a hand-written fixture could drift from the writer.
+    The ledger is written as the minimum `ledger.read` accepts, deliberately, pinned to
+    `LEDGER_SCHEMA_V2` — the generation before the seal. This check **identifies** a run by
+    its ledger and reads its training set from the dataset document; it never reads the
+    ledger's contents, and a fixture that built a whole `Ledger` would suggest otherwise.
+    A `/3` minimum document cannot be honest (it needs the complete claims map a sealed
+    document carries), and it would stop every run in this file from being identified.
+    The dataset goes through the real `write_document`, because that half *is* read field
+    by field and a hand-written fixture could drift from the writer.
     """
     root.mkdir(parents=True, exist_ok=True)
     if ledger:
         (root / run_ledger.LEDGER_FILE).write_text(
-            json.dumps({"schema": run_ledger.LEDGER_SCHEMA}), encoding="utf-8"
+            json.dumps({"schema": run_ledger.LEDGER_SCHEMA_V2}), encoding="utf-8"
         )
     if dataset_text is not None:
         (root / night.DATASET_FILE).write_text(dataset_text, encoding="utf-8")
@@ -350,10 +353,9 @@ def _run(
         for source, ids in ((night.PRIVATE, private), (night.PUBLIC, public))
         for task_id in ids
     )
-    document = dataset.Dataset(
-        examples=examples, digest="d" * 64, denominator=len(examples), unverified=0
-    )
-    dataset.write_document(root / night.DATASET_FILE, document)
+    texts = tuple(dataset.TrainingText(example=one, prompt="", completion="") for one in examples)
+    built = dataset.build(texts, denominator=len(examples), unverified=0)
+    dataset.write_document(root / night.DATASET_FILE, built)
     return root
 
 
@@ -370,6 +372,62 @@ def _example(task_id: str, source: str) -> dataset.Example:
         outcome=Outcome.SOLVED,
         control=Status.PASS,
     )
+
+
+def _sealed_digest(*, private: tuple[str, ...] = (), public: tuple[str, ...] = ()) -> str:
+    """The seal digest a `_run` document with these examples carries — derived, never pasted.
+
+    Through the real `dataset.build`, the same path `_run` writes with. The dataset's digest is
+    over the whole document now, so a literal would silently stop describing the fixture the
+    link assertions are about, and the clean and leaked fixtures have different digests.
+    """
+    examples = tuple(
+        _example(task_id, source)
+        for source, ids in ((night.PRIVATE, private), (night.PUBLIC, public))
+        for task_id in ids
+    )
+    texts = tuple(dataset.TrainingText(example=one, prompt="", completion="") for one in examples)
+    return dataset.build(texts, denominator=len(examples), unverified=0).digest
+
+
+def _run_digest(run: Path) -> str:
+    """The seal digest the run's **written** document carries, read back from the file.
+
+    Per run rather than per fixture: the clean run and the leaked run hold different examples,
+    so they have different digests, and a checkpoint must record the digest of the run it is
+    being linked to.
+    """
+    document = json.loads((run / night.DATASET_FILE).read_text(encoding="utf-8"))
+    return str(document["digest"])
+
+
+#: What `_run` writes for its one clean private example (`_SURVIVOR`). The checkpoint and CLI
+#: files import this for their clean-fixture link assertions; a leaked run's digest comes from
+#: `_run_digest(run)` at the call site.
+RUN_DIGEST = _sealed_digest(private=(_SURVIVOR,))
+
+#: The recorded (unsealed) digest a hand-made v1 run document carries. A chosen constant rather
+#: than a derived value: v1 verifies nothing, so the document holds whatever its writer wrote,
+#: and a checkpoint links to it only by recording exactly this value.
+V1_RUN_DIGEST = "d" * 64
+
+
+def _as_v1_run(run: Path, *, digest: str = V1_RUN_DIGEST) -> Path:
+    """Rewrite a `_run` document to the genuine v1 shape, deliberately dropping `claims`.
+
+    v1 is the generation seal-core's dual-read accepts unsealed, exactly as before it: no claims
+    check, no digest recomputation. Dropping `claims` (rather than leaving them) proves a real
+    v1 document, not the v1-ignores-claims tolerance. The digest is whatever the writer wrote —
+    v1 recomputes nothing — so the caller chooses it and a checkpoint links only by recording
+    the same value.
+    """
+    path = run / night.DATASET_FILE
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["schema"] = dataset.DATASET_SCHEMA_V1
+    document.pop("claims", None)
+    document["digest"] = digest
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return run
 
 
 def test_a_disjoint_run_reads_clean_end_to_end(tmp_path: Path) -> None:
@@ -530,6 +588,41 @@ def test_a_night_001_shaped_run_is_leaked_by_identity(tmp_path: Path) -> None:
     assert "donor-a-34daf85182d5" not in text and "donor-b-c3e132b7469b" not in text
 
 
+def test_the_no_checkpoint_v1_disclosure_is_byte_identical(tmp_path: Path) -> None:
+    """The finding's block cannot drift: the no-checkpoint v1 lines are pinned here.
+
+    `docs/planning/gate-leakage-guard/finding.md` quotes what `check-leakage` printed over
+    night-001's v1 dataset, and `tests/test_gate_leakage_finding.py` re-checks that quote against
+    the primary checkout's gitignored artefacts, unedited. This tuple is pasted once from a single
+    run over the night-001-shaped fixture below — the same eight lines, in the same order, that
+    the finding quotes (redaction apart, over the fixture's own membership) — and is never
+    recomputed here, so a drift in the no-checkpoint v1 path fails in-unit before it can reach a
+    finding that must not move.
+    """
+    run, document = _night_001(tmp_path)
+    _as_v1_run(run)
+
+    lines = check_leakage.disclosure(check_leakage.run_check(run, document))
+
+    assert lines == (
+        "leakage: LEAKED — 4 of 6 training examples touch a held-out task",
+        "held-out membership: 10 task(s)",
+        "source B (private): 4 of 6 training examples touch a held-out task; leaked task(s): "
+        "donor-a-c6e4d4c4de87",
+        "source A (public): 0 training examples, not compared — the held-out membership is "
+        "source B's",
+        "leaked task(s): donor-a-c6e4d4c4de87",
+        "matched by identity: trained on legacy-a-c6e4d4c4de87, held out as donor-a-c6e4d4c4de87",
+        "A leak means one of two things, and the operator must find out which: (a) the night's "
+        "partition seam failed to exclude held-out ids, or (b) the held-out document was derived "
+        "or re-derived after the night ran (e.g. a corpus re-mint), so the night could not have "
+        "excluded these ids. Either way the candidate trained on these tasks is not gated; do "
+        "not exclude these examples after the fact",
+        "notice: ledger.json was absent from the run; the training set was read from dataset.json "
+        "alone, and the run was not identified as complete by its ledger",
+    )
+
+
 def test_a_dataset_that_does_not_declare_the_schema_is_refused(tmp_path: Path) -> None:
     """AC3: an unreadable training set is refused, never treated as empty.
 
@@ -545,10 +638,16 @@ def test_a_dataset_that_does_not_declare_the_schema_is_refused(tmp_path: Path) -
 
 
 def test_a_dataset_missing_its_examples_list_is_refused(tmp_path: Path) -> None:
-    """A document declaring the schema and carrying no examples list is refused, not defaulted."""
+    """A document declaring the schema and carrying no examples list is refused, not defaulted.
+
+    v1 on purpose: the missing-examples refusal lives in `_training_of`, and a v2 document with
+    no claims is refused by the seal before that reader runs (the same reason the third-source
+    fixture below declares v1). A v1 document performs no claims check, so this reaches the
+    shape under test.
+    """
     run = _run(
         tmp_path / "runs" / "night-1",
-        dataset_text=json.dumps({"schema": dataset.DATASET_SCHEMA}),
+        dataset_text=json.dumps({"schema": dataset.DATASET_SCHEMA_V1}),
     )
     document = _heldout_document(tmp_path / "doc", _MEMBERS)
 
@@ -589,7 +688,10 @@ def test_a_night_that_trained_on_nothing_is_clean_and_says_so(tmp_path: Path) ->
 def test_a_dataset_naming_a_third_source_is_refused(tmp_path: Path) -> None:
     """A source this check cannot report over is refused, never filed under one of the two."""
     payload = {
-        "schema": dataset.DATASET_SCHEMA,
+        # v1 on purpose: this fixture exercises the source check, and a v1 document performs no
+        # claims check — exactly the old read — so `UnknownSource` is reached unchanged. A v2
+        # document without claims would be refused by the seal first, testing nothing here.
+        "schema": dataset.DATASET_SCHEMA_V1,
         "digest": "d" * 64,
         "denominator": 1,
         "unverified": 0,

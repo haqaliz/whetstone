@@ -38,10 +38,12 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 from whetstone.bakeoff.scoring import Outcome, Rollout
+from whetstone.loop import seal
 from whetstone.verify.verdict import Status
 
 #: The one outcome a rollout may be trained on. The member itself, taken from the module that
@@ -57,7 +59,19 @@ NOT_TRAINABLE = frozenset(member for member in Outcome if member is not TRAINABL
 #: The document this module writes, as the schema string a reader checks before parsing. A schema
 #: rather than a shape check because every field a partial read would default is a field that
 #: makes the document verify nothing while returning successfully.
-DATASET_SCHEMA = "whetstone-training-set/1"
+#:
+#: **v1** is the original: `digest` reduced from the ordered `examples` list alone, so `schema`,
+#: `denominator`, `unverified` and `coverage` rode outside it and no reader recomputed it. It is
+#: still read exactly as it always was, is never sealed, and is never rewritten.
+DATASET_SCHEMA_V1 = "whetstone-training-set/1"
+
+#: **v2** seals every payload key: `claims` maps each of `denominator`, `unverified`, `coverage`
+#: and `examples` to its canonical sha256, and `digest` reduces from those claim hashes,
+#: domain-separated by this tag exactly as the checkpoint's is.
+DATASET_SCHEMA_V2 = "whetstone-training-set/2"
+
+#: The schema written.
+DATASET_SCHEMA = DATASET_SCHEMA_V2
 
 #: What fraction of the strict-PASS examples are held back for the trainer's validation split.
 #: Declared here, before any night, for the reason `sampling.K` is: a per-run split fraction is a
@@ -89,6 +103,17 @@ class NotTrainable(ValueError):
     holds only wins"; raising says "nothing that was not a win was ever offered", and only the
     second survives a caller that assembles its own record list. The exit criterion
     (`docs/ROADMAP.md:401-402`) is the second.
+    """
+
+
+class DatasetUnverified(ValueError):
+    """The dataset document does not hold what its own claims say it holds.
+
+    Raised for a missing or malformed claims mapping, a claim hash that is not 64 lowercase hex,
+    a newline in a claim key, a body key with no claim, a claim with no body key, a moved claim
+    (naming the key), and a digest that does not reduce from the claims. A `ValueError` so the
+    existing `(OSError, ValueError)` wrapping sites can be audited deliberately rather than
+    swallowing it, and so a door can map it to a usage error rather than a traceback.
     """
 
 
@@ -177,8 +202,11 @@ class Dataset:
     #: Every selected example, in a fixed order (task id, then draw index).
     examples: tuple[Example, ...]
 
-    #: sha256 over the canonical document. The pinned input a checkpoint's provenance names, so
-    #: "which data was this adapter trained on" has an answer that is one value long.
+    #: The document's seal: sha256 over the claims of its body (`denominator`, `unverified`,
+    #: `coverage`, `examples`), domain-separated by the schema tag. The pinned input a
+    #: checkpoint's provenance names, so "which data was this adapter trained on" has an answer
+    #: that is one value long — and under v2 that value names the whole document, not just the
+    #: examples. Computed once in `build`; `document` writes it verbatim.
     digest: str
 
     #: How many rollout records were considered. Every draw of every task, including the ones that
@@ -281,22 +309,20 @@ def example_of(
 
 
 def build(texts: Sequence[TrainingText], *, denominator: int, unverified: int) -> Dataset:
-    """Order the examples, digest them, and record what they were selected out of.
+    """Order the examples, seal the document they make up, and record what they came out of.
 
     The order is `(task_id, attempt)` and nothing else — never insertion order, which depends on
     the order tasks happened to be loaded in, and never a score, which there is none of. The
-    determinism criterion is a statement about these bytes.
+    determinism criterion is a statement about these bytes. The digest is the seal over the same
+    body `document` writes, computed once here and stored; `document` writes the stored value
+    rather than recomputing it a second way.
     """
     ordered = tuple(
         text.example
         for text in sorted(texts, key=lambda one: (one.example.task_id, one.example.attempt))
     )
-    return Dataset(
-        examples=ordered,
-        digest=_digest(ordered),
-        denominator=denominator,
-        unverified=unverified,
-    )
+    unsealed = Dataset(examples=ordered, digest="", denominator=denominator, unverified=unverified)
+    return replace(unsealed, digest=_seal_digest(unsealed))
 
 
 def split(texts: Sequence[TrainingText], *, run_seed: int) -> Split:
@@ -338,9 +364,15 @@ def document(dataset: Dataset) -> str:
 
     Text rather than an object, for the reason `report.Report.payload` is text: the artefact is
     the bytes, and a caller that re-serialised an object could write something that differed from
-    what was digested while both looked right.
+    what was digested while both looked right. The digest written is the one `build` stored,
+    never recomputed a different way here: a document built around a body that does not reduce
+    to that digest fails verification on read rather than being silently repaired.
     """
-    return json.dumps(_payload(dataset), indent=2, sort_keys=True) + "\n"
+    sealed = seal.sealed_document(
+        _body(dataset), schema=DATASET_SCHEMA_V2, subject="training set", refuse=DatasetUnverified
+    )
+    sealed["digest"] = dataset.digest
+    return json.dumps(sealed, indent=2, sort_keys=True) + "\n"
 
 
 def write_document(path: Path, dataset: Dataset) -> Path:
@@ -350,33 +382,87 @@ def write_document(path: Path, dataset: Dataset) -> Path:
     return path
 
 
-def read_document(path: Path) -> Mapping[str, object]:
-    """Read a dataset document back, refusing anything not written to the declared schema."""
+@dataclass(frozen=True)
+class VerifiedDataset:
+    """A dataset document that has been read: the parse, and whether its claims were checked.
+
+    One object rather than a bare mapping, because the two generations of document are read under
+    different guarantees and every consumer has to be able to say which one it holds. `sealed` is
+    True only for a v2 document whose every claim re-hashed; a v1 document is never sealed.
+    """
+
+    #: The parsed document — the one parse every reader reads, never re-parsed elsewhere.
+    document: Mapping[str, Any]
+
+    #: True only for a v2 document whose claims were verified. Sealed means PRD § 3 and no more:
+    #: the digest is unkeyed, so it catches a document changed after it was written, never a
+    #: writer who recomputes it, and it does not prove what a trainer actually read.
+    sealed: bool
+
+
+def verify_document(path: Path) -> VerifiedDataset:
+    """Read a dataset document, verifying a sealed one's claims before anyone reads its fields.
+
+    Both schemas are read. A v2 document's claims are re-hashed first, so a moved claim is
+    refused by name rather than surfacing as whatever the edited body happens to break; a v1
+    document (night-001's shape) performs none of that — it is exactly today's parse — and comes
+    back `sealed=False`. Any other schema is refused, naming both.
+    """
     raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict) or raw.get("schema") != DATASET_SCHEMA:
+    if not isinstance(raw, dict) or raw.get("schema") not in (
+        DATASET_SCHEMA_V1,
+        DATASET_SCHEMA_V2,
+    ):
         raise ValueError(
-            f"{str(path)!r} does not declare schema {DATASET_SCHEMA!r}. Refused rather than "
-            "parsed optimistically: every field a partial read would default is one that makes "
-            "this document verify nothing and return successfully"
+            f"{str(path)!r} does not declare schema {DATASET_SCHEMA_V1!r} or "
+            f"{DATASET_SCHEMA_V2!r}. Refused rather than parsed optimistically: every field a "
+            "partial read would default is one that makes this document verify nothing and "
+            "return successfully"
         )
-    return raw
+    sealed = raw["schema"] == DATASET_SCHEMA_V2
+    if sealed:
+        seal.verify_claims(
+            path,
+            raw,
+            schema=DATASET_SCHEMA_V2,
+            subject="training set",
+            refuse=DatasetUnverified,
+        )
+    return VerifiedDataset(document=raw, sealed=sealed)
 
 
-def _payload(dataset: Dataset) -> dict[str, object]:
-    """The document's plain-JSON body. Written field by field, deliberately.
+def read_document(path: Path) -> Mapping[str, object]:
+    """The run's dataset document, through the verifying reader by identity.
+
+    Delegates to `verify_document(path).document`, so this public reader and the verifying one
+    cannot disagree about what a document says — a second parse path is how a tampered document
+    gets read by one caller and refused by another.
+    """
+    return verify_document(path).document
+
+
+def _body(dataset: Dataset) -> dict[str, Any]:
+    """The document's payload, as plain-JSON claims. Written field by field, deliberately.
 
     `dataclasses.asdict` would carry a field added later into the file with no reader for it, so a
     schema change would round-trip lossily rather than failing. Naming every field means a new one
-    breaks this function first — the `journal.py` codec rule.
+    breaks this function first — the `journal.py` codec rule. `coverage` is the derived property,
+    claimed like every other payload key: it is in the document, so it is sealed.
     """
     return {
-        "schema": DATASET_SCHEMA,
-        "digest": dataset.digest,
         "denominator": dataset.denominator,
         "unverified": dataset.unverified,
         "coverage": dataset.coverage,
         "examples": [_example(one) for one in dataset.examples],
     }
+
+
+def _seal_digest(dataset: Dataset) -> str:
+    """The seal digest over `_body(dataset)`: the value `document` writes as `digest`."""
+    return seal.claims_digest(
+        seal.claim_hashes(_body(dataset), subject="training set", refuse=DatasetUnverified),
+        schema=DATASET_SCHEMA_V2,
+    )
 
 
 def _example(one: Example) -> dict[str, object]:
@@ -392,18 +478,6 @@ def _example(one: Example) -> dict[str, object]:
         "outcome": one.outcome.value,
         "control": one.control.value,
     }
-
-
-def _digest(examples: Sequence[Example]) -> str:
-    """sha256 over the ordered records, excluding the digest field itself.
-
-    Over the records rather than over the training text, and that is the load-bearing choice: the
-    text lives only under a gitignored root, and a digest an outside reader cannot recompute
-    without it would be a provenance field nobody can check. These records are the committed-shaped
-    half, so the value is checkable from the run's own document alone.
-    """
-    material = json.dumps([_example(one) for one in examples], indent=2, sort_keys=True)
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 def _shuffle_key(run_seed: int, example: Example) -> str:
@@ -423,6 +497,8 @@ def _write_lines(path: Path, texts: Sequence[TrainingText]) -> Path:
 
 __all__ = [
     "DATASET_SCHEMA",
+    "DATASET_SCHEMA_V1",
+    "DATASET_SCHEMA_V2",
     "NOT_TRAINABLE",
     "NO_VALID_SPLIT",
     "TRAINABLE",
@@ -431,16 +507,19 @@ __all__ = [
     "VALID_FLOOR",
     "VALID_FRACTION",
     "Dataset",
+    "DatasetUnverified",
     "Example",
     "NotTrainable",
     "Split",
     "TrainingText",
+    "VerifiedDataset",
     "build",
     "document",
     "example_of",
     "read_document",
     "split",
     "trainable",
+    "verify_document",
     "write_document",
     "write_local",
 ]

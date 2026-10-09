@@ -33,11 +33,12 @@ records what was *considered*. Only the first can leak into an adapter's weights
 
 **The `--checkpoint` link.** Given a checkpoint, `run_check` verifies it and compares the
 `dataset_digest` it records with the digest in the run's `dataset.json`; a mismatch is a
-refusal, decided before any overlap is compared. The checkpoint's claim is sealed only when it
-is a v2 checkpoint (v1 records it unsealed, and the report says which). The run's
-`dataset.json` is NOT sealed, so this is a sealed (or merely recorded) claim compared against a
-document anyone with write access to the run can edit. It is not authentication, and not proof
-that the recorded digest equals the digest of what was actually trained on.
+refusal, decided before any overlap is compared. Each side's seal state is conditional on its
+generation: the checkpoint's claim is sealed when it is a v2 checkpoint and recorded, not
+sealed, when it is v1; the run's document is read through the verifying reader and is sealed
+when it is a v2 dataset, recorded, not sealed, when it is v1. The two link lines say which is
+which. Neither side's seal authenticates a writer, and neither is proof that the recorded digest
+equals the digest of what was actually trained on.
 
 This module prevents nothing. If it ever exits nonzero, the disclosure names two possible
 causes and asserts neither: the night's partition seam failed to exclude held-out ids, or
@@ -53,7 +54,12 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from whetstone.loop.dataset import DATASET_SCHEMA, read_document
+from whetstone.loop.dataset import (
+    DATASET_SCHEMA,
+    DatasetUnverified,
+    VerifiedDataset,
+    verify_document,
+)
 from whetstone.loop.heldout import (
     EmptyHeldout,
     HeldoutDigestMismatch,
@@ -140,6 +146,7 @@ REFUSALS: tuple[type[Exception], ...] = (
     NotARun,
     UnknownSource,
     DatasetUnreadable,
+    DatasetUnverified,
     UnrecognisedIdentity,
     NothingCompared,
     LedgerUnreadable,
@@ -178,10 +185,17 @@ class SourceLeak:
 
 @dataclass(frozen=True)
 class DatasetLink:
-    """The digest a checkpoint and a run agreed on, and whether the checkpoint's claim is sealed."""
+    """The digest a checkpoint and a run agreed on, and each side's seal state.
+
+    `sealed` is the checkpoint's claim state (from `verify_checkpoint`: v2 only); `run_sealed`
+    is the run document's, from the verifying reader (v2 only; a v1 document is never sealed).
+    The link itself is digest equality — neither side's seal is the link, and neither seal
+    authenticates a writer or proves what was trained on.
+    """
 
     digest: str
     sealed: bool
+    run_sealed: bool
 
 
 @dataclass(frozen=True)
@@ -276,6 +290,11 @@ def run_check(run: Path, heldout: Path, checkpoint: Path | None = None) -> LeakR
     refuses before any comparison), and only then are the two sets compared. A check that
     read a doctored document and reported "clean" would be worse than no check.
 
+    The dataset is read through the verifying reader: a v2 document's claims are re-hashed
+    before any field is used, so a tampered sealed document refuses before the link and before
+    any overlap is compared, with or without a checkpoint. A v1 document performs none of that
+    and reads exactly as it always did.
+
     With a `checkpoint`, it is verified and its recorded dataset digest is compared with the
     run's before the overlap is compared, so another night's checkpoint is refused even when
     the run is leaked.
@@ -296,14 +315,21 @@ def run_check(run: Path, heldout: Path, checkpoint: Path | None = None) -> LeakR
     if not ledger_absent:
         read_ledger(ledger)
 
-    document = _read_dataset(dataset_path)
+    verified = _read_dataset(dataset_path)
+    document = verified.document
     training = _training_of(document, dataset_path)
-    link = _link_of(document, dataset_path, checkpoint) if checkpoint is not None else None
+    link = (
+        _link_of(document, dataset_path, checkpoint, verified.sealed)
+        if checkpoint is not None
+        else None
+    )
     report = check_overlap(training, read_heldout(heldout).membership)
     return replace(report, ledger_absent=ledger_absent, link=link)
 
 
-def _link_of(document: Mapping[str, object], path: Path, checkpoint: Path) -> DatasetLink:
+def _link_of(
+    document: Mapping[str, object], path: Path, checkpoint: Path, run_sealed: bool
+) -> DatasetLink:
     """Verify the checkpoint and match its recorded dataset digest to the run's, exactly."""
     cp = verify_checkpoint(checkpoint)
     if cp.untrained:
@@ -326,7 +352,7 @@ def _link_of(document: Mapping[str, object], path: Path, checkpoint: Path) -> Da
             "the run says nothing about it. Point --checkpoint at the checkpoint this night "
             "wrote, or --run at the night that wrote this checkpoint"
         )
-    return DatasetLink(digest=run_digest, sealed=cp.sealed)
+    return DatasetLink(digest=run_digest, sealed=cp.sealed, run_sealed=run_sealed)
 
 
 def disclosure(report: LeakReport) -> tuple[str, ...]:
@@ -377,11 +403,13 @@ def disclosure(report: LeakReport) -> tuple[str, ...]:
 
 
 def _link_lines(link: DatasetLink | None) -> tuple[str, ...]:
-    """What the checkpoint link was, and was not: sealed on one side, never on the other.
+    """What the checkpoint link was, and was not: one line per side, sealed or recorded.
 
-    The checkpoint's files are verified either way; the *link* is sealed only when the
-    checkpoint's claims are (v2). Neither case says the checkpoint's dataset is what it was
-    trained on, and the run's `dataset.json` is an unsealed document.
+    Each side's files are verified either way; the *link* is digest equality and is never itself
+    sealed, authenticated or "verified". The checkpoint's claims are sealed when it is a v2
+    checkpoint; the run's document is sealed when it is a v2 dataset. A v1 document on either
+    side is recorded, not sealed — anyone with write access can edit it — and neither side's
+    seal is proof of what was actually trained on.
     """
     if link is None:
         return ()
@@ -401,11 +429,19 @@ def _link_lines(link: DatasetLink | None) -> tuple[str, ...]:
             "that checkpoint's digest, so this is what the document says and not something "
             "that was checked"
         )
-    return (
-        head + tail,
-        f"the run's {DATASET_FILE} is not sealed, so this compares a checkpoint claim to a "
-        "document that anyone with write access to the run can edit",
-    )
+    if link.run_sealed:
+        run_line = (
+            f"the run's {DATASET_FILE} is sealed (whetstone-training-set/2), so an edit to it "
+            "that did not also recompute its claims and digest would have been refused "
+            "(tamper-evidence, not authentication)"
+        )
+    else:
+        run_line = (
+            f"the run's {DATASET_FILE} is recorded, not sealed (whetstone-training-set/1), so "
+            "this compares the checkpoint's claim to a document that anyone with write access "
+            "to the run can edit"
+        )
+    return (head + tail, run_line)
 
 
 #: What a clean verdict rules out, and what it does not. Identity is all the check compares.
@@ -489,10 +525,20 @@ def _leak_of(source: str, ids: Sequence[str], by_identity: Mapping[str, str]) ->
     )
 
 
-def _read_dataset(path: Path) -> Mapping[str, object]:
-    """The run's dataset document, through `dataset.read_document` by identity."""
+def _read_dataset(path: Path) -> VerifiedDataset:
+    """The run's dataset document, through the verifying reader, seal refusals unwrapped.
+
+    A v2 document's claims are re-hashed before any field is read, so a tampered sealed
+    document refuses here — before the link and before any overlap comparison, with or without
+    a checkpoint. `DatasetUnverified` is deliberately re-raised unchanged: it is a `ValueError`
+    subclass, and the wrap below would otherwise rename the seal's refusal as an unreadable
+    document, reporting the right claim under the wrong type. A v1 document performs no claims
+    check and reads exactly as it always did, `sealed=False`.
+    """
     try:
-        return read_document(path)
+        return verify_document(path)
+    except DatasetUnverified:
+        raise
     except (OSError, ValueError) as error:
         raise DatasetUnreadable(
             f"{str(path)!r} could not be read as a {DATASET_SCHEMA!r} document: {error}"

@@ -27,6 +27,7 @@ and the trainer is a stub behind the injected `Trainer` seam.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -321,6 +322,37 @@ def test_the_disclosure_never_prints_a_training_set_size_alone(tmp_path: Path) -
     )
     assert str(night.dataset.denominator) in headline, (
         f"WHY THIS IS A FAILURE: the headline quotes no denominator. Got {headline!r}"
+    )
+
+
+def test_the_disclosure_names_the_datasets_seal_state(tmp_path: Path) -> None:
+    """The digest line carries the generation, so the seal state is not left to the schema tag.
+
+    A night's writer emits `whetstone-training-set/2`, whose claims are re-hashed on every read;
+    the line says so rather than leaving a reader to know the tag.
+    """
+    from whetstone.loop.night import disclosure
+
+    night = _night(tmp_path)
+    line = next(one for one in disclosure(night) if one.startswith("dataset digest "))
+
+    assert line == f"dataset digest {night.dataset.digest} (sealed, whetstone-training-set/2)"
+
+
+def test_the_disclosure_of_a_v1_night_says_recorded_not_sealed(tmp_path: Path) -> None:
+    """The v1 branch, proven by fixture: no `src/` path produces a v1 night after seal-core.
+
+    `dataclasses.replace` is the simulation — a reconstruction reading an old night's document —
+    and the line names the generation rather than letting the tag ride alone.
+    """
+    from whetstone.loop.night import disclosure
+
+    night = _night(tmp_path)
+    v1 = replace(night, dataset_schema=training.DATASET_SCHEMA_V1)
+    line = next(one for one in disclosure(v1) if one.startswith("dataset digest "))
+
+    assert line == (
+        f"dataset digest {v1.dataset.digest} (recorded, not sealed: whetstone-training-set/1)"
     )
 
 

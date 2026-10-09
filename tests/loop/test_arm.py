@@ -25,12 +25,16 @@ that seam is that the loop's order can be asserted with no weights, no GPU and n
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
+from whetstone.bakeoff.scoring import Outcome
 from whetstone.loop import arm, backend, sft
+from whetstone.loop import dataset as training
+from whetstone.verify.verdict import Status
 
 BASE = "Qwen/Qwen2.5-Coder-0.5B-Instruct"
 REVISION = "ea3f2471cf1b1f0db85067f1ef93848e38e88c25"
@@ -49,20 +53,37 @@ def _runtime(name: str = backend.TORCH, memory: int = X131_BYTES) -> backend.Bac
     )
 
 
+def _example(index: int, *, source: str = "private") -> training.Example:
+    """One selected record in the shape the night writes it — hashes and verdicts only."""
+    return training.Example(
+        task_id=f"t-{index:02d}",
+        source=source,
+        attempt=1,
+        seed=index,
+        prompt_sha256="a" * 64,
+        completion_sha256="b" * 64,
+        strict=Status.PASS,
+        outcome=Outcome.SOLVED,
+        control=Status.PASS,
+    )
+
+
 def _night(tmp_path: Path, *, examples: int = 6) -> Path:
-    """A night run directory in the shape `run_night` seals, and nothing more."""
+    """A night run directory in the shape `run_night` seals, and nothing more.
+
+    Through the real writer — `dataset.build` then `write_document` — so the arm is exercised
+    over a document whose seal it must verify. The hand-rolled `{"digest": ..., "examples": []}`
+    shape this replaces is exactly the unchecked path `read_selection` used to read.
+    """
     run = tmp_path / "night-001"
     (run / arm.DATA_DIR).mkdir(parents=True)
     (run / arm.DATA_DIR / "train.jsonl").write_text("{}\n", encoding="utf-8")
-    (run / arm.DATASET_FILE).write_text(
-        json.dumps(
-            {
-                "digest": "3416702298c36a9a",
-                "examples": [{"id": i} for i in range(examples)],
-            }
-        ),
-        encoding="utf-8",
+    texts = tuple(
+        training.TrainingText(example=_example(index), prompt="", completion="")
+        for index in range(1, examples + 1)
     )
+    built = training.build(texts, denominator=examples, unverified=0)
+    training.write_document(run / arm.DATASET_FILE, built)
     return run
 
 
@@ -245,3 +266,73 @@ def test_the_sealed_checkpoint_is_re_verified_from_disk(tmp_path: Path) -> None:
     assert outcome.checkpoint.digest == sft.verify_checkpoint(destination).digest
     assert outcome.checkpoint.backend is not None
     assert arm.recorded(outcome)["backend"]["name"] == backend.TORCH
+
+
+# --- The selection is verified, not trusted --------------------------------------------------
+
+
+def test_a_v1_selection_reads_with_its_recorded_digest(tmp_path: Path) -> None:
+    """v1 accepts as it always did: the recorded digest and count, no verification claimed."""
+    run = _night(tmp_path, examples=3)
+    document = json.loads((run / arm.DATASET_FILE).read_text(encoding="utf-8"))
+    document["schema"] = training.DATASET_SCHEMA_V1
+    document["digest"] = hashlib.sha256(
+        json.dumps(document["examples"], indent=2, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    (run / arm.DATASET_FILE).write_text(json.dumps(document), encoding="utf-8")
+
+    digest, count = arm.read_selection(run)
+
+    assert digest == document["digest"]
+    assert count == 3
+
+
+def test_a_tampered_v2_selection_is_refused_by_name(tmp_path: Path) -> None:
+    """The arm's reader verifies: an edited v2 selection is refused, never trained on."""
+    run = _night(tmp_path, examples=2)
+    document = json.loads((run / arm.DATASET_FILE).read_text(encoding="utf-8"))
+    document["examples"] = []
+    (run / arm.DATASET_FILE).write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(training.DatasetUnverified, match=r"claim 'examples'"):
+        arm.read_selection(run)
+
+
+def test_a_tampered_selection_stops_the_arm_before_the_probe(tmp_path: Path) -> None:
+    """A refusal, not a traceback and not a training run: nothing is spent on a tampered file."""
+    run = _night(tmp_path, examples=2)
+    document = json.loads((run / arm.DATASET_FILE).read_text(encoding="utf-8"))
+    document["denominator"] = 99
+    (run / arm.DATASET_FILE).write_text(json.dumps(document), encoding="utf-8")
+    ran: list[int] = []
+
+    def watching(request: sft.TrainingRequest) -> sft.TrainingResult:
+        ran.append(request.args.iters)
+        return _trainer()(request)
+
+    with pytest.raises(training.DatasetUnverified, match=r"claim 'denominator'"):
+        arm.run_arm(
+            base=tmp_path / "weights",
+            repo_id=BASE,
+            revision=REVISION,
+            run=run,
+            destination=tmp_path / "checkpoint",
+            run_seed=20260906,
+            trainer=watching,
+            runtime=_runtime(),
+        )
+    assert ran == [], (
+        "WHY THIS IS A FAILURE: the probe ran before the arm refused a tampered selection, "
+        f"spending {ran} steps on a document nobody should train from"
+    )
+
+
+def test_the_arm_reads_through_the_verifying_reader_by_identity() -> None:
+    """No schema-check-free `json.loads` path remains: the arm's only read is `verify_document`."""
+    source = Path(arm.__file__).read_text(encoding="utf-8")
+
+    assert "json.loads" not in source, (
+        "WHY THIS IS A FAILURE: the arm parses a run document itself, so a tampered sealed "
+        "selection could reach training through a path the verifying reader never sees"
+    )
+    assert "verify_document" in source

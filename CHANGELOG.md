@@ -9,6 +9,55 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Added
+
+- **Dataset schema `whetstone-training-set/2`, and the dataset document seals itself.** A night's
+  `runs/<id>/dataset.json` now carries a `claims` map and a `digest` over the sorted claim lines,
+  domain-separated by the schema tag exactly as `whetstone-checkpoint/2` is; `Dataset.digest` is
+  that seal, so the value a checkpoint records as `dataset_digest` names the whole document. The
+  verifying reader (`dataset.verify_document`) refuses a moved claim, an unlisted key, an orphaned
+  claim, a non-sha256 hash, a newline-bearing claim key or a self-disagreeing digest by name —
+  tamper-evidence, not authentication; a writer who recomputes claims and digest together is not
+  caught (the documented unkeyed-hash boundary). A `whetstone-training-set/1` document (night-001's
+  real file) reads exactly as before, unsealed, and is never rewritten.
+- **`whetstone check-leakage` verifies the run's dataset before comparing anything.** A tampered
+  v2 dataset is a named refusal (exit 2) before the overlap comparison, with or without
+  `--checkpoint`. The link block says each side's seal state: the checkpoint's sealed
+  (`whetstone-checkpoint/2`) or recorded (`/1`) as before, and the run's — sealed for a v2 dataset,
+  recorded, not sealed, for a v1 — replacing the standing "the run's `dataset.json` is not sealed"
+  sentence, which is now true only of v1. Re-sealed and mixed-generation pairs (a v1 checkpoint
+  against a v2 document, and the reverse) are refused by the link, explicitly tested. The night's
+  own `disclosure` names the dataset's generation, and the gate runbook, `check-leakage --help`,
+  the portability-arm report and the leakage finding's prose were corrected in the same commit.
+  The no-checkpoint output is byte-identical; the finding's quoted block did not move.
+- **Run ledger schema `whetstone-run/3`.** A night's `runs/<id>/ledger.json` now seals every
+  top-level key except `schema`, `claims` and `digest`: `claims` maps each body key to the
+  sha256 of its canonical JSON, and `digest` reduces from the sorted `key:hash` claim lines,
+  domain-separated by the schema tag exactly as `whetstone-checkpoint/2` is. `read` verifies
+  a v3 document before any consumer sees it and names the first claim that moved; a
+  `whetstone-run/2` ledger still reads, unsealed and byte-unchanged, behind a downgrade guard
+  that refuses one carrying the seal's keys. Sealed means tamper-evident against an edit that
+  does not recompute `claims` and `digest`; it is not authentication, and a writer who
+  recomputes both is not caught (the documented unkeyed-hash boundary). Every consumer
+  (`check-probe`, `check-leakage`, the morning report, the honest-number door) reads the
+  ledger through the verifying reader by identity, so a tampered v3 ledger is exit 2 before
+  any decision, count, link or render. The morning report's seal sentence states both
+  generations.
+
+### Changed
+
+- **BREAKING: a `whetstone-training-set/2` dataset is refused by any older reader** by schema
+  equality, as is a `whetstone-run/3` ledger — exactly as a v2 checkpoint already is. Both live
+  under the gitignored `runs/` root and no existing document is rewritten: night-001's dataset is
+  `whetstone-training-set/1` and probe-001's ledger is `whetstone-run/1`, unchanged and still
+  unsealed.
+- **BREAKING: `Dataset.digest` is the document's seal digest.** For a v2 dataset the value a
+  checkpoint records as `dataset_digest` hashes the whole document's claims, not the examples
+  alone; the examples list is one claim among them. Committed citations of the v1 value (night
+  #1's `3416702298c3…`) describe the v1 file on disk and do not move.
+
 ## [0.20.0] - 2026-10-07
 
 ### Added

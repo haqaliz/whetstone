@@ -626,10 +626,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="<checkpoints/id>",
         help=(
             "optional: verifies the checkpoint (its own files and its seal, not the link) and "
-            "compares its recorded dataset_digest to the run's; the run's dataset.json is not "
-            "sealed. A v2 checkpoint's link is reported as sealed, a v1 checkpoint's as "
-            "recorded, not sealed; a tampered, untrained or foreign checkpoint exits 2. It can "
-            "add a refusal or a line and can never change the leakage verdict"
+            "compares its recorded dataset_digest to the run's; a v2 dataset's link is reported "
+            "as sealed, a v1 dataset's as recorded, not sealed; a tampered v2 dataset exits 2. "
+            "A v2 checkpoint's link is reported as sealed, a v1 checkpoint's as recorded, not "
+            "sealed; a tampered, untrained or foreign checkpoint exits 2. It can add a refusal "
+            "or a line and can never change the leakage verdict"
         ),
     )
 
@@ -1185,7 +1186,8 @@ def run_check_leakage_cli(args: argparse.Namespace) -> int:
     **The exits are the existing contract, no fifth code**: disjoint (source B examples
     compared, none shared) → 0, a named overlap →
     1 (a leak is a failure, not a mistyped command), and a refusal an operator can fix — a
-    directory with no `dataset.json`, an unreadable dataset, a training set with no
+    directory with no `dataset.json`, an unreadable dataset, a dataset whose claims do not
+    verify (`dataset.DatasetUnverified`), a training set with no
     source B example (nothing was compared; Amendment 2), a held-out document whose
     digest does not match its contents, or a `--checkpoint` that is tampered or unreadable
     (`sft.CheckpointUnverified`), untrained (`CheckpointHasNoDataset`) or trained on another

@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import resource
 import sys
 import time
@@ -47,6 +46,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from whetstone.loop import seal
 from whetstone.loop.backend import MLX, TORCH
 from whetstone.loop.backend import Backend as BackendRecord
 from whetstone.loop.backend import family as backend_family
@@ -96,12 +96,13 @@ CHECKPOINT_SCHEMA_V2 = "whetstone-checkpoint/2"
 CHECKPOINT_SCHEMA = CHECKPOINT_SCHEMA_V2
 
 #: The document keys that are not claims: the schema label, the digest, and the claim hashes.
-_UNSEALED_KEYS = frozenset({"schema", "digest", "claims"})
+#: The shared definition lives in `seal`; the name stays here because this module's checkpoint
+#: history reads it under this name.
+_UNSEALED_KEYS = seal.UNSEALED_KEYS
 
-#: A claim hash: exactly the lowercase hex `hexdigest()` writes. Fixed length and newline-free,
-#: so with newlines also banned from keys, every `key:hash` line `_claims_digest` joins splits
-#: back into exactly one key and one hash — the line format is injective.
-_CLAIM_HASH = re.compile(r"[0-9a-f]{64}")
+#: A claim hash: exactly the lowercase hex `hexdigest()` writes. See `seal.CLAIM_HASH` for the
+#: injectivity argument.
+_CLAIM_HASH = seal.CLAIM_HASH
 
 #: How much is read per digest step, matching `weights._CHUNK`: bound by the disk rather than by
 #: the loop, and never resident in the process that is about to hold a model.
@@ -155,51 +156,18 @@ class CheckpointUnverified(ValueError):
     """
 
 
-def _canonical(value: Any) -> bytes:
-    """The bytes a claim is hashed over: what a reader will parse back, in one fixed encoding.
-
-    The inner round trip means the hashed value is the one `json.loads` returns from the written
-    document, never the in-memory object (a tuple hashes as the list it will be read back as).
-    """
-    return json.dumps(
-        json.loads(json.dumps(value)), sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("ascii")
+#: `seal.canonical`, under the private name this module's checkpoint history uses.
+_canonical = seal.canonical
 
 
 def _claim_hashes(body: Mapping[str, Any]) -> dict[str, str]:
-    """One sha256 per claim in `body`, over that claim's canonical bytes.
-
-    `body` holds claims only. A key from `_UNSEALED_KEYS` here is a writer bug rather than an
-    operator error, so it raises: sealing the seal's own fields would make the digest circular.
-    """
-    stray = sorted(_UNSEALED_KEYS & body.keys())
-    if stray:
-        raise CheckpointUnverified(f"a checkpoint body must not carry {stray}; they are not claims")
-    # A newline in a key would let one claim line read as two in `_claims_digest`, so the
-    # writer refuses to seal one rather than produce a document whose lines are ambiguous.
-    broken = sorted(key for key in body if "\n" in key)
-    if broken:
-        raise CheckpointUnverified(
-            f"a checkpoint body must not carry the key {broken[0]!r}: a newline in a claim key "
-            "makes the digest's claim lines ambiguous"
-        )
-    return {key: hashlib.sha256(_canonical(value)).hexdigest() for key, value in body.items()}
+    """`seal.claim_hashes` with the checkpoint's own subject and refusal."""
+    return seal.claim_hashes(body, subject="checkpoint", refuse=CheckpointUnverified)
 
 
 def _claims_digest(claims: Mapping[str, str]) -> str:
-    """The sha256 of the schema tag, a NUL, then the claim hashes as sorted `key:hash` lines.
-
-    The tag is the domain separation. Without it the material is the same shape `_digest_of`
-    hashes for v1 — `name:sha256` lines — so a v1 document listing one file per claim key, each
-    holding that claim's canonical bytes, reduced to an honest v2 digest while its adapter sat
-    outside the list. A v1 digest's input is `"\\n".join(f"{name}:{sha256}")` and so begins with
-    a file name. A NUL can never appear in a path, and `verify_checkpoint` refuses a listed file
-    that is not on disk (a name carrying a NUL is never `is_file()`), so no v1 file list that
-    verifies can produce an input with the NUL the v2 input carries right after its tag: the two
-    digests cannot coincide.
-    """
-    text = "\n".join(f"{key}:{claims[key]}" for key in sorted(claims))
-    return hashlib.sha256((CHECKPOINT_SCHEMA_V2 + "\0" + text).encode("utf-8")).hexdigest()
+    """`seal.claims_digest` under the checkpoint schema tag — the domain separation."""
+    return seal.claims_digest(claims, schema=CHECKPOINT_SCHEMA_V2)
 
 
 class NothingToTrain(ValueError):
@@ -1034,64 +1002,18 @@ def _recorded_files(document: Path, files: Any) -> tuple[CheckpointFile, ...]:
 
 
 def _verify_claims(document: Path, raw: Mapping[str, Any]) -> None:
-    """Refuse a v2 document whose claims do not re-hash, naming the first key that moved.
+    """`seal.verify_claims` with the checkpoint's own subject and refusal, verbatim elsewhere.
 
-    Every key except `_UNSEALED_KEYS` is a claim and must have exactly one hash; a key with no
-    hash, a hash with no key, and a hash the key no longer produces are each refused by name.
-    Then the digest must reduce from the claims — which is what catches a key deleted together
-    with its hash, since the remaining claims are consistent with each other and not with it.
+    Passing `subject="checkpoint"` reproduces this module's historical messages byte-for-byte;
+    the implementation is `seal.verify_claims`.
     """
-    claims = raw.get("claims")
-    if not isinstance(claims, dict) or not all(
-        isinstance(key, str) and isinstance(value, str) for key, value in claims.items()
-    ):
-        raise CheckpointUnverified(
-            f"{str(document)!r} declares schema {CHECKPOINT_SCHEMA_V2!r} and carries no claims "
-            "mapping of key to sha256, so none of what it says about this checkpoint is sealed"
-        )
-    # Checked explicitly, before anything is compared: the digest's `key:hash` lines are only
-    # injective while no key holds a newline and every hash is fixed-length hex. Without this a
-    # claim keyed "backend:<hash>\nbase" carrying `base`'s hash reproduces the honest digest
-    # with both keys deleted.
-    for key in sorted(claims):
-        if "\n" in key:
-            raise CheckpointUnverified(
-                f"{str(document)!r} records claim {key!r}, whose key holds a newline — one claim "
-                "line forged to read as two, which no writer produces"
-            )
-        if not _CLAIM_HASH.fullmatch(claims[key]):
-            raise CheckpointUnverified(
-                f"{str(document)!r}: claim {key!r} records {claims[key]!r}, which is not a "
-                "sha256 (64 lowercase hex characters)"
-            )
-    body = {key: value for key, value in raw.items() if key not in _UNSEALED_KEYS}
-    unclaimed = sorted(body.keys() - claims.keys())
-    if unclaimed:
-        raise CheckpointUnverified(
-            f"{str(document)!r} carries {unclaimed[0]!r}, which no claim seals. A key added "
-            "after the checkpoint was sealed reads exactly like one the night wrote"
-        )
-    orphaned = sorted(claims.keys() - body.keys())
-    if orphaned:
-        raise CheckpointUnverified(
-            f"{str(document)!r} records claim {orphaned[0]!r} and carries no {orphaned[0]!r}. "
-            "A sealed key was removed after the checkpoint was sealed"
-        )
-    rehashed = _claim_hashes(body)
-    for key in sorted(body):
-        if rehashed[key] != claims[key]:
-            raise CheckpointUnverified(
-                f"{str(document)!r}: claim {key!r} records sha256 {claims[key]} and the "
-                f"document's {key!r} hashes to {rehashed[key]} — the document's {key!r} was "
-                "changed after the checkpoint was sealed"
-            )
-    digest = _claims_digest(claims)
-    if digest != raw.get("digest"):
-        raise CheckpointUnverified(
-            f"{str(document)!r} records digest {raw.get('digest')!r} and its claims reduce to "
-            f"{digest!r}. The document disagrees with itself, which a hand edit produces and a "
-            "night does not"
-        )
+    seal.verify_claims(
+        document,
+        raw,
+        schema=CHECKPOINT_SCHEMA_V2,
+        subject="checkpoint",
+        refuse=CheckpointUnverified,
+    )
 
 
 def training_peak_bytes(*, mlx_peak: int, resident: int) -> int:

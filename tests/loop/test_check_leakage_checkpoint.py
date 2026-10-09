@@ -1,26 +1,65 @@
 """`run_check` can link a checkpoint to the night it claims to have been trained on.
 
 The checkpoint's recorded `dataset_digest` is compared with the digest in the run's
-`dataset.json`. The checkpoint's claim is sealed only when it is a v2 checkpoint; the run's
-document is not sealed at all, so this is tamper-evidence on one side, not authentication.
-The order is the design: the checkpoint is verified and both digests are read before the
-overlap comparison, so a leaked run plus another night's checkpoint is a refusal, never a
-verdict about the wrong night.
+`dataset.json`. Either side is sealed only when it is v2: a v1 checkpoint's claim and a v1 run
+document are recorded, not sealed, and the two link lines say which is which. The link is
+digest equality and is never called "verified" — tamper-evidence, not authentication. The
+order is the design: the checkpoint is verified and both digests are read before the overlap
+comparison, so a leaked run plus another night's checkpoint is a refusal, never a verdict about
+the wrong night.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from loop.test_check_leakage import _MEMBERS, _SURVIVOR, _heldout_document, _run
-from whetstone.loop import backend, check_leakage, sft
+from loop.test_check_leakage import (
+    _MEMBERS,
+    _SURVIVOR,
+    RUN_DIGEST,
+    V1_RUN_DIGEST,
+    _as_v1_run,
+    _heldout_document,
+    _run,
+    _run_digest,
+)
+from whetstone.loop import backend, check_leakage, dataset, seal, sft
 
-RUN_DIGEST = "d" * 64  # what `_run` writes into dataset.json
 OTHER_DIGEST = "e" * 64
+
+#: A v2 document's four payload claims. `examples` is emptied rather than edited in place so a
+#: moved claim is unmistakable; the three counters are moved by one.
+_TAMPERED_FIELDS = ("denominator", "unverified", "coverage", "examples")
+
+
+def _tamper(document: dict[str, Any], field: str) -> None:
+    """Move one payload claim in a written document, without recomputing `claims` or `digest`."""
+    if field == "examples":
+        document[field] = []
+    else:
+        document[field] = document[field] + 1
+
+
+def _reseal(path: Path, mutate: Any) -> None:
+    """Recompute a v2 document's claims and digest after `mutate` — a re-sealer, not a bypass.
+
+    The primitives are production code (`seal.claim_hashes`/`seal.claims_digest`), so the edited
+    document verifies: this simulates an author who recomputes the unkeyed seal, which the seal
+    cannot catch. What catches the edit is the checkpoint link, and that is the test.
+    """
+    document = json.loads(path.read_text(encoding="utf-8"))
+    mutate(document)
+    body = {key: value for key, value in document.items() if key not in seal.UNSEALED_KEYS}
+    document["claims"] = seal.claim_hashes(
+        body, subject="training set", refuse=dataset.DatasetUnverified
+    )
+    document["digest"] = seal.claims_digest(document["claims"], schema=dataset.DATASET_SCHEMA_V2)
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _trained(directory: Path, dataset_digest: str = RUN_DIGEST) -> sft.Checkpoint:
@@ -76,7 +115,7 @@ def test_a_v2_checkpoint_that_matches_reports_a_sealed_link(tmp_path: Path) -> N
 
     report = check_leakage.run_check(run, held, cp.directory)
 
-    assert report.link == check_leakage.DatasetLink(digest=RUN_DIGEST, sealed=True)
+    assert report.link == check_leakage.DatasetLink(digest=RUN_DIGEST, sealed=True, run_sealed=True)
     assert report.clean
 
 
@@ -88,7 +127,29 @@ def test_a_v1_checkpoint_that_matches_reports_an_unsealed_link(tmp_path: Path) -
 
     assert report.link is not None
     assert report.link.sealed is False
+    assert report.link.run_sealed is True
     assert report.link.digest == RUN_DIGEST
+
+
+def test_a_v1_run_links_on_the_recorded_value_alone(tmp_path: Path) -> None:
+    """A v1 document verifies nothing, so the link matches iff the values are equal.
+
+    The run document is rewritten to the v1 shape with the hand-made `V1_RUN_DIGEST` — different
+    from the v2 seal digest the writer had emitted — and the v1 checkpoint records exactly it.
+    The match is digest equality against a document whose body nothing re-hashed; that is what
+    `recorded, not sealed` means, and the run-side link line says so.
+    """
+    run, held = _fixture(tmp_path)
+    v2_digest = _run_digest(run)
+    _as_v1_run(run)
+    cp = _as_v1(_trained(tmp_path / "cp", V1_RUN_DIGEST))
+
+    report = check_leakage.run_check(run, held, cp.directory)
+
+    assert v2_digest != V1_RUN_DIGEST
+    assert report.link == check_leakage.DatasetLink(
+        digest=V1_RUN_DIGEST, sealed=False, run_sealed=False
+    )
 
 
 def test_without_a_checkpoint_there_is_no_link(tmp_path: Path) -> None:
@@ -110,7 +171,7 @@ def test_a_mismatching_checkpoint_is_refused_even_when_the_run_is_leaked(
     with pytest.raises(check_leakage.CheckpointNotThisRun) as refusal:
         check_leakage.run_check(run, held, cp.directory)
 
-    assert RUN_DIGEST[:12] in str(refusal.value)
+    assert _run_digest(run)[:12] in str(refusal.value)
     assert OTHER_DIGEST[:12] in str(refusal.value)
     assert "not trained on this run" in str(refusal.value)
 
@@ -173,7 +234,68 @@ def test_a_non_string_recorded_digest_is_a_mismatch(tmp_path: Path) -> None:
     assert "12345" in str(refusal.value)
 
 
-def test_a_run_whose_document_carries_no_digest_is_unreadable(tmp_path: Path) -> None:
+def test_a_re_sealed_v2_dataset_is_refused_by_the_link(tmp_path: Path) -> None:
+    """A forger who recomputes the seal still breaks the checkpoint link.
+
+    The document is edited and re-sealed with the production primitives, so it verifies — this
+    simulates a re-sealer, not a verification bypass, because the seal is unkeyed. The
+    checkpoint recorded the pre-edit digest, so the refusal is the link's
+    (`CheckpointNotThisRun`), and it names both 12-char prefixes.
+    """
+    run, held = _fixture(tmp_path)
+    original = _run_digest(run)
+    cp = _trained(tmp_path / "cp", original)
+    _reseal(run / "dataset.json", lambda d: d.update(denominator=d["denominator"] + 1))
+    moved = _run_digest(run)
+    assert moved != original
+
+    with pytest.raises(check_leakage.CheckpointNotThisRun) as refusal:
+        check_leakage.run_check(run, held, cp.directory)
+
+    assert original[:12] in str(refusal.value) and moved[:12] in str(refusal.value)
+
+
+def test_a_v1_checkpoint_never_links_a_v2_document(tmp_path: Path) -> None:
+    """A mixed-generation pair is refused, and the two values are asserted apart first.
+
+    A v1 checkpoint's recorded examples digest and a v2 document's seal digest are different
+    values by construction; asserting the difference before the refusal makes the guarantee a
+    tested property rather than an accident of two digest computations differing.
+    """
+    run, held = _fixture(tmp_path)
+    derived = _run_digest(run)
+    cp = _as_v1(_trained(tmp_path / "cp", V1_RUN_DIGEST))
+    assert derived != V1_RUN_DIGEST
+
+    with pytest.raises(check_leakage.CheckpointNotThisRun) as refusal:
+        check_leakage.run_check(run, held, cp.directory)
+
+    assert V1_RUN_DIGEST[:12] in str(refusal.value)
+    assert derived[:12] in str(refusal.value)
+
+
+def test_a_v2_checkpoint_never_links_a_v1_document(tmp_path: Path) -> None:
+    """The reverse mix: a v2 checkpoint against a v1 document, refused by the same comparison."""
+    run, held = _fixture(tmp_path)
+    derived = _run_digest(run)
+    cp = _trained(tmp_path / "cp", derived)
+    _as_v1_run(run)
+    assert _run_digest(run) == V1_RUN_DIGEST != derived
+
+    with pytest.raises(check_leakage.CheckpointNotThisRun) as refusal:
+        check_leakage.run_check(run, held, cp.directory)
+
+    assert derived[:12] in str(refusal.value)
+    assert V1_RUN_DIGEST[:12] in str(refusal.value)
+
+
+def test_a_run_whose_document_carries_no_digest_is_unverified(tmp_path: Path) -> None:
+    """A popped `digest` is a malformed v2 shape: the seal refuses it, not the schema reader.
+
+    It exits 2 either way; `DatasetUnverified` is the more precise type and the one the CLI
+    docstring now lists, because a v2 document whose digest does not reduce from its claims is
+    exactly what a hand edit produces.
+    """
     held = _heldout_document(tmp_path / "doc", _MEMBERS)
     run = _run(tmp_path / "run", private=(_SURVIVOR,))
     path = run / "dataset.json"
@@ -182,14 +304,41 @@ def test_a_run_whose_document_carries_no_digest_is_unreadable(tmp_path: Path) ->
     path.write_text(json.dumps(document), encoding="utf-8")
     cp = _trained(tmp_path / "cp")
 
-    with pytest.raises(check_leakage.DatasetUnreadable):
+    with pytest.raises(dataset.DatasetUnverified):
         check_leakage.run_check(run, held, cp.directory)
+
+
+@pytest.mark.parametrize("field", _TAMPERED_FIELDS)
+@pytest.mark.parametrize("with_checkpoint", [False, True], ids=["plain", "with-checkpoint"])
+def test_a_tampered_v2_dataset_refuses_by_field(
+    tmp_path: Path, field: str, with_checkpoint: bool
+) -> None:
+    """A moved payload claim refuses through the verifying reader, naming the key.
+
+    The checkpoint arm is the adversarial half: a checkpoint recording the run's pre-tamper
+    digest would otherwise link and produce a verdict, so the refusal firing before a link is
+    what proves the verified read precedes `_link_of`, with or without `--checkpoint`.
+    """
+    run, held = _fixture(tmp_path)
+    checkpoint: Path | None = None
+    if with_checkpoint:
+        checkpoint = _trained(tmp_path / "cp", _run_digest(run)).directory
+    path = run / "dataset.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    _tamper(document, field)
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(dataset.DatasetUnverified) as refusal:
+        check_leakage.run_check(run, held, checkpoint)
+
+    assert field in str(refusal.value), refusal.value
 
 
 def test_the_new_refusals_are_operator_fixable() -> None:
     for refusal in (
         check_leakage.CheckpointHasNoDataset,
         check_leakage.CheckpointNotThisRun,
+        dataset.DatasetUnverified,
         sft.CheckpointUnverified,
     ):
         assert refusal in check_leakage.REFUSALS
@@ -198,26 +347,55 @@ def test_the_new_refusals_are_operator_fixable() -> None:
 
 # --- what it prints -------------------------------------------------------------------------
 
+
+def _sealed_line(digest: str) -> str:
+    """The `dataset link:` line for a sealed checkpoint recording `digest`.
+
+    A function rather than one literal because the digest is over the run's whole document now,
+    so the clean fixture, the leaked fixture and the empty fixture each carry a different one;
+    the constant below is the clean fixture's, which is what most of these tests use.
+    """
+    return (
+        f"dataset link: the checkpoint's dataset_digest ({digest[:12]}) matches this run's "
+        "dataset.json; the checkpoint's claims are sealed (whetstone-checkpoint/2), so an edit "
+        "to that dataset_digest that did not also recompute the checkpoint's digest would have "
+        "been refused (tamper-evidence, not authentication)"
+    )
+
+
+def _v1_line(digest: str) -> str:
+    """The `dataset link:` line for a recorded (v1) checkpoint recording `digest`.
+
+    A function for the same reason `_sealed_line` is: each fixture's run document carries its
+    own digest, so the head's 12-char prefix is the run's, not a module literal.
+    """
+    return (
+        f"dataset link: the checkpoint's dataset_digest ({digest[:12]}) matches this run's "
+        "dataset.json; it is recorded, not sealed (whetstone-checkpoint/1) \u2014 provenance.json "
+        "was outside that checkpoint's digest, so this is what the document says and not "
+        "something that was checked"
+    )
+
+
 D12 = RUN_DIGEST[:12]
-SEALED_LINE = (
-    f"dataset link: the checkpoint's dataset_digest ({D12}) matches this run's dataset.json; "
-    "the checkpoint's claims are sealed (whetstone-checkpoint/2), so an edit to that "
-    "dataset_digest that did not also recompute the checkpoint's digest would have been "
-    "refused (tamper-evidence, not authentication)"
+SEALED_LINE = _sealed_line(RUN_DIGEST)
+V1_LINE = _v1_line(RUN_DIGEST)
+RUN_SEALED_LINE = (
+    "the run's dataset.json is sealed (whetstone-training-set/2), so an edit to it that did not "
+    "also recompute its claims and digest would have been refused (tamper-evidence, not "
+    "authentication)"
 )
-V1_LINE = (
-    f"dataset link: the checkpoint's dataset_digest ({D12}) matches this run's dataset.json; "
-    "it is recorded, not sealed (whetstone-checkpoint/1) \u2014 provenance.json was outside that "
-    "checkpoint's digest, so this is what the document says and not something that was checked"
-)
-FAR_END_LINE = (
-    "the run's dataset.json is not sealed, so this compares a checkpoint claim to a document "
-    "that anyone with write access to the run can edit"
+RUN_V1_LINE = (
+    "the run's dataset.json is recorded, not sealed (whetstone-training-set/1), so this "
+    "compares the checkpoint's claim to a document that anyone with write access to the run can "
+    "edit"
 )
 
 
 def _link_lines(lines: tuple[str, ...]) -> list[str]:
-    return [ln for ln in lines if ln.startswith("dataset link:") or ln == FAR_END_LINE]
+    return [
+        ln for ln in lines if ln.startswith("dataset link:") or ln in (RUN_SEALED_LINE, RUN_V1_LINE)
+    ]
 
 
 def test_disclosure_without_a_link_is_unchanged(tmp_path: Path) -> None:
@@ -229,77 +407,130 @@ def test_disclosure_without_a_link_is_unchanged(tmp_path: Path) -> None:
     assert not any("dataset link" in ln or "sealed" in ln for ln in lines)
 
 
-def test_a_sealed_link_says_the_checkpoint_claim_is_sealed(tmp_path: Path) -> None:
-    """Fails if disclosure ignores report.link, or words the sealed case as the v1 one."""
+@pytest.mark.parametrize("run_v1", [False, True], ids=["run-v2", "run-v1"])
+def test_a_sealed_checkpoint_link_states_each_sides_generation(
+    tmp_path: Path, run_v1: bool
+) -> None:
+    """Fails if disclosure ignores report.link, or words the sealed case as the v1 one.
+
+    The checkpoint side is sealed in both parametrizations; the run side is sealed for a v2
+    document and recorded for a v1 one, and exactly one of the two run lines is printed.
+    """
     run, held = _fixture(tmp_path)
-    cp = _trained(tmp_path / "cp")
+    if run_v1:
+        _as_v1_run(run)
+    cp = _trained(tmp_path / "cp", _run_digest(run))
     lines = check_leakage.disclosure(check_leakage.run_check(run, held, cp.directory))
 
-    assert SEALED_LINE in lines
-    assert FAR_END_LINE in lines
+    assert _sealed_line(_run_digest(run)) in lines
+    assert (RUN_V1_LINE if run_v1 else RUN_SEALED_LINE) in lines
+    assert (RUN_SEALED_LINE if run_v1 else RUN_V1_LINE) not in lines
     assert V1_LINE not in lines
 
 
-def test_a_v1_link_says_recorded_not_sealed_and_not_checked(tmp_path: Path) -> None:
-    """Fails if a v1 checkpoint is described as sealed."""
+@pytest.mark.parametrize("run_v1", [False, True], ids=["run-v2", "run-v1"])
+def test_a_v1_checkpoint_link_says_recorded_not_sealed_on_both_sides(
+    tmp_path: Path, run_v1: bool
+) -> None:
+    """Fails if a v1 checkpoint is described as sealed, or the run's side ignores its document."""
     run, held = _fixture(tmp_path)
-    cp = _as_v1(_trained(tmp_path / "cp"))
+    if run_v1:
+        _as_v1_run(run)
+    cp = _as_v1(_trained(tmp_path / "cp", _run_digest(run)))
     lines = check_leakage.disclosure(check_leakage.run_check(run, held, cp.directory))
 
-    assert V1_LINE in lines
-    assert FAR_END_LINE in lines
+    assert _v1_line(_run_digest(run)) in lines
+    assert (RUN_V1_LINE if run_v1 else RUN_SEALED_LINE) in lines
     assert SEALED_LINE not in lines
 
 
-@pytest.mark.parametrize("sealed", [True, False], ids=["v2", "v1"])
-def test_no_link_line_claims_verification(tmp_path: Path, sealed: bool) -> None:
-    """Fails if the link is called 'verified': the files are verified, the link is not."""
+@pytest.mark.parametrize("run_v1", [False, True], ids=["run-v2", "run-v1"])
+@pytest.mark.parametrize("sealed", [True, False], ids=["cp-v2", "cp-v1"])
+def test_no_link_line_claims_verification(tmp_path: Path, sealed: bool, run_v1: bool) -> None:
+    """The honesty rule, over all four generation pairs: the link is never 'verified'.
+
+    The files are verified; the link is digest equality. 'Sealed' must travel with its
+    generation tag wherever it appears, and the tamper-evidence-not-authentication limit is
+    stated in the sealed cases (the checkpoint's when the checkpoint is v2, the run's when the
+    document is v2).
+    """
     run, held = _fixture(tmp_path)
-    cp = _trained(tmp_path / "cp")
+    if run_v1:
+        _as_v1_run(run)
+    cp = _trained(tmp_path / "cp", _run_digest(run))
     if not sealed:
         cp = _as_v1(cp)
     lines = check_leakage.disclosure(check_leakage.run_check(run, held, cp.directory))
 
     link = _link_lines(lines)
-    assert len(link) == 2
-    assert all("verified" not in ln.lower() for ln in link)
+    assert len(link) == 2, link
+    assert all("verified" not in ln.lower() for ln in link), link
+    for line in link:
+        if "sealed" in line:
+            assert re.search(r"whetstone-(?:checkpoint|training-set)/[12]", line), (
+                f"a link line says 'sealed' without a generation tag: {line!r}"
+            )
+    if sealed:
+        assert "tamper-evidence, not authentication" in link[0], link
+    if not run_v1:
+        assert "tamper-evidence, not authentication" in link[1], link
 
 
-def test_a_leaked_run_keeps_its_leak_lines_and_the_link_comes_after(tmp_path: Path) -> None:
+@pytest.mark.parametrize("run_v1", [False, True], ids=["run-v2", "run-v1"])
+def test_a_leaked_run_keeps_its_leak_lines_and_the_link_comes_after(
+    tmp_path: Path, run_v1: bool
+) -> None:
     """Fails if the link changes the verdict or lands before the leak lines."""
     run, held = _fixture(tmp_path, leaked=True)
-    cp = _trained(tmp_path / "cp")
+    if run_v1:
+        _as_v1_run(run)
+    cp = _trained(tmp_path / "cp", _run_digest(run))
+    run_line = RUN_V1_LINE if run_v1 else RUN_SEALED_LINE
     plain = check_leakage.disclosure(check_leakage.run_check(run, held))
     report = check_leakage.run_check(run, held, cp.directory)
     lines = check_leakage.disclosure(report)
 
     assert report.clean is False
     assert lines[: len(plain)] == plain
-    assert list(lines[len(plain) :]) == [SEALED_LINE, FAR_END_LINE]
+    assert list(lines[len(plain) :]) == [_sealed_line(_run_digest(run)), run_line]
 
 
-def test_the_empty_training_set_branch_also_prints_the_link(tmp_path: Path) -> None:
+@pytest.mark.parametrize("run_v1", [False, True], ids=["run-v2", "run-v1"])
+def test_the_empty_training_set_branch_also_prints_the_link(tmp_path: Path, run_v1: bool) -> None:
     """Fails if the early-return branch skips the link lines."""
     held = _heldout_document(tmp_path / "doc", _MEMBERS)
     run = _run(tmp_path / "run", private=())
-    cp = _trained(tmp_path / "cp")
+    if run_v1:
+        _as_v1_run(run)
+    cp = _trained(tmp_path / "cp", _run_digest(run))
     report = check_leakage.run_check(run, held, cp.directory)
     lines = check_leakage.disclosure(report)
 
     assert report.examples == 0
     assert lines[0].startswith("leakage: clean \u2014 the run has no training examples")
-    assert lines[-2:] == (SEALED_LINE, FAR_END_LINE)
+    assert lines[-2:] == (
+        _sealed_line(_run_digest(run)),
+        RUN_V1_LINE if run_v1 else RUN_SEALED_LINE,
+    )
 
 
-def test_with_no_ledger_the_notice_is_still_last_after_the_link(tmp_path: Path) -> None:
+@pytest.mark.parametrize("run_v1", [False, True], ids=["run-v2", "run-v1"])
+def test_with_no_ledger_the_notice_is_still_last_after_the_link(
+    tmp_path: Path, run_v1: bool
+) -> None:
     """Fails if the link lines are appended after _with_notice."""
     held = _heldout_document(tmp_path / "doc", _MEMBERS)
     run = _run(tmp_path / "run", private=(_SURVIVOR,), ledger=False)
-    cp = _trained(tmp_path / "cp")
+    if run_v1:
+        _as_v1_run(run)
+    cp = _trained(tmp_path / "cp", _run_digest(run))
     report = check_leakage.run_check(run, held, cp.directory)
     lines = check_leakage.disclosure(report)
 
     assert report.ledger_absent is True
     assert report.link is not None
     assert lines[-1].startswith("notice:")
-    assert lines[-3:-1] == (SEALED_LINE, FAR_END_LINE)
+    assert lines[-3:-1] == (
+        _sealed_line(_run_digest(run)),
+        RUN_V1_LINE if run_v1 else RUN_SEALED_LINE,
+    )
