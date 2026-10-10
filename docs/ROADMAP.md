@@ -946,6 +946,15 @@ evidence for #60.
 > (`runs/night-probe/probe-001`) is `whetstone-run/1`, predates the `/2` bump, and remains
 > refused by name; it was never rewritten, and no gate decision exists.
 
+> **Corrected 2026-10-10, when the night sheet was aligned to the post-§ 10.16 corpus**
+> (`night-heldout-seam`). M2's exit criterion stands and stays open. The night runbook now names
+> the five declared dev ids in their `donor-b-*` form, passes `--heldout $REPO/tasks/heldout/source-b.json`
+> on both door blocks, declares the operator's own run-id tokens (never the historical `probe-001` /
+> `night-001`), states the re-derived denominator (51 private + 1 public = 52) and commands a
+> post-night `check-leakage` step that halts a leak at its source. No night or probe has run from
+> this sheet and no candidate has been produced — the unit pins the sheet's text and the committed
+> corpus record, never a GPU run. No gate was run in this unit, and no gate decision exists.
+
 ### M3 — Publish: the artifact and its page
 
 Only reachable with M1 and M2 done, and short once they are.

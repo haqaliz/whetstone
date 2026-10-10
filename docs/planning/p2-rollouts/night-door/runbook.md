@@ -1,4 +1,4 @@
-# Runbook — the first night (`whetstone run --night`)
+# Runbook — the next night (`whetstone run --night`)
 
 **Unit:** `p2-rollouts` · **Aspect:** `night-door` · **Branch:** `feat/p2-rollouts/aliz` ·
 **Run from:** the primary checkout. Every path below is anchored to `$REPO`, so export it
@@ -12,11 +12,12 @@ export REPO=/absolute/path/to/whetstone   # the primary checkout, not a worktree
 The operator's own path is not written here: a committed sheet that names one publishes a
 home directory, and a reader re-deriving this run has a different one.
 
-The operator's sheet for the first night of the improvement loop. Every command here is run
+The operator's sheet for the next night of the improvement loop. Every command here is run
 verbatim. A command sheet that disagrees with the code it runs fails at three in the morning, in a
 run nobody can undo, so `tests/test_night_runbook_guards.py` refuses the disagreements first: the
 flags are checked against the shipped parser, the writable paths must be absolute, no worktree may
-be named, and the declared dev ids must match the ones the arms declared.
+be named, the declared dev ids must match the ones the arms declared, the held-out document must be
+passed by both doors, and every run id must be the operator's own declaration.
 
 ## Candidate resolution (decided before the run)
 
@@ -34,6 +35,29 @@ rule the probe and the larger-base arm applied. It appears in no `--only` value 
 checkpoints in one run directory, or one checkpoint trained on a pooled dataset whose base nobody
 could name, and the door refuses both (`ManyCandidates`).
 
+## The held-out set (pinned before the run)
+
+The held-out source-B split is fixed by `PREREGISTRATION.md` § 10.16 (Type 1, 2026-09-27),
+re-derived under the scorable rule — a member is held out only if its oracle can be built under
+the declared budget, the exclusion sealed in the document's rule digest. The document both door
+commands below pass is `tasks/heldout/source-b.json` (schema `whetstone-heldout/1`, 12 members),
+committed and consumed, never recomputed.
+
+Two of the five declared dev ids — `donor-b-353359e9ac6e` and `donor-b-3e3051c4192a` — are
+held-out members under that split, so the commands below keep them in `--dev-subset` while also
+passing the document whose membership holds them: both rules exclude them from training. A
+declared dev id inside the held-out band is **exclusion, never** a refusal (`night.py:227-230`) —
+the dev overlay applies first and the held-out membership second (`night.py:249-261`) — and the
+ids stay in `--dev-subset`, because dropping them would silently shrink the exclusion. The gate
+still scores them: its eval is exactly the held-out membership, and it has no dev exclusion.
+
+**Read the ledger's held-out record back.** Every run that passed `--heldout` — the probe and the
+night alike — carries a held-out record in its `ledger.json`: the document digest and the
+membership count, never the membership. Its `document_digest` **must equal the digest of the
+committed** `tasks/heldout/source-b.json`; a change is a halt, never a rerun. A digest that does
+not match is the run telling you it excluded a different split than the one pre-committed, and a
+rerun under the changed document would train against a band nobody pre-registered.
+
 ## Before the night
 
 1. **Serialize the GPU.** `mlx-lm` samples from process-global `mx.random` state, so a second
@@ -41,13 +65,16 @@ could name, and the door refuses both (`ManyCandidates`).
    constraint and deliberately not a code fix: run one night at a time, and no other MLX work
    beside it. The determinism claim (same seed → byte-identical training set) is scoped to a
    machine running one night.
-2. **Empty the workspace.** `$REPO/runs/night-001-workspace` must not
-   exist or must be empty. The run is not resumable from a partially deleted workspace.
+2. **Empty the workspace.** `$REPO/runs/<night-run-id>-workspace` must not exist or must be
+   empty (the probe's own `$REPO/runs/<probe-run-id>-workspace` likewise, before its command).
+   The run is not resumable from a partially deleted workspace.
 3. **Declare the inputs.** `--run-id`, `--run-seed` and `--recorded-on` are typed by the operator
    before the run and written down here in the operator's own log. None of them is read from a
    clock or generated: a generated id makes two invocations of the same documented command
    produce two run directories nobody chose, and a generated seed makes the ledger's
-   reproducibility claim uncheckable.
+   reproducibility claim uncheckable. This sheet declares **two** run ids, because the probe and
+   the night are two runs: first `<probe-run-id>` for the probe, then `<night-run-id>` for the
+   night — distinct tokens, never one reused for both.
 4. **Run the probe first.** The chain is validated cheaply before a night is committed to.
 
 ## The probe pass
@@ -65,33 +92,37 @@ uv run whetstone run --night \
   --only mlx-community/Qwen2.5-Coder-32B-Instruct-4bit \
   --runs $REPO/runs/night-probe \
   --checkpoints $REPO/checkpoints/night-probe \
-  --workspace $REPO/runs/night-probe-workspace \
+  --workspace $REPO/runs/<probe-run-id>-workspace \
   --timeout 900 \
   --recorded-on <declared-at-run-time> \
-  --run-id probe-001 \
+  --run-id <probe-run-id> \
   --run-seed <declared-at-run-time> \
-  --dev-subset belay-2e149603209a \
-  --dev-subset belay-353359e9ac6e \
-  --dev-subset belay-3e3051c4192a \
-  --dev-subset belay-844db07ed482 \
-  --dev-subset belay-9dba3ea557f5
+  --heldout $REPO/tasks/heldout/source-b.json \
+  --dev-subset donor-b-2e149603209a \
+  --dev-subset donor-b-353359e9ac6e \
+  --dev-subset donor-b-3e3051c4192a \
+  --dev-subset donor-b-844db07ed482 \
+  --dev-subset donor-b-9dba3ea557f5
 ```
 
 The probe draws `K` attempts at the first two source-B tasks and **writes no checkpoint** — a
 probe that trained would produce a candidate from a self-chosen subset. What it proves is the
-chain: the weights re-hash, the frozen contract, the control arm, the seeded draws, the
-per-draw journals and transcripts, the selection, and the ledger.
+chain: the weights re-hash, the frozen contract, the control arm, the held-out exclusion, the
+seeded draws, the per-draw journals and transcripts, the selection, and the ledger. This probe's
+ledger will be `whetstone-run/3` (`LEDGER_SCHEMA`), and `check-probe` reads it through the same
+verifying reader the gate uses; the first probe run's `whetstone-run/1` ledger is refused by every
+reader, which is why this probe's id is fresh, never a reused one.
 
 ```bash
 uv run whetstone check-probe \
-  --run $REPO/runs/night-probe/probe-001
+  --run $REPO/runs/night-probe/<probe-run-id>
 ```
 
 The decision is the command's exit: `whetstone check-probe` reads the run directory the probe
-block wrote (`runs/night-probe/probe-001/ledger.json`) against the rule below. Exit 0 — the probe
-satisfies the rule; proceed to the night. Exit 1 — a named harness finding (which draw/source, or
-an empty seed map); no night runs behind it. Exit 2 — a refusal an operator can fix by retyping;
-never a verdict about the probe.
+block wrote (`runs/night-probe/<probe-run-id>/ledger.json`) against the rule below. Exit 0 — the
+probe satisfies the rule; proceed to the night. Exit 1 — a named harness finding (which
+draw/source, or an empty seed map); no night runs behind it. Exit 2 — a refusal an operator can
+fix by retyping; never a verdict about the probe.
 
 **Decision rule (pre-committed): the night proceeds iff the probe completes with the control arm
 `PASS` on every draw and a non-empty seed map.** A killed probe is **never resumed** —
@@ -109,24 +140,27 @@ uv run whetstone run --night \
   --only mlx-community/Qwen2.5-Coder-32B-Instruct-4bit \
   --runs $REPO/runs/nights \
   --checkpoints $REPO/checkpoints \
-  --workspace $REPO/runs/night-001-workspace \
+  --workspace $REPO/runs/<night-run-id>-workspace \
   --timeout 900 \
   --recorded-on <declared-at-run-time> \
-  --run-id night-001 \
+  --run-id <night-run-id> \
   --run-seed <declared-at-run-time> \
-  --dev-subset belay-2e149603209a \
-  --dev-subset belay-353359e9ac6e \
-  --dev-subset belay-3e3051c4192a \
-  --dev-subset belay-844db07ed482 \
-  --dev-subset belay-9dba3ea557f5
+  --heldout $REPO/tasks/heldout/source-b.json \
+  --dev-subset donor-b-2e149603209a \
+  --dev-subset donor-b-353359e9ac6e \
+  --dev-subset donor-b-3e3051c4192a \
+  --dev-subset donor-b-844db07ed482 \
+  --dev-subset donor-b-9dba3ea557f5
 ```
 
 Every flag verified against the shipped parser (`whetstone.cli.build_parser`) at write time.
 Notes on the choices:
 
-- **Denominator: 61 private (66 − 5 dev) + 1 public = 62 tasks, each drawn `K` times.** The five
-  declared dev ids are excluded from **both** sources before anything is drawn; source A is always
-  drawn against in full, and both sources always publish together.
+- **Denominator: 51 private (66 − 5 dev − 10 held-out not already dev-excluded) + 1 public = 52
+  tasks, each drawn `K` times.** The exclusion order is dev overlay first, held-out second
+  (`night.py:249-261`): the five declared dev ids leave both sources before anything is drawn,
+  then the 12 held-out members leave what remains — 10 of them, the other 2 already in the dev
+  band. Source A is always drawn against in full, and both sources always publish together.
 - **`K` is not a flag.** It is a declared constant in `whetstone.loop.sampling`, pre-committed
   before any night. Raising it is the roadmap's named response to a low strict-PASS yield — as an
   edit to that line, in a diff, before a night, never as an argument on a command that has already
@@ -141,9 +175,9 @@ Notes on the choices:
   environment build fails, every rollout is `UNPROVISIONED`, and the control arm proves nothing.
   The measured arm died exactly this way on 2026-08-12.
 - **The journals and transcripts are not flags.** They live at
-  `runs/nights/night-001/draws/draw-NN.journal.jsonl` and `draw-NN.transcript.jsonl` — one pair per
-  draw index, because both files are keyed `(candidate, task)` and `K` draws of one task share that
-  key exactly. A single file would silently keep the last draw and discard the rest.
+  `runs/nights/<night-run-id>/draws/draw-NN.journal.jsonl` and `draw-NN.transcript.jsonl` — one
+  pair per draw index, because both files are keyed `(candidate, task)` and `K` draws of one task
+  share that key exactly. A single file would silently keep the last draw and discard the rest.
 - **`--runs` and `--checkpoints` may not be inside a `reports/` directory.** A night writes the
   user's own private donor code — the prompts and completions in its transcripts, the training set
   built from them, and an adapter trained on that set — and `reports/` is the one directory in this
@@ -183,28 +217,48 @@ pass is what bounds it** — read its ledger's own per-draw records before commi
 ## A killed night
 
 Restart the **same command, unchanged**, including the same `--run-id` and `--run-seed`. Each draw
-index has its own journal under `runs/nights/night-001/draws/`, every completed `(task, draw)` pair
-replays verbatim, and the control arm recorded beside it is reused rather than re-run — so a
-resumed night produces the record set an uninterrupted one would have produced. Do **not** delete
-the run directory to "start clean": that discards the paid-for draws and changes the experiment.
-Do delete and recreate the workspace if it is in an unknown state.
+index has its own journal under `runs/nights/<night-run-id>/draws/`, every completed
+`(task, draw)` pair replays verbatim, and the control arm recorded beside it is reused rather than
+re-run — so a resumed night produces the record set an uninterrupted one would have produced. Do
+**not** delete the run directory to "start clean": that discards the paid-for draws and changes the
+experiment. Do delete and recreate the workspace if it is in an unknown state.
 
 ## After the night
 
 Read, in this order:
 
-1. `runs/nights/night-001/ledger.json` — the pinned inputs, the seed map, the per-draw harness
-   status and counts, the dataset digest, and the checkpoint digest or the reason there is none.
-2. `runs/nights/night-001/dataset.json` — the selected examples, each carrying its recorded
+1. `runs/nights/<night-run-id>/ledger.json` — the pinned inputs, the seed map, the held-out record
+   (the committed document's digest and the membership count, which **must equal the digest of the
+   committed** `tasks/heldout/source-b.json`; a change is a halt, never a rerun), the per-draw
+   harness status and counts, the dataset digest, and the checkpoint digest or the reason there is
+   none.
+2. `runs/nights/<night-run-id>/dataset.json` — the selected examples, each carrying its recorded
    strict-PASS verdict. Every one of them, or the exit-criterion test is lying.
-3. `runs/nights/night-001/data/train.jsonl` — what a trainer actually read.
-4. `checkpoints/night-001/provenance.json` — base revision, dataset digest, run seed, training
+3. `runs/nights/<night-run-id>/data/train.jsonl` — what a trainer actually read.
+4. `checkpoints/<night-run-id>/provenance.json` — base revision, dataset digest, run seed, training
    args, tool versions, the capacity probe's record, and the validation sentence.
+
+Then run the leakage check — at the seam, after the night and before the gate reads the candidate:
+
+```bash
+uv run whetstone check-leakage \
+  --run $REPO/runs/nights/<night-run-id> \
+  --heldout $REPO/tasks/heldout/source-b.json
+```
+
+Exit 0 means source-B examples were compared and none shared a task identity with the held-out
+membership. A leak exits 1 and names the task; a refusal exits 2 and names the reason (a missing or
+unreadable dataset, a tampered held-out document, a digest mismatch) — either way, halt here,
+before a checkpoint exists, rather than at the gate. A night with no training example at all stays
+exit 0 — nothing trained, nothing to leak, disjoint by truth — while a set holding source-A
+examples and no source-B example is a refusal, because nothing was compared against the membership.
+The gate runbook's Step 3 checks the same link at the other end, against the checkpoint: two
+commanders, belt and braces.
 
 Then re-verify the candidate's bytes before anything else reads them:
 
 ```bash
-uv run python -c "from pathlib import Path; from whetstone.loop.sft import verify_checkpoint; print(verify_checkpoint(Path('$REPO/checkpoints/night-001')).digest)"
+uv run python -c "from pathlib import Path; from whetstone.loop.sft import verify_checkpoint; print(verify_checkpoint(Path('$REPO/checkpoints/<night-run-id>')).digest)"
 ```
 
 **Nothing here is published.** The night's counts live in its own gitignored run directory, which
