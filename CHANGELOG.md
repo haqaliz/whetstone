@@ -9,6 +9,16 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## Unreleased
+
+### Added
+
+- **The night runbook is aligned to the post-§ 10.16 corpus** (`docs/planning/p2-rollouts/night-door/runbook.md`): the five declared dev ids in their `donor-b-*` form (`donor-b-2e149603209a`, `donor-b-353359e9ac6e`, `donor-b-3e3051c4192a`, `donor-b-844db07ed482`, `donor-b-9dba3ea557f5`), `--heldout $REPO/tasks/heldout/source-b.json` on both the probe and night command blocks, operator-declared run ids (the literal tokens `<probe-run-id>` / `<night-run-id>`, never the historical `probe-001` / `night-001`), the re-derived denominator (51 private + 1 public = 52 tasks), the § 10.16 pin (Type 1, 2026-09-27) with the ledger digest read-back halt ("must equal the digest of the committed" document), and a post-night `whetstone check-leakage` step that halts a leak at its source, before a checkpoint exists. The guard suite now also pins the five dev ids and the two held-out overlaps to the committed corpus record (`tasks/local-ledger.json`, `tasks/heldout/source-b.json`), so a future re-mint fails the suite in any checkout — no GPU, no primary resolution.
+
+### Changed
+
+- **No runtime behaviour changed.** Nothing under `src/` moved: this unit is the operator's sheet and the suite that holds it.
+
 ## [0.21.0] - 2026-10-10
 
 ### Added
