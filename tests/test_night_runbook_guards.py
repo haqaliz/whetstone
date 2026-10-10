@@ -35,7 +35,10 @@ Properties 5 onward are this sheet's own:
    night; the § 10.16 citation and the scorable rule, with no live § 10.7 citation; the ledger
    digest-equality read-back; operator-declared run-id tokens, distinct and never
    `probe-001`/`night-001`; the re-derived 51 + 1 = 52 denominator; and the two dev ids that are
-   held-out members, stated as exclusion, never a refusal.
+   held-out members, stated as exclusion, never a refusal; and
+9. the live re-mint pin: the five declared dev ids exist in the committed corpus record, and the
+   two overlap ids are members of the committed held-out document. This test is green on arrival —
+   its RED demonstration is the next re-mint, which has not happened — and fails in any checkout.
 
 **Watched failing first** (CONTRIBUTING.md): every assertion below was run against a deliberately
 wrong stub sheet — relative writable paths, a `--sample-more` flag the parser does not define, the
@@ -43,7 +46,8 @@ excluded candidate in `--only`, a stale worktree name, the zero-yield paragraph 
 the probe pin: a sheet with no `check-probe` block, a relative `--run`, a `--run` pointing at the
 night's own dir, a decision sentence missing an exit, and a sentence claiming a probe resumes — and
 each one refused it before the real sheet existed. The § 10.16 pins were watched failing against
-the stale sheet itself: the `guards` aspect's RED commit records each refusal.
+the stale sheet itself: the `guards` aspect's RED commit records each refusal. The live corpus pin
+is green on arrival by design — its RED demonstration is the next re-mint, which has not happened.
 """
 
 from __future__ import annotations
@@ -116,6 +120,11 @@ HELDOUT_OVERLAP = ("donor-b-353359e9ac6e", "donor-b-3e3051c4192a")
 #: sheet that reuses one for both runs is refused by name.
 PROBE_RUN_ID = "<probe-run-id>"
 NIGHT_RUN_ID = "<night-run-id>"
+
+#: The committed corpus record and held-out document this checkout carries: both tracked
+#: (`git ls-files`), so the live pin travels with the tree — no GPU, no primary resolution.
+CORPUS_RECORD = Path(__file__).parent.parent / "tasks/local-ledger.json"
+HELDOUT_DOCUMENT = Path(__file__).parent.parent / "tasks/heldout/source-b.json"
 
 #: Which of the door's flags name something the run writes to. A relative one of these is the
 #: failure that killed the measured arm on 2026-08-12.
@@ -840,4 +849,42 @@ def test_the_heldout_overlap_ids_are_stated() -> None:
         "declared dev id inside the held-out band is exclusion, never a refusal "
         "(`night.py:227-230`). Without it a reader who sees an overlap assumes the run is "
         "contradictory instead of deliberately double-excluding"
+    )
+
+
+def test_the_declared_dev_ids_exist_in_the_committed_corpus_record() -> None:
+    """The five dev ids are corpus members of the record this checkout carries.
+
+    The sheet's `--dev-subset` ids are only real while the committed record still holds them.
+    A future re-mint renames them exactly as § 10.16's did, and this suite must fail in any
+    checkout — before an operator's night does — so this reads the tracked record, not the
+    sheet. The committed held-out document is read too: the two overlapping ids must remain
+    members of the split the night excludes.
+
+    **GREEN on arrival, by design.** The corpus is already re-minted; this pin's RED
+    demonstration is the next re-mint, which has not happened.
+    """
+    import json
+
+    ledger = json.loads(CORPUS_RECORD.read_text(encoding="utf-8"))
+    heldout = json.loads(HELDOUT_DOCUMENT.read_text(encoding="utf-8"))
+    ledger_ids = {task["task_id"] for task in ledger["tasks"]}
+    missing = [task_id for task_id in DECLARED_DEV if task_id not in ledger_ids]
+    assert not missing, (
+        f"WHY THIS IS A FAILURE: the committed corpus record {CORPUS_RECORD.name} does not "
+        f"carry dev ids {missing}. The corpus has been re-minted and the sheet's --dev-subset "
+        "ids no longer exist — every command that passes them is refused by the door"
+    )
+    membership = set(heldout["membership"])
+    not_held_out = [task_id for task_id in HELDOUT_OVERLAP if task_id not in membership]
+    assert not not_held_out, (
+        f"WHY THIS IS A FAILURE: the committed held-out document {HELDOUT_DOCUMENT.name} no "
+        f"longer holds {not_held_out}. The split was re-derived and the ids the sheet states as "
+        "held-out members are gone — the sheet's overlap statement is now false"
+    )
+    pre_mint = sorted(task_id for task_id in ledger_ids if PRE_MINT_ID.match(task_id))
+    assert not pre_mint, (
+        f"WHY THIS IS A FAILURE: the committed corpus record still carries pre-mint ids "
+        f"{pre_mint}. The record has not been re-minted under labels, and every id the sheet "
+        "passes comes from a corpus that no longer exists (or vice versa)"
     )
