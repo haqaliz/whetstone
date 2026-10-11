@@ -1,59 +1,39 @@
-# feat night-heldout-seam — the night runbook still lives in the pre-§ 10.16 world
+# Card — portability-cpu-dtype
 
-**Core loop element:** ③ the never-regress promotion gate — the exclusion its inputs carry (the
-night's training set must be disjoint from the held-out set); ② the nightly improvement loop's
-launch chain. ① the reward does not change: nothing under `verify/` or `tasks/` is touched, and
-the gate's rule and exits stay byte-identical.
-**Roadmap:** M2 of `docs/ROADMAP.md` § 14 — "Make the gate able to answer"; the loose end of the
-`heldout-scorable` unit (2026-09-27), which updated the *gate* runbook for § 10.16 and never
-touched the *night* sheet.
-**Source:** inline brief — the `whetstone-next` handoff (2026-10-10). Verified 2026-10-10 that
-the only open issues are #64 (patch representation) and #62 (held-out split keyed on task id),
-neither naming this unit.
+**Source:** inline brief (no GitHub issue exists for this slug; `gh issue list --search`
+returns only closed #30/#33/#40/#42/#45/#55/#61 and open #62/#64, none of which is this work).
+Fetched 2026-10-11 from the primary checkout; branch `feat/portability-cpu-dtype/aliz`.
 
 ## Brief
 
-The night runbook (`docs/planning/p2-rollouts/night-door/runbook.md`) and its guard
-(`tests/test_night_runbook_guards.py`) still pin the pre-re-mint world:
+Change the portability arm's declared CPU precision from `float32` to `bfloat16`
+(`DEVICE_PRECISION["cpu"]`, `src/whetstone/loop/torch_runtime.py:53-57`) as a pinned module
+constant — never a per-run flag, in the shape of `sampling.K` (`src/whetstone/loop/sampling.py:79`).
+`docs/ROADMAP.md` § 13 records that this is the arm's one remaining *code* lever for a larger
+base: *"The Torch runtime loads `float32` on CPU by declaration. The 3B base already occupies most
+of the declared host's memory; a 7B would need roughly twice what the machine has and cannot be
+loaded at all. So **3B is the largest base this runtime supports as written**"* (`:784-787`).
 
-1. **The five `--dev-subset belay-*` ids no longer exist.** The corpus was re-minted under
-   `--label` by `heldout-scorable` (§ 10.16, 2026-09-27): every id is now
-   `donor-b-<sha12>`/`donor-a-<sha12>` form. The CLI refuses an id matching no task ("an id
-   matching no task is refused, because it would exclude nothing while the ledger said it
-   had" — `cli.py`), so the sheet fails on its first command.
-2. **The sheet never passes `--heldout` at all.** A night run verbatim draws the full private
-   corpus including the 12 held-out members (`night.py` excludes only when the flag is given),
-   reproducing the exact seam failure that produced `checkpoints/portability-arm`, refused by
-   `whetstone check-leakage` (4 of 6 training examples on a held-out task —
-   `docs/planning/gate-leakage-guard/finding.md`). With no `--heldout` the next night's
-   training set is *guaranteed* non-clean against `tasks/heldout/source-b.json`
-   (schema `whetstone-heldout/1`, re-derived under § 10.16), so the gate chain halts at
-   `check-leakage` and M2's exit criterion — `whetstone gate` returns `promoted`/`rejected`
-   on a real pair — stays unreachable.
+The change must be a **Type 1 `PREREGISTRATION.md` amendment**, *"a code change and an amendment
+and alter[ing] what every earlier figure was measured under"* (`docs/ROADMAP.md:788-789`),
+committed **before** the night that records the new dtype (`PREREGISTRATION.md` § 8.1).
 
-**Scope expectation (verify in the dig):** re-pin the five dev ids in their post-mint
-`donor-b-*` forms, add `--heldout $REPO/tasks/heldout/source-b.json` to the probe and night
-commands with the § 10.16 pin and digest read-back mirroring the gate runbook's, and extend
-the guards (test-first, watched-failing, per this repo's discipline) to refuse a `belay-`/
-`contig-` id, a missing `--heldout`, or a live § 10.7 citation.
+## Why now
 
-**Caveats.** One dev id, `donor-b-3e3051c4192a` (ex-`belay-3e3051c4192a`), is now a
-**held-out member** under § 10.16; resolve in the dig whether the gate excludes dev ids from
-the held-out denominator, and state the overlap in the sheet deliberately rather than silently
-keeping or dropping an id. The whole-function measurement run (M1) and the night itself remain
-operator-executed: this unit produces no candidate and claims no number, and must not be
-written up as advancing yield.
+`docs/ROADMAP.md` § 13 (`:769-792`) and § 14's 2026-10-11 correction (`:882-894`) name the
+P2 pivot's remaining *untried* responses: **raise k** (demoted — see `docs/ROADMAP.md:991-992`
+and `docs/planning/whole-function-edit-finding/measurement-run/finding.md` § 6) and **the
+portability arm's CPU dtype**. The patch-representation axis (M1) was measured NO-GO in all
+three forms (`docs/planning/whole-function-edit-finding/measurement-run/finding.md`,
+`docs/planning/edit-contract-finding/measurement-run/finding.md`,
+`docs/planning/patch-representation/finding.md`), so the representation is spent.
 
-## Acceptance criteria (from the handoff)
+## Related issues (all closed; context only)
 
-1. The runbook's probe and night commands pass `--heldout` at the committed
-   `tasks/heldout/source-b.json`, with the § 10.16 pin and digest read-back held by the guard
-   (mirroring `test_gate_runbook_guards.py`).
-2. The five dev ids are re-pinned in their post-mint `donor-b-*` form; the guard refuses a
-   `belay-`/`contig-` id by name; the sheet states the two ids that are now held-out members.
-3. The guards are shown **failing against the current stale sheet** before the new sheet exists
-   (the repo's watched-failing discipline).
-4. Nothing under `verify/`, `tasks/` or the reward path changes; the gate's rule, exits and
-   retry discipline stay byte-identical.
-5. Docs corrected in the same commit: night runbook header/branch, STATUS entry, CHANGELOG
-   (`Unreleased`), ROADMAP M2 note — this unit makes a claim, so it ships its write-up with it.
+- **#30** `backend.TORCH_CUDA` → `TORCH` — the backend name is the comparability key; the
+  accelerator belongs in `Backend.device`. Precedent for "the record must not silently absorb
+  a comparability-relevant fact."
+- **#32/#33/#34** the arm's first run's provenance defects; the capacity probe/ceiling shape.
+- **#42** four source-B tasks do not mint on Linux — a task is a property of a commit *on a
+  platform*.
+- **#45/#61** a ledger naming the wrong runtime — the same class as recording the wrong dtype.

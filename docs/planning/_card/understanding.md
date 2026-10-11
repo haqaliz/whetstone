@@ -1,110 +1,144 @@
-# Understanding — night-heldout-seam
+# Understanding — portability-cpu-dtype
 
-**Core-loop element:** ③ the never-regress promotion gate — at the exclusion its inputs carry
-(the night's training set must be disjoint from the held-out set for `check-leakage` to pass and
-M2's exit criterion to be reachable); ② the nightly loop's launch chain. ① the reward does not
-change: nothing under `verify/`, `tasks/`, `loop/`'s reward path or the gate's rule moves; this
-unit changes an operator's sheet and the guards that hold it.
+**Written:** 2026-10-11, Phase 2 of `wbf feat portability-cpu-dtype`. Source: the inline brief
+(`docs/planning/_card/issue.md`) and the code/docs read below.
 
 ## What the work is really asking
 
-The night runbook (`docs/planning/p2-rollouts/night-door/runbook.md`) is the operator's sheet
-for the next night, and it still describes the world before `heldout-scorable`
-(2026-09-27, `PREREGISTRATION.md` § 10.16): task ids in the pre-mint `belay-*` form, no
-`--heldout` flag, and run ids that name artifacts that now exist. The CLI changed underneath
-the sheet, so the sheet fails on its first command, and if an operator "fixed" the ids by eye
-without `--heldout`, the night would train on the 12 held-out members — reproducing the
-portability-arm leak that `check-leakage` already refused (4 of 6 examples:
-`docs/planning/gate-leakage-guard/finding.md`). The gate chain halts at `check-leakage` and
-M2's exit criterion — `whetstone gate` returns `promoted`/`rejected` on a real pair
-(`docs/ROADMAP.md` § 14) — stays unreachable. M2 was the previous unit's mandate; this is its
-loose end.
+One declared constant moves — `DEVICE_PRECISION["cpu"]` from `"float32"` to `"bfloat16"`
+(`src/whetstone/loop/torch_runtime.py:53-57`) — so that the CPU-only portability arm can load a
+base the machine cannot hold in fp32. The brief names the dtype change; the real ask underneath
+it is **the arm's last lever for a nonzero strict-`PASS` yield**, and the honest work is making
+that lever *attributable*: a dtype change is a pinned input, so it needs a Type 1 amendment and a
+checkpoint that says which precision trained it.
 
-## Facts the dig established (all verified against the worktree @ 4967f57)
+`docs/ROADMAP.md` § 13 states the stakes exactly (`:784-792`): *"The Torch runtime loads `float32`
+on CPU by declaration. The 3B base already occupies most of the declared host's memory; a 7B
+would need roughly twice what the machine has and cannot be loaded at all. So **3B is the largest
+base this runtime supports as written** … change the CPU dtype to `bfloat16`, which is a code
+change *and* an amendment *and* alters what every earlier figure was measured under."*
 
-- **`--heldout` is deliberately optional on the night CLI** (`cli.py:414-429`):
-  *"Off by default: without the flag the night is today's night, byte for byte."* Code that
-  made it required would break byte-compat determinism; the sheet is the surface that commits
-  the real night to the pinned input. Do **not** make it a required flag.
-- **A stale dev id is a hard refusal, not a silent no-op:** `UnknownDevSubset`
-  (`src/whetstone/bakeoff/run.py:1033-1052`) fires after both corpora load, for probe and
-  night alike (same `_partition` path, `night.py:255-257`), naming the unmatched ids. So the
-  current sheet's five `belay-*` ids refuse the run before a single draw (runbook.md:73-77,
-  117-121).
-- **The exclusion order is dev-overlay first, held-out second** (`night.py:249-261`): the
-  partition excludes the five dev ids, then the held-out membership is filtered from the
-  post-overlay tasks. A dev id inside the held-out band is exclusion, never a refusal
-  (`night.py:227-230`). **New denominator: 51 private (66 − 5 dev − 10 held-out not already
-  dev-excluded) + 1 public = 52 tasks drawn `K` times** — the sheet's current "62 tasks"
-  sentence (runbook.md:127) is wrong twice over.
-- **Two of the five dev ids are now held-out members:** `donor-b-353359e9ac6e` and
-  `donor-b-3e3051c4192a` (membership of `tasks/heldout/source-b.json`; all five exist in the
-  re-minted corpus). The gate scores dev ids — `run_gate` has no dev-exclusion; the eval is
-  exactly the held-out membership resolved against loaded tasks (`gate.py:760, 1604-1615`).
-  So keeping the five is safe: the two are excluded from training by two rules, and are
-  legitimately scored by the gate.
-- **The sheet names artifacts that already exist.** Probe block: `--run-id probe-001`
-  (runbook.md:71) and `check-probe --run $REPO/runs/night-probe/probe-001` (:87) — but
-  probe-001's ledger is `whetstone-run/1`, which every reader refuses by name
-  (`docs/STATUS.md` 0.21.0 entry), so the sheet's own post-probe step commands a refusal
-  today. Night block: `--run-id night-001` (:115) — rerunning verbatim would rewrite the real
-  night-001 documents ("read unsealed, never rewritten"). The sheet already says run ids are
-  operator-declared (:46-50); the hardcoded ids contradict it.
-- **The pattern to mirror is the gate runbook's guard** (`tests/test_gate_runbook_guards.py`):
-  `test_the_sheet_cites_the_amendment_that_re_derived_the_split` (:802-824), the § 10.7
-  refusal (:827-843), the scorable-rule sentence (:846-870), and the digest-equality halt
-  (:873-894). The gate runbook's Step-5 text (runbook.md:264-267) is the wording to adapt.
-- **Scope is tight.** Inventory of every `belay-*`/`contig-*` reference: only the night-door
-  runbook's two commands and `test_night_runbook_guards.py`'s `DECLARED_DEV` pin
-  (:84-90) are stale in the fixable sense. The larger-base and format-hardening sheets are
-  historical records with remint-aware guards; the baseline-measurement sheet already passes
-  `--heldout` (post-§ 10.16); autopsy/remint fixtures use old ids deliberately.
-- **No other reader coupling:** `check-probe` never reads the ledger's held-out record; the
-  probe still writes no checkpoint; nothing else consumes the night sheet's text.
+## Where it sits on the core loop
 
-## Contradictions with the brief
+Element **② the nightly improvement loop** (the runtime the loop runs on) and element **③ the
+never-regress promotion gate** (comparability of two checkpoints). **Not** ① and **not** the
+reward.
 
-1. **The brief names one held-out dev id; the dig finds two**
-   (`donor-b-353359e9ac6e` in addition to `donor-b-3e3051c4192a`). Both, not one, must be
-   stated in the sheet.
-2. **The brief says "re-pin the five dev ids"; the dig shows the sheet's denominator and
-   run-id claims are stale too.** The five ids alone do not make the sheet commandable. The
-   unit's real scope is: ids, `--heldout` + its pin, the denominator sentence, and the
-   probe/night run-id declarations (fresh ids per run; never `probe-001`/`night-001`).
-3. **`--heldout` is optional in the CLI by design.** The guard must pin the *sheet's* use of
-   it, not the parser's.
+- **The reward is untouched.** `src/whetstone/verify/` and `tasks/` are byte-identical; the
+  reward stays the deterministic re-execution exit status. This change is entirely off the reward
+  path.
+- **The gate's rule is untouched.** The three exits, `unverified == 0`, `R = 3` are unchanged.
+  But the change is comparability-relevant: the backend module's own thesis
+  (`src/whetstone/loop/backend.py:8-15`) is that *"different kernels and a different quantisation
+  of the same weights do not produce the same rollouts"* — and a dtype is exactly such a
+  quantisation. A bf16 candidate is not comparable to an fp32 incumbent.
+- **Local + private (⑤):** unchanged — the arm runs on the user's declared host.
 
-## Consequences for the tests
+## Affected areas (file:line)
 
-- The guard suite `tests/test_night_runbook_guards.py` is the deliverable's other half:
-  extend it in the gate-runbook's shape — refuse `belay-`/`contig-` ids by name, refuse a
-  sheet whose probe or night command lacks `--heldout`, refuse a live § 10.7 citation, pin
-  the § 10.16 sentence and the digest-readback halt, pin the corrected denominator sentence,
-  and refuse a sheet naming `probe-001`/`night-001` as run ids. Each tightened assertion must
-  be shown failing against the *current* sheet before the new sheet exists (the repo's
-  watched-failing discipline).
-- The existing dev-id test (`test_every_declared_dev_id_is_passed_and_matches_the_hardened_
-  contract`, :358-371) compresses its pin; the plan decides whether to keep that shape.
-- Docs shipped with the unit, in the same commit: `docs/STATUS.md` entry, `CHANGELOG.md`
-  `Unreleased`, `docs/ROADMAP.md` M2 note. Nothing under `src/` changes unless the dig's
-  remaining open question says otherwise.
+### The declaration and its two read sites
+- `src/whetstone/loop/torch_runtime.py:53-57` — `DEVICE_PRECISION = {"cuda": "bfloat16",
+  "mps": "float16", "cpu": "float32"}`. The whole change is line 56.
+- `:137-138` — the trainer reads it: `dtype = getattr(torch, DEVICE_PRECISION[device])` →
+  `AutoModelForCausalLM.from_pretrained(..., dtype=dtype)` (`:147-149`), then PEFT
+  (`:150`). **This is training.**
+- `:395-396` — the generator/gate loader reads the *same* map →
+  `from_pretrained(..., dtype=dtype)` (`:407-409`). Used by `TorchGenerator` for both
+  `torch_sampling_engine` and `torch_gate_engine`. **So the change also moves every rollout and
+  every gated evaluation, not only training** — the amendment must say so.
 
-## Open questions for the interview
+### The capacity ceiling (relation, not a read site)
+- `src/whetstone/loop/sft.py:59` `CAPACITY_PROBE_ITERS = 8`; `:63` `MACHINE_BYTES`;
+  `:70` `HEADROOM_FRACTION = 0.85`; `:74` `CAPACITY_HEADROOM_BYTES`; `:429-444`
+  `headroom_for(device_memory_bytes)` = `0.85 × device_memory_bytes`; `:447-476`
+  `probe_capacity`; `:479-519` `train` (refuses `CapacityExceeded`, `TrainingTooLong` at
+  `:80` `TRAINING_WALLCLOCK_CEILING_SECONDS = 24h`).
+- The ceiling is *derived from the machine* (`backend._system_memory_bytes`, `:296-301` →
+  `_torch_device_memory`, `:278-293`), not a constant. bf16 halves weight bytes, so it lowers the
+  probe's peak and can make a base loadable that fp32 cannot fit; it also changes step speed, so
+  `projected_seconds`/`TrainingTooLong` shift. **No code in `sft.py` knows the dtype** — it is
+  reached only through the trainer.
 
-1. **Probe/night run ids.** Make both `/run-id <declared-at-run-time>` (matching the sheet's
-   own "Declare the inputs" text and the probe-decision-gate's fresh-id rule), with a guard
-   pin that the sheet never names `probe-001`/`night-001`? Or hardcode `probe-002`/`night-002`
-   as the next concrete ids?
-2. **The five dev ids.** Keep all five (two overlap held-out harmlessly — recommended, the
-   overlap is stated and both exclusions already apply), or trade the two overlap ids for
-   non-held-out ones (which changes the dev set the contract was "developed against")?
-3. **A post-night leakage step in the night sheet?** The gate runbook already commands
-   `check-leakage` before the gate; a night sheet ending with the morning report covers the
-   chain's own span. Add it or leave the gate step as the only commander?
+### The record (`Backend`) — dtype is currently **absent** everywhere
+- `src/whetstone/loop/backend.py:93-131` — `Backend` frozen dataclass with exactly five fields
+  (`name`, `library`, `version`, `device`, `device_memory_bytes`) and `recorded()` at `:118-131`.
+  **No precision/dtype field.**
+- `src/whetstone/loop/sft.py:778-792` — `write_checkpoint` body: `backend.recorded()`,
+  `training_args.recorded()` (`:262-276`, no dtype), `tool_versions`, `capacity_probe`.
+  **A fp32 checkpoint and a bf16 checkpoint would carry byte-identical provenance.**
+- `src/whetstone/loop/torch_runtime.py:358-379` — `TorchGenerator.provenance()`: no dtype.
+- `reports/portability-arm/report.md` — declares base/revision/device ("CPU — a Linux host with
+  16 GB of RAM and no accelerator") but **never a dtype**; `report.json` still pins the 0.5B
+  base and § 10.11.
 
-## What cannot be proven here
+### Comparability at the gate
+- `src/whetstone/loop/gate.py:311-332` `refuse_cross_backend`: **`if candidate == incumbent:
+  return`** — a whole-dict comparison. So *if* the backend record gains a `precision` key, a
+  bf16-vs-fp32 pair is refused by the existing code with **no gate-logic change**. The docstring
+  at `:318-320` already exempts an absent backend (old checkpoints: "an unknown is not a
+  mismatch").
 
-No night or probe runs in this unit; the sheet's commands are pinned against the parser and
-by the guard suite against the checked-in text, never exercised against a real corpus on a
-GPU (which is the operator's step, in the primary checkout, after this merges). The unit
-produces no candidate and no number, and must not be written up as advancing yield.
+### Amendment + prose
+- `PREREGISTRATION.md:306-325` amendment log; `:638-951` § 10.11-§ 10.16 (the arm's Type 1
+  amendments). The nearest precedent is § 10.13 (`:740-791`): pins an input for an existing arm,
+  states non-comparability, states what is not claimed.
+- `docs/ROADMAP.md:784-792` (§ 13) and `:882-894` (§ 14's 2026-10-11 correction) — both name the
+  CPU dtype; § 13's *"loads `float32` on CPU by declaration"* becomes false.
+- `src/whetstone/loop/torch_runtime.py:50-52` docstring: *"A CPU run in fp16 is arithmetic that
+  silently produces nothing useful"* — the reason written for `float32`; becomes stale.
+
+### Tests that will move
+- `tests/loop/test_torch_trainer.py:176-187` — `test_every_declared_device_has_a_stated_precision`
+  asserts **key presence only**, not the value. Changing the value breaks **nothing**; a new test
+  pinning the value is the missing guard.
+- `tests/loop/test_backend.py:150-176` — asserts `Backend.recorded()` is **exactly**
+  `{name, library, version, device, device_memory_bytes}`. **Adding a field breaks this test** —
+  deliberately, on the record (watched failing first).
+- `tests/loop/test_sft.py:166-184` — provenance records `capacity_probe.iters`; `:577-628`
+  projected-rate/ceiling tests; `:546-574` `headroom_for`.
+- `tests/loop/test_arm.py:101-157,233-249` — probe run, machine-derived ceiling, `UnknownMachine`.
+- `tests/test_docs.py` — `PREREGISTRATION.md` must keep its 11 `## ` sections (`:568-595`),
+  may contain **no `%`/percent/placeholder token** (`:598-653`), and the `__` ROADMAP citations
+  (`:141-152`, `:1101-1143`) must still resolve. **No § 13/§ 14 citation exists**, so editing
+  those sections moves no cited block.
+- `tests/bakeoff/test_report.py:2152-2220` and `tests/bakeoff/test_transcript_locality.py:163-185`
+  — pin the **exact 21-file list** under `reports/`. **Do not add a file under `reports/`.**
+
+## Ambiguities and open questions
+
+1. **Is "record the precision" in scope?** § 13 says the dtype change *"alters what every earlier
+   figure was measured under"* — but today the dtype is recorded **nowhere**. If it stays
+   unrecorded, the *amendment* is the only record of what dtype was in force, and a reader cannot
+   tell two checkpoints apart. Recording it (in `Backend.recorded()`) makes the non-comparability
+   enforceable and is the honest form of the change — but it ripples (`Backend` is shared with
+   MLX; the exact-key test moves; the gate's whole-dict `==` then refuses a precision mismatch,
+   which is arguably correct). **Recommendation:** include it, minimally and Torch-only.
+2. **If recorded, what is MLX's precision?** It is declared **nowhere** in this repo
+   (`mlx_runtime.py`/`sft.py` have no dtype). Inventing one would be an unverified claim. The
+   shape that avoids inventing anything is an **optional** `precision: str | None`, filled only
+   by the Torch describer, `null` for MLX.
+3. **Base unchanged or larger?** § 10.11's mechanism makes a *base* its own Type 1 amendment
+   ("each is a further Type 1 amendment naming its base and revision"). This unit pins a runtime
+   input, not a base — so the base stays 3B here, and a 7B (the point of halving memory) is a
+   **separate** base amendment. Confirm.
+4. **Does the gate need to refuse a bf16↔fp32 pair explicitly?** If the precision is recorded, the
+   existing whole-dict `==` already refuses it — no gate change. Confirm that's the intended
+   reading, and add a test pinning it.
+5. **Does the change move rollouts/gate as well as training?** Yes — one map, two read sites
+   (`:138`, `:396`). The amendment must state non-comparability of prior **rollouts and gate
+   verdicts**, not only prior training.
+6. **Is CPU bf16 training sound?** Unverified here. bf16 keeps fp32's exponent range (unlike fp16,
+   the reason `float32` was chosen), so the "silently produces nothing" failure does not apply —
+   but the amendment must **not** claim bf16 is faster or better; the arm's probe/night is the
+   test, and `accept the finding` remains a pre-committed outcome (§ 13:790-792).
+7. **Reward-path guard.** `tests/test_no_inference_on_reward_path.py` scopes `verify/` and
+   `tasks/`; this unit touches neither, and `src/whetstone/loop/torch_runtime.py` already imports
+   torch function-locally. No new inference import reaches the reward path.
+
+## Contradictions flagged (do not paper over)
+
+- `docs/ROADMAP.md:785` *"loads `float32` on CPU by declaration"* and
+  `src/whetstone/loop/torch_runtime.py:50-52` *"A CPU run in fp16 is arithmetic that silently
+  produces nothing useful"* both become false/stale: the first because the value changes, the
+  second because bf16 is not fp16. Both need dated corrections, not silent rewrites (the repo's
+  convention: append a dated note; correct every sentence the change makes false).
