@@ -323,6 +323,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-09-13 | The portability arm scales again, to a 3B base on the same runtime; § 10.10's base untouched (§ 10.14) | 1 — pins an input for an existing arm | Yes |
 | 2026-09-14 | The portability arm draws one night from the easiest stratum band, on its 1.5B base; § 10.10's base untouched (§ 10.15) | 1 — pins the inputs of a measurement | Yes |
 | 2026-09-27 | The held-out source-B split is re-derived under the scorable rule (§ 10.16) | 1 — pins the inputs of a measurement | Yes |
+| 2026-10-11 | The portability arm's CPU precision is declared `bfloat16` (§ 10.17) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -949,3 +950,40 @@ value all stand unchanged.
 **What is not claimed.** No measurement has been run against the re-derived split, and none
 is claimed here: this amendment precedes any scoring of it, which is the whole of its value,
 and the § 3 baseline remains unspent.
+
+### 10.17 The portability arm's CPU precision is declared — 2026-10-11
+
+**Type 1 (§ 8.1): pins the input of an existing arm, committed before the training it governs
+runs.** It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not
+change the base § 10.10 pinned.** The 32B base and the MLX runtime remain the pinned inputs of
+the main series.
+
+**This is a new shape of amendment, and the shape is said plainly.** § 10.11 through § 10.15 each
+pinned a **base**; this pins a runtime input — the precision the arm's Torch runtime loads and
+trains in. § 8.1's rule does not care which: an input that moves a figure is pinned before the
+training it governs, and `docs/ROADMAP.md`:788 already names this dtype as one that *"alters what
+every earlier figure was measured under"*.
+
+**What changes.** The portability arm's declared CPU precision moves from `float32` to `bfloat16`
+(`DEVICE_PRECISION["cpu"]` in `src/whetstone/loop/torch_runtime.py`), for the reason
+`docs/ROADMAP.md` § 13 gives — a larger base the arm cannot hold in fp32 may now load. The base
+§ 10.10 pinned is untouched: this is a change to a runtime input, never to a candidate.
+
+**The blast radius.** The one map is read by both the trainer (`torch_runtime.py` line ~138) and
+the generator/gate loader (line ~396), so **training, rollouts and gate verdicts** all move
+together. The `Backend` record carries the precision, so a checkpoint and a ledger written after
+this amendment state the dtype they were produced under, and the gate's whole-dict comparison
+refuses a `bfloat16` candidate against a `float32` incumbent with no rule change.
+
+**Comparability, restated for this change.** Every prior portability-arm figure — its training,
+its rollouts, its gate verdict — is non-comparable to any figure measured under the new
+`bfloat16` precision; § 3 treats a change to a pinned input as starting over, and the old series
+is not extended. This is not a claim that the new precision is better, only that the two are not
+the same input.
+
+**What is not claimed.** No training has run under this dtype. No count is measured under it and
+none is claimed here — the amendment precedes the training, which is the whole of its value. It
+claims nothing about whether a larger base fits, whether `bfloat16` yields a strict-`PASS`, or
+that it is faster; the § 3 baseline remains unspent, and a zero is entirely possible. Should the
+arm's probe or night find the machine still cannot host a larger base, *"accept the finding"*
+remains a legitimate outcome.

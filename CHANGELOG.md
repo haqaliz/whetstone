@@ -9,6 +9,17 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Added
+
+- **The portability arm's CPU precision is declared `bfloat16`, and the change is pre-registered** (`PREREGISTRATION.md` § 10.17, Type 1, 2026-10-11). `src/whetstone/loop/torch_runtime.py`'s `DEVICE_PRECISION["cpu"]` moves from `"float32"` to `"bfloat16"` — the one map read by both the trainer and the generator/gate loader — so training, rollouts and gate verdicts all move together, for the reason `docs/ROADMAP.md` § 13 gives: a larger base the arm cannot hold in fp32 may now load.
+- **A run's `backend` block records the precision it ran under.** `Backend` gains an optional `precision: str | None`, filled for Torch from `DEVICE_PRECISION` and left `None` for MLX. It reaches the checkpoint's and the run ledger's `backend` block through the single `recorded()` writer, so a `bfloat16` checkpoint and a `float32` one are no longer byte-identical in provenance and the gate's whole-dict comparison refuses the pair. The checkpoint (`whetstone-checkpoint/2`) and ledger (`whetstone-run/3`) schemas do **not** bump: a nested key is a recorded addition, not a version change.
+
+### Changed
+
+- **The portability arm's figures are non-comparable across the change.** Every prior arm figure — training, rollouts, gate verdict — was measured under `float32`; the old series is never extended (`PREREGISTRATION.md` § 10.17). `docs/ROADMAP.md` § 13 carries a dated correction and `reports/portability-arm/report.md` names the declared precision. No number is claimed: no probe or night has run under the new dtype.
+
 ## [0.22.0] - 2026-10-11
 
 ### Added

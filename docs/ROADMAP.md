@@ -791,6 +791,16 @@ accept the finding. **That a small base on a CPU-only host cannot solve these ta
 result** — it is the portability question, answered — and it must not be dressed up as a failure
 of the harness, whose control arm has been `INTACT` on every draw of every night.
 
+> **Corrected 2026-10-11, when the CPU precision was declared
+> (`PREREGISTRATION.md` § 10.17).** This paragraph's first sentence — *"The Torch runtime loads
+> `float32` on CPU by declaration"* — described the runtime as it was first written. The
+> declared CPU precision is now `bfloat16` (`DEVICE_PRECISION["cpu"]`, `PREREGISTRATION.md`
+> § 10.17, Type 1, 2026-10-11), so it is a pinned input that no longer reads `float32`. Every
+> portability-arm figure measured under the earlier precision — its training, its rollouts, its
+> gate verdict — is **non-comparable** to a figure measured under the new one, and the old
+> series is never extended. The sentence above is kept as it was written; the change is
+> recorded here rather than edited in.
+
 **The corpus does not grow, and that is a gap in the thesis rather than a missing feature.**
 `whetstone mine` mints tasks from real donor commits, but a night reads a frozen directory and
 never re-mines. Expert iteration against a fixed task set converges by construction: a night can
