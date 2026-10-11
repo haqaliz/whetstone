@@ -10,6 +10,49 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The whole-function replacement contract was measured and not built: NO-GO** (2026-10-11, the
+third patch-representation direction; instruments shipped 2026-10-01, `whole-function-edit-finding`).
+The lead was that a format which reduces the replacement text's surface — the model states an
+`EDIT` path and a `FUNCTION` name, the harness finds the function's extent via AST at
+`base_commit` and renders the diff — is the direction the two NO-GO measurements did not rule
+out: the model's failure was not transcription of existing text but closing its own
+replacement blocks and writing replacement text that parses. It now has its own measurement,
+and it is spent.
+
+**The measurement.** `whetstone.bakeoff.measure --renderer whole-function` posed the
+whole-function prompt to the pinned 32B base over the pre-committed population — the
+easier-stratum band minus the held-out members, 16 tasks pinned by identity — one greedy
+completion per task, retries 0, the verifier never entered, the control arm `INTACT` on all
+16 draws, and evidence written only when the whole run succeeded (~31 minutes; a first launch
+hung inside `mlx::core::eval` after an earlier attempt's hard kill left the Metal device
+wedged — killed, device recovered, re-run clean). `whetstone.bakeoff.resolvability`
+classified the run's completions offline — worst-first: `UNCLASSIFIED` > `MALFORMED` >
+`NO_FILE` > `AMBIGUOUS` > `UNKNOWN_FUNCTION` > `NOT_PARSEABLE` > `RESOLVABLE` — and exited
+1, NO-GO, under the rule committed before any rollout ran: GO iff
+`count(RESOLVABLE) * 2 > population`.
+
+**The partition, in words: zero resolvable of 16.** 13 `MALFORMED` — 8 completions with a
+`def` line inside the replacement body (the format's body-only rule: the harness finds the
+function's extent, so the body must not reopen the signature — the model wrote whole
+definitions the format cannot splice) and 5 with a stray marker (a `<<<<<<<`/`>>>>>>>`
+outside any block) — and 3 `UNCLASSIFIED` (the three `NO_ORACLE` members,
+`donor-a-128bcb99b701`, `donor-a-16213e62eae1`, `donor-b-45740535725b`, in the denominator by
+the pre-committed rule). No `NO_FILE`, `AMBIGUOUS`, `UNKNOWN_FUNCTION` or `NOT_PARSEABLE`.
+The splice sub-count (`splice_in_context`, file-level re-parse) reported 0 across the run; the
+`outside_shown_set` sub-count 0, held-test paths included. The counts live only in gitignored
+`runs/whole-function-edit-finding/`; `docs/planning/whole-function-edit-finding/measurement-run/finding.md`
+states the decision and the disclosures (a proxy; one exposure; comparable to nothing prior).
+
+**Nothing was built beyond the measurement, and no amendment was made** — the contract aspect
+and any § 10.x amendment are unplanned and unbuilt, exactly as the pre-committed rule
+required. The representation axis is now spent in all three forms this project's evidence
+could see: search/replace on the quoting question, line-range on the addressing-and-grammar
+question, whole-function on the body-grammar question — and the wall is the same from three
+angles: this base does not produce replacement *text* that conforms to a pinned edit grammar
+(malformed graded completions 8/13, 13/13, 13/13; splice reads 3, 0, 0). The P2 pivot's
+remaining pre-committed responses are raise *k* and the portability arm's CPU dtype
+(`docs/ROADMAP.md` § 13); M1's exit criterion stands open.
+
 **The night sheet is aligned to the post-§ 10.16 corpus, and the guard suite holds it there** (2026-10-10, `night-heldout-seam`). The stale sheet failed verbatim — the corpus was re-minted under labels by `PREREGISTRATION.md` § 10.16 (Type 1, 2026-09-27), so every id the sheet passed (the `belay-*` names) matches no task and the door refuses the first command (`UnknownDevSubset`) — and a sheet that never runs trains no exclusion: the portability-arm leak (4 of 6 examples on a held-out task) was guaranteed again unless the sheet was corrected. This unit corrects the sheet and pins it.
 
 **What shipped.**

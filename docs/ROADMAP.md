@@ -878,6 +878,20 @@ transcripts to journals by hand. `NO_ORACLE` already carries its reason; this sh
 > portability arm's CPU dtype (§ 13), and the finding records one observation for the next
 > contract designer: this base's failure was closing its own replacement blocks and writing
 > replacement text that parses, not transcribing existing code.
+>
+> **Corrected 2026-10-11, when the third direction was measured.** The whole-function
+> direction — the model states a function name, the harness finds the function's extent and
+> renders the diff — has now been measured **NO-GO** in its turn
+> (`docs/planning/whole-function-edit-finding/measurement-run/finding.md`): over the pinned
+> 16-task population, zero completions were resolvable; 13 of 13 graded completions were
+> `MALFORMED` (a `def` line inside the body, or a stray marker) and the splice read reported 0
+> across the run. The representation axis is therefore spent in the **three** forms this
+> evidence could see — quoting, addressing, and body grammar — and the wall is the same from
+> three angles: this base does not produce replacement text that conforms to a pinned edit
+> grammar. The P2 pivot's remaining pre-committed responses are raise *k* and the portability
+> arm's CPU dtype (§ 13). M1's exit criterion stands open — a night selects at least one
+> strict-`PASS` — and no third representation direction is proposed here; the finding records
+> the observation for the next contract designer rather than a lead this evidence supports.
 
 ### M2 — Make the gate able to answer: the held-out set (issues #60, #62)
 
