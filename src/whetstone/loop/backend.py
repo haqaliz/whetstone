@@ -115,6 +115,13 @@ class Backend:
     #: tell a finding measured with room to spare from one measured without.
     device_memory_bytes: int
 
+    #: The runtime precision that produced the run — "bfloat16", "float32" — or `None` when the
+    #: backend declares none. Defaulted and last so every construction predating the field stays
+    #: valid. Recorded, not inferred: a bf16 checkpoint and an fp32 one are not comparable, so
+    #: the gate can only refuse the pair if each side states its own precision
+    #: (`docs/ROADMAP.md` § 13).
+    precision: str | None = None
+
     def recorded(self) -> dict[str, Any]:
         """The record as plain JSON types, for the ledger and the checkpoint's provenance.
 
@@ -128,6 +135,7 @@ class Backend:
             "version": self.version,
             "device": self.device,
             "device_memory_bytes": self.device_memory_bytes,
+            "precision": self.precision,
         }
 
 
@@ -263,7 +271,7 @@ def _describe_torch(library: str) -> Backend:
 
     import torch
 
-    from whetstone.loop.torch_runtime import torch_device
+    from whetstone.loop.torch_runtime import DEVICE_PRECISION, torch_device
 
     device = torch_device()
     return Backend(
@@ -272,6 +280,9 @@ def _describe_torch(library: str) -> Backend:
         version=installed_version(library),
         device=device,
         device_memory_bytes=_torch_device_memory(torch, device),
+        # Asked of the same declaration the trainer casts to, never re-derived here: a second
+        # answer to "which dtype" is how a record comes to disagree with the run it describes.
+        precision=DEVICE_PRECISION[device],
     )
 
 
