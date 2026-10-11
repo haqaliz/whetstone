@@ -185,3 +185,23 @@ def test_every_declared_device_has_a_stated_precision(name: str) -> None:
         f"WHY THIS IS A FAILURE: {name!r} is a declared device with no declared precision, so "
         "what it trains in would be whatever the library defaults to"
     )
+
+
+def test_the_declared_precision_for_each_device_is_exact() -> None:
+    """AC7: the declaration is pinned to the exact value, not merely present.
+
+    Key presence is not enough: `float16`, `float32` and `bfloat16` are all "a stated precision",
+    so a loose pin lets the map drift — fp32 silently becoming bf16, or bf16 back to fp16 — and
+    every figure measured under it is then attributed to arithmetic it did not run in. The exact
+    dict is asserted so the reader (and the gate) can tell one precision from another.
+    """
+    assert torch_runtime.DEVICE_PRECISION == {
+        "cuda": "bfloat16",
+        "mps": "float16",
+        "cpu": "bfloat16",
+    }, (
+        f"WHY THIS IS A FAILURE: the declared precisions are {torch_runtime.DEVICE_PRECISION}, not "
+        'the pinned {"cuda": "bfloat16", "mps": "float16", "cpu": "bfloat16"}. A loose pin lets '
+        "fp16/fp32/bf16 drift silently, and a reader can no longer tell which arithmetic a figure "
+        "was measured under"
+    )
