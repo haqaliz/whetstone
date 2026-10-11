@@ -39,7 +39,9 @@ This file orients a coding agent working in this repository. Read it first.
 > the model states a function name, the harness finds the function's extent and renders the
 > diff — shipped its measurement instruments (`bakeoff.resolvability`, rule pre-committed and
 > cross-pinned, exit 0 GO / 1 NO-GO / 2 refused) and its guarded runbook; nothing beyond the
-> instruments was built, and the decision awaits the operator's one-GPU-hour run. Then the
+> instruments was built, and the decision awaited the operator's one-GPU-hour run — measured
+> **NO-GO** 2026-10-11, so all three representation directions are spent
+> (`docs/planning/whole-function-edit-finding/measurement-run/finding.md`). Then the
 > **run-document-seal** unit (2026-10-08): the run's own documents seal themselves — `dataset.json`
 > (`whetstone-training-set/2`) and `ledger.json` (`whetstone-run/3`) carry the checkpoint's claims
 > discipline behind one shared `loop.seal` module, so `check-leakage --checkpoint` compares a
