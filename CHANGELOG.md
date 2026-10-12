@@ -9,6 +9,27 @@ Whetstone's contract is that a number appears only where something produced it. 
 here too: this file records what shipped, not what is planned. Nothing is listed under a
 released version until it exists in the code.
 
+## [Unreleased]
+
+### Added
+
+- **The night re-mines before it draws.** `whetstone run --night` gains `--remine <donor>`
+  (repeatable), `--remine-label <label>`, `--remine-out <dir>` and `--remine-limit <N>`: the
+  night mines only commits not already in the corpus, into a separate training-only root, and
+  draws against the grown pool. The run ledger's `task_set.remined` records the minted ids and
+  donor labels; a night without the flags is byte-identical to before.
+- **The night sheet documents the re-mine block**
+  (`docs/planning/p2-rollouts/night-door/runbook.md`), held by
+  `tests/test_night_runbook_guards.py`.
+- **`PREREGISTRATION.md` § 10.17** records that § 3's pinned "task set" is the scoring held-out
+  split, so training-pool growth needs no amendment; `docs/ROADMAP.md` § 13 records the
+  promotion out of the gap list.
+
+### Changed
+
+- **The reward and the gate are untouched.** Nothing under `src/whetstone/verify/` moves; the
+  held-out split's membership and `document_digest` are unchanged.
+
 ## [0.22.0] - 2026-10-11
 
 ### Added

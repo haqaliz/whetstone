@@ -38,7 +38,9 @@ Properties 5 onward are this sheet's own:
    held-out members, stated as exclusion, never a refusal; and
 9. the live re-mint pin: the five declared dev ids exist in the committed corpus record, and the
    two overlap ids are members of the committed held-out document. This test is green on arrival —
-   its RED demonstration is the next re-mint, which has not happened — and fails in any checkout.
+   its RED demonstration is the next re-mint, which has not happened — and fails in any checkout;
+10. the night block documents the re-mine (all four `--remine*` flags, an anchored
+    training-only root, and an operator-declared donor), and the probe block does not re-mine.
 
 **Watched failing first** (CONTRIBUTING.md): every assertion below was run against a deliberately
 wrong stub sheet — relative writable paths, a `--sample-more` flag the parser does not define, the
@@ -48,6 +50,9 @@ night's own dir, a decision sentence missing an exit, and a sentence claiming a 
 each one refused it before the real sheet existed. The § 10.16 pins were watched failing against
 the stale sheet itself: the `guards` aspect's RED commit records each refusal. The live corpus pin
 is green on arrival by design — its RED demonstration is the next re-mint, which has not happened.
+The re-mine pins were watched failing against the unmodified sheet: it passed none of the four
+`--remine*` flags, exported no `DONOR`, named no training-only root, and stated no cost bound —
+each refused by name, recorded in the `docs` aspect's RED demonstration.
 """
 
 from __future__ import annotations
@@ -114,6 +119,17 @@ DECLARED_DEV = (
 HELDOUT_DOC = "$REPO/tasks/heldout/source-b.json"
 HELDOUT_OVERLAP = ("donor-b-353359e9ac6e", "donor-b-3e3051c4192a")
 
+#: The operator-declared donor anchor the re-mine block mines, declared exactly as `$REPO` is: a
+#: committed sheet that names one operator's checkout publishes a home directory
+#: (`runbook.md:12-13`), so the donor path is exported, never written. A source the night mines
+#: new commits from — the author's own `donor-a` (`../prd.md:57-61`).
+DONOR = "$DONOR"
+
+#: The four flags the night block adds for the re-mine, and which the probe block must not carry:
+#: the probe validates the chain cheaply before a night is committed to, and a re-mine is hours, so
+#: paying it in the probe and again in the night is the cost the limit exists to bound.
+REMINE_FLAGS = ("--remine", "--remine-label", "--remine-out", "--remine-limit")
+
 #: The two run-id tokens the sheet declares at run time — one per run, never the historical
 #: `probe-001`/`night-001`. Both are real artifacts: probe-001's ledger is refused by every
 #: reader, and night-001's documents are never rewritten. The tokens are distinct literals, so a
@@ -156,6 +172,11 @@ def _is_anchored(value: str) -> bool:
 def _exports_repo(text: str) -> bool:
     """The sheet must define `$REPO` as an absolute path, or the anchor anchors nothing."""
     return "export REPO=/" in text
+
+
+def _exports_donor(text: str) -> bool:
+    """The sheet must define `$DONOR` as an absolute path, or the donor anchor anchors nothing."""
+    return "export DONOR=/" in text
 
 
 def _flat(text: str) -> str:
@@ -625,6 +646,102 @@ def test_the_sheet_exports_the_anchor_every_path_depends_on() -> None:
         "An unset variable expands to the empty string, so every anchored path resolves "
         "against whatever directory the operator happened to be in"
     )
+
+
+def test_the_night_block_documents_the_remine_and_the_probe_does_not() -> None:
+    """The night re-mines before it draws; the probe validates the chain cheaply and does not.
+
+    A sheet whose night command never passed the re-mine would train against the same frozen
+    corpus this unit exists to grow — the sheet is the operator's surface, and code the sheet
+    does not invoke never runs. The probe is deliberately different: a re-mine is hours, and
+    paying it before a night is even committed to is the cost `--remine-limit` bounds.
+    """
+    blocks = _bash_blocks(_runbook())
+    night = _night_block(blocks)
+    probe = next((block for block in _door_blocks(blocks) if "--probe" in block), "")
+    assert night, "no bash block invokes the night without --probe"
+    assert probe, "no bash block invokes the probe pass"
+    night_values = _values(night)
+    missing = sorted(set(REMINE_FLAGS) - set(night_values))
+    assert not missing, (
+        f"WHY THIS IS A FAILURE: the night command passes none of {missing} and the night must "
+        "re-mine before it draws. A night that never re-mines draws against the frozen corpus "
+        "for ever, which is the gap this unit closes"
+    )
+    assert night_values["--remine"] == [DONOR], (
+        f"WHY THIS IS A FAILURE: the night command's --remine is {night_values['--remine']!r} "
+        f"and it must be {[DONOR]!r} — the declared donor anchor. A re-mine pointed at a literal "
+        "path publishes a home directory in a committed sheet"
+    )
+    passed_to_probe = sorted(set(REMINE_FLAGS) & set(_values(probe)))
+    assert not passed_to_probe, (
+        f"WHY THIS IS A FAILURE: the probe command passes {passed_to_probe}. A re-mine costs "
+        "hours per donor, and the probe exists to validate the chain cheaply before a night is "
+        "committed to; its task set differs from the night's by the re-mine delta, and the sheet "
+        "must say so rather than pay the mining twice"
+    )
+
+
+def test_the_remine_out_is_anchored() -> None:
+    """The training-only root is absolute, or the night writes into whatever CWD it inherits.
+
+    `--remine-out` is the one new writable root, and it is deliberately not in `WRITABLE`: that
+    tuple is asserted against both door blocks, and the probe has no `--remine-out`, so a fourth
+    entry there would fail the probe. It is held to the same absolute-path rule here instead,
+    because a relative root resolves against a provisioning subprocess's CWD, not the night's.
+    """
+    night = _night_block(_bash_blocks(_runbook()))
+    named = _values(night).get("--remine-out", [])
+    assert named, (
+        "WHY THIS IS A FAILURE: the night command passes no --remine-out. The re-mine writes "
+        "manifests into a training-only root; without a declared root the night has nowhere "
+        "clean to union from"
+    )
+    for value in named:
+        assert _is_anchored(value), (
+            f"WHY THIS IS A FAILURE: --remine-out is relative ({value!r}). The root is read by "
+            "the strict loader from subprocesses whose CWD is not the night's, so a relative "
+            "root does not resolve — the same shape that killed the measured arm on 2026-08-12"
+        )
+
+
+def test_the_donor_is_operator_declared() -> None:
+    """`$DONOR` is exported by the sheet and passed to `--remine`, exactly as `$REPO` is.
+
+    The donor is one operator's checkout. Written literally it publishes a home directory, and a
+    reader re-deriving the run has a different one; exported it is an anchor the operator sets,
+    and the sheet that passes `--remine $DONOR` is only anchored while the sheet still defines it.
+    """
+    text = _runbook()
+    assert _exports_donor(text), (
+        "WHY THIS IS A FAILURE: the sheet passes `--remine $DONOR` and never exports `DONOR`. An "
+        "unset variable expands to the empty string, so the re-mine is handed no donor at all "
+        "and the anchor anchors nothing"
+    )
+    night = _night_block(_bash_blocks(text))
+    assert _values(night).get("--remine") == [DONOR], (
+        f"WHY THIS IS A FAILURE: the night command's --remine is "
+        f"{_values(night).get('--remine')!r} and the sheet must pass {[DONOR]!r}. A committed "
+        "sheet that names one operator's donor path publishes a home directory"
+    )
+
+
+def test_the_sheet_states_the_remine_training_only_root_and_cost_bound() -> None:
+    """The prose carries the re-mine's two load-bearing sentences, or an operator cannot audit it.
+
+    Asserted on `_flat`, never on raw text: these are whole sentences the sheet wraps freely, and
+    the wrap point is not a word — a guard that pinned line breaks would fail on a re-flow that
+    changed no claim. The training-only root is what keeps the held-out split's corpus roots
+    untouched; the cost bound is what stops an unattended night mining for hours per candidate.
+    """
+    flat = _flat(_runbook())
+    for phrase in ("training-only root", "--remine-limit", "no-op, never"):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: the sheet never states {phrase!r}. The re-mine block must say "
+            "its manifests land in a separate training-only root (gitignored, never the committed "
+            "corpus) and that `--remine-limit` is the cost bound (mining is hours per candidate); "
+            "a donor that mints nothing must be a no-op, never a failure"
+        )
 
 
 def test_no_pre_mint_task_id_appears_in_any_command_block() -> None:

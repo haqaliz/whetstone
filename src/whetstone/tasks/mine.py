@@ -39,7 +39,7 @@ import base64
 import json
 import random
 import shutil
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, Sequence, Set
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -131,7 +131,13 @@ class MintReport:
     recipe: Path | None
 
 
-def select(pool: Sequence[Candidate], *, limit: int, seed: int | None = None) -> list[Candidate]:
+def select(
+    pool: Sequence[Candidate],
+    *,
+    limit: int,
+    seed: int | None = None,
+    skip: Set[str] = frozenset(),
+) -> list[Candidate]:
     """The candidates a mint will attempt, in the order it will attempt them.
 
     **Sorted by sha before anything shuffles**, because `candidates` returns history order and a
@@ -141,6 +147,12 @@ def select(pool: Sequence[Candidate], *, limit: int, seed: int | None = None) ->
     `seed is None` means "the oldest first" — also deterministic, and the right default for an
     operator who wants their earliest history mined rather than a sample of it.
 
+    **`skip` is the incrementality filter.** A candidate whose `sha[:12]` is already in the
+    corpus the night will draw from — `_ID_SHA_LENGTH`, the same trailing-12-hex key a task id is
+    built from — is not attempted, so a re-mine over an unchanged donor costs no sandboxed pytest.
+    The filter applies after the sort-and-shuffle, so the seeded draw is unchanged but for the
+    removed candidate. The default empty set is today's behaviour exactly.
+
     More candidates than `limit` are returned on purpose: a candidate can be rejected at any of
     four later gates, and a selection that handed back exactly `limit` would silently mint fewer
     than asked for whenever any of them fired.
@@ -148,7 +160,7 @@ def select(pool: Sequence[Candidate], *, limit: int, seed: int | None = None) ->
     ordered = sorted(pool, key=lambda candidate: candidate.sha)
     if seed is not None:
         random.Random(seed).shuffle(ordered)
-    return ordered
+    return [candidate for candidate in ordered if candidate.sha[:_ID_SHA_LENGTH] not in skip]
 
 
 def mine(
@@ -162,8 +174,14 @@ def mine(
     timeout: float,
     seed: int | None = None,
     clock: Clock = utc_now,
+    skip: Set[str] = frozenset(),
 ) -> MintReport:
     """Mine up to `limit` proven-live tasks out of `donor`, writing manifests into `out`.
+
+    `skip` is the incrementality filter M1 adds: a candidate whose trailing-12-hex sha is already
+    in the corpus the caller will draw from is not attempted at all, checked before `_mint`'s
+    provisioning. The default empty set makes the selection and the mint byte-identical to the
+    tree before the parameter existed, so the operator-invoked `whetstone mine` path is unaffected.
 
     `timeout` has no default, matching every other step that executes something: a limit
     inherited from somewhere else turns a slow donor into a discard nobody can explain.
@@ -194,7 +212,7 @@ def mine(
 
     minted: list[Minted] = []
     rejected: list[Rejected] = []
-    for candidate in select(pool, limit=limit, seed=seed):
+    for candidate in select(pool, limit=limit, seed=seed, skip=skip):
         if len(minted) == limit:
             break
         try:

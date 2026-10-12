@@ -7,10 +7,13 @@ subprocess receives absolute:
 
 ```bash
 export REPO=/absolute/path/to/whetstone   # the primary checkout, not a worktree
+export DONOR=/absolute/path/to/your/donor/checkout   # the repo the night re-mines new commits from
 ```
 
 The operator's own path is not written here: a committed sheet that names one publishes a
-home directory, and a reader re-deriving this run has a different one.
+home directory, and a reader re-deriving this run has a different one. `$DONOR` is declared
+for the same reason as `$REPO` — the donor is one operator's checkout, so the re-mine mines
+whatever that operator points the anchor at rather than a path committed into the sheet.
 
 The operator's sheet for the next night of the improvement loop. Every command here is run
 verbatim. A command sheet that disagrees with the code it runs fails at three in the morning, in a
@@ -134,6 +137,10 @@ restart it fresh under a new `--run-id`; a killed **night** still resumes unchan
 uv run whetstone run --night \
   --tasks $REPO/tasks/local/donor-b \
   --tasks $REPO/tasks/local/donor-a \
+  --remine $DONOR \
+  --remine-label donor-a \
+  --remine-out $REPO/tasks/local/remined \
+  --remine-limit 5 \
   --public $REPO/tasks/public/instances \
   --pool $REPO/tasks/public/pool.json \
   --weights $REPO/weights \
@@ -156,6 +163,34 @@ uv run whetstone run --night \
 Every flag verified against the shipped parser (`whetstone.cli.build_parser`) at write time.
 Notes on the choices:
 
+- **The night re-mines before it draws.** `--remine $DONOR` runs at the top of the night,
+  before the corpus is loaded, so the set the generation contract freezes over is the grown
+  one. The four flags are a block: `--remine` names the donor to mine (repeatable, paired by
+  position with a repeatable `--remine-label`), `--remine-out` names where new manifests land,
+  and `--remine-limit` bounds how many candidates are attempted. `donor-a` is the label
+  because source B *is* the author's own `donor-a`/`donor-b` repos; the miner skips any commit
+  whose trailing-12-hex sha is already in the corpus, so a re-mint under a label already in use
+  never collides. The re-mined tasks land in a separate **training-only root**
+  (`$REPO/tasks/local/remined`): it is gitignored and its manifests are **never** the committed
+  `tasks/local/donor-a`/`donor-b` corpus the held-out document is bound to.
+- **`--remine-limit 5` is the cost bound, not a target.** Mining is hours per candidate — a
+  fresh venv build and five sandboxed runs each — so a night is bounded below the cost of
+  discovering a whole repo's fixable commits in one go. Start small.
+- **Nothing new is a no-op, never a failure.** A donor with no un-minted candidates, or one
+  that is absent, not a repository, or unprovisionable (a cold `uv` cache), lets the night
+  proceed on the existing corpus: the delta is recorded as empty, the night does not crash, and
+  the miner is never fetched from the network.
+- **The held-out split does not move, and the delta is recorded.** A re-mine writes only the
+  training-only root; the committed corpus and the held-out split's membership and
+  `document_digest` are byte-unchanged. The run ledger records the minted ids and donor labels
+  under `task_set.remined` (ids and labels only, never file contents), so a reader can attribute
+  a training set to the corpus that grew. A night **without** the four flags is byte-identical
+  to one run before this block existed.
+- **The probe does not re-mine.** The probe (above) validates the chain cheaply before a night
+  is committed to, and a re-mine is hours; paying it in the probe and again in the night is the
+  cost the limit exists to bound. The probe's task set therefore differs from the night's by the
+  re-mine delta — the pre-committed decision rule is about the control arm and the seed map, not
+  the exact task set, so that difference does not change what the probe decides.
 - **Denominator: 51 private (66 − 5 dev − 10 held-out not already dev-excluded) + 1 public = 52
   tasks, each drawn `K` times.** The exclusion order is dev overlay first, held-out second
   (`night.py:249-261`): the five declared dev ids leave both sources before anything is drawn,

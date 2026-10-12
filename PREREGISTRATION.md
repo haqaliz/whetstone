@@ -323,6 +323,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-09-13 | The portability arm scales again, to a 3B base on the same runtime; § 10.10's base untouched (§ 10.14) | 1 — pins an input for an existing arm | Yes |
 | 2026-09-14 | The portability arm draws one night from the easiest stratum band, on its 1.5B base; § 10.10's base untouched (§ 10.15) | 1 — pins the inputs of a measurement | Yes |
 | 2026-09-27 | The held-out source-B split is re-derived under the scorable rule (§ 10.16) | 1 — pins the inputs of a measurement | Yes |
+| 2026-10-11 | The night re-mines the training pool; § 3's pinned "task set" is the scoring held-out split (§ 10.17) | 2 — adds a disclosure | No |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -949,3 +950,30 @@ value all stand unchanged.
 **What is not claimed.** No measurement has been run against the re-derived split, and none
 is claimed here: this amendment precedes any scoring of it, which is the whole of its value,
 and the § 3 baseline remains unspent.
+
+### 10.17 The night grows the training pool, not the pinned scoring input — 2026-10-11
+
+**Type 2 (§ 8.2): a disclosure, added.** It closes no open item, sets no threshold, and
+rewords nothing in § 1, § 4, or § 6.
+
+§ 3 pins five inputs — model revision, **the task set**, environment pins, seeds, tool
+versions — and treats a change in any as invalidating the series. **This amendment reads
+§ 3's "the task set" as the scoring set**: the held-out split the baseline and every candidate
+are scored on. The textual basis is § 3 itself — the pinned baseline is *"scored on the held-out
+set by the same STRICT verifier, with its provenance committed alongside: seeds, model revision,
+task set …"* — so the "task set" that is a pinned input is the set the score is computed on, not
+the pool the model learns from.
+
+**Disclosed:** `whetstone run --night` may re-mine the user's declared donor repositories before
+it draws, growing the training pool. The growth is training-only: it lands in a separate,
+gitignored root, the committed corpus does not grow and the held-out split does not move, its
+membership and `document_digest` are unchanged, and the run ledger records the minted ids and
+donor labels (`task_set.remined`).
+
+**This is a reading, not a threshold and not a change of input**: no new baseline is required
+and no series is invalidated, because the figure a candidate is scored on is unchanged. If a
+later reader finds the reading wrong, the correction is a further dated amendment that moves the
+pinned input and starts a new baseline — never a silent edit.
+
+**What is not claimed.** It records that at the time of this amendment no night has re-mined and
+no count has been measured under it, and none is claimed here.
