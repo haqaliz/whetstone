@@ -1022,6 +1022,61 @@ def test_the_roadmap_records_the_re_derived_split_by_dated_correction() -> None:
     )
 
 
+def test_the_roadmap_records_the_night_remine_by_dated_correction() -> None:
+    """§ 13's "The corpus does not grow" is superseded by a dated correction, not an edit.
+
+    The paragraph is made false by the night re-mining before it draws, and the roadmap records
+    every supersession as a dated correction blockquote naming the amendment and the
+    consequence, never by rewriting the old text. The blockquote also reconciles § 9 (which
+    never named re-mining) and § 14 (which holds the only identified lever on the zero).
+    """
+    lines = _read("docs/ROADMAP.md").splitlines()
+    quoted = _flat("\n".join(line for line in lines if line.lstrip().startswith(">")))
+    assert "Corrected 2026-10-11" in quoted, (
+        "docs/ROADMAP.md no longer carries the 2026-10-11 dated correction recording the "
+        "night re-mine. § 13's corpus paragraph is made false by the change, and the roadmap "
+        "records every supersession as a dated correction, never an edit of the old text."
+    )
+    assert "re-mines before it draws" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer states that the night re-mines before "
+        "it draws. The correction must say what changed or it records nothing."
+    )
+    assert "10.17" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer names § 10.17. The reading that makes "
+        "training-pool growth no § 3 change lives there, and the correction must point at it."
+    )
+    assert "not a lever on the zero" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer states that re-mining is not a lever on "
+        "the zero strict-PASS yield. A bigger pool says nothing about whether a candidate "
+        "improves, and § 14's M1 remains the only identified lever."
+    )
+
+
+def test_no_present_tense_document_asserts_that_the_corpus_does_not_grow() -> None:
+    """The corpus grows now, and only the dated correction may quote the old claim.
+
+    § 13 is an appended, dated snapshot, and the roadmap records a supersession as a dated
+    correction blockquote rather than by editing the old text (the § 12/§ 10.16 precedent). So
+    the falsified sentence is allowed in the roadmap only inside the correction that quotes it,
+    and in no present-tense document at all — CLAUDE.md, README.md and CHANGELOG.md describe the
+    tree as it is. The positive control is the quotation itself: deleting the sentence outright
+    would satisfy the absence checks while recording nothing.
+    """
+    for name in PRESENT_TENSE_DOCS:
+        assert "The corpus does not grow" not in _flat(_read(name)), (
+            f"{name} still asserts, in the present tense, that the corpus does not grow. The "
+            "night re-mines the declared donor before it draws, so the sentence is false about "
+            "the tree it ships in."
+        )
+    lines = _read("docs/ROADMAP.md").splitlines()
+    quoted = _flat("\n".join(line for line in lines if line.lstrip().startswith(">")))
+    assert "The corpus does not grow" in quoted, (
+        "docs/ROADMAP.md no longer preserves the falsified sentence as a quotation anywhere. "
+        "The absence checks above would be satisfied by deleting it, which would hide that the "
+        "claim was ever made."
+    )
+
+
 def test_a_report_without_its_preregistration_is_reported_as_an_offender(
     tmp_path: Path,
 ) -> None:

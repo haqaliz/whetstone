@@ -799,6 +799,22 @@ verified tasks arriving, and the honest source of those is the user's own new co
 generator. **Moving "the night re-mines before it draws" out of post-horizon is what makes the
 thesis mechanical instead of aspirational**, and it is named here so it reads as sequenced.
 
+> **Corrected 2026-10-11, when the night re-mines before it draws.** The paragraph above
+> (`:794-800`) is superseded on its first claim — "The corpus does not grow" — and on "a night
+> reads a frozen directory and never re-mines". `whetstone run --night` re-mines the declared
+> donor repositories before it loads its corpus — `--remine` / `--remine-label` / `--remine-out`
+> / `--remine-limit` — and draws against the grown pool (`docs/planning/night-corpus-remine/`).
+> The growth is training-only: re-mined tasks land in a separate gitignored root and the
+> committed 66-task corpus and the sealed held-out split do not move; the run ledger records the
+> minted ids and donor labels. `PREREGISTRATION.md` § 10.17 records the boundary reading — § 3's
+> pinned "task set" is the scoring held-out split, so training-pool growth needs no amendment and
+> starts no new baseline. § 9's post-horizon list never named re-mining; § 13 named it as a gap,
+> and the gap is now built — there is nothing to delete from § 9, and the promotion § 13 asserted
+> is the one that happened. It is **not a lever on the zero** strict-`PASS` yield: a bigger pool
+> says nothing about whether any candidate improves, and § 14's M1 remains the only identified
+> lever on the zero. No night has run with the flags and no real donor has been mined — the
+> increment is proven against the synthetic donor only, and no yield is claimed here.
+
 **What this project is, in the field's own vocabulary.** The 2026 survey literature on recursive
 self-improvement classifies loops by what they improve and by how closed the loop is, and ranks
 improvement signals in a verification hierarchy from formal verifiers down to intrinsic
