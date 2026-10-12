@@ -16,6 +16,7 @@ held-out split. It is deliberately small, because the honesty it protects lives 
   `tasks/local-ledger.json` / `tasks/recipes/`.
 * **Nothing-new, absent, or unprovisionable is a no-op (M4, M7).** A donor that mints nothing —
   because it has no un-minted candidates, because it is absent or not a repository (`MintFailed`),
+  because its path does not exist (`FileNotFoundError`, an `OSError` from `subprocess(cwd=...)`),
   or because it is unprovisionable (`NotProvisionable`) — is recorded as a `DonorOutcome` with an
   `absent` reason and the loop continues. A re-mine never raises; the night proceeds on the
   corpus it already has.
@@ -108,8 +109,8 @@ def remine(
     One `mine()` call per donor. `out` is the manifest destination the night loads; the miner's
     `tasks_root` is the sibling evidence root `out.parent/(out.name + "-evidence")`, so the
     re-mine's ledger and recipes never enter the loaded root. The accumulated skip-set is
-    `existing` plus every sha12 minted earlier in this call. An absent or unprovisionable donor is
-    a recorded no-op, never an exception.
+    `existing` plus every sha12 minted earlier in this call. An absent, nonexistent, or
+    unprovisionable donor is a recorded no-op, never an exception.
     """
     destination = Path(out)
     # The miner writes its own evidence (`local-ledger.json`, `recipes/`) into `tasks_root`, and
@@ -137,7 +138,7 @@ def remine(
                 clock=clock,
                 skip=frozenset(accumulated),
             )
-        except (MintFailed, NotProvisionable) as exc:
+        except (MintFailed, NotProvisionable, OSError) as exc:
             outcomes.append(DonorOutcome(label, donor_path, (), (), str(exc)))
             continue
         minted = tuple(one.task_id for one in report.minted)

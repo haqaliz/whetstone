@@ -198,6 +198,30 @@ def test_an_absent_donor_is_a_reported_no_op(tmp_path: Path) -> None:
     assert run_ledger.read(night.ledger)["task_set"]["remined"] == []
 
 
+def test_a_nonexistent_donor_path_is_a_reported_no_op(tmp_path: Path) -> None:
+    """A typo'd `--remine` path is a recorded no-op, not a crash: the night proceeds (M4).
+
+    The real `mine()` reaches `subprocess(cwd=<nonexistent>)` and raises `FileNotFoundError`; the
+    re-mine must record that donor absent and let the night run on the corpus it already has.
+    """
+    existing_root, _ = corpus(tmp_path / "existing", "private", ("alpha",))
+
+    night = _night(
+        tmp_path,
+        tasks=(existing_root,),
+        answers={},
+        remine_donors=(tmp_path / "no-such-repo",),
+        remine_labels=("donor-x",),
+        remine_out=tmp_path / "remined",
+        remine_limit=1,
+    )
+
+    assert run_ledger.read(night.ledger)["task_set"]["remined"] == [], (
+        "WHY THIS IS A FAILURE: a mistyped donor path failed the night instead of being a no-op"
+    )
+    assert night.ledger.is_file()
+
+
 def test_an_unprovisionable_donor_is_a_reported_no_op(tmp_path: Path) -> None:
     """AC7 (M7): a donor whose every candidate is refused `NotProvisionable` is a no-op."""
     existing_root, _ = corpus(tmp_path / "existing", "private", ("alpha",))

@@ -217,6 +217,37 @@ def test_an_absent_donor_is_a_reported_no_op(
     assert "not a repository" in absent.absent, absent.absent
 
 
+def test_a_nonexistent_donor_path_is_a_reported_no_op(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A typo'd donor path is a recorded no-op, not a crashed night (M4).
+
+    `mine()` reaches `subprocess(cwd=<path>)`, which raises `FileNotFoundError` — an `OSError`,
+    not a `MintFailed` — when the path does not exist. Uncought, that escapes `remine()` and
+    kills the night on a mistyped flag. It is a donor that could not be read, exactly like a
+    directory that is not a repository, so it is recorded as absent and the loop continues.
+    """
+    def fake(donor: Path, out: Path, **kwargs: Any) -> MintReport:
+        raise FileNotFoundError(2, "No such file or directory", str(donor))
+
+    monkeypatch.setattr(remine_module, "mine", fake)
+    report = remine(
+        (("donor-x", tmp_path / "typo"),),
+        out=tmp_path / "out",
+        limit=1,
+        scratch=tmp_path / "s",
+        timeout=5.0,
+        existing=frozenset(),
+    )
+
+    assert report.minted == (), report.minted
+    outcome = report.donors[0]
+    assert outcome.minted == () and outcome.rejected == (), outcome
+    assert outcome.absent, (
+        f"WHY THIS IS A FAILURE: the nonexistent donor was not reported as absent: {outcome!r}"
+    )
+
+
 def test_an_unprovisionable_donor_is_a_no_op(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
