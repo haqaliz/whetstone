@@ -154,7 +154,9 @@ _VERIFY_DESCRIPTION = (
 _RUN_DESCRIPTION = (
     "Run one night of the improvement loop: draw K seeded attempts at every task under the "
     "frozen generation contract, keep only the rollouts the STRICT verifier passed, and LoRA-SFT "
-    "the base on those. Produces runs/<id>/ (ledger, dataset, per-draw journals and transcripts) "
+    "the base on those. With --remine it first mints the donors' new commits into a training-only "
+    "root and draws against the grown corpus. Produces runs/<id>/ (ledger, dataset, per-draw "
+    "journals and transcripts) "
     "and, when the night selected anything and the capacity probe fits, a candidate under "
     "checkpoints/<id>/. Every training example carries a recorded strict-PASS verdict by "
     "construction; UNVERIFIED is never training data. Exits 0 only when a candidate was written."
@@ -284,6 +286,48 @@ def build_parser() -> argparse.ArgumentParser:
             "source B: a private corpus directory, repeatable. The miner writes one directory per "
             "donor, so the real corpus is one root per donor rather than their parent. Read by "
             "path and never copied: it is the user's own code and lives outside any worktree"
+        ),
+    )
+    night.add_argument(
+        "--remine",
+        type=Path,
+        action="append",
+        default=[],
+        metavar="<path>",
+        help=(
+            "a donor repository to re-mine before the night draws, repeatable and paired by "
+            "position with --remine-label. Its commits are read locally and offline; only those "
+            "whose trailing-12-hex sha is not already in --tasks are minted, so a night grows by "
+            "the donor's new commits and never re-mints one it has"
+        ),
+    )
+    night.add_argument(
+        "--remine-label",
+        action="append",
+        default=[],
+        metavar="<label>",
+        help=(
+            "the non-identifying name for the paired --remine donor, recorded in the ledger's "
+            "re-mine delta; the donor's own name is private and must not be used"
+        ),
+    )
+    night.add_argument(
+        "--remine-out",
+        type=Path,
+        metavar="<path>",
+        help=(
+            "the training-only root the re-mined manifests and the miner's own ledger/recipes are "
+            "written into. Required with any --remine; it is unioned into --tasks and never "
+            "touches the committed corpus"
+        ),
+    )
+    night.add_argument(
+        "--remine-limit",
+        type=int,
+        metavar="<n>",
+        help=(
+            "how many new tasks the re-mine may mint in total; required with any --remine and at "
+            "least 1. It is the cost bound: the re-mine never exceeds it"
         ),
     )
     night.add_argument(
@@ -1073,6 +1117,37 @@ def run_night(args: argparse.Namespace) -> int:
     from whetstone.loop.night import REFUSALS, UNPROVEN, disclosure
     from whetstone.loop.night import run_night as conduct_night
 
+    # The re-mine flags are validated here, before the loop runs, so a mismatched pairing or a
+    # missing companion is a usage error naming the flag rather than a night that ran and did
+    # something the operator did not ask for. No flags ⇒ the defaults, and today's night.
+    donors, labels = args.remine, args.remine_label
+    if donors or labels:
+        if len(donors) != len(labels):
+            print(
+                "whetstone run: --remine and --remine-label are paired by position; "
+                f"{len(donors)} donor(s) and {len(labels)} label(s) were given",
+                file=sys.stderr,
+            )
+            return USAGE_ERROR
+        if args.remine_out is None:
+            print(
+                "whetstone run: --remine-out is required when --remine is given",
+                file=sys.stderr,
+            )
+            return USAGE_ERROR
+        if args.remine_limit is None:
+            print(
+                "whetstone run: --remine-limit is required when --remine is given",
+                file=sys.stderr,
+            )
+            return USAGE_ERROR
+        if args.remine_limit < 1:
+            print(
+                f"whetstone run: --remine-limit must be at least 1, got {args.remine_limit}",
+                file=sys.stderr,
+            )
+            return USAGE_ERROR
+
     try:
         night = conduct_night(
             tasks=args.tasks,
@@ -1087,6 +1162,10 @@ def run_night(args: argparse.Namespace) -> int:
             run_id=args.run_id,
             run_seed=args.run_seed,
             dev_subset=args.dev_subset,
+            remine_donors=donors,
+            remine_labels=labels,
+            remine_out=args.remine_out,
+            remine_limit=args.remine_limit,
             heldout=args.heldout,
             only=args.only,
             probe=args.probe,
