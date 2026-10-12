@@ -1077,6 +1077,23 @@ def test_no_present_tense_document_asserts_that_the_corpus_does_not_grow() -> No
     )
 
 
+def test_the_write_up_records_the_night_remine() -> None:
+    """A capability is written up in the commit that lands it (`CLAUDE.md`).
+
+    The STATUS entry is append-only history; the CHANGELOG phrase is asserted anywhere in the
+    file so it survives a release moving `[Unreleased]` content under a version — pinning the
+    `[Unreleased]` heading would fail the moment a release removes it.
+    """
+    assert "night-corpus-remine" in _read("docs/STATUS.md"), (
+        "docs/STATUS.md no longer records the night-corpus-remine unit. The repo's rule is that "
+        "a capability is written up in the commit that lands it, and STATUS.md is that history."
+    )
+    assert "re-mines before it draws" in _read("CHANGELOG.md"), (
+        "CHANGELOG.md no longer records the night re-mine. This file records what shipped, and "
+        "the night now re-mines before it draws."
+    )
+
+
 def test_a_report_without_its_preregistration_is_reported_as_an_offender(
     tmp_path: Path,
 ) -> None:
