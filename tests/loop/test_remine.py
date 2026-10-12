@@ -4,8 +4,10 @@ The night re-mines the user's own donors before it draws (`whetstone.loop.night`
 that owns that is this module, not the night. The properties asserted here are the ones the night
 delegates:
 
-* **one `mine()` call per `(label, donor)` pair**, each writing manifests and the miner's own
-  ledger/recipes into `out` (the training-only root), never the committed corpus;
+* **one `mine()` call per `(label, donor)` pair**, each writing manifests into `out` (the
+  training-only root the night loads) and the miner's own ledger/recipes into a **sibling**
+  evidence root `out.parent/(out.name + "-evidence")` — never the committed corpus, and never
+  `out` itself, which the night's strict loader would refuse;
 * the **skip-set accumulates** across donors and onto `existing`, so a second donor cannot
   re-mint a commit the first did;
 * **absent, unprovisionable, or nothing-minted donors are reported no-ops**, never fatal — the
@@ -14,21 +16,24 @@ delegates:
   `record` aspect serializes.
 
 `mine` is injected at the module attribute: a real mint is hours per candidate, and none of the
-above is about provisioning. `skip`, `existing` and the training-only root are observed on the
-call, not inferred.
+above is about provisioning. `skip`, `existing`, the loaded root and the evidence root are
+observed on the call, not inferred.
 """
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any
 
 import pytest
+from fixtures.repos.mined import build_mined_task
 
 import whetstone.loop.remine as remine_module
 from whetstone.loop.remine import DonorOutcome, RemineReport, corpus_shas, remine, trailing_sha
 from whetstone.tasks.environment import NotProvisionable
 from whetstone.tasks.liveness import Liveness
+from whetstone.tasks.manifest import load_tasks
 from whetstone.tasks.mine import Minted, MintFailed, MintReport, Rejected
 from whetstone.verify.verdict import Status
 
@@ -75,7 +80,7 @@ def _record_calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
 def test_remine_calls_mine_once_per_donor_into_the_training_only_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Two donors, two calls; each writes into `out` and takes `out` as its `tasks_root`."""
+    """Two donors, two calls; each writes manifests into `out` and evidence into a sibling root."""
     calls = _record_calls(monkeypatch)
     out = tmp_path / "remined"
     scratch = tmp_path / "scratch"
@@ -91,12 +96,14 @@ def test_remine_calls_mine_once_per_donor_into_the_training_only_root(
     )
 
     assert len(calls) == 2, calls
+    evidence = out.parent / f"{out.name}-evidence"
     for call in calls:
         assert call["out"] == out, "the miner wrote outside the training-only root"
-        assert call["tasks_root"] == out, (
-            "the miner's own ledger/recipes were pointed somewhere other than the training-only "
-            "root, so a re-mine could touch the committed corpus"
+        assert call["tasks_root"] == evidence, (
+            "the miner's own ledger/recipes were pointed somewhere other than the sibling "
+            "evidence root; inside `out` they would make the night's strict loader refuse it"
         )
+        assert call["tasks_root"] != out, "the evidence must never land in the loaded root"
         assert call["limit"] == 3 and call["timeout"] == 12.0
         assert call["scratch"] == scratch / call["label"], (
             "the per-donor scratch was not kept under the passed scratch root"
@@ -107,6 +114,57 @@ def test_remine_calls_mine_once_per_donor_into_the_training_only_root(
         ("donor-b-" + "a" * 12, "donor-b"),
     ), report.minted
     assert len(report.donors) == 2, report.donors
+
+
+def test_evidence_lands_in_a_sibling_so_the_loaded_root_stays_manifest_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The miner's ledger/recipes go to `<out>-evidence`; `out` holds only manifests and loads.
+
+    The regression this prevents was found end to end: `mine()` writes its evidence *into*
+    `tasks_root`, and the night's strict loader refuses **any** non-manifest entry in a root it
+    loads. With `tasks_root` pointed at the sibling, `out` stays pure and the loader accepts it.
+    `out.parent` alone is not the answer — for a `tasks/local/<name>` root the parent is the
+    directory that holds the committed `tasks/local-ledger.json` / `tasks/recipes/`.
+    """
+    out = tmp_path / "remined"
+    build_mined_task(tmp_path / "fixture", task_id="mined-fixture", subject="Fix addition")
+    manifest = tmp_path / "fixture" / "mined-fixture.json"
+    seen: dict[str, Path] = {}
+
+    def fake(donor: Path, out: Path, **kwargs: Any) -> MintReport:
+        root = Path(out)
+        root.mkdir(parents=True, exist_ok=True)
+        evidence = Path(kwargs["tasks_root"])
+        evidence.mkdir(parents=True, exist_ok=True)
+        shutil.copy(manifest, root / manifest.name)
+        (evidence / "local-ledger.json").write_text("{}")
+        (evidence / "recipes").mkdir(exist_ok=True)
+        seen["evidence"] = evidence
+        return MintReport(minted=(), rejected=(), ledger=None, recipe=None)
+
+    monkeypatch.setattr(remine_module, "mine", fake)
+    remine(
+        (("donor-x", tmp_path / "donor"),),
+        out=out,
+        limit=1,
+        scratch=tmp_path / "s",
+        timeout=5.0,
+        existing=frozenset(),
+    )
+
+    assert seen["evidence"] == tmp_path / "remined-evidence", seen["evidence"]
+    assert seen["evidence"] != out.parent, (
+        "the evidence was placed in the parent, which for a `tasks/local/<name>` root is the "
+        "directory holding the committed `tasks/local-ledger.json` / `tasks/recipes/`"
+    )
+    assert [task.task_id for task in load_tasks(out)] == ["mined-fixture"], (
+        "the night's strict loader refused `out`, so a real re-mine would crash after minting"
+    )
+    assert not (out / "local-ledger.json").exists() and not (out / "recipes").exists(), (
+        "the miner's evidence landed in the loaded root"
+    )
+    assert (seen["evidence"] / "local-ledger.json").is_file()
 
 
 def test_the_skip_set_accumulates_across_donors(

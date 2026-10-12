@@ -316,9 +316,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         metavar="<path>",
         help=(
-            "the training-only root the re-mined manifests and the miner's own ledger/recipes are "
-            "written into. Required with any --remine; it is unioned into --tasks and never "
-            "touches the committed corpus"
+            "the training-only root the re-mined manifests are written into and the night loads. "
+            "Required with any --remine; it is unioned into --tasks and never touches the "
+            "committed corpus. The miner's own ledger and recipes land in a sibling "
+            "<dir>-evidence root, so this root holds only manifests and is safe to load"
         ),
     )
     night.add_argument(

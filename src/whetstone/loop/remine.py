@@ -8,9 +8,12 @@ held-out split. It is deliberately small, because the honesty it protects lives 
   in the corpus (`mine(skip=...)`), so a commit already minted is never re-provisioned. The set
   accumulates across donors and onto `existing`, so a second donor in the same night cannot
   re-mint a commit the first one did.
-* **A separate training-only root (M2).** Every `mine()` call is given `tasks_root=out`, so the
-  miner's `local-ledger.json` and `recipes/<label>.json` land **inside** the operator-named `out`
-  and never beside the committed `tasks/local-ledger.json` / `tasks/recipes/`.
+* **A separate training-only root (M2).** Every `mine()` call writes manifests into the
+  operator-named `out` and takes a **sibling** evidence root
+  (`out.parent/(out.name + "-evidence")`) as its `tasks_root`, so `mine()`'s `local-ledger.json`
+  and `recipes/<label>.json` land there — never inside `out` (which the night loads, and whose
+  strict loader refuses any non-manifest entry) and never beside the committed
+  `tasks/local-ledger.json` / `tasks/recipes/`.
 * **Nothing-new, absent, or unprovisionable is a no-op (M4, M7).** A donor that mints nothing —
   because it has no un-minted candidates, because it is absent or not a repository (`MintFailed`),
   or because it is unprovisionable (`NotProvisionable`) — is recorded as a `DonorOutcome` with an
@@ -102,12 +105,19 @@ def remine(
 ) -> RemineReport:
     """Mine each `(label, donor)` into `out`, skipping commits already in the corpus.
 
-    One `mine()` call per donor. `out` is both the manifest destination and the miner's
-    `tasks_root`, so the re-mine's ledger and recipes stay inside the training-only root. The
-    accumulated skip-set is `existing` plus every sha12 minted earlier in this call. An absent or
-    unprovisionable donor is a recorded no-op, never an exception.
+    One `mine()` call per donor. `out` is the manifest destination the night loads; the miner's
+    `tasks_root` is the sibling evidence root `out.parent/(out.name + "-evidence")`, so the
+    re-mine's ledger and recipes never enter the loaded root. The accumulated skip-set is
+    `existing` plus every sha12 minted earlier in this call. An absent or unprovisionable donor is
+    a recorded no-op, never an exception.
     """
     destination = Path(out)
+    # The miner writes its own evidence (`local-ledger.json`, `recipes/`) into `tasks_root`, and
+    # the night's strict loader refuses **any** non-manifest entry in a root it loads
+    # (`manifest.load_task_directory`). So the evidence goes to a sibling of `out`, never into
+    # `out` — and never `out.parent` alone, which for a `tasks/local/<name>` root is where the
+    # committed `tasks/local-ledger.json` / `tasks/recipes/` live. Derived in one place, here.
+    evidence = destination.parent / f"{destination.name}-evidence"
     scratch_root = Path(scratch)
     accumulated: set[str] = set(existing)
     pairs: list[tuple[str, str]] = []
@@ -121,7 +131,7 @@ def remine(
                 label=label,
                 limit=limit,
                 scratch=scratch_root / label,
-                tasks_root=destination,
+                tasks_root=evidence,
                 timeout=timeout,
                 seed=seed,
                 clock=clock,
