@@ -814,6 +814,53 @@ def test_the_base_amendment_closes_section_7_3_and_claims_no_count_measured_here
     )
 
 
+def test_the_preregistration_states_the_training_pool_reading() -> None:
+    """§ 10.17 reads § 3's pinned "task set" as the scoring held-out split, before any re-mine.
+
+    The reading is asserted nowhere else; without it a reader must re-derive whether
+    training-pool growth is a § 3 change, and could re-derive it the other way. Asserted in the
+    § 10.9/§ 10.10 disclosure shape, sentence by sentence.
+    """
+    flat = _flat(_read(PREREGISTRATION))
+    assert "10.17" in flat, (
+        f"{PREREGISTRATION} no longer carries a § 10.17 amendment. The night re-mines the "
+        "training pool before it draws; whether that is a § 3 change is asserted nowhere, and "
+        "without a dated reading a future reader could re-derive it the other way."
+    )
+    assert "Type 2 (§ 8.2): a disclosure, added" in flat, (
+        f"{PREREGISTRATION} § 10.17 no longer states its type. The reading discloses behaviour "
+        "and claims no threshold; it must be a Type 2 disclosure, not a Type 1 pin."
+    )
+    assert 'reads § 3\'s "the task set" as the scoring set' in flat, (
+        f"{PREREGISTRATION} § 10.17 no longer states the reading itself — that § 3's pinned "
+        '"the task set" is the scoring held-out split, not the pool the model learns from. '
+        "Without it the reading is exactly the one a future reader must re-derive."
+    )
+    assert "the held-out split" in flat and "does not move" in flat, (
+        f"{PREREGISTRATION} § 10.17 no longer states that the held-out split does not move. The "
+        "reading is load-bearing only if the scoring input is unchanged."
+    )
+    assert "no new baseline is required" in flat, (
+        f"{PREREGISTRATION} § 10.17 no longer states that no new baseline is required. A reading "
+        "that moved the pinned input would start a new series; this one must say it does not."
+    )
+    assert "at the time of this amendment no night has re-mined" in flat, (
+        f"{PREREGISTRATION} § 10.17 does not state that no night has re-mined. The sentence is "
+        "the disclosure shape § 10.9 and § 10.10 pin; its absence would let a night's figures "
+        "appear without a record of when the claim began."
+    )
+    assert "and none is claimed here" in flat, (
+        f"{PREREGISTRATION} § 10.17 does not state that no count is claimed under it."
+    )
+    assert (
+        'The night re-mines the training pool; § 3\'s pinned "task set" is the scoring '
+        "held-out split (§ 10.17)" in flat
+    ), (
+        f"{PREREGISTRATION}'s amendment log no longer records the § 10.17 row. A dated reading "
+        "that is not in the log is a silent edit (§ 8.4)."
+    )
+
+
 def test_the_scorable_rule_amendment_re_derives_the_split_before_any_scoring() -> None:
     """§ 10.16 re-derives the held-out split under the scorable rule, in the § 10.7 shape.
 
