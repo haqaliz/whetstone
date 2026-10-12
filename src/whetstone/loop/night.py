@@ -81,6 +81,7 @@ from whetstone.loop.heldout import (
     exclude_heldout,
     read_document,
 )
+from whetstone.loop.remine import RemineReport, corpus_shas, remine
 from whetstone.loop.sampling import (
     Applied,
     K,
@@ -190,6 +191,10 @@ def run_night(
     run_id: str,
     run_seed: int,
     dev_subset: Sequence[str] = (),
+    remine_donors: Sequence[Path] = (),
+    remine_labels: Sequence[str] = (),
+    remine_out: Path | None = None,
+    remine_limit: int | None = None,
     heldout: Path | None = None,
     stratum: Path | None = None,
     draws: int = K,
@@ -228,6 +233,15 @@ def run_night(
     top: a declared dev id inside the held-out band is exclusion, never a refusal, so the
     membership resolves against the full loaded corpus while the exclusion itself applies to
     the post-overlay set. Absent, the night is today's night, byte for byte.
+
+    `remine_donors` / `remine_labels` (paired by position) with `remine_out` and `remine_limit`
+    make the night **grow its own corpus before it draws**: it re-mines each donor's un-minted
+    commits into the operator-named, training-only `remine_out` (the miner's ledger and recipes
+    stay inside it, never beside the committed corpus), unions that root into the roots it loads,
+    and records the minted `(task_id, donor)` pairs as `task_set.remined`. The block runs before
+    `load_task_roots(tasks)` so the grown set is what `freeze()` computes the contract over. A
+    re-mine that mints nothing is an empty delta (`()`), distinct from no re-mine block (`None`);
+    with no donors the night is today's night, byte for byte.
     """
     _refuse_published_root(runs, "--runs")
     _refuse_published_root(checkpoints, "--checkpoints")
@@ -237,7 +251,36 @@ def run_night(
     runtime = backend_runtime.detect() if runtime is None else runtime
     os.environ[HF_HUB_OFFLINE] = "1"
 
-    private_root_tasks = load_task_roots(tasks)
+    # The re-mine runs at the TOP, before `load_task_roots`, so the grown corpus is what
+    # `freeze()` at the contract below computes the generation contract over and what the draws
+    # see. The four parameters are defaults-empty: without a donor this block is skipped and the
+    # night is today's night, byte for byte. `run_night` is the single writer of the `remined`
+    # delta — it computes it here from the re-mine it runs, never takes it as an input.
+    loaded_roots = list(tasks)
+    remined: tuple[tuple[str, str], ...] | None = None
+    if remine_donors:
+        # The CLI validates the pairing and the required companions; these are the loop's own
+        # preconditions, stated rather than assumed, for a caller that skips the door.
+        assert remine_out is not None and remine_limit is not None, (
+            "a re-mine needs --remine-out and --remine-limit; the door validates them"
+        )
+        existing = corpus_shas(load_task_roots(tasks))
+        report: RemineReport = remine(
+            tuple(zip(remine_labels, remine_donors, strict=True)),
+            out=remine_out,
+            limit=remine_limit,
+            scratch=workspace / "remine",
+            timeout=timeout,
+            existing=existing,
+            seed=run_seed,
+        )
+        remined = report.minted
+        # Union the training-only root: appended only if the operator did not already list it, so
+        # `remine_out` is never loaded twice; loaded fresh below, so tasks minted this night are
+        # picked up even when it was already among `--tasks`.
+        if remine_out not in loaded_roots:
+            loaded_roots.append(remine_out)
+    private_root_tasks = load_task_roots(loaded_roots)
     heldout_record: run_ledger.HeldoutRecord | None = None
     heldout_membership: frozenset[str] = frozenset()
     if heldout is not None:
@@ -374,11 +417,12 @@ def run_night(
         task_set=run_ledger.TaskSet(
             private=len(private_tasks),
             public=len(public_tasks),
-            roots=len(tasks),
+            roots=len(loaded_roots),
             dev_subset=declared,
             probe=probe,
             heldout=heldout_record,
             stratum=stratum_record,
+            remined=remined,
         ),
         # Both fields answer "what produced these draws", so both are given the same detected
         # record. `tool_versions()` alone named `mlx-lm` unconditionally, which on any other
