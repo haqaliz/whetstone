@@ -236,8 +236,10 @@ def run_night(
 
     `remine_donors` / `remine_labels` (paired by position) with `remine_out` and `remine_limit`
     make the night **grow its own corpus before it draws**: it re-mines each donor's un-minted
-    commits into the operator-named, training-only `remine_out` (the miner's ledger and recipes
-    stay inside it, never beside the committed corpus), unions that root into the roots it loads,
+    commits into the operator-named `remine_out` (the miner's ledger and recipes land in a
+    sibling `<dir>-evidence` root — never inside `remine_out`, which the night loads, and never
+    beside the committed `tasks/local-ledger.json` / `tasks/recipes/`), unions that root into the
+    roots it loads,
     and records the minted `(task_id, donor)` pairs as `task_set.remined`. The block runs before
     `load_task_roots(tasks)` so the grown set is what `freeze()` computes the contract over. A
     re-mine that mints nothing is an empty delta (`()`), distinct from no re-mine block (`None`);
