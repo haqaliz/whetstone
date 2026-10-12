@@ -170,6 +170,14 @@ class TaskSet:
     #: the split removed. Older ledgers carry no such record and `read` tolerates the absence.
     stratum: StratumRecord | None = None
 
+    #: The re-mine delta this night minted (`--remine*`), as `(task_id, donor)` pairs, or `None`
+    #: when no re-mine block ran. `()` is deliberately distinct from `None`: an empty tuple is a
+    #: re-mine that ran and minted nothing (M4), while `None` records that no re-mine block ran at
+    #: all, and a boolean could not carry both. Ids and donor labels only, never file contents —
+    #: the module's discipline (`ledger.py:9-15`) and what the canary proves. Older ledgers carry
+    #: no such record and `read` tolerates the absence.
+    remined: tuple[tuple[str, str], ...] | None = None
+
 
 @dataclass(frozen=True)
 class Model:
@@ -425,6 +433,22 @@ def _body(ledger: Ledger) -> dict[str, Any]:
                 "rule_digest": ledger.task_set.stratum.rule_digest,
                 "membership_count": ledger.task_set.stratum.membership_count,
             },
+            # Deliberately unlike `heldout`/`stratum` above, which always emit a `null`: `remined`
+            # is emitted **only when the field is not `None`**. An always-present `"remined": null`
+            # would change the `task_set` claim and therefore every ledger's bytes, breaking the
+            # invariant that a night without the re-mine flags is the pre-change night byte for
+            # byte (M6/AC5). The sort is applied here, at the serialization boundary, so the same
+            # delta yields the same bytes whatever order the re-mine minted it in.
+            **(
+                {}
+                if ledger.task_set.remined is None
+                else {
+                    "remined": [
+                        {"task_id": task_id, "donor": donor}
+                        for task_id, donor in sorted(ledger.task_set.remined)
+                    ]
+                }
+            ),
         },
         "environment_pins": ENVIRONMENT_PINS,
         "tool_versions": dict(sorted(ledger.tool_versions.items())),
