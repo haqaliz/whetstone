@@ -21,6 +21,7 @@ edited — it is a shared fixture and the golden's subject) plus `dataclasses.re
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 from dataclasses import replace
@@ -223,3 +224,216 @@ def test_a_forger_who_recomputes_the_remine_claims_is_not_caught(tmp_path: Path)
     assert forged.document["task_set"]["remined"] == [
         {"task_id": "task-forged", "donor": "donor-forged"}
     ]
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: every consumer tolerates the nested key; the tripwire
+# ---------------------------------------------------------------------------
+
+
+def test_a_remined_ledger_reads_through_morning(tmp_path: Path) -> None:
+    """AC 7: the morning reader accepts a genuine v3 ledger carrying `task_set.remined`.
+
+    `_KNOWN_FIELDS` (`morning.py:207`) is compared only against `set(payload)`
+    (`morning.py:301`) — top-level keys — so a nested addition is invisible to the unknown-key
+    refusal, and the known subfields are extracted as before.
+    """
+    from whetstone.loop import morning
+
+    path = run_ledger.write(tmp_path / "ledger.json", _remined(_MINTED))
+    document = morning.read_ledger(path)
+
+    assert document.task_set.private == 61, (
+        "WHY THIS IS A FAILURE: the morning reader did not read the known subfields of a "
+        "remined ledger. A nested key the reader rejects would make every future night's "
+        "report refuse as an unknown-key change"
+    )
+
+
+def test_a_remined_probe_ledger_decides_through_check_probe(tmp_path: Path) -> None:
+    """AC 7: `check_probe.run_check` decides a probe run whose ledger carries `remined`.
+
+    The check reads only `task_set.probe` (`check_probe.py:201-210`) through `ledger.read` by
+    identity, so the nested delta changes nothing it decides.
+    """
+    from loop.test_check_probe import _COUNTS, _HARNESS, _PROBE_SEEDS
+    from whetstone.loop import check_probe, night
+    from whetstone.loop import draws as run_draws
+
+    run = tmp_path / "runs" / "probe-001"
+    run.mkdir(parents=True)
+    base = _ledger()
+    candidate = replace(
+        base,
+        task_set=replace(base.task_set, probe=1, remined=(("task-remined", "donor-a"),)),
+        checkpoint_digest=None,
+        checkpoint_absent="a probe writes no checkpoint",
+        draws=2,
+        seeds=_PROBE_SEEDS,
+        draws_recorded=tuple(
+            run_ledger.DrawRecord(attempt=index, harness=dict(_HARNESS), counts=_COUNTS)
+            for index in (1, 2)
+        ),
+    )
+    run_ledger.write(run / run_ledger.LEDGER_FILE, candidate)
+    for attempt in (1, 2):
+        journal, _ = run_draws.evidence_paths(run / night.EVIDENCE_DIR, attempt)
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        journal.touch()
+
+    report = check_probe.run_check(run)
+
+    assert report.proceed is True, (
+        "WHY THIS IS A FAILURE: a genuine probe run carrying `task_set.remined` did not decide "
+        "as it does without the key. The gate's reader must tolerate the nested delta"
+    )
+
+
+def test_check_probe_and_honest_report_read_through_the_ledger_reader() -> None:
+    """AC 7: the two remaining readers are the ledger's own, by identity, not a second parse."""
+    from whetstone.loop import check_probe, honest_report
+
+    assert check_probe.read_ledger is run_ledger.read
+    assert honest_report.read_ledger is run_ledger.read
+
+
+def test_a_remined_document_is_still_whetstone_run_3_and_sealed(tmp_path: Path) -> None:
+    """AC 9: the nested field needs no schema bump — the document stays v3 and verifies sealed."""
+    path = run_ledger.write(tmp_path / "ledger.json", _remined(_MINTED))
+    document = json.loads(path.read_text(encoding="utf-8"))
+
+    assert run_ledger.LEDGER_SCHEMA == run_ledger.LEDGER_SCHEMA_V3
+    assert document["schema"] == run_ledger.LEDGER_SCHEMA_V3
+    assert run_ledger.verify_document(path).sealed is True
+
+
+def test_the_remine_ledger_holds_no_donor_source_text(tmp_path: Path) -> None:
+    """AC 8: the re-mine delta carries ids and labels, never content — the canary extended.
+
+    A ledger whose `remined` donor label looks like a donor's is written with the shipped
+    fixture's donor source and prompt still in the dataset; the bytes must carry the label (so
+    the field really rendered) and neither the source text nor the prompt.
+    """
+    path = run_ledger.write(
+        tmp_path / "ledger.json", _remined((("task-alpha", "donor-from-elsewhere"),))
+    )
+    text = path.read_text(encoding="utf-8")
+
+    assert "donor-from-elsewhere" in text, (
+        "WHY THIS IS A FAILURE: the re-mine donor label did not reach the ledger, so this "
+        "canary would pass on a document that recorded nothing"
+    )
+    assert "SECRET_DONOR_MARKER" not in text, (
+        "WHY THIS IS A FAILURE: donor source text reached the run ledger through the re-mine "
+        "delta. The ledger's discipline is hashes and verdicts, never contents"
+    )
+    assert "fix it" not in text, (
+        "WHY THIS IS A FAILURE: a prompt reached the run ledger. The re-mine delta is ids and "
+        "labels only"
+    )
+
+
+# ---------------------------------------------------------------------------
+# The tripwire: no module validates a nested `task_set` key set
+# ---------------------------------------------------------------------------
+
+
+def _task_set_mapping_binding(expr: ast.expr) -> bool:
+    """Whether `expr` produces a `task_set` mapping: a `["task_set"]` lookup or a call naming it.
+
+    Covers `payload["task_set"]`, `ledger_document["task_set"]`, `_block(payload, "task_set",
+    ...)` and `payload.get("task_set")` — the ways a module in this package reaches the block.
+    """
+    if isinstance(expr, ast.Subscript):
+        key = expr.slice
+        return isinstance(key, ast.Constant) and key.value == "task_set"
+    if isinstance(expr, ast.Call):
+        return any(isinstance(arg, ast.Constant) and arg.value == "task_set" for arg in expr.args)
+    return False
+
+
+def _nested_task_set_keysets(source: str) -> list[int]:
+    """The lines where `source` builds a set of a `task_set` mapping's keys — a nested validator.
+
+    A module that did `set(task_set) - KNOWN`, `set(payload["task_set"])` or `task_set.keys()`
+    would refuse the nested `remined` key and is exactly what AC 7's source guard exists to catch.
+    Set operations over top-level payloads (`morning.py:301`) are not flagged: their operand is
+    not a `task_set` mapping.
+    """
+    tree = ast.parse(source)
+    mappings: set[str] = set()
+    for node in ast.walk(tree):
+        value: ast.expr | None = None
+        targets: tuple[ast.expr, ...] = ()
+        if isinstance(node, ast.Assign):
+            value, targets = node.value, tuple(node.targets)
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            value, targets = node.value, (node.target,)
+        if value is None or not _task_set_mapping_binding(value):
+            continue
+        mappings.update(name.id for name in targets if isinstance(name, ast.Name))
+
+    def names_the_mapping(expr: ast.expr) -> bool:
+        if isinstance(expr, ast.Name):
+            return expr.id in mappings
+        return _task_set_mapping_binding(expr)
+
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in ("set", "frozenset"):
+            if node.args and names_the_mapping(node.args[0]):
+                lines.append(node.lineno)
+        elif (
+            isinstance(func, ast.Attribute)
+            and func.attr == "keys"
+            and names_the_mapping(func.value)
+        ):
+            lines.append(node.lineno)
+    return sorted(lines)
+
+
+def test_the_nested_keyset_scanner_flags_a_validator_and_passes_a_reader() -> None:
+    """The scanner has teeth before it is trusted: it flags nested validators, not readers."""
+    validators = [
+        "task_set = payload['task_set']\nunexpected = sorted(set(task_set) - KNOWN)",
+        "task_set = _block(payload, 'task_set', location)\nif set(task_set) - KNOWN:\n    pass",
+        "unexpected = set(payload['task_set']) - KNOWN",
+        "task_set = payload.get('task_set')\nrefuse = set(task_set.keys()) - KNOWN",
+    ]
+    for source in validators:
+        assert _nested_task_set_keysets(source), source
+
+    clean = [
+        "unexpected = sorted(set(payload) - _KNOWN_FIELDS)",
+        "task_set = _block(payload, 'task_set', location)\nheldout = task_set.get('heldout')",
+        "task_set = ledger_document['task_set']\nprivate = task_set['private']",
+        "raw = json.loads(path.read_text())\nunexpected = sorted(set(raw) - _KNOWN_FIELDS)",
+        "keys = {'private', 'public'}\nvalue = frozenset(keys)",
+    ]
+    for source in clean:
+        assert _nested_task_set_keysets(source) == [], source
+
+
+def test_no_module_validates_a_nested_task_set_key_set() -> None:
+    """AC 7, the tripwire: no source under `src/whetstone/loop/` refuses a nested `task_set` key.
+
+    If a consumer validated the nested key set, the `remined` delta would be refused and the
+    tolerance tests above would be wrong to pass. Scanned rather than assumed — the failure of
+    this test names the module and line, and the fix is to widen that consumer, never to hide the
+    key.
+    """
+    root = Path(run_ledger.__file__).resolve().parent  # src/whetstone/loop
+    offenders = {
+        str(path.relative_to(root)): lines
+        for path in sorted(root.rglob("*.py"))
+        if (lines := _nested_task_set_keysets(path.read_text(encoding="utf-8")))
+    }
+
+    assert offenders == {}, (
+        f"WHY THIS IS A FAILURE: {sorted(offenders)} build a key set from a `task_set` mapping, "
+        "so they would refuse the nested `remined` delta. The fix is to widen that consumer to "
+        "ignore unknown nested subfields, not to hide the key"
+    )
