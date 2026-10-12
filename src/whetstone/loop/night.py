@@ -241,7 +241,9 @@ def run_night(
     and records the minted `(task_id, donor)` pairs as `task_set.remined`. The block runs before
     `load_task_roots(tasks)` so the grown set is what `freeze()` computes the contract over. A
     re-mine that mints nothing is an empty delta (`()`), distinct from no re-mine block (`None`);
-    with no donors the night is today's night, byte for byte.
+    a root it left empty or absent (a nothing-new, absent, or unprovisionable donor) is not
+    unioned, so a no-op re-mine still lets the night proceed. With no donors the night is today's
+    night, byte for byte.
     """
     _refuse_published_root(runs, "--runs")
     _refuse_published_root(checkpoints, "--checkpoints")
@@ -277,8 +279,12 @@ def run_night(
         remined = report.minted
         # Union the training-only root: appended only if the operator did not already list it, so
         # `remine_out` is never loaded twice; loaded fresh below, so tasks minted this night are
-        # picked up even when it was already among `--tasks`.
-        if remine_out not in loaded_roots:
+        # picked up even when it was already among `--tasks`. Appended only when it actually holds
+        # a manifest: `mine()` creates its destination before it considers a candidate, so a
+        # re-mine that minted nothing (M4/M7) leaves an empty root and an absent donor leaves
+        # none, and `load_task_roots` refuses both — on exactly the no-op case the night must
+        # survive.
+        if remine_out not in loaded_roots and _holds_manifests(remine_out):
             loaded_roots.append(remine_out)
     private_root_tasks = load_task_roots(loaded_roots)
     heldout_record: run_ledger.HeldoutRecord | None = None
@@ -791,6 +797,19 @@ def _status(drawn: Sequence[Drawn]) -> Status:
             )
         )
     return reduce(verdicts)
+
+
+def _holds_manifests(root: Path) -> bool:
+    """Does `root` hold at least one manifest entry? An empty or absent root is not loadable.
+
+    `load_task_roots` refuses a directory with no entries ("an empty set of tasks is a malformed
+    invocation"), and the re-mine can legitimately leave exactly that: `mine()` creates its
+    destination before it considers any candidate, so a nothing-new or unprovisionable donor
+    leaves an empty root, and an absent donor leaves none. The re-mine's root is appended only
+    when it is a real corpus, so the union never turns a no-op into a crashed night.
+    """
+    location = Path(root)
+    return location.is_dir() and any(location.iterdir())
 
 
 def _refuse_published_root(root: Path, flag: str) -> None:

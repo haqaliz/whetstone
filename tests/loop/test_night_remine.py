@@ -197,3 +197,65 @@ def test_a_night_without_remine_flags_records_no_remined_key(
         "WHY THIS IS A FAILURE: an unflagged night wrote a task_set.remined key. The invariant "
         "is that a night without the flags is the pre-change night byte for byte"
     )
+
+
+def test_a_no_op_remine_does_not_load_an_empty_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M4/M7: a re-mine that mints nothing leaves no manifests, and the night proceeds.
+
+    `mine()` creates its `out` before it considers a candidate, so an unprovisionable or
+    nothing-new donor leaves an **empty** root. The night's loader refuses an empty directory, so
+    appending it would crash the night on exactly the no-op case that must not fail it.
+    """
+    def fake(donors: Any, **arguments: Any) -> RemineReport:
+        Path(arguments["out"]).mkdir(parents=True, exist_ok=True)
+        return RemineReport(
+            minted=(),
+            donors=(DonorOutcome("donor-x", Path("/d"), (), (), "cold cache"),),
+        )
+
+    monkeypatch.setattr(night_module, "remine", fake)
+
+    night = _night(
+        tmp_path,
+        answers={},
+        remine_donors=(Path("/tmp/d"),),
+        remine_labels=("donor-x",),
+        remine_out=tmp_path / "remined",
+        remine_limit=1,
+    )
+
+    recorded = run_ledger.read(night.ledger)
+    assert recorded["task_set"]["remined"] == [], recorded["task_set"].get("remined")
+    assert recorded["task_set"]["roots"] == 1, (
+        f"WHY THIS IS A FAILURE: roots is {recorded['task_set']['roots']}. The empty re-mine root "
+        "was unioned into the loaded corpus, which the strict loader would refuse"
+    )
+
+
+def test_an_absent_donor_does_not_append_a_nonexistent_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`MintFailed` leaves no `out` at all; the night must not try to load a missing root."""
+    def fake(donors: Any, **arguments: Any) -> RemineReport:
+        assert not Path(arguments["out"]).exists()
+        return RemineReport(
+            minted=(),
+            donors=(DonorOutcome("donor-x", Path("/missing"), (), (), "not a repository"),),
+        )
+
+    monkeypatch.setattr(night_module, "remine", fake)
+
+    night = _night(
+        tmp_path,
+        answers={},
+        remine_donors=(Path("/tmp/missing"),),
+        remine_labels=("donor-x",),
+        remine_out=tmp_path / "remined",
+        remine_limit=1,
+    )
+
+    recorded = run_ledger.read(night.ledger)
+    assert recorded["task_set"]["remined"] == [] and recorded["task_set"]["roots"] == 1
+    assert not (tmp_path / "remined").exists(), "the absent donor's root was created anyway"
