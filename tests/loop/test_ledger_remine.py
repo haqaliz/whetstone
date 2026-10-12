@@ -145,6 +145,49 @@ def test_the_schema_constant_did_not_move() -> None:
     assert run_ledger.LEDGER_SCHEMA == run_ledger.LEDGER_SCHEMA_V3
 
 
+# ---------------------------------------------------------------------------
+# Phase 2: the no-flag night is byte-identical and carries no key (tests only)
+# ---------------------------------------------------------------------------
+
+
+def test_a_night_without_the_flags_carries_no_remine_key(tmp_path: Path) -> None:
+    """AC 4: a real night with no re-mine arguments writes a `task_set` with no `remined` key.
+
+    Green on arrival after Phase 1 (the field defaults to `None`); its job is to stay green and to
+    prove the default is the byte-identity path. The night is a real one written through the
+    shipped `_night` helper, not a hand-built `Ledger`.
+    """
+    from loop.test_night import _night
+
+    night = _night(tmp_path)
+    recorded = run_ledger.read(night.ledger)
+
+    assert "remined" not in recorded["task_set"], (
+        f"WHY THIS IS A FAILURE: an unflagged night wrote a 'remined' key "
+        f"({recorded['task_set'].get('remined')!r}). The no-flag path must be the pre-change "
+        "document exactly"
+    )
+
+
+def test_two_unflagged_nights_write_byte_identical_ledgers(tmp_path: Path) -> None:
+    """AC 4: two identical unflagged nights write byte-identical `ledger.json`.
+
+    The no-remine determinism half of M8/AC3 as it touches the ledger (the
+    `test_night_integration.py:358-383` precedent): the default `None` adds no key and no bytes,
+    so the same inputs render the same file.
+    """
+    from loop.test_night import _night
+
+    first = _night(tmp_path / "first")
+    second = _night(tmp_path / "second")
+
+    assert first.ledger.read_bytes() == second.ledger.read_bytes(), (
+        "WHY THIS IS A FAILURE: two unflagged nights over identical fixtures wrote different "
+        "ledger bytes. The default path is not deterministic, so no reader can recompute what "
+        "an unflagged night recorded"
+    )
+
+
 def test_a_mutated_remine_delta_is_refused_by_name(tmp_path: Path) -> None:
     """AC 6: the `task_set` claim covers the nested delta, so an edit is a refusal by name."""
     path = run_ledger.write(tmp_path / "ledger.json", _remined(_MINTED))
