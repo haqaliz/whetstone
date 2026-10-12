@@ -11,6 +11,8 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-13
+
 ### Added
 
 - **The night re-mines before it draws.** `whetstone run --night` gains `--remine <donor>`
