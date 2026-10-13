@@ -13,13 +13,33 @@ released version until it exists in the code.
 
 ### Added
 
-- **The portability arm's CPU precision is declared `bfloat16`, and the change is pre-registered** (`PREREGISTRATION.md` § 10.17, Type 1, 2026-10-11). `src/whetstone/loop/torch_runtime.py`'s `DEVICE_PRECISION["cpu"]` moves from `"float32"` to `"bfloat16"` — the one map read by both the trainer and the generator/gate loader — so training, rollouts and gate verdicts all move together, for the reason `docs/ROADMAP.md` § 13 gives: a larger base the arm cannot hold in fp32 may now load.
+- **The portability arm's CPU precision is declared `bfloat16`, and the change is pre-registered** (`PREREGISTRATION.md` § 10.18, Type 1, 2026-10-11). `src/whetstone/loop/torch_runtime.py`'s `DEVICE_PRECISION["cpu"]` moves from `"float32"` to `"bfloat16"` — the one map read by both the trainer and the generator/gate loader — so training, rollouts and gate verdicts all move together, for the reason `docs/ROADMAP.md` § 13 gives: a larger base the arm cannot hold in fp32 may now load.
 - **A run's `backend` block records the precision it ran under.** `Backend` gains an optional `precision: str | None`, filled for Torch from `DEVICE_PRECISION` and left `None` for MLX. It reaches the checkpoint's and the run ledger's `backend` block through the single `recorded()` writer, so a `bfloat16` checkpoint and a `float32` one are no longer byte-identical in provenance and the gate's whole-dict comparison refuses the pair. The checkpoint (`whetstone-checkpoint/2`) and ledger (`whetstone-run/3`) schemas do **not** bump: a nested key is a recorded addition, not a version change.
 
 ### Changed
 
-- **The portability arm's figures are non-comparable across the change.** Every prior arm figure — training, rollouts, gate verdict — was measured under `float32`; the old series is never extended (`PREREGISTRATION.md` § 10.17). `docs/ROADMAP.md` § 13 carries a dated correction and `reports/portability-arm/report.md` names the declared precision. No number is claimed: no probe or night has run under the new dtype.
+- **The portability arm's figures are non-comparable across the change.** Every prior arm figure — training, rollouts, gate verdict — was measured under `float32`; the old series is never extended (`PREREGISTRATION.md` § 10.18). `docs/ROADMAP.md` § 13 carries a dated correction and `reports/portability-arm/report.md` names the declared precision. No number is claimed: no probe or night has run under the new dtype.
 
+## [0.23.0] - 2026-10-13
+
+### Added
+
+- **The night re-mines before it draws.** `whetstone run --night` gains `--remine <donor>`
+  (repeatable), `--remine-label <label>`, `--remine-out <dir>` and `--remine-limit <N>`: the
+  night mines only commits not already in the corpus, into a separate training-only root, and
+  draws against the grown pool. The run ledger's `task_set.remined` records the minted ids and
+  donor labels; a night without the flags is byte-identical to before.
+- **The night sheet documents the re-mine block**
+  (`docs/planning/p2-rollouts/night-door/runbook.md`), held by
+  `tests/test_night_runbook_guards.py`.
+- **`PREREGISTRATION.md` § 10.17** records that § 3's pinned "task set" is the scoring held-out
+  split, so training-pool growth needs no amendment; `docs/ROADMAP.md` § 13 records the
+  promotion out of the gap list.
+
+### Changed
+
+- **The reward and the gate are untouched.** Nothing under `src/whetstone/verify/` moves; the
+  held-out split's membership and `document_digest` are unchanged.
 ## [0.22.0] - 2026-10-11
 
 ### Added

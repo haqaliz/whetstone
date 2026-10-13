@@ -814,6 +814,53 @@ def test_the_base_amendment_closes_section_7_3_and_claims_no_count_measured_here
     )
 
 
+def test_the_preregistration_states_the_training_pool_reading() -> None:
+    """§ 10.17 reads § 3's pinned "task set" as the scoring held-out split, before any re-mine.
+
+    The reading is asserted nowhere else; without it a reader must re-derive whether
+    training-pool growth is a § 3 change, and could re-derive it the other way. Asserted in the
+    § 10.9/§ 10.10 disclosure shape, sentence by sentence.
+    """
+    flat = _flat(_read(PREREGISTRATION))
+    assert "10.17" in flat, (
+        f"{PREREGISTRATION} no longer carries a § 10.17 amendment. The night re-mines the "
+        "training pool before it draws; whether that is a § 3 change is asserted nowhere, and "
+        "without a dated reading a future reader could re-derive it the other way."
+    )
+    assert "Type 2 (§ 8.2): a disclosure, added" in flat, (
+        f"{PREREGISTRATION} § 10.17 no longer states its type. The reading discloses behaviour "
+        "and claims no threshold; it must be a Type 2 disclosure, not a Type 1 pin."
+    )
+    assert 'reads § 3\'s "the task set" as the scoring set' in flat, (
+        f"{PREREGISTRATION} § 10.17 no longer states the reading itself — that § 3's pinned "
+        '"the task set" is the scoring held-out split, not the pool the model learns from. '
+        "Without it the reading is exactly the one a future reader must re-derive."
+    )
+    assert "the held-out split" in flat and "does not move" in flat, (
+        f"{PREREGISTRATION} § 10.17 no longer states that the held-out split does not move. The "
+        "reading is load-bearing only if the scoring input is unchanged."
+    )
+    assert "no new baseline is required" in flat, (
+        f"{PREREGISTRATION} § 10.17 no longer states that no new baseline is required. A reading "
+        "that moved the pinned input would start a new series; this one must say it does not."
+    )
+    assert "at the time of this amendment no night has re-mined" in flat, (
+        f"{PREREGISTRATION} § 10.17 does not state that no night has re-mined. The sentence is "
+        "the disclosure shape § 10.9 and § 10.10 pin; its absence would let a night's figures "
+        "appear without a record of when the claim began."
+    )
+    assert "and none is claimed here" in flat, (
+        f"{PREREGISTRATION} § 10.17 does not state that no count is claimed under it."
+    )
+    assert (
+        'The night re-mines the training pool; § 3\'s pinned "task set" is the scoring '
+        "held-out split (§ 10.17)" in flat
+    ), (
+        f"{PREREGISTRATION}'s amendment log no longer records the § 10.17 row. A dated reading "
+        "that is not in the log is a silent edit (§ 8.4)."
+    )
+
+
 def test_the_scorable_rule_amendment_re_derives_the_split_before_any_scoring() -> None:
     """§ 10.16 re-derives the held-out split under the scorable rule, in the § 10.7 shape.
 
@@ -945,12 +992,12 @@ def test_the_scorable_rule_amendment_re_derives_the_split_before_any_scoring() -
 
 
 def test_the_cpu_dtype_amendment_pins_the_precision() -> None:
-    """§ 10.17 pins the portability arm's CPU precision, in the § 10.13 shape.
+    """§ 10.18 pins the portability arm's CPU precision, in the § 10.13 shape.
 
     A dtype moves every figure measured under it, so it is a pinned input (§ 8.1;
     `docs/ROADMAP.md`:788), and the portability arm's declared CPU precision must be
     fixed by a dated Type 1 amendment committed before the training it governs runs.
-    This is a new amendment shape: § 10.11 through § 10.15 each pinned a *base*; § 10.17 pins a
+    This is a new amendment shape: § 10.11 through § 10.15 each pinned a *base*; § 10.18 pins a
     *runtime input*. The amendment must carry the Type 1 line, the no-threshold/no-§ 1/
     § 4/§ 6-rewording line, the non-comparability sentence naming the precision, the
     "what is not claimed" sentence, and its amendment-log row. The literal `bfloat16`
@@ -960,12 +1007,12 @@ def test_the_cpu_dtype_amendment_pins_the_precision() -> None:
     flat = _flat(_read(PREREGISTRATION))
     precision = torch_runtime.DEVICE_PRECISION["cpu"]
     assert precision == "bfloat16", (
-        f"DEVICE_PRECISION['cpu'] is {precision!r}, not 'bfloat16'. § 10.17 pins the arm's "
+        f"DEVICE_PRECISION['cpu'] is {precision!r}, not 'bfloat16'. § 10.18 pins the arm's "
         "CPU precision, and the amendment's literal must equal the constant the runtime "
         "reads, or the document and the code have drifted."
     )
-    assert "### 10.17" in flat, (
-        f"{PREREGISTRATION} no longer carries a § 10.17 amendment. The portability arm's "
+    assert "### 10.18" in flat, (
+        f"{PREREGISTRATION} no longer carries a § 10.18 amendment. The portability arm's "
         "CPU precision is a pinned input (§ 8.1; docs/ROADMAP.md:788), and it must be "
         "recorded as a dated Type 1 amendment committed before the training it governs; "
         "without it, a night would train under a precision the pre-registration never named."
@@ -974,73 +1021,73 @@ def test_the_cpu_dtype_amendment_pins_the_precision() -> None:
         "Type 1 (§ 8.1): pins the input of an existing arm, committed before the training "
         "it governs runs" in flat
     ), (
-        f"{PREREGISTRATION} § 10.17 no longer states the Type 1 pin of an existing arm's "
+        f"{PREREGISTRATION} § 10.18 no longer states the Type 1 pin of an existing arm's "
         "input. § 8.1's rule is that the input is pinned before the training it governs, and "
         "the sentence must name the arm it pins for."
     )
     assert "introduces no success threshold" in flat and (
         "rewords nothing in § 1, § 4 or § 6" in flat
     ), (
-        f"{PREREGISTRATION} § 10.17 no longer carries the no-threshold/no-rewording line. "
+        f"{PREREGISTRATION} § 10.18 no longer carries the no-threshold/no-rewording line. "
         "§ 8.3 forbids an amendment introducing a success threshold, and this one must also "
         "leave § 1, § 4 and § 6 untouched or the dtype reads as a loosening."
     )
     assert "does not change the base § 10.10 pinned" in flat, (
-        f"{PREREGISTRATION} § 10.17 no longer states that § 10.10's base is untouched. The "
+        f"{PREREGISTRATION} § 10.18 no longer states that § 10.10's base is untouched. The "
         "32B base and the MLX runtime remain the main series' pinned inputs; a reader who "
         "could not tell that from this amendment might read it as a base change."
     )
     assert "new shape of amendment" in flat and "pins a runtime input" in flat, (
-        f"{PREREGISTRATION} § 10.17 no longer names its own shape. § 10.11 through § 10.15 each "
+        f"{PREREGISTRATION} § 10.18 no longer names its own shape. § 10.11 through § 10.15 each "
         "pinned a base; this pins a runtime input, and the distinction must be stated or the "
         "amendment reads as one more base step."
     )
     assert f"moves from `float32` to `{precision}`" in flat, (
-        f"{PREREGISTRATION} § 10.17 no longer states the change of precision. The declared "
+        f"{PREREGISTRATION} § 10.18 no longer states the change of precision. The declared "
         f"CPU precision moves from `float32` to `{precision}`, and the sentence must name "
         "both ends or the change cannot be told from the state it replaced."
     )
     assert 'DEVICE_PRECISION["cpu"]' in flat, (
-        f"{PREREGISTRATION} § 10.17 no longer names the constant the change lives in. The "
+        f"{PREREGISTRATION} § 10.18 no longer names the constant the change lives in. The "
         "amendment pins a code input, and naming `DEVICE_PRECISION[\"cpu\"]` is what lets a "
         "stranger find it."
     )
     assert "training, rollouts and gate verdicts" in flat, (
-        f"{PREREGISTRATION} § 10.17 no longer states the blast radius. The one map is read by "
+        f"{PREREGISTRATION} § 10.18 no longer states the blast radius. The one map is read by "
         "both the trainer and the generator/gate loader, so training, rollouts and gate "
         "verdicts all move together, and the amendment must say so."
     )
     assert (
         f"non-comparable to any figure measured under the new `{precision}` precision" in flat
     ), (
-        f"{PREREGISTRATION} § 10.17 no longer carries the non-comparability sentence naming "
+        f"{PREREGISTRATION} § 10.18 no longer carries the non-comparability sentence naming "
         f"the new precision. Every prior arm figure — training, rollouts, gate verdict — is "
         f"non-comparable to a figure measured under `{precision}` (§ 3), and the sentence must "
         "name the precision or a reader could still compare across the change."
     )
     assert "the old series is not extended" in flat, (
-        f"{PREREGISTRATION} § 10.17 no longer states that the old series is never extended. "
+        f"{PREREGISTRATION} § 10.18 no longer states that the old series is never extended. "
         "§ 3 treats a change to a pinned input as starting over, and the amendment must say so."
     )
     assert "No training has run under this dtype" in flat, (
-        f"{PREREGISTRATION} § 10.17 no longer states that no training has run under the new "
+        f"{PREREGISTRATION} § 10.18 no longer states that no training has run under the new "
         "precision. The sentence is the disclosure shape § 10.13 pins, and its absence would "
         "let a figure under the new dtype appear without a record of when the claim began."
     )
     assert "the § 3 baseline remains unspent" in flat, (
-        f"{PREREGISTRATION} § 10.17 no longer states that the § 3 baseline is unspent. The "
+        f"{PREREGISTRATION} § 10.18 no longer states that the § 3 baseline is unspent. The "
         "dtype change spends no baseline, and a reader must be told so."
     )
     assert "accept the finding" in flat, (
-        f"{PREREGISTRATION} § 10.17 no longer records that *\"accept the finding\"* remains a "
+        f"{PREREGISTRATION} § 10.18 no longer records that *\"accept the finding\"* remains a "
         "legitimate outcome. A zero under the new dtype is entirely possible "
         "(docs/ROADMAP.md:790), and the amendment must not imply the change guarantees a fit."
     )
     assert (
         "2026-10-11 | The portability arm's CPU precision is declared "
-        f"`{precision}` (§ 10.17) | 1 — pins the inputs of a measurement | Yes" in flat
+        f"`{precision}` (§ 10.18) | 1 — pins the inputs of a measurement | Yes" in flat
     ), (
-        f"{PREREGISTRATION}'s amendment log no longer records the § 10.17 row as a Type 1 pin "
+        f"{PREREGISTRATION}'s amendment log no longer records the § 10.18 row as a Type 1 pin "
         "of a measurement's inputs. An amendment that is not in the log is a silent edit (§ 8.4)."
     )
 
@@ -1076,12 +1123,84 @@ def test_the_roadmap_records_the_re_derived_split_by_dated_correction() -> None:
     )
 
 
+def test_the_roadmap_records_the_night_remine_by_dated_correction() -> None:
+    """§ 13's "The corpus does not grow" is superseded by a dated correction, not an edit.
+
+    The paragraph is made false by the night re-mining before it draws, and the roadmap records
+    every supersession as a dated correction blockquote naming the amendment and the
+    consequence, never by rewriting the old text. The blockquote also reconciles § 9 (which
+    never named re-mining) and § 14 (which holds the only identified lever on the zero).
+    """
+    lines = _read("docs/ROADMAP.md").splitlines()
+    quoted = _flat("\n".join(line for line in lines if line.lstrip().startswith(">")))
+    assert "Corrected 2026-10-11" in quoted, (
+        "docs/ROADMAP.md no longer carries the 2026-10-11 dated correction recording the "
+        "night re-mine. § 13's corpus paragraph is made false by the change, and the roadmap "
+        "records every supersession as a dated correction, never an edit of the old text."
+    )
+    assert "re-mines before it draws" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer states that the night re-mines before "
+        "it draws. The correction must say what changed or it records nothing."
+    )
+    assert "10.17" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer names § 10.17. The reading that makes "
+        "training-pool growth no § 3 change lives there, and the correction must point at it."
+    )
+    assert "not a lever on the zero" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer states that re-mining is not a lever on "
+        "the zero strict-PASS yield. A bigger pool says nothing about whether a candidate "
+        "improves, and § 14's M1 remains the only identified lever."
+    )
+
+
+def test_no_present_tense_document_asserts_that_the_corpus_does_not_grow() -> None:
+    """The corpus grows now, and only the dated correction may quote the old claim.
+
+    § 13 is an appended, dated snapshot, and the roadmap records a supersession as a dated
+    correction blockquote rather than by editing the old text (the § 12/§ 10.16 precedent). So
+    the falsified sentence is allowed in the roadmap only inside the correction that quotes it,
+    and in no present-tense document at all — CLAUDE.md, README.md and CHANGELOG.md describe the
+    tree as it is. The positive control is the quotation itself: deleting the sentence outright
+    would satisfy the absence checks while recording nothing.
+    """
+    for name in PRESENT_TENSE_DOCS:
+        assert "The corpus does not grow" not in _flat(_read(name)), (
+            f"{name} still asserts, in the present tense, that the corpus does not grow. The "
+            "night re-mines the declared donor before it draws, so the sentence is false about "
+            "the tree it ships in."
+        )
+    lines = _read("docs/ROADMAP.md").splitlines()
+    quoted = _flat("\n".join(line for line in lines if line.lstrip().startswith(">")))
+    assert "The corpus does not grow" in quoted, (
+        "docs/ROADMAP.md no longer preserves the falsified sentence as a quotation anywhere. "
+        "The absence checks above would be satisfied by deleting it, which would hide that the "
+        "claim was ever made."
+    )
+
+
+def test_the_write_up_records_the_night_remine() -> None:
+    """A capability is written up in the commit that lands it (`CLAUDE.md`).
+
+    The STATUS entry is append-only history; the CHANGELOG phrase is asserted anywhere in the
+    file so it survives a release moving `[Unreleased]` content under a version — pinning the
+    `[Unreleased]` heading would fail the moment a release removes it.
+    """
+    assert "night-corpus-remine" in _read("docs/STATUS.md"), (
+        "docs/STATUS.md no longer records the night-corpus-remine unit. The repo's rule is that "
+        "a capability is written up in the commit that lands it, and STATUS.md is that history."
+    )
+    assert "re-mines before it draws" in _read("CHANGELOG.md"), (
+        "CHANGELOG.md no longer records the night re-mine. This file records what shipped, and "
+        "the night now re-mines before it draws."
+    )
+
+
 def test_the_roadmap_records_the_cpu_precision_change_by_dated_correction() -> None:
-    """AC7. § 13 said the runtime loaded `float32` on CPU; the correction records § 10.17.
+    """AC7. § 13 said the runtime loaded `float32` on CPU; the correction records § 10.18.
 
     The roadmap's hardware-ceiling paragraph pinned the CPU dtype in the present tense:
     *"The Torch runtime loads `float32` on CPU by declaration."* `DEVICE_PRECISION["cpu"]`
-    is now `bfloat16` (§ 10.17), so the roadmap records the supersession the way it records
+    is now `bfloat16` (§ 10.18), so the roadmap records the supersession the way it records
     every supersession — a dated correction blockquote naming the amendment and the
     non-comparability consequence, never an edit of the old text. The original sentence is
     kept inside that correction as a quotation; the repo's convention keeps it as history
@@ -1098,8 +1217,8 @@ def test_the_roadmap_records_the_cpu_precision_change_by_dated_correction() -> N
         "docs/ROADMAP.md's dated correction no longer names the CPU precision. The "
         "correction must say what changed or it records nothing."
     )
-    assert "10.17" in quoted, (
-        "docs/ROADMAP.md's dated correction no longer names § 10.17. The correction must "
+    assert "10.18" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer names § 10.18. The correction must "
         "point at the amendment that records the precision change, or a reader cannot find "
         "the pin."
     )
@@ -1112,7 +1231,7 @@ def test_the_roadmap_records_the_cpu_precision_change_by_dated_correction() -> N
     assert "non-comparable" in quoted, (
         "docs/ROADMAP.md's dated correction no longer states the non-comparability "
         "consequence. Every portability-arm figure measured under the earlier precision may "
-        "not be compared with one measured under the new one (§ 10.17), and the correction "
+        "not be compared with one measured under the new one (§ 10.18), and the correction "
         "must say so."
     )
 
@@ -1120,7 +1239,7 @@ def test_the_roadmap_records_the_cpu_precision_change_by_dated_correction() -> N
 def test_the_arm_report_names_the_declared_cpu_precision() -> None:
     """AC9 (S1). The arm's report names the pinned CPU precision, without adding a figure.
 
-    `DEVICE_PRECISION["cpu"]` is `bfloat16` (§ 10.17), and the arm's own declaration must
+    `DEVICE_PRECISION["cpu"]` is `bfloat16` (§ 10.18), and the arm's own declaration must
     state the precision its runtime declares. This is a name, never a count: the report's
     `N of M` figures are pinned by `tests/bakeoff/test_report.py`, and the guard here
     asserts only that the dtype is stated.
@@ -1130,10 +1249,8 @@ def test_the_arm_report_names_the_declared_cpu_precision() -> None:
     assert precision in text, (
         "reports/portability-arm/report.md no longer names the arm's declared CPU precision "
         f"({precision!r}). The arm declares its pinned inputs, and its report must state the "
-        "dtype its runtime now declares (§ 10.17)."
+        "dtype its runtime now declares (§ 10.18)."
     )
-
-
 def test_a_report_without_its_preregistration_is_reported_as_an_offender(
     tmp_path: Path,
 ) -> None:

@@ -10,6 +10,21 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The night re-mines before it draws: the corpus grows, and the held-out split does not move** (2026-10-11, `night-corpus-remine`). The nightly loop read a frozen corpus: `whetstone run --night` loaded the task directories it was handed and never minted new ones, so expert iteration against a fixed task set could only exhaust what the base already knew. This unit makes the night mine the user's own new commits before it draws, while the pre-registered held-out split stays exactly where it is.
+
+**What shipped.**
+- **The re-mine flags on `whetstone run --night`.** `--remine <donor>` (repeatable), `--remine-label <label>` (repeatable, paired by position), `--remine-out <dir>` and `--remine-limit <N>`, validated in the handler before the loop is called (a donor without a label, or a re-mine without an out or a limit, is a usage error).
+- **The incremental miner and the training-only root.** `mine()` gains a `skip` set of trailing-12-hex commit shas, so a night mints only commits not already in the corpus it will draw from; `whetstone.loop.remine` calls it once per donor into a separate, gitignored root and the night unions that root into the corpus it loads. A donor that mints nothing — no un-minted commits, absent, non-repository, or unprovisionable on a cold cache — is a no-op, never a failure.
+- **The ledger records the delta.** The `whetstone-run/3` `task_set` gains a nested `remined` list of `{task_id, donor}` pairs (ids and donor labels only, never file contents). A night **without** the flags produces a ledger byte-identical to before, because the key is written only when a re-mine ran.
+- **The night sheet documents the block, held by its guard.** `docs/planning/p2-rollouts/night-door/runbook.md` exports `$DONOR`, passes the four flags on the night command only (the probe deliberately does not re-mine), and states the training-only root and the cost bound; `tests/test_night_runbook_guards.py` holds it, watched failing first.
+- **The boundary reading, on the record.** `PREREGISTRATION.md` § 10.17 (Type 2, a disclosure) reads § 3's pinned "the task set" as the scoring held-out split, so training-pool growth needs no amendment and starts no new baseline; `docs/ROADMAP.md` § 13 records the promotion out of its gap list by a dated correction blockquote.
+
+**The boundary reading.** § 3 pins five inputs and treats a change in any as invalidating the series. The "task set" among them is the set the score is computed on — the held-out split the baseline and every candidate are scored on — not the pool the model learns from. The night therefore grows the training pool without moving a pinned input: the committed corpus and the held-out split's membership and `document_digest` do not move, and the run ledger records the minted ids and donor labels.
+
+**Honestly limited.** No night has run with the flags, and no real donor has been mined: the increment is proven against the synthetic donor only. A bigger pool says nothing about whether any candidate improves, so no yield is claimed — re-mining is **not** a lever on the zero strict-`PASS` yield, and § 14's M1 remains the only identified lever on it. The reward and the gate are untouched: nothing under `src/whetstone/verify/` moves and the held-out document is byte-unchanged. No number.
+
+---
+
 **The portability arm's CPU precision is declared `bfloat16`, and the change is pre-registered**
 (2026-10-11, `portability-cpu-dtype`). The portability arm — the loop's second runtime, `torch`
 on a CPU-only Linux host — was capped at a 3B base by this repository's own declaration rather
@@ -21,7 +36,7 @@ as a Type 1 amendment before any night that would record it.
 **What shipped.**
 - **The declaration.** `DEVICE_PRECISION["cpu"]` is `"bfloat16"` (`src/whetstone/loop/torch_runtime.py`). The one map is read by both the trainer (`:138`) and the generator/gate loader (`:396`), so training, rollouts and gate verdicts all move together.
 - **The record.** `Backend` carries an optional `precision: str | None`, filled for Torch from the same map and left `None` for MLX (whose precision this repository declares nowhere). It reaches the checkpoint's and the run ledger's `backend` block through the single `recorded()` writer, so a checkpoint and a ledger name the dtype they were produced under. The checkpoint (`whetstone-checkpoint/2`) and ledger (`whetstone-run/3`) schemas do **not** bump: a nested key is a recorded addition, not a version change.
-- **The amendment.** `PREREGISTRATION.md` § 10.17 (Type 1, 2026-10-11) pins the runtime input, states that every prior portability-arm figure — training, rollouts, gate verdict — is non-comparable and that the old series is not extended, and carries the matching amendment-log row. `docs/ROADMAP.md` § 13 carries a dated correction preserving the old sentence as a quotation; `reports/portability-arm/report.md` names the declared precision.
+- **The amendment.** `PREREGISTRATION.md` § 10.18 (Type 1, 2026-10-11) pins the runtime input, states that every prior portability-arm figure — training, rollouts, gate verdict — is non-comparable and that the old series is not extended, and carries the matching amendment-log row. `docs/ROADMAP.md` § 13 carries a dated correction preserving the old sentence as a quotation; `reports/portability-arm/report.md` names the declared precision.
 - **The gate.** The existing whole-dict comparison refuses a `bfloat16`-vs-`float32` pair with no rule change; same-precision pairs are unaffected and the untrained-incumbent exemption stands. `unverified == 0`, `R = 3` and the three exits are untouched.
 
 **What is not claimed.** No probe or night has run under the new dtype, and no count is measured
@@ -31,6 +46,7 @@ non-comparable — so a night that yields nothing spends a series for a confirma
 *"accept the finding"* (`docs/ROADMAP.md`:790) remains a legitimate outcome. The § 3 baseline
 remains unspent.
 
+---
 **The whole-function replacement contract was measured and not built: NO-GO** (2026-10-11, the
 third patch-representation direction; instruments shipped 2026-10-01, `whole-function-edit-finding`).
 The lead was that a format which reduces the replacement text's surface — the model states an
