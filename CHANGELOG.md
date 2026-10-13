@@ -11,6 +11,8 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-13
+
 ### Added
 
 - **The portability arm's CPU precision is declared `bfloat16`, and the change is pre-registered** (`PREREGISTRATION.md` § 10.18, Type 1, 2026-10-11). `src/whetstone/loop/torch_runtime.py`'s `DEVICE_PRECISION["cpu"]` moves from `"float32"` to `"bfloat16"` — the one map read by both the trainer and the generator/gate loader — so training, rollouts and gate verdicts all move together, for the reason `docs/ROADMAP.md` § 13 gives: a larger base the arm cannot hold in fp32 may now load.
