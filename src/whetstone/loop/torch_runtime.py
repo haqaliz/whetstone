@@ -47,13 +47,14 @@ from whetstone.loop.sft import TrainingArgs, TrainingRequest, TrainingResult, tr
 #: accelerator is exactly where the portability arm was designed to run.
 DEVICE_ORDER: tuple[str, ...] = ("cuda", "mps", "cpu")
 
-#: What each device trains in, stated beside the device that causes it. A CPU run in fp16 is
-#: arithmetic that silently produces nothing useful; a CUDA run in fp32 spends memory the
-#: capacity probe exists to bound. Both are decisions, so both are written down.
+#: What each device trains in, stated beside the device that causes it. CPU runs in bfloat16:
+#: it keeps fp32's exponent range, so the fp16 underflow worry does not apply. A CUDA run in
+#: fp32 spends memory the capacity probe exists to bound. Both are decisions, so both are
+#: written down.
 DEVICE_PRECISION: dict[str, str] = {
     "cuda": "bfloat16",
     "mps": "float16",
-    "cpu": "float32",
+    "cpu": "bfloat16",
 }
 
 #: The adapter PEFT writes, and the name its loader looks for. Distinct from MLX's

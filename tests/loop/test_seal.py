@@ -38,7 +38,14 @@ from whetstone.loop import seal, sft
 
 #: sha256 of the fixture's `provenance.json` **bytes**, as the pre-extraction writer produced
 #: them. Computed once from the finished fixture and pasted; never recomputed here.
-_WRITTEN_PROVENANCE_SHA256 = "4284f07cfabb7f88d425a43e3155d3a7ad3563666bec3dcfb0e6ef6ef921e300"
+#:
+#: Moved on purpose 2026-10-11 by `portability-cpu-dtype`: the backend record gained a
+#: `precision` key (`None` for this fixture's MLX backend), so the document's bytes changed —
+#: a deliberate feature, not a byte the extraction drifted. Watched failing first against the
+#: previous literal, then pasted from the fixture's own hash (never a value the code computes).
+#: See `docs/planning/portability-cpu-dtype/`. The pins over `_FIXED` above did not move: that
+#: fixture is a hand-built document, independent of the writer.
+_WRITTEN_PROVENANCE_SHA256 = "9dbcdc392bfafef55237aa0aebd78a02f8e09d70ff0c27e8bad849146bafdd9d"
 
 
 def test_the_written_checkpoint_document_is_byte_identical(tmp_path: Path) -> None:

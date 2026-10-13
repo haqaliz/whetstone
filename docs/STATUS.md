@@ -25,6 +25,28 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The portability arm's CPU precision is declared `bfloat16`, and the change is pre-registered**
+(2026-10-11, `portability-cpu-dtype`). The portability arm — the loop's second runtime, `torch`
+on a CPU-only Linux host — was capped at a 3B base by this repository's own declaration rather
+than by the hardware: `DEVICE_PRECISION["cpu"]` read `float32`. It now reads `bfloat16`, so a
+larger base the arm cannot hold in fp32 may load. A dtype moves every figure measured under it,
+so it is a pinned input (`PREREGISTRATION.md` § 8.1; `docs/ROADMAP.md`:788), and it is recorded
+as a Type 1 amendment before any night that would record it.
+
+**What shipped.**
+- **The declaration.** `DEVICE_PRECISION["cpu"]` is `"bfloat16"` (`src/whetstone/loop/torch_runtime.py`). The one map is read by both the trainer (`:138`) and the generator/gate loader (`:396`), so training, rollouts and gate verdicts all move together.
+- **The record.** `Backend` carries an optional `precision: str | None`, filled for Torch from the same map and left `None` for MLX (whose precision this repository declares nowhere). It reaches the checkpoint's and the run ledger's `backend` block through the single `recorded()` writer, so a checkpoint and a ledger name the dtype they were produced under. The checkpoint (`whetstone-checkpoint/2`) and ledger (`whetstone-run/3`) schemas do **not** bump: a nested key is a recorded addition, not a version change.
+- **The amendment.** `PREREGISTRATION.md` § 10.18 (Type 1, 2026-10-11) pins the runtime input, states that every prior portability-arm figure — training, rollouts, gate verdict — is non-comparable and that the old series is not extended, and carries the matching amendment-log row. `docs/ROADMAP.md` § 13 carries a dated correction preserving the old sentence as a quotation; `reports/portability-arm/report.md` names the declared precision.
+- **The gate.** The existing whole-dict comparison refuses a `bfloat16`-vs-`float32` pair with no rule change; same-precision pairs are unaffected and the untrained-incumbent exemption stands. `unverified == 0`, `R = 3` and the three exits are untouched.
+
+**What is not claimed.** No probe or night has run under the new dtype, and no count is measured
+under it anywhere. Nothing here says a larger base fits, that `bfloat16` yields a strict-`PASS`,
+or that it is faster. The change starts a new series — every prior portability-arm figure is
+non-comparable — so a night that yields nothing spends a series for a confirmation, and
+*"accept the finding"* (`docs/ROADMAP.md`:790) remains a legitimate outcome. The § 3 baseline
+remains unspent.
+
+---
 **The whole-function replacement contract was measured and not built: NO-GO** (2026-10-11, the
 third patch-representation direction; instruments shipped 2026-10-01, `whole-function-edit-finding`).
 The lead was that a format which reduces the replacement text's surface — the model states an

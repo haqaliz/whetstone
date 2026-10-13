@@ -26,6 +26,11 @@ machine that produced it.
 | Device | CPU — a Linux host with 16 GB of RAM and no accelerator |
 | Training data | night #1's training set (a `whetstone-training-set/1` document — recorded, not sealed), digest `3416702298c36a9a2ce8bada26295e54ddbd94f9666bff7b8088954ab6e4873b` |
 
+**The CPU precision is `bfloat16`, declared 2026-10-11 (`PREREGISTRATION.md` § 10.17, Type 1).**
+It is the arm's declared runtime input, read from `DEVICE_PRECISION["cpu"]`; every figure this
+report holds was measured under the runtime's earlier precision and is non-comparable to a
+figure measured under this.
+
 The revision is the immutable commit sha, never a tag: two people resolving the same tag at
 different times do not load the same weights.
 

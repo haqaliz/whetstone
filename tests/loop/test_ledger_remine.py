@@ -33,10 +33,13 @@ from loop.test_run_ledger import _ledger
 from whetstone.loop import ledger as run_ledger
 from whetstone.loop import seal
 
-#: The pre-change golden: `ledger.document(_ledger())` on the tree before `TaskSet.remined`
-#: existed, captured 2026-10-11. It must **not** move: a no-flag night is the pre-change night
-#: byte for byte.
-GOLDEN_SHA256 = "4fe1022f659fe0b98123dbbf011ace415fd1b9210a6ebee83f6f49ef9aae392d"
+#: The no-flag golden: `ledger.document(_ledger())` for a `TaskSet` with `remined=None`. It must
+#: not move because of the re-mine feature: a no-flag night carries no `remined` key.
+#: **Re-pinned 2026-10-11** when `Backend.precision` (`portability-cpu-dtype`, `PREREGISTRATION.md`
+#: § 10.18) added a key to the ledger's `backend` block — an unrelated, pre-registered change to a
+#: pinned document. The re-pin is dated rather than silent; the previous value was
+#: `4fe1022f659fe0b98123dbbf011ace415fd1b9210a6ebee83f6f49ef9aae392d`.
+GOLDEN_SHA256 = "2ef3f68baa33d09aebb142309015c2fd87f1505432f879285c4a137a2179360f"
 
 #: A re-mine delta in minting order (unsorted): the writer, not the caller, must sort it.
 _MINTED = (
@@ -123,11 +126,13 @@ def test_an_empty_tuple_means_a_remine_that_minted_nothing() -> None:
 
 
 def test_the_no_remine_document_is_the_prechange_golden() -> None:
-    """AC 2, green-on-arrival and here to stay: the golden bytes must not move.
+    """AC 2: the re-mine feature adds no bytes when no re-mine runs.
 
-    The shipped `_ledger()` defaults `remined` to `None`, so the document is the pre-change
-    document. This test already passes on the pre-change tree; its job is to fail if the
-    conditional ever becomes an always-present key.
+    The shipped `_ledger()` defaults `remined` to `None`, so the document carries no `remined`
+    key. Its job is to fail if the conditional ever becomes an always-present key. The absolute
+    golden is not frozen against the whole tree — an unrelated pinned-document change re-pins it
+    (dated above; `Backend.precision`, § 10.18) — but the structural assertion below is the
+    invariant, and the hash catches any further unintended move of the fixture's bytes.
     """
     document = run_ledger.document(_ledger())
 
@@ -137,7 +142,8 @@ def test_the_no_remine_document_is_the_prechange_golden() -> None:
     )
     assert hashlib.sha256(document.encode()).hexdigest() == GOLDEN_SHA256, (
         "WHY THIS IS A FAILURE: the no-flag ledger's bytes moved. A night without the re-mine "
-        "flags must write the pre-change document exactly"
+        "flags must write the same document as the fixture, and a move means either the re-mine "
+        "conditional fired or an unrelated pinned-document change landed without re-pinning"
     )
 
 

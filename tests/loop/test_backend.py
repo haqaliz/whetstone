@@ -168,11 +168,119 @@ def test_the_record_is_json_plain_and_distinguishes_the_backends() -> None:
         "to score a candidate from one against an incumbent from the other"
     )
     recorded = one.recorded()
-    assert all(isinstance(v, (str, int)) for v in recorded.values()), (
+    assert all(v is None or isinstance(v, (str, int)) for v in recorded.values()), (
         f"WHY THIS IS A FAILURE: the record holds a value a JSON ledger cannot carry: {recorded!r}"
     )
-    assert set(recorded) == {"name", "library", "version", "device", "device_memory_bytes"}, (
+    assert set(recorded) == {
+        "name", "library", "version", "device", "device_memory_bytes", "precision",
+    }, (
         f"WHY THIS IS A FAILURE: the recorded shape is not the declared one. Got {sorted(recorded)}"
+    )
+
+
+def test_the_precision_is_recorded_and_defaults_to_none() -> None:
+    """AC3: the record names the dtype, and an undeclared one is an explicit None, not a guess.
+
+    Precision is what makes a bf16 checkpoint and an fp32 one non-comparable — the
+    non-comparability § 13 names. Defaulting to a string would invent a precision for every
+    backend that declares none, so the absence is recorded as `None` and the gate reads it as
+    part of the record rather than inferring it from the device.
+    """
+    undeclared = backend.Backend(
+        name=backend.MLX, library="mlx-lm", version="0.31.3", device="Apple M4 Max",
+        device_memory_bytes=38654705664,
+    )
+    assert undeclared.recorded()["precision"] is None, (
+        "WHY THIS IS A FAILURE: a backend that declares no precision must record `null`, not a "
+        f"fabricated dtype. Got {undeclared.recorded()['precision']!r}"
+    )
+
+    declared = backend.Backend(
+        name=backend.TORCH, library="torch", version="2.5.1", device="cpu",
+        device_memory_bytes=8589934592, precision="bfloat16",
+    )
+    assert declared.recorded()["precision"] == "bfloat16", (
+        f"WHY THIS IS A FAILURE: the declared precision did not survive into the record. Got "
+        f"{declared.recorded()['precision']!r}"
+    )
+
+
+def test_a_precision_mismatch_is_refused_and_a_match_is_not() -> None:
+    """AC5: the gate refuses a bf16-vs-fp32 pair through the existing whole-dict `==`.
+
+    This is § 13's non-comparability made enforceable, and it needs no gate-logic change: the two
+    records already differ, so `refuse_cross_backend` refuses them for the same reason it refuses
+    two runtimes. Two records identical in every field, precision included, stay comparable — and
+    the untrained incumbent (`None`) keeps its exemption.
+    """
+    from whetstone.loop import gate
+
+    bf16 = backend.Backend(
+        name=backend.TORCH, library="torch", version="2.5.1", device="cpu",
+        device_memory_bytes=8589934592, precision="bfloat16",
+    ).recorded()
+    fp32 = backend.Backend(
+        name=backend.TORCH, library="torch", version="2.5.1", device="cpu",
+        device_memory_bytes=8589934592, precision="float32",
+    ).recorded()
+
+    with pytest.raises(gate.MismatchedBackend) as refusal:
+        gate.refuse_cross_backend(candidate=bf16, incumbent=fp32)
+    assert "torch" in str(refusal.value), (
+        f"WHY THIS IS A FAILURE: the refusal does not name the runtime it declined to compare. "
+        f"Got {str(refusal.value)!r}"
+    )
+
+    gate.refuse_cross_backend(candidate=bf16, incumbent=bf16)
+    gate.refuse_cross_backend(candidate=bf16, incumbent=None)
+
+
+def test_describe_torch_records_the_declared_precision() -> None:
+    """AC2: the recorded precision is the one the chosen device causes, not a second opinion.
+
+    `DEVICE_PRECISION[torch_device()]` is the same lookup `torch_trainer` and `_load_torch` cast
+    the model to, so the checkpoint names the dtype that actually trained it — a record derived
+    independently would be free to disagree with the run it describes.
+
+    Skipped loudly without the extra: a green suite in which the Torch path was never described
+    would assert only that this test was collected.
+    """
+    if importlib.util.find_spec("torch") is None:
+        pytest.skip(
+            "torch is not installed, so there is no device and no declared precision to record. "
+            "This is CI's state by design (`uv sync` omits the extras); run `uv sync --extra torch`"
+        )
+
+    from whetstone.loop import torch_runtime
+
+    described = backend._describe_torch("torch")
+    assert described.precision == torch_runtime.DEVICE_PRECISION[torch_runtime.torch_device()], (
+        f"WHY THIS IS A FAILURE: the Torch backend recorded precision {described.precision!r}, "
+        f"not the declared {torch_runtime.DEVICE_PRECISION[torch_runtime.torch_device()]!r} the "
+        "trainer casts the model to, so the checkpoint would name a dtype that did not train it"
+    )
+
+
+def test_describe_mlx_records_no_precision() -> None:
+    """AC2: MLX names no precision, because this module is not told one.
+
+    Leaving it `None` is deliberate, not an omission: MLX's dtype is decided downstream and
+    declared nowhere here, and inventing a value would put an unverified claim into evidence a
+    reader trusts. The absence is recorded as `null`, which the gate reads as part of the record.
+
+    Skipped loudly without the extra, the `test_the_backend_is_detected_rather_than_assumed` shape.
+    """
+    if importlib.util.find_spec("mlx_lm") is None:
+        pytest.skip(
+            "mlx-lm is not installed, so there is no MLX backend to describe. This is CI's state "
+            "by design (`uv sync` omits the extras); run `uv sync --extra mlx` on macOS / Apple "
+            "Silicon"
+        )
+
+    described = backend._describe_mlx("mlx-lm")
+    assert described.precision is None, (
+        f"WHY THIS IS A FAILURE: the MLX backend recorded precision {described.precision!r}, but "
+        "nothing in this module asks MLX for one — a value here is an invented claim about a run"
     )
 
 
@@ -196,6 +304,31 @@ def test_the_nights_ledger_records_which_runtime_produced_it(tmp_path: Path) -> 
     )
     assert recorded["backend"]["name"] == backend.MLX
     assert recorded["backend"]["device"] == "Apple M4 Max"
+
+
+def test_the_run_ledger_records_the_precisions_backend(tmp_path: Path) -> None:
+    """AC4: the night's ledger names the dtype, so a bf16 run and an fp32 run are distinguishable.
+
+    The ledger already names the runtime; the precision completes the non-comparability key, and
+    it reaches the document through the same single `recorded()` writer the checkpoint uses — so
+    the two pieces of evidence cannot disagree about the dtype the run used.
+    """
+    from dataclasses import replace
+
+    from whetstone.loop import ledger as run_ledger
+
+    bf16 = backend.Backend(
+        name=backend.TORCH, library="torch", version="2.5.1", device="cpu",
+        device_memory_bytes=8589934592, precision="bfloat16",
+    )
+    written = run_ledger.write(tmp_path / "ledger.json", replace(_ledger(), backend=bf16))
+    recorded = run_ledger.read(written)
+
+    assert recorded["backend"]["precision"] == "bfloat16", (
+        f"WHY THIS IS A FAILURE: the ledger does not carry the precision that produced the run. "
+        f"Got {recorded['backend'].get('precision')!r}. A bf16 night and an fp32 night would then "
+        "be indistinguishable evidence for two runs the gate must not compare"
+    )
 
 
 def test_the_ledger_schema_moved_when_the_field_was_added(tmp_path: Path) -> None:
@@ -261,6 +394,54 @@ def test_the_checkpoint_records_which_runtime_trained_it(tmp_path: Path) -> None
         f"trained it. Got {recorded.get('backend')!r}. The gate compares two of these, and two "
         "candidates from different backends differ by the backend before they differ by anything "
         "the night did"
+    )
+
+
+def test_the_checkpoint_records_the_precisions_backend(tmp_path: Path) -> None:
+    """AC4: the candidate's provenance names the dtype, and still verifies with the extra key.
+
+    The gate compares two checkpoints; a bf16 candidate and an fp32 incumbent differ by the dtype
+    before anything the night did, so the provenance has to carry it. The precision is a nested
+    key inside `backend`, so the checkpoint's schema does not move — the re-hash must tolerate it,
+    which is what calling `verify_checkpoint` here pins.
+    """
+    from whetstone.loop import sft
+
+    directory = tmp_path / "checkpoint"
+    directory.mkdir()
+    (directory / sft.ADAPTER_FILE).write_bytes(b"not a tensor, deliberately")
+    runtime = backend.Backend(
+        name=backend.TORCH, library="torch", version="2.5.1", device="cpu",
+        device_memory_bytes=8589934592, precision="bfloat16",
+    )
+
+    sft.write_checkpoint(
+        directory,
+        repo_id="Qwen/Qwen2.5-Coder-0.5B",
+        revision="d1e3b69",
+        dataset_digest="d" * 64,
+        run_seed=20260906,
+        args=sft.TrainingArgs(),
+        tool_versions={"python": "3.12.13"},
+        valid_split="",
+        capacity=sft.CapacityProbe(
+            iters=sft.CAPACITY_PROBE_ITERS,
+            headroom_bytes=sft.CAPACITY_HEADROOM_BYTES,
+            peak_bytes=24 * 1024**3,
+            seconds=300.0,
+        ),
+        backend=runtime,
+    )
+
+    recorded = json.loads((directory / sft.CHECKPOINT_FILE).read_text())
+    assert recorded["backend"]["precision"] == "bfloat16", (
+        f"WHY THIS IS A FAILURE: the checkpoint's provenance does not name the dtype that trained "
+        f"it. Got {recorded['backend'].get('precision')!r}. A bf16 candidate and an fp32 incumbent "
+        "are not comparable, and evidence that cannot say which dtype it was cannot be refused"
+    )
+    assert sft.verify_checkpoint(directory).backend == runtime.recorded(), (
+        "WHY THIS IS A FAILURE: adding the nested `precision` key moved the checkpoint's digest or "
+        "was rejected by the re-hash, so a checkpoint that records its dtype no longer verifies"
     )
 
 
