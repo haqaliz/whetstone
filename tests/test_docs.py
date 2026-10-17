@@ -44,7 +44,7 @@ from adversarial.corpus import BOTH_ACCEPT, CHEATS
 from test_night_runbook_guards import RETAINED
 
 from whetstone.bakeoff import sources
-from whetstone.loop import heldout, torch_runtime
+from whetstone.loop import heldout, sampling, torch_runtime
 
 # A concrete working branch, e.g. `feat/p0-scaffold/aliz`. The angle-bracket template
 # `<type>/<id>/aliz` that documents the naming convention deliberately does not match.
@@ -747,7 +747,6 @@ def test_the_honest_number_amendment_claims_no_count_measured_here() -> None:
     )
     assert (
         "seeded categorical sampler" in flat
-        and "sampling.K = 8" in flat
         and "differs from every published contract's greedy sampler" in flat
     ), (
         f"{PREREGISTRATION} § 10.9 no longer discloses the final side's generation "
@@ -858,6 +857,60 @@ def test_the_preregistration_states_the_training_pool_reading() -> None:
     ), (
         f"{PREREGISTRATION}'s amendment log no longer records the § 10.17 row. A dated reading "
         "that is not in the log is a silent edit (§ 8.4)."
+    )
+
+
+def test_the_raised_draw_budget_is_amended_and_pinned() -> None:
+    """§ 10.19 pins the loop's draw budget at 16 before any night records it, in the § 10.18 shape.
+
+    § 8.1 requires the input of a measurement be pinned **before** the measurement it governs
+    runs, and the loop's draw budget is such an input. The code now declares `sampling.K = 16`,
+    so the document must name that value — the doc↔code cross-pin the dig found absent — and
+    must mark § 10.9's disclosed `sampling.K = 8` superseded without editing its body (the
+    document is append-only). The assertion interpolates the constant rather than hard-coding
+    `16`, so a drift between § 10.19 and the code fails by name.
+    """
+    flat = _flat(_read(PREREGISTRATION))
+    assert sampling.K == 16, (
+        f"the loop declares sampling.K = {sampling.K}, not the 16 § 10.19 pre-registers. "
+        "The amendment pins a budget the code does not use, which is a document describing a "
+        "loop that does not exist."
+    )
+    assert "10.19" in flat, (
+        f"{PREREGISTRATION} no longer carries a § 10.19 amendment. The raised draw budget is "
+        "an input of the main series' measurement and must be pinned before the night it "
+        "governs runs (§ 8.1); without it a night would record 16 under a document that names 8."
+    )
+    assert f"sampling.K = {sampling.K}" in flat, (
+        f"{PREREGISTRATION} § 10.19 does not name the value in force, `sampling.K = "
+        f"{sampling.K}`. The cross-pin is the whole point of the amendment: a reader must be "
+        "able to compare the document's budget against the code's constant by identity."
+    )
+    assert "pins an input of the measurement it precedes" in flat, (
+        f"{PREREGISTRATION} § 10.19 no longer states its Type 1 ground. § 8.1 permits the "
+        "amendment precisely because it pins an input before the measurement it governs; "
+        "dropping the sentence would leave the raise reading as a post-hoc change."
+    )
+    assert "from 8 to 16" in flat, (
+        f"{PREREGISTRATION} § 10.19 no longer states the move from 8 to 16. The old value is "
+        "the one § 10.9 disclosed, and the amendment exists to record the change between them."
+    )
+    assert "non-comparable" in flat and "the old series is not extended" in flat, (
+        f"{PREREGISTRATION} § 10.19 no longer states the § 3 series consequence. Every loop "
+        "figure measured under `sampling.K = 8` is non-comparable to one measured under `16`, "
+        "and § 3 treats a change to a pinned input as starting over."
+    )
+    assert "§ 10.9 is superseded, not edited" in flat, (
+        f"{PREREGISTRATION} § 10.19 no longer records the supersession of § 10.9. § 10.9 "
+        "disclosed `sampling.K = 8` as the value then in force; that value is now historical, "
+        "and § 10.9's body is preserved byte-intact because this document is append-only."
+    )
+    assert (
+        "2026-10-17 | The nightly loop's draw budget is raised from 8 to 16 (§ 10.19) | "
+        "1 — pins the inputs of a measurement | Yes" in flat
+    ), (
+        f"{PREREGISTRATION}'s amendment log no longer records the § 10.19 row. A dated "
+        "amendment that is not in the log is a silent edit (§ 8.4)."
     )
 
 
