@@ -33,6 +33,7 @@ import pytest
 from whetstone.bakeoff.mlx_runtime import greedy_sampler
 from whetstone.loop import draws as loop_draws
 from whetstone.loop import night as loop_night
+from whetstone.loop import sampling
 from whetstone.loop.sampling import (
     SAMPLER,
     Applied,
@@ -223,6 +224,25 @@ def test_k_is_a_declared_constant_and_the_night_uses_it() -> None:
         "WHY THIS IS A FAILURE: the night door offers a --k flag. Raising k is the roadmap's "
         "named response to a low yield — as an edit to the constant, in a diff, before a night, "
         "never as an argument on a command that has already run once"
+    )
+    assert "--draws" not in _cli_flags(), (
+        "WHY THIS IS A FAILURE: the night door offers a --draws flag. The budget is the declared "
+        "constant and nowhere else; a budget spelled as a flag is the same tuning knob under a "
+        "second name, turnable after a disappointing yield"
+    )
+
+
+def test_the_declared_draw_budget_is_sixteen() -> None:
+    """The value is pinned exactly, so raising `k` is a diff a reviewer sees and not drift.
+
+    `K >= 2` guards the shape of the constant and says nothing about its size; a night that
+    quietly halved its own draw budget would satisfy every other assertion here. The budget is
+    declared a priori (`docs/ROADMAP.md:405-406`), so the number itself is the claim.
+    """
+    assert sampling.K == 16, (
+        f"WHY THIS IS A FAILURE: the declared draw budget is {sampling.K!r}, not 16. The value "
+        "is declared before a night and never tuned from its scored outcome, so an unlisted "
+        "change to it is drift rather than a decision"
     )
 
 

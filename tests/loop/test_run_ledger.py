@@ -16,7 +16,9 @@ harder to notice:
 
 from __future__ import annotations
 
+import inspect
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -24,9 +26,10 @@ import pytest
 from whetstone.bakeoff import run as bakeoff_run
 from whetstone.bakeoff.report import GenerationContract
 from whetstone.bakeoff.scoring import Outcome, Rollout
-from whetstone.loop import backend
+from whetstone.loop import backend, sampling
 from whetstone.loop import dataset as training
 from whetstone.loop import ledger as run_ledger
+from whetstone.loop import night as loop_night
 from whetstone.loop.sampling import Applied
 from whetstone.verify.verdict import Status
 
@@ -204,4 +207,33 @@ def test_the_written_document_round_trips(tmp_path: Path) -> None:
     assert run_ledger.document(_ledger()) == path.read_text(encoding="utf-8"), (
         "WHY THIS IS A FAILURE: the bytes on disk are not the bytes the document function "
         "produces, so nothing that digests or compares two ledgers is comparing what was written"
+    )
+
+
+def test_a_night_with_no_draw_override_records_the_declared_budget(tmp_path: Path) -> None:
+    """A night cannot record a budget it did not draw: with no override, the ledger says `K`.
+
+    **A regression guard, not a watched RED.** The shipped path carries the constant by identity
+    end to end, so there is no reachable failing state to watch:
+
+    * `sampling.K` is the constant;
+    * `run_night(draws: int = K)` defaults to it, and the one `draws` both drives the draws and
+      reaches the ledger (`night.py:378` and `night.py:413`);
+    * `ledger._body` publishes that field as `"draws"` (`ledger.py:403`).
+
+    What it defends against is a later edit that puts a literal on the night path — a
+    `draws=16` at `night.py:413`, or a `"draws": 16` at `ledger.py:403` — after which the
+    night's evidence would claim a budget it did not draw, and `check_probe.py:225`'s
+    completeness check would be measuring against the wrong number.
+
+    The ledger is built the way the night builds it: with no override, so the value is
+    `run_night`'s own default rather than a constant the test names twice.
+    """
+    draws = inspect.signature(loop_night.run_night).parameters["draws"].default
+    written = run_ledger.write(tmp_path / "ledger.json", replace(_ledger(), draws=draws))
+
+    assert run_ledger.read(written)["draws"] == sampling.K, (
+        "WHY THIS IS A FAILURE: a night with no draws override recorded a budget that is not the "
+        f"declared constant K ({sampling.K}). The recorded draws must be the number the night "
+        "actually drew; a literal on the night path is how the two silently disagree"
     )

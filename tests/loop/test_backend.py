@@ -205,6 +205,38 @@ def test_the_precision_is_recorded_and_defaults_to_none() -> None:
     )
 
 
+def test_the_record_carries_no_draw_budget() -> None:
+    """AC1.5: the draw budget is not a comparability key, and this is the guard that keeps it so.
+
+    **A documented regression guard, not a RED: there is no currently-reachable failure.** The
+    shipped `Backend` carries no draw-budget field, so this passes on the tree as it stands. Its
+    value is prospective: it fails the day a future implementer mirrors the § 10.18 `precision`
+    addition — which deliberately *does* enter the `Backend` record so the gate can refuse a
+    cross-value pair — and moves the draw budget (`K` / `draws`) in with it.
+
+    That mirroring would be the wrong direction. `raise-k` moves `K` from 8 to 16, and the gate's
+    whole-dict backend comparison must **permit** a higher-`K` candidate against a lower-`K`
+    incumbent, because that comparison *is* the experiment. A draw budget in the `Backend` record
+    would make `refuse_cross_backend` refuse exactly that pair, and the unit could never be
+    measured.
+    """
+    recorded = backend.Backend(
+        name=backend.MLX, library="mlx-lm", version="0.31.3", device="Apple M4 Max",
+        device_memory_bytes=38654705664,
+    ).recorded()
+
+    assert "draws" not in recorded, (
+        "WHY THIS IS A FAILURE: `draws` reached the backend record. The draw budget is not a "
+        "comparability key — a higher-K candidate against a lower-K incumbent is the raise-k "
+        f"experiment the gate must permit. Got {sorted(recorded)}"
+    )
+    assert "k" not in recorded, (
+        "WHY THIS IS A FAILURE: `k` reached the backend record. The gate compares the whole "
+        "backend dict, so a draw budget here would refuse the very pair the raise-k experiment "
+        f"is. Got {sorted(recorded)}"
+    )
+
+
 def test_a_precision_mismatch_is_refused_and_a_match_is_not() -> None:
     """AC5: the gate refuses a bf16-vs-fp32 pair through the existing whole-dict `==`.
 

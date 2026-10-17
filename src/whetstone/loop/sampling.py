@@ -76,7 +76,7 @@ from whetstone.loop.backend import family as backend_family
 #: The value is a small multiple of the bake-off's k=1 probe. **No claim about any model is
 #: asserted by this number**: what it buys is measured by the run's own yield-versus-unverified
 #: read, and nothing here predicts that.
-K = 8
+K = 16
 
 #: The decoding rule a multi-draw night uses, spelled for a reader who will not open this file —
 #: the shape `mlx_runtime.SAMPLER` uses, for the same reason: "sampled" alone is a word, and the
