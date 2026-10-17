@@ -772,8 +772,9 @@ Stratify by difficulty or raise k — do not weaken the check to manufacture win
 the first. The easiest band of the committed stratum document — a rule fixed 2026-08-14 and
 defined by the patch, never by an observed outcome — produced the same outcome distribution as
 the full corpus within noise. **Patch size is not the barrier**, so stratification is tested and
-exhausted. Raising *k* remains untried: `K = 8` is a declared constant and never a flag, so a
-change is a Type 1 amendment rather than an operator's choice.
+exhausted. Raising *k* is no longer untried: the budget was a declared constant and never a
+flag, so raising it was a Type 1 amendment rather than an operator's choice — and § 10.19 is
+that amendment, fixing the declared budget at `16`.
 
 **That response had no code behind it until 2026-09-13, which is why nobody took it.**
 `tasks/stratum/easier.json` was committed 2026-08-14 and nothing in the loop could consume it —
@@ -800,6 +801,16 @@ of the harness, whose control arm has been `INTACT` on every draw of every night
 > gate verdict — is **non-comparable** to a figure measured under the new one, and the old
 > series is never extended. The sentence above is kept as it was written; the change is
 > recorded here rather than edited in.
+
+> **Corrected 2026-10-17, when the draw budget was raised
+> (`PREREGISTRATION.md` § 10.19).** This paragraph's sentence — *"Raising *k* remains
+> untried: `K = 8` is a declared constant and never a flag"* — described the loop as it
+> was written. The declared budget is now `16` (`sampling.K`,
+> `src/whetstone/loop/sampling.py`; § 10.19, Type 1, 2026-10-17), so raise *k* is no
+> longer untried. Every loop figure measured under `K = 8` is **non-comparable** to a
+> figure measured under `16`, and the old series is never extended. The superseded sentence
+> is preserved here as a quotation rather than left standing, so the roadmap states the tree
+> it ships in and the change is recorded.
 
 **The corpus does not grow, and that is a gap in the thesis rather than a missing feature.**
 `whetstone mine` mints tasks from real donor commits, but a night reads a frozen directory and

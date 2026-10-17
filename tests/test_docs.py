@@ -732,7 +732,7 @@ def test_the_honest_number_amendment_claims_no_count_measured_here() -> None:
 
     The honest-number report's home is admitted on the changed-series ground — the
     report measures the P4 headline under the loop's generation contract, whose seeded
-    categorical sampler (`sampling.K = 8`) differs from every published contract's
+    categorical sampler (`sampling.K = 16`) differs from every published contract's
     greedy sampler — and the disclosure must precede the first figure measured under it,
     exactly as § 10.6 preceded the larger-base arm's. The sentence that says no count
     has been measured yet is the disclosure's whole value: without it, a reader finding
@@ -1287,6 +1287,56 @@ def test_the_roadmap_records_the_cpu_precision_change_by_dated_correction() -> N
         "not be compared with one measured under the new one (§ 10.18), and the correction "
         "must say so."
     )
+
+
+def test_the_roadmap_records_the_raised_draw_budget_by_dated_correction() -> None:
+    """AC3.1. § 13 said raising *k* was untried; the correction records § 10.19.
+
+    The roadmap's pivot paragraph pinned the old budget in the present tense:
+    *"Raising *k* remains untried: `K = 8` is a declared constant and never a flag."*
+    `sampling.K` is now `16` (§ 10.19), so the roadmap records the supersession the way it
+    records every supersession — a dated correction blockquote naming the amendment and the
+    non-comparability consequence, rather than leaving the false sentence standing. The
+    superseded sentence is preserved inside that correction as a quotation, so the change is
+    recorded and the old text is history rather than lost.
+
+    The prose/blockquote split is what lets the guard require the old sentence's absence from
+    the live text while it remains present as a quotation, so deleting the sentence outright
+    cannot satisfy this.
+    """
+    lines = _read("docs/ROADMAP.md").splitlines()
+    quoted = _flat("\n".join(line for line in lines if line.lstrip().startswith(">")))
+    live = _flat("\n".join(line for line in lines if not line.lstrip().startswith(">")))
+    assert "Corrected 2026-10-17" in quoted, (
+        "docs/ROADMAP.md no longer carries the 2026-10-17 dated correction recording the "
+        "raised draw budget. § 13's pivot paragraph is made false by the change, and the "
+        "roadmap records every supersession as a dated correction rather than leaving the "
+        "false sentence standing."
+    )
+    assert "10.19" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer names § 10.19. The correction must "
+        "point at the amendment that pins the new budget, or a reader cannot find the pin."
+    )
+    assert "Raising *k* remains untried" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer preserves the original sentence as a "
+        "quotation. The superseded sentence is kept as history inside the correction rather "
+        "than lost, so the change is recorded and not silently rewritten."
+    )
+    assert "`K = 8`" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer quotes the superseded budget `K = 8`. "
+        "The correction must say what changed or it records nothing."
+    )
+    assert "non-comparable" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer states the non-comparability "
+        "consequence. Every loop figure measured under `K = 8` may not be compared with one "
+        "measured under `16` (§ 10.19), and the correction must say so."
+    )
+    for stale in ("Raising k remains untried", "`K = 8`"):
+        assert stale not in live, (
+            f"docs/ROADMAP.md still says {stale!r} in live prose. The declared budget is "
+            "`16` (§ 10.19), so the old sentence is false about the tree it ships in and may "
+            "survive only as a quotation inside the dated correction."
+        )
 
 
 def test_the_arm_report_names_the_declared_cpu_precision() -> None:
