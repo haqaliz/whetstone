@@ -44,7 +44,7 @@ from adversarial.corpus import BOTH_ACCEPT, CHEATS
 from test_night_runbook_guards import RETAINED
 
 from whetstone.bakeoff import sources
-from whetstone.loop import heldout, torch_runtime
+from whetstone.loop import heldout, sampling, torch_runtime
 
 # A concrete working branch, e.g. `feat/p0-scaffold/aliz`. The angle-bracket template
 # `<type>/<id>/aliz` that documents the naming convention deliberately does not match.
@@ -732,7 +732,7 @@ def test_the_honest_number_amendment_claims_no_count_measured_here() -> None:
 
     The honest-number report's home is admitted on the changed-series ground — the
     report measures the P4 headline under the loop's generation contract, whose seeded
-    categorical sampler (`sampling.K = 8`) differs from every published contract's
+    categorical sampler (`sampling.K = 16`) differs from every published contract's
     greedy sampler — and the disclosure must precede the first figure measured under it,
     exactly as § 10.6 preceded the larger-base arm's. The sentence that says no count
     has been measured yet is the disclosure's whole value: without it, a reader finding
@@ -747,7 +747,6 @@ def test_the_honest_number_amendment_claims_no_count_measured_here() -> None:
     )
     assert (
         "seeded categorical sampler" in flat
-        and "sampling.K = 8" in flat
         and "differs from every published contract's greedy sampler" in flat
     ), (
         f"{PREREGISTRATION} § 10.9 no longer discloses the final side's generation "
@@ -858,6 +857,60 @@ def test_the_preregistration_states_the_training_pool_reading() -> None:
     ), (
         f"{PREREGISTRATION}'s amendment log no longer records the § 10.17 row. A dated reading "
         "that is not in the log is a silent edit (§ 8.4)."
+    )
+
+
+def test_the_raised_draw_budget_is_amended_and_pinned() -> None:
+    """§ 10.19 pins the loop's draw budget at 16 before any night records it, in the § 10.18 shape.
+
+    § 8.1 requires the input of a measurement be pinned **before** the measurement it governs
+    runs, and the loop's draw budget is such an input. The code now declares `sampling.K = 16`,
+    so the document must name that value — the doc↔code cross-pin the dig found absent — and
+    must mark § 10.9's disclosed `sampling.K = 8` superseded without editing its body (the
+    document is append-only). The assertion interpolates the constant rather than hard-coding
+    `16`, so a drift between § 10.19 and the code fails by name.
+    """
+    flat = _flat(_read(PREREGISTRATION))
+    assert sampling.K == 16, (
+        f"the loop declares sampling.K = {sampling.K}, not the 16 § 10.19 pre-registers. "
+        "The amendment pins a budget the code does not use, which is a document describing a "
+        "loop that does not exist."
+    )
+    assert "10.19" in flat, (
+        f"{PREREGISTRATION} no longer carries a § 10.19 amendment. The raised draw budget is "
+        "an input of the main series' measurement and must be pinned before the night it "
+        "governs runs (§ 8.1); without it a night would record 16 under a document that names 8."
+    )
+    assert f"sampling.K = {sampling.K}" in flat, (
+        f"{PREREGISTRATION} § 10.19 does not name the value in force, `sampling.K = "
+        f"{sampling.K}`. The cross-pin is the whole point of the amendment: a reader must be "
+        "able to compare the document's budget against the code's constant by identity."
+    )
+    assert "pins an input of the measurement it precedes" in flat, (
+        f"{PREREGISTRATION} § 10.19 no longer states its Type 1 ground. § 8.1 permits the "
+        "amendment precisely because it pins an input before the measurement it governs; "
+        "dropping the sentence would leave the raise reading as a post-hoc change."
+    )
+    assert "from 8 to 16" in flat, (
+        f"{PREREGISTRATION} § 10.19 no longer states the move from 8 to 16. The old value is "
+        "the one § 10.9 disclosed, and the amendment exists to record the change between them."
+    )
+    assert "non-comparable" in flat and "the old series is not extended" in flat, (
+        f"{PREREGISTRATION} § 10.19 no longer states the § 3 series consequence. Every loop "
+        "figure measured under `sampling.K = 8` is non-comparable to one measured under `16`, "
+        "and § 3 treats a change to a pinned input as starting over."
+    )
+    assert "§ 10.9 is superseded, not edited" in flat, (
+        f"{PREREGISTRATION} § 10.19 no longer records the supersession of § 10.9. § 10.9 "
+        "disclosed `sampling.K = 8` as the value then in force; that value is now historical, "
+        "and § 10.9's body is preserved byte-intact because this document is append-only."
+    )
+    assert (
+        "2026-10-17 | The nightly loop's draw budget is raised from 8 to 16 (§ 10.19) | "
+        "1 — pins the inputs of a measurement | Yes" in flat
+    ), (
+        f"{PREREGISTRATION}'s amendment log no longer records the § 10.19 row. A dated "
+        "amendment that is not in the log is a silent edit (§ 8.4)."
     )
 
 
@@ -1234,6 +1287,56 @@ def test_the_roadmap_records_the_cpu_precision_change_by_dated_correction() -> N
         "not be compared with one measured under the new one (§ 10.18), and the correction "
         "must say so."
     )
+
+
+def test_the_roadmap_records_the_raised_draw_budget_by_dated_correction() -> None:
+    """AC3.1. § 13 said raising *k* was untried; the correction records § 10.19.
+
+    The roadmap's pivot paragraph pinned the old budget in the present tense:
+    *"Raising *k* remains untried: `K = 8` is a declared constant and never a flag."*
+    `sampling.K` is now `16` (§ 10.19), so the roadmap records the supersession the way it
+    records every supersession — a dated correction blockquote naming the amendment and the
+    non-comparability consequence, rather than leaving the false sentence standing. The
+    superseded sentence is preserved inside that correction as a quotation, so the change is
+    recorded and the old text is history rather than lost.
+
+    The prose/blockquote split is what lets the guard require the old sentence's absence from
+    the live text while it remains present as a quotation, so deleting the sentence outright
+    cannot satisfy this.
+    """
+    lines = _read("docs/ROADMAP.md").splitlines()
+    quoted = _flat("\n".join(line for line in lines if line.lstrip().startswith(">")))
+    live = _flat("\n".join(line for line in lines if not line.lstrip().startswith(">")))
+    assert "Corrected 2026-10-17" in quoted, (
+        "docs/ROADMAP.md no longer carries the 2026-10-17 dated correction recording the "
+        "raised draw budget. § 13's pivot paragraph is made false by the change, and the "
+        "roadmap records every supersession as a dated correction rather than leaving the "
+        "false sentence standing."
+    )
+    assert "10.19" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer names § 10.19. The correction must "
+        "point at the amendment that pins the new budget, or a reader cannot find the pin."
+    )
+    assert "Raising *k* remains untried" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer preserves the original sentence as a "
+        "quotation. The superseded sentence is kept as history inside the correction rather "
+        "than lost, so the change is recorded and not silently rewritten."
+    )
+    assert "`K = 8`" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer quotes the superseded budget `K = 8`. "
+        "The correction must say what changed or it records nothing."
+    )
+    assert "non-comparable" in quoted, (
+        "docs/ROADMAP.md's dated correction no longer states the non-comparability "
+        "consequence. Every loop figure measured under `K = 8` may not be compared with one "
+        "measured under `16` (§ 10.19), and the correction must say so."
+    )
+    for stale in ("Raising k remains untried", "`K = 8`"):
+        assert stale not in live, (
+            f"docs/ROADMAP.md still says {stale!r} in live prose. The declared budget is "
+            "`16` (§ 10.19), so the old sentence is false about the tree it ships in and may "
+            "survive only as a quotation inside the dated correction."
+        )
 
 
 def test_the_arm_report_names_the_declared_cpu_precision() -> None:

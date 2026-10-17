@@ -931,6 +931,40 @@ def test_the_gate_composes_the_bakeoff_and_verifier_by_identity() -> None:
     assert gate.tool_versions is run_ledger.tool_versions
 
 
+def test_a_draw_budget_difference_is_not_a_backend_mismatch(tmp_path: Path) -> None:
+    """AC1.5: the gate permits a higher-K candidate against a lower-K incumbent.
+
+    **A documented regression guard, not a RED: the shipped `Backend` has no draw-budget
+    field.** The pair the plan describes — two checkpoints that differ only in draw budget — is,
+    at the record level, two checkpoints whose `backend` blocks are identical: the budget lives
+    in the run ledger (`Ledger.draws`) and reaches no checkpoint. It must stay out of `Backend`,
+    because the gate compares that block whole (`refuse_cross_backend`) and a budget in it would
+    refuse the K=16-vs-K=8 pair that is the entire raise-k experiment. Built through the real
+    `write_checkpoint` seam (the `_checkpoint` helper the rest of this suite uses), so the block
+    asserted on here is the artefact the gate actually compares.
+    """
+    from whetstone.loop import gate
+
+    candidate = _checkpoint(
+        tmp_path / "candidate", repo_id=_BASE, revision="d1e3b69", label="candidate"
+    )
+    incumbent = _checkpoint(
+        tmp_path / "incumbent", repo_id=_BASE, revision="d1e3b69", label="incumbent"
+    )
+
+    assert "draws" not in candidate.backend and "k" not in candidate.backend, (
+        "WHY THIS IS A FAILURE: a draw budget reached the checkpoint's backend block. The "
+        "gate compares that block whole, so a budget here would make a K=16 candidate and a "
+        f"K=8 incumbent a `MismatchedBackend`. Got {sorted(candidate.backend)}"
+    )
+    assert candidate.backend == incumbent.backend, (
+        "WHY THIS IS A FAILURE: two checkpoints built otherwise identically carry different "
+        "backend blocks, so the gate could not compare a candidate and an incumbent that "
+        "differ only in draw budget — which is the raise-k experiment"
+    )
+    gate.refuse_cross_backend(candidate=candidate.backend, incumbent=incumbent.backend)
+
+
 def test_gate_engine_is_the_callable_factory_smoke_test() -> None:
     """The one new machine seam exists and is callable; it is never invoked without `mlx`.
 

@@ -11,6 +11,11 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+### Changed
+
+- **The nightly loop's declared draw budget is raised from `8` to `16`, and the change is pre-registered** (`PREREGISTRATION.md` § 10.19, Type 1, 2026-10-17). `sampling.K` (`src/whetstone/loop/sampling.py`) moves from `8` to `16`, so each task gets twice the seeded draws per night; `K` remains a module constant and never a flag, and the `run` parser offers no option that sets the budget. The budget reaches the run ledger by identity (`Ledger.draws`), and it is deliberately **not** a gate comparability key: the gate must be able to compare a higher-`K` candidate against a lower-`K` incumbent, because that comparison is the experiment.
+- **Every loop figure measured under `K = 8` is non-comparable across the change.** The old series is never extended (`PREREGISTRATION.md` § 10.19), and `docs/ROADMAP.md` § 13 carries a dated correction. No number is claimed: no night has run at `16`, so no yield, checkpoint or gate decision exists under the new budget.
+
 ## [0.24.0] - 2026-10-13
 
 ### Added

@@ -2062,7 +2062,7 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
     delta/final-series argument.** The honest-number report publishes the P4 headline —
     the delta between the § 3 baseline's counts and the promotion gate's final side's,
     over the held-out split (`PREREGISTRATION.md:57-72`) — measured under the loop's
-    generation contract, whose seeded categorical sampler (`sampling.K = 8`) differs
+    generation contract, whose seeded categorical sampler (`sampling.K = 16`) differs
     from every published contract's greedy sampler (`PREREGISTRATION.md` § 10.9). The
     sampler is part of the generation contract § 10.1 obliges a report to state, and
     the change starts a new series, so the report's figures are declared non-comparable
@@ -2156,7 +2156,7 @@ def test_the_authoritative_scan_finds_all_seven_homes() -> None:
     delta/final-series argument.** The honest-number report publishes the P4 headline —
     the delta between the § 3 baseline's counts and the promotion gate's final side's,
     over the held-out split (`PREREGISTRATION.md:57-72`) — measured under the loop's
-    generation contract, whose seeded categorical sampler (`sampling.K = 8`) differs
+    generation contract, whose seeded categorical sampler (`sampling.K = 16`) differs
     from every published contract's greedy sampler (`PREREGISTRATION.md` § 10.9). The
     sampler is part of the generation contract § 10.1 obliges a report to state, and the
     change starts a new series, so the report's figures are declared non-comparable to

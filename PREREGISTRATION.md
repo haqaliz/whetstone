@@ -325,6 +325,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-09-27 | The held-out source-B split is re-derived under the scorable rule (§ 10.16) | 1 — pins the inputs of a measurement | Yes |
 | 2026-10-11 | The night re-mines the training pool; § 3's pinned "task set" is the scoring held-out split (§ 10.17) | 2 — adds a disclosure | No |
 | 2026-10-11 | The portability arm's CPU precision is declared `bfloat16` (§ 10.18) | 1 — pins the inputs of a measurement | Yes |
+| 2026-10-17 | The nightly loop's draw budget is raised from 8 to 16 (§ 10.19) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1015,3 +1016,35 @@ claims nothing about whether a larger base fits, whether `bfloat16` yields a str
 that it is faster; the § 3 baseline remains unspent, and a zero is entirely possible. Should the
 arm's probe or night find the machine still cannot host a larger base, *"accept the finding"*
 remains a legitimate outcome.
+
+### 10.19 The nightly loop's draw budget is raised from 8 to 16 — 2026-10-17
+
+**Type 1 (§ 8.1): pins an input of the measurement it precedes, committed before the
+night it governs runs.** It introduces no success threshold, rewords nothing in § 1, § 4
+or § 6, and does not change the base § 10.10 pinned. The 32B base and the MLX runtime
+remain the pinned inputs of the main series.
+
+**What changes.** The loop's declared draw budget moves from 8 to 16
+(`sampling.K = 16` in `src/whetstone/loop/sampling.py`). `K` is a module constant and never a
+flag; § 13 of `docs/ROADMAP.md` names this as the P2 pivot's last untried pre-committed
+response, and § 8.1 requires the input of a measurement be pinned before the measurement
+runs. The value is **declared, not derived**: no gated evaluation has run, so there is no
+observed yield or unverified rate to size it from — the same situation § 10.8 records for
+`R`.
+
+**§ 10.9 is superseded, not edited.** § 10.9 disclosed the loop's generation contract
+with `sampling.K = 8` draws per task. That was the value then in force; it is superseded
+by this amendment, and § 10.9's text is preserved byte-intact because this document is
+append-only.
+
+**The blast radius.** Every loop figure measured under `sampling.K = 8` — a night's
+training set, its strict-`PASS` yield, its ledger's draw count, and any gate verdict over
+a checkpoint trained from it — is **non-comparable** to a figure measured under `16`. § 3
+treats a change to a pinned input as starting over: the old series is not extended.
+
+**What is not claimed.** No night has run at `16`, no count is measured under it, and
+none is claimed here — the amendment precedes the run, which is the whole of its value.
+It claims nothing about whether a higher budget yields a strict-`PASS`, nor that it is
+worth its cost; the § 3 baseline remains unspent, the gate's rule and exits are
+unchanged, and a zero is entirely possible. *"Accept the finding"* remains a legitimate
+outcome.

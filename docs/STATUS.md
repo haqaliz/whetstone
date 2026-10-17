@@ -10,6 +10,19 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The nightly loop's draw budget is raised from 8 to 16, and the change is pre-registered** (2026-10-17, `raise-k`). The loop drew a fixed, pre-committed number of seeded attempts per task per night — `sampling.K = 8` — and P2's pivot signal had fired with stratification tested and exhausted and the CPU dtype shipped (§ 10.18). Raising *k* was the last untried pre-committed response. It is now declared at `16`, before any night records it.
+
+**What shipped.**
+- **The declaration.** `sampling.K` is `16` (`src/whetstone/loop/sampling.py`), still a module constant and never a flag: the `run` parser offers no option that sets the draw budget, and `tests/loop/test_sampling.py` pins the exact value.
+- **The budget reaches the evidence.** A night that passes no override records `Ledger.draws == K`, so a run's ledger names the budget it drew. No schema bumps.
+- **The budget is not a gate comparability key.** Unlike § 10.18's `precision`, `K` is deliberately absent from `Backend` and the gate's whole-dict comparison: a higher-`K` candidate must be comparable against a lower-`K` incumbent, because that comparison is the experiment.
+- **The amendment.** `PREREGISTRATION.md` § 10.19 (Type 1, 2026-10-17) pins the value, marks § 10.9's disclosed `sampling.K = 8` superseded without editing its body, states that every loop figure measured under `8` is non-comparable to one measured under `16`, and that the old series is not extended. The amendment-log row is appended.
+- **The prose.** `docs/ROADMAP.md` § 13's live sentence states the raised budget and carries a dated correction that preserves the old sentence as a quotation; the inert test docstrings name the new value.
+
+**What is not claimed.** No night has run at `16`, so there is no yield, training set, checkpoint or gate verdict under the new budget, and no number is claimed. Whether the higher budget yields a strict-`PASS` is the operator's night to measure — the value is declared, not derived, because there is no observed rate to size it from. M1's exit criterion remains open, the § 3 baseline remains unspent, and *"accept the finding"* remains a legitimate outcome. The reward path, the gate's rule and exits, `tasks/`, and the held-out document are untouched.
+
+---
+
 **The night re-mines before it draws: the corpus grows, and the held-out split does not move** (2026-10-11, `night-corpus-remine`). The nightly loop read a frozen corpus: `whetstone run --night` loaded the task directories it was handed and never minted new ones, so expert iteration against a fixed task set could only exhaust what the base already knew. This unit makes the night mine the user's own new commits before it draws, while the pre-registered held-out split stays exactly where it is.
 
 **What shipped.**
