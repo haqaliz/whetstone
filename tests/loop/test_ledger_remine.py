@@ -259,11 +259,12 @@ def test_a_remined_ledger_reads_through_morning(tmp_path: Path) -> None:
 def test_a_remined_probe_ledger_decides_through_check_probe(tmp_path: Path) -> None:
     """AC 7: `check_probe.run_check` decides a probe run whose ledger carries `remined`.
 
-    The check reads only `task_set.probe` (`check_probe.py:201-210`) through `ledger.read` by
-    identity, so the nested delta changes nothing it decides.
+    The check reads `task_set.probe` and the declared budget through `ledger.read` by identity,
+    so the nested delta changes nothing it decides. The probe is a genuine one under the declared
+    `sampling.K`, because the budget pin now compares the ledger to that constant.
     """
     from loop.test_check_probe import _COUNTS, _HARNESS, _PROBE_SEEDS
-    from whetstone.loop import check_probe, night
+    from whetstone.loop import check_probe, night, sampling
     from whetstone.loop import draws as run_draws
 
     run = tmp_path / "runs" / "probe-001"
@@ -274,15 +275,15 @@ def test_a_remined_probe_ledger_decides_through_check_probe(tmp_path: Path) -> N
         task_set=replace(base.task_set, probe=1, remined=(("task-remined", "donor-a"),)),
         checkpoint_digest=None,
         checkpoint_absent="a probe writes no checkpoint",
-        draws=2,
+        draws=sampling.K,
         seeds=_PROBE_SEEDS,
         draws_recorded=tuple(
             run_ledger.DrawRecord(attempt=index, harness=dict(_HARNESS), counts=_COUNTS)
-            for index in (1, 2)
+            for index in range(1, sampling.K + 1)
         ),
     )
     run_ledger.write(run / run_ledger.LEDGER_FILE, candidate)
-    for attempt in (1, 2):
+    for attempt in range(1, sampling.K + 1):
         journal, _ = run_draws.evidence_paths(run / night.EVIDENCE_DIR, attempt)
         journal.parent.mkdir(parents=True, exist_ok=True)
         journal.touch()

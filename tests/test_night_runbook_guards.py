@@ -26,10 +26,10 @@ Properties 5 onward are this sheet's own:
 6. the zero-strict-PASS outcome is stated as a published result rather than as a halt, and the
    declared dev ids are the ones the arms declared;
 7. the probe decision is commanded, not read: a `check-probe` block runs before the night with
-   only `--run` (against the shipped parser's surface), absolute and exactly the probe block's
-   `--runs` root joined with its `--run-id`, the decision rule keeps both pre-committed
-   conditions and all three exits' meanings, and a killed probe is never resumed — while a
-   killed **night** still resumes unchanged; and
+   `--run` and the committed `--heldout` document pin (against the shipped parser's surface),
+   absolute and exactly the probe block's `--runs` root joined with its `--run-id`, the decision
+   rule keeps both pre-committed conditions and all three exits' meanings, and a killed probe is
+   never resumed — while a killed **night** still resumes unchanged; and
 8. the post-§ 10.16 seam: no `belay-`/`contig-` id in any command block; the committed held-out
    document on both door blocks and on the post-night `check-leakage` step, which runs after the
    night; the § 10.16 citation and the scorable rule, with no live § 10.7 citation; the ledger
@@ -73,7 +73,8 @@ RUNBOOK = Path(__file__).parent.parent / "docs/planning/p2-rollouts/night-door/r
 DOOR = "whetstone run --night"
 
 #: The go/no-go command the sheet runs between the probe pass and the night. It is a `whetstone`
-#: subcommand of its own (`--run <dir>`), so it is keyed here rather than by the night's DOOR.
+#: subcommand of its own (`--run <dir>`, `--heldout <doc>`), so it is keyed here rather than by
+#: the night's DOOR.
 PROBE_CHECK = "whetstone check-probe"
 
 #: The leakage check the sheet runs after the night, at the seam where a training set that
@@ -533,7 +534,7 @@ def test_the_sheet_publishes_nothing() -> None:
 
 
 def test_the_probe_decision_is_commanded_before_the_night() -> None:
-    """The go/no-go is a command the sheet runs, before the night, with only `--run`.
+    """The go/no-go is a command the sheet runs, before the night, with `--run` and `--heldout`.
 
     A decision the operator reads is one they can misread at 3 a.m.; a decision the sheet runs
     is one the door has already proved against the parser. And the run it decides must be the
@@ -629,6 +630,32 @@ def test_a_probe_is_never_resumed() -> None:
     assert "Restart the **same command, unchanged**" in text, (
         "WHY THIS IS A FAILURE: the killed-night restart sentence is gone. A night is resumed "
         "unchanged with the same --run-id and --run-seed; the sheet must still say so"
+    )
+
+
+def test_the_probe_decision_pins_the_declared_heldout_document() -> None:
+    """The `check-probe` block passes the committed document, or the split pin never runs.
+
+    `run_check(..., heldout=...)` can only add a violation, but it is only live when the sheet
+    passes the flag. A sheet that dropped `--heldout` would decide the budget and silently skip
+    the split: the prose would promise a digest equality no command checks.
+    """
+    blocks = _bash_blocks(_runbook())
+    check = _probe_check_block(blocks)
+    assert check and PROBE_CHECK in check, (
+        "WHY THIS IS A FAILURE: the sheet runs no `whetstone check-probe` block, so there is "
+        "no command to carry the held-out document pin"
+    )
+    assert "--heldout" in _probe_check_flags(), (
+        "WHY THIS IS A FAILURE: the shipped `check-probe` parser does not accept `--heldout`, "
+        "so the sheet's pin would be a usage error rather than a check"
+    )
+    values = _probe_check_values(check)
+    assert values.get("--heldout") == [HELDOUT_DOC], (
+        f"WHY THIS IS A FAILURE: the check-probe block passes --heldout "
+        f"{values.get('--heldout')!r} and the committed document is {[HELDOUT_DOC]!r}. Without "
+        "it the split pin never runs, and a probe that excluded a different document still "
+        "proceeds on the budget alone"
     )
 
 

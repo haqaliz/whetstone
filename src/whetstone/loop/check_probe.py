@@ -6,7 +6,7 @@ non-empty seed map"* — and this module turns that sentence into a pure, read-o
 inference-free decision: `run_check(run)` reads **one** probe run directory's `ledger.json`
 and returns a `ProbeReport`. Nothing runs, nothing is generated, nothing is published.
 
-Two conditions carry the decision, exactly as pre-committed and nothing more:
+Two conditions carry the pre-committed decision, exactly as written and nothing more:
 
 - **The control fold is `PASS` on every draw**, read from `draws_recorded[].harness` per draw
   per source and compared against `Status` by identity. This is a *document assertion*, never
@@ -17,12 +17,26 @@ Two conditions carry the decision, exactly as pre-committed and nothing more:
   re-derived, and never grown into a coverage assertion: the pre-committed rule sets no bar
   beyond non-emptiness.
 
+Two **declared-input pins** are also read, and neither is a new yield threshold:
+
+- **The declared draw budget** is `whetstone.loop.sampling.K`, imported by identity. A ledger
+  whose `draws` is any other value proves the harness at a size the night does not run, so it
+  is a named violation naming both values. The check contains no literal budget.
+- **The declared split**, when `heldout=<doc>` is passed, is the committed document's digest:
+  the document passes `heldout.read_document` and the digest is recomputed through
+  `heldout.document_digest_of`, both by identity — the same loader and digest function the
+  night uses. The ledger's recorded digest must equal it; a different digest, or no held-out
+  record at all, is a named violation. A document that cannot be read is a refusal, because it
+  is an operator error rather than a fact about the probe. Both pins can only add a violation,
+  never a way to proceed.
+
 Refusals come first, each by name and all exit-2: a directory without a ledger is not a run
 (`NotARun`), a ledger that fails the schema gate is unreadable (`LedgerUnreadable`, via
 `ledger.read` by identity), a run whose `task_set.probe` is not an int is a full night
-(`NotAProbe`), and a run that is missing a recorded draw, a declared source, or a draw's
-journal is incomplete (`IncompleteRun`). Journals are checked for **existence only** — a
-journal full of corrupt lines still exists, deliberately: the ledger is the completeness
+(`NotAProbe`), a run that is missing a recorded draw, a declared source, or a draw's
+journal is incomplete (`IncompleteRun`), and a `--heldout` document the held-out loader cannot
+read is an operator error (`HeldoutUnreadable`). Journals are checked for **existence only** —
+a journal full of corrupt lines still exists, deliberately: the ledger is the completeness
 authority, and parsing journal content would silently grow a new bar the pre-committed rule
 never set.
 
@@ -34,15 +48,18 @@ one document already answers.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from whetstone.loop.draws import evidence_paths
+from whetstone.loop.heldout import document_digest_of, read_document
 from whetstone.loop.ledger import LEDGER_FILE, LedgerUnreadable
 from whetstone.loop.ledger import read as read_ledger
 from whetstone.loop.night import EVIDENCE_DIR, PRIVATE, PUBLIC
+from whetstone.loop.sampling import K
 from whetstone.verify.verdict import Status
 
 #: The two sources, by identity from the night that writes them. A third name here would be
@@ -76,6 +93,16 @@ class IncompleteRun(ValueError):
     """
 
 
+class HeldoutUnreadable(ValueError):
+    """The `--heldout` document cannot be read or does not pass its own loader.
+
+    An operator error rather than a fact about the probe: the split the night pre-committed is
+    named by a path someone typed, and a document that half-parses cannot say which membership
+    the ledger was supposed to exclude. Refused with exit 2 so the operator retypes, rather
+    than reported as a violation of the probe.
+    """
+
+
 #: What the CLI turns into a usage error rather than a traceback: everything an operator can
 #: fix by retyping the command or by pointing at a different directory. Collected here so the
 #: door maps them to the usage code without a chain of per-module excepts; `ValueError`
@@ -86,6 +113,7 @@ REFUSALS: tuple[type[Exception], ...] = (
     LedgerUnreadable,
     NotAProbe,
     IncompleteRun,
+    HeldoutUnreadable,
     ValueError,
 )
 
@@ -116,7 +144,7 @@ class ProbeReport:
     seeds: int
 
 
-def run_check(run: Path) -> ProbeReport:
+def run_check(run: Path, *, heldout: Path | None = None) -> ProbeReport:
     """Decide a probe run's go/no-go from one run directory.
 
     The order is the design: the run is identified before it is read (a directory without a
@@ -124,6 +152,11 @@ def run_check(run: Path) -> ProbeReport:
     `ledger.read` by identity (a doctored document refuses before any decision), the probe
     identity is proven, and only then is anything decided. A check that read a doctored
     document and reported "proceed" would be worse than no check.
+
+    `heldout`, when passed, is the committed split the probe must have excluded: the document
+    is loaded and digested by the night's own functions, and the ledger's recorded digest is
+    compared to it after the budget pin. Without it the budget pin still decides; the flag is
+    optional at this level because the night sheet always passes it.
     """
     ledger = run / LEDGER_FILE
     if not ledger.is_file():
@@ -135,6 +168,43 @@ def run_check(run: Path) -> ProbeReport:
     payload = read_ledger(ledger)
     probe = _probe_of(payload, run)
     _require_complete(payload, run)
+    # Refusals come first: an unreadable `--heldout` document is an operator error, so it is
+    # loaded (and refused) before a budget violation is reported. A wrong budget and a typo in
+    # the document path are independent facts; the operator should see the typo either way.
+    expected = _heldout_digest(heldout) if heldout is not None else None
+    draws = payload["draws"]
+    if draws != K:
+        return _report(
+            proceed=False,
+            violation=(
+                f"declared draws is {draws}, not the pre-committed sampling.K = {K}"
+            ),
+            payload=payload,
+            probe=probe,
+        )
+    if expected is not None:
+        record = payload["task_set"].get("heldout")
+        recorded = record.get("document_digest") if isinstance(record, dict) else None
+        if recorded is None:
+            return _report(
+                proceed=False,
+                violation=(
+                    "the ledger records no held-out split, but the committed document's "
+                    f"digest is {expected}"
+                ),
+                payload=payload,
+                probe=probe,
+            )
+        if recorded != expected:
+            return _report(
+                proceed=False,
+                violation=(
+                    f"the ledger records held-out digest {recorded}, not the committed "
+                    f"document's {expected}"
+                ),
+                payload=payload,
+                probe=probe,
+            )
     for entry in payload["draws_recorded"]:
         for source in SOURCES:
             value = entry["harness"].get(source)
@@ -196,6 +266,27 @@ def _report(
     )
 
 
+def _heldout_digest(path: Path) -> str:
+    """The digest the committed document's payload seals, refusing an unreadable one.
+
+    The loader validates, and the `heldout.Heldout` it returns deliberately does not carry the
+    digest, so it is recomputed from the file the loader has just accepted — the night's own
+    `_read_heldout` shape. A document that does not parse is an operator error
+    (`HeldoutUnreadable`), never a verdict about the probe.
+    """
+    location = Path(path)
+    try:
+        read_document(location)
+        raw = json.loads(location.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise HeldoutUnreadable(
+            f"the held-out document {str(location)!r} could not be read: {exc}. Refused "
+            "rather than decided: the split the probe excluded cannot be named from a "
+            "document that does not parse"
+        ) from exc
+    return document_digest_of(raw)
+
+
 def _probe_of(payload: Mapping[str, Any], run: Path) -> int:
     """The declared probe size, refusing a run whose ledger never declared one."""
     task_set = payload.get("task_set")
@@ -254,6 +345,7 @@ def _require_complete(payload: Mapping[str, Any], run: Path) -> None:
 __all__ = [
     "REFUSALS",
     "SOURCES",
+    "HeldoutUnreadable",
     "IncompleteRun",
     "NotAProbe",
     "NotARun",

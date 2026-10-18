@@ -2,16 +2,20 @@
 
 `docs/planning/p2-rollouts/night-door/runbook.md:78-80` pre-commits the go/no-go rule — the
 night proceeds iff the probe completes with the control arm `PASS` on every draw and a
-non-empty seed map — so the exit code is the deliverable and it is asserted at the process
-boundary, not only against the core: `cli.main(["check-probe", "--run", <dir>])` reads one
-probe run directory's ledger and returns the code an operator's sheet can branch on.
+non-empty seed map — and the declared-input pins narrow it further: the ledger's draws must be
+`sampling.K`, and, when `--heldout` is passed, its held-out digest must be the committed
+document's. The exit code is the deliverable and it is asserted at the process boundary, not
+only against the core: `cli.main(["check-probe", "--run", <dir>])` reads one probe run
+directory's ledger and returns the code an operator's sheet can branch on.
 
 The codes are the CLI's existing four-code contract (`cli.py:64-84`), no fifth: the rule
-holds → 0, a named violation → 1 (a draw whose harness is not `PASS`, or an empty seed map —
-the night does not run behind it, and that is a finding, not a mistyped command), and a
-refusal an operator can fix by retyping — a directory that is not a probe run, a ledger that
-cannot be read, an incomplete run — → 2. There is no `UNVERIFIED` exit here: the command
-reads documents rather than running anything, so it either answers or refuses.
+holds → 0, a named violation → 1 (a draw whose harness is not `PASS`, an empty seed map, a
+declared budget that is not `sampling.K`, or — with `--heldout` — a mismatched digest or no
+held-out record — the night does not run behind it, and that is a finding, not a mistyped
+command), and a refusal an operator can fix by retyping — a directory that is not a probe run,
+a ledger that cannot be read, an incomplete run, a `--heldout` document that cannot be read —
+→ 2. There is no `UNVERIFIED` exit here: the command reads documents rather than running
+anything, so it either answers or refuses.
 
 No model, no `mlx`, no network: the fixtures are the `check-core` suite's own real `Ledger`
 documents, shared by import.
@@ -26,7 +30,7 @@ import pytest
 
 from loop.test_check_probe import _probe_run
 from whetstone import cli
-from whetstone.loop import night
+from whetstone.loop import night, sampling
 from whetstone.verify.verdict import Status
 
 
@@ -99,11 +103,13 @@ def _check_probe_parser() -> argparse.ArgumentParser:
 
 
 def test_the_check_probe_flag_surface() -> None:
-    """The parser exposes exactly `--run`, and nothing that could change the decision.
+    """The parser exposes exactly `--run` and the `--heldout` document pin, nothing else.
 
-    The flag surface is pinned because the operator's sheet will spell the command out. A
-    second flag that narrowed the draw set or relaxed the fold would let a failing probe be
-    turned green at the command line, which is the one thing a go/no-go must not allow.
+    The flag surface is pinned because the operator's sheet will spell the command out. No
+    flag may set a budget, a seed, a timeout or a pass bar: a second flag that narrowed the
+    draw set or relaxed the fold would let a failing probe be turned green at the command
+    line, which is the one thing a go/no-go must not allow. `--heldout` does none of that — it
+    names the document the split pin compares against, and it can only add a violation.
     """
     probe = _check_probe_parser()
     offered = sorted(
@@ -113,7 +119,46 @@ def test_the_check_probe_flag_surface() -> None:
         if option.startswith("--")
     )
 
-    assert offered == ["--help", "--run"], offered
+    assert offered == ["--heldout", "--help", "--run"], offered
+
+
+def test_heldout_is_not_required_and_the_budget_pin_still_decides(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Without `--heldout` the door still reads the ledger and the budget pin still decides.
+
+    The flag is optional at this level: a caller that only wants the budget check may omit it,
+    and a probe at the wrong budget is still a named violation rather than a pass.
+    """
+    valid = _probe_run(tmp_path / "valid")
+    code = cli.main(_argv(valid))
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert "PROCEED" in out, out
+
+    short = _probe_run(tmp_path / "short", draws=sampling.K - 1)
+    code = cli.main(_argv(short))
+    captured = capsys.readouterr()
+    assert code == 1, captured.out
+    assert f"sampling.K = {sampling.K}" in captured.out, captured.out
+    assert str(sampling.K - 1) in captured.out, captured.out
+
+
+def test_an_unreadable_heldout_document_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """M3 at the door: an unreadable `--heldout` is a refusal an operator can fix by retyping."""
+    run = _probe_run(tmp_path)
+    unreadable = tmp_path / "heldout.json"
+    unreadable.write_text("not json", encoding="utf-8")
+
+    code = cli.main([*_argv(run), "--heldout", str(unreadable)])
+    captured = capsys.readouterr()
+
+    assert code == 2, captured.out
+    assert captured.out == "", captured.out
+    assert "whetstone check-probe:" in captured.err, captured.err
+    assert str(unreadable) in captured.err, captured.err
 
 
 def test_check_probe_imports_by_identity() -> None:

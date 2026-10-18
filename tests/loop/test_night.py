@@ -423,3 +423,107 @@ def test_a_training_failure_still_writes_the_nights_ledger(tmp_path: Path) -> No
         "that the rollouts — the expensive, irreplaceable half of a night — survive a failure in "
         "the training step, which is minutes and re-runnable"
     )
+
+
+def test_a_checkpoint_writer_failure_still_writes_the_nights_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A checkpoint-writer failure after training must not take the night's draws with it.
+
+    The checkpoint step follows a complete night: every draw is generated, every control arm is
+    recorded, and the dataset is written. Its exception used to escape `_train` and then
+    `run_night`, before the ledger write — so a disk that filled while `provenance.json` was
+    being written would erase the expensive, irreplaceable half of the night. The draws must
+    survive it, and the reason must tell the operator both what failed and that the partial
+    checkpoint directory may not be reused.
+    """
+
+    def exploding_writer(*args: Any, **kwargs: Any) -> sft.Checkpoint:
+        raise RuntimeError("disk full while writing provenance.json")
+
+    monkeypatch.setattr(sft, "write_checkpoint", exploding_writer)
+    night = _night(tmp_path)
+
+    assert night.checkpoint is None, (
+        "WHY THIS IS A FAILURE: the checkpoint writer raised and a candidate was emitted anyway"
+    )
+    assert night.ledger.is_file(), (
+        f"WHY THIS IS A FAILURE: the checkpoint writer raised and {str(night.ledger)!r} was never "
+        "written, so every draw the night generated is unreadable by the morning report, by "
+        "`check-leakage` and by the gate. The evidence must outlive the checkpoint step"
+    )
+    assert "RuntimeError" in night.checkpoint_absent, (
+        "WHY THIS IS A FAILURE: the absence reason does not name the exception type. An operator "
+        f"cannot tell a disk failure from a zero-yield night. Got {night.checkpoint_absent!r}"
+    )
+    assert "disk full while writing provenance.json" in night.checkpoint_absent, (
+        "WHY THIS IS A FAILURE: the absence reason does not carry the exception's message, so the "
+        f"operator loses what the failing step actually said. Got {night.checkpoint_absent!r}"
+    )
+    assert "fresh run id" in night.checkpoint_absent, (
+        "WHY THIS IS A FAILURE: the partial checkpoint directory is deliberately not deleted, so "
+        "the reason must tell the operator not to reuse the run id. Got "
+        f"{night.checkpoint_absent!r}"
+    )
+    recorded = run_ledger.read(night.ledger)
+    assert recorded["checkpoint"]["digest"] is None and (
+        recorded["checkpoint"]["absent"] == night.checkpoint_absent
+    ), (
+        "WHY THIS IS A FAILURE: the ledger does not record the checkpoint absence as the night "
+        f"reported it. Got {recorded['checkpoint']!r}"
+    )
+    assert len(recorded["draws_recorded"]) == DRAWS, (
+        f"WHY THIS IS A FAILURE: the checkpoint writer raised and the ledger recorded "
+        f"{len(recorded['draws_recorded'])} of {DRAWS} draws. The rollouts are the expensive, "
+        "irreplaceable half of a night; they must survive a failure in the checkpoint step"
+    )
+
+
+def test_a_checkpoint_verifier_failure_still_writes_the_nights_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A checkpoint that cannot verify is a stated absence, not a lost night.
+
+    The writer succeeded and the directory exists, so this path is the one that leaves partial
+    evidence behind. The night records why there is no candidate and, as with a writer failure,
+    keeps every draw.
+    """
+
+    def exploding_verifier(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("checkpoint did not verify")
+
+    monkeypatch.setattr(sft, "verify_checkpoint", exploding_verifier)
+    night = _night(tmp_path)
+
+    assert night.checkpoint is None, (
+        "WHY THIS IS A FAILURE: the checkpoint verifier raised and a candidate was emitted anyway"
+    )
+    assert night.ledger.is_file(), (
+        f"WHY THIS IS A FAILURE: the checkpoint verifier raised and {str(night.ledger)!r} was "
+        "never written, so every draw the night generated is unreadable by the morning report, "
+        "by `check-leakage` and by the gate"
+    )
+    assert "RuntimeError" in night.checkpoint_absent, (
+        "WHY THIS IS A FAILURE: the absence reason does not name the exception type. Got "
+        f"{night.checkpoint_absent!r}"
+    )
+    assert "checkpoint did not verify" in night.checkpoint_absent, (
+        "WHY THIS IS A FAILURE: the absence reason does not carry the verifier's message, so an "
+        f"operator cannot tell why the checkpoint was rejected. Got {night.checkpoint_absent!r}"
+    )
+    assert "fresh run id" in night.checkpoint_absent, (
+        "WHY THIS IS A FAILURE: the checkpoint directory is deliberately not deleted, so the "
+        f"reason must tell the operator not to reuse the run id. Got {night.checkpoint_absent!r}"
+    )
+    recorded = run_ledger.read(night.ledger)
+    assert recorded["checkpoint"]["digest"] is None and (
+        recorded["checkpoint"]["absent"] == night.checkpoint_absent
+    ), (
+        "WHY THIS IS A FAILURE: the ledger does not record the checkpoint absence as the night "
+        f"reported it. Got {recorded['checkpoint']!r}"
+    )
+    assert len(recorded["draws_recorded"]) == DRAWS, (
+        f"WHY THIS IS A FAILURE: the checkpoint verifier raised and the ledger recorded "
+        f"{len(recorded['draws_recorded'])} of {DRAWS} draws. The rollouts are the expensive, "
+        "irreplaceable half of a night; they must survive a failure in the checkpoint step"
+    )

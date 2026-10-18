@@ -636,11 +636,18 @@ def _train(
 ) -> tuple[sft.Checkpoint | None, str, sft.CapacityProbe | None]:
     """Probe capacity, train, and hash the result — or say, in one sentence, why none of that ran.
 
-    Three ways there is no candidate, and each is a *stated* outcome rather than a silence: the
-    night was a probe, the night selected nothing, or the capacity probe measured a peak above the
-    declared headroom. The third is a published capacity finding, which is why it is caught and
-    recorded here rather than allowed to abort the ledger — a night that discovered its own
-    machine cannot train is a night whose evidence is worth keeping.
+    Four ways there is no candidate, and each is a *stated* outcome rather than a silence: the
+    night was a probe, the night selected nothing, the capacity probe measured a peak above the
+    declared headroom, or training and the checkpoint step raised. The third is a published
+    capacity finding, which is why it is caught and recorded here rather than allowed to abort the
+    ledger — a night that discovered its own machine cannot train is a night whose evidence is
+    worth keeping.
+
+    The guard covers the checkpoint step as well as capacity and training, because the ledger is
+    written after this function returns and a checkpoint-writer or verifier failure would
+    otherwise erase a complete night's draws. The residual is deliberate and narrower: the
+    dataset writes (`training.write_local` / `write_document`, which run before training) and the
+    ledger write itself remain outside any guard, so a failure there can still leave no ledger.
     """
     if probe is not None:
         return None, (
@@ -698,22 +705,35 @@ def _train(
             "and recorded below; the failure is in the training step, which produced no candidate"
         ), capacity
 
-    checkpoint = sft.write_checkpoint(
-        checkpoints,
-        repo_id=candidate.repo_id,
-        revision=candidate.revision,
-        dataset_digest=selected.digest,
-        run_seed=run_seed,
-        args=request.args,
-        tool_versions=run_ledger.tool_versions(backend=runtime),
-        valid_split=chosen.reason,
-        capacity=capacity,
-        backend=runtime,
-    )
-    # Re-read what was just written. The gate that later compares checkpoints will re-hash them,
-    # and a checkpoint that cannot survive its own verification an instant after being written is
-    # one nobody should discover is broken three weeks later.
-    sft.verify_checkpoint(checkpoints)
+    try:
+        checkpoint = sft.write_checkpoint(
+            checkpoints,
+            repo_id=candidate.repo_id,
+            revision=candidate.revision,
+            dataset_digest=selected.digest,
+            run_seed=run_seed,
+            args=request.args,
+            tool_versions=run_ledger.tool_versions(backend=runtime),
+            valid_split=chosen.reason,
+            capacity=capacity,
+            backend=runtime,
+        )
+        # Re-read what was just written. The gate that later compares checkpoints will re-hash
+        # them, and a checkpoint that cannot survive its own verification an instant after being
+        # written is one nobody should discover is broken three weeks later.
+        sft.verify_checkpoint(checkpoints)
+    except Exception as failure:
+        # The checkpoint step runs *after* a complete night: every draw is generated, every
+        # control arm is recorded, and the dataset is written. The ledger is written after this
+        # function returns, so an exception escaping here would erase the expensive, irreplaceable
+        # half of the night. The checkpoint directory is deliberately left in place — a partial
+        # checkpoint is evidence, and the reason is the operator's instruction not to reuse it.
+        return None, (
+            f"the checkpoint step raised {type(failure).__name__}: {failure}. The night's draws "
+            "and dataset are complete and recorded below; training produced an adapter but the "
+            f"checkpoint at {checkpoints} was not completed or did not verify. Inspect it; a "
+            "retry must use a fresh run id."
+        ), capacity
     return checkpoint, "", capacity
 
 

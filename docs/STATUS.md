@@ -10,6 +10,18 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The K = 16 night's evidence path is hardened and its acceptance pinned; the night itself is unrun** (2026-10-18, `k16-night`). `sampling.K` is `16` (`PREREGISTRATION.md` § 10.19) and no night has run under it. This unit closes the checkpoint-writer hole that erased night #1's ledger, pins the two acceptance criteria the sheet held only as prose, and adds a guard that checks the night's finding against its ledger. The night is the operator's to run from the primary checkout **after** this merges; the finding is a **follow-up** commit.
+
+**What shipped.**
+- **The durability guard.** `night._train` wraps `sft.write_checkpoint` and `sft.verify_checkpoint` in the same broad guard that already covers the capacity probe and the trainer. A checkpoint-writer or verifier failure is recorded as `checkpoint_absent` with its type and message, and the ledger is still written with every draw recorded and `checkpoint.digest = None` — the failure can no longer erase a complete night's evidence.
+- **The `check-probe` budget pin.** `run_check` compares the probe ledger's `draws` to `whetstone.loop.sampling.K` **by identity** (never a literal `16`); a probe at any other budget is a named violation that prints `PROCEED` no longer.
+- **The `check-probe --heldout` split pin.** A new optional flag compares the probe ledger's `task_set.heldout.document_digest` to `heldout.document_digest_of` the committed document; a mismatch, or a ledger with no held-out record, is a named violation. The night sheet's `check-probe` line passes the flag and its runbook guard holds it.
+- **The finding guard.** `tests/test_k16_night_finding.py` resolves the primary through git's common dir, reads the finding's declared `**Run:**` path through `ledger.verify_document` (v3 sealed), and asserts `draws == sampling.K`, the held-out digest, and every count the finding quotes. It skips loudly, naming the artefact, until the finding exists; a finding that invents a number fails.
+
+**What is not claimed.** The K = 16 night is **unrun**: no yield, training set, checkpoint or gate verdict exists under the new budget, and no number is claimed. Whether a higher budget yields a strict-`PASS` is the operator's night to measure, and *"accept the finding"* remains a legitimate outcome. The pre-registered held-out split does not move, and the clustered task `donor-a-c6e4d4c4de87` — night #1's 4-of-8 task — is a **held-out member**, so the night excludes it and the finding must state that confound rather than claim the budget was the only variable. The 12 `NO_ORACLE` tasks remain in the training pool: drawn, and unable to yield an example under the sealed budget, they are reported by the finding, not filtered by a scorable-pool rule. The ledger is **not yet unconditional**: `training.write_local`/`write_document` and the ledger write itself remain outside a guard, so this unit closes the checkpoint-writer path, not every path. The reward path, the gate's rule and exits, `tasks/`, and the held-out document are untouched.
+
+---
+
 **The nightly loop's draw budget is raised from 8 to 16, and the change is pre-registered** (2026-10-17, `raise-k`). The loop drew a fixed, pre-committed number of seeded attempts per task per night — `sampling.K = 8` — and P2's pivot signal had fired with stratification tested and exhausted and the CPU dtype shipped (§ 10.18). Raising *k* was the last untried pre-committed response. It is now declared at `16`, before any night records it.
 
 **What shipped.**

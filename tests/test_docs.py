@@ -1248,6 +1248,25 @@ def test_the_write_up_records_the_night_remine() -> None:
     )
 
 
+def test_the_write_up_records_the_k16_night_guards() -> None:
+    """A capability is written up in the commit that lands it (`CLAUDE.md`).
+
+    The guards landed before the operator's night: the durability guard, the `check-probe` budget
+    and `--heldout` split pins, and the finding guard. The night itself is unrun, so the entry
+    claims no number. As with `test_the_write_up_records_the_night_remine`, the STATUS entry is
+    append-only history and the CHANGELOG phrase is asserted anywhere in the file so it survives a
+    release moving `[Unreleased]` content under a version.
+    """
+    assert "k16-night" in _read("docs/STATUS.md"), (
+        "docs/STATUS.md no longer records the k16-night unit. The repo's rule is that a capability "
+        "is written up in the commit that lands it, and STATUS.md is that history."
+    )
+    assert "the K=16 night is unrun" in _read("CHANGELOG.md"), (
+        "CHANGELOG.md no longer records that the K=16 night is unrun. This file records what "
+        "shipped, and the guards shipped without running the night or claiming a number."
+    )
+
+
 def test_the_roadmap_records_the_cpu_precision_change_by_dated_correction() -> None:
     """AC7. § 13 said the runtime loaded `float32` on CPU; the correction records § 10.18.
 
