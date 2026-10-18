@@ -294,6 +294,14 @@ uv run whetstone --help
 
 All four must exit 0 before a pull request.
 
+## Support the project
+
+If this project is useful to you, you can chip in with a crypto donation:
+
+<a href="https://nowpayments.io/donation?api_key=52f38854-167a-4828-a00f-0424ab7dcc1e" target="_blank" rel="noreferrer noopener">
+    <img src="https://nowpayments.io/images/embeds/donation-button-black.svg" alt="Crypto donation button by NOWPayments">
+</a>
+
 ## License
 
 [Apache-2.0](LICENSE). The mark in `assets/logo.svg` is a W drawn as two rounded parallelograms
