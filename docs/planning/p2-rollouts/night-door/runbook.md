@@ -118,18 +118,28 @@ reader, which is why this probe's id is fresh, never a reused one.
 
 ```bash
 uv run whetstone check-probe \
-  --run $REPO/runs/night-probe/<probe-run-id>
+  --run $REPO/runs/night-probe/<probe-run-id> \
+  --heldout $REPO/tasks/heldout/source-b.json
 ```
 
 The decision is the command's exit: `whetstone check-probe` reads the run directory the probe
-block wrote (`runs/night-probe/<probe-run-id>/ledger.json`) against the rule below. Exit 0 — the
-probe satisfies the rule; proceed to the night. Exit 1 — a named harness finding (which
-draw/source, or an empty seed map); no night runs behind it. Exit 2 — a refusal an operator can
-fix by retyping; never a verdict about the probe.
+block wrote (`runs/night-probe/<probe-run-id>/ledger.json`) against the rule below, and — because
+the block passes `--heldout` — compares the ledger's recorded held-out digest to the committed
+document's. Exit 0 — the probe satisfies the rule; proceed to the night. Exit 1 — a named
+finding (which draw/source, an empty seed map, a declared draws that is not `sampling.K`, or a
+held-out digest that is not the committed document's — or no held-out record at all);
+no night runs behind it. Exit 2 — a refusal an operator can fix by retyping, including an
+unreadable `--heldout` document; never a verdict about the probe.
 
 **Decision rule (pre-committed): the night proceeds iff the probe completes with the control arm
-`PASS` on every draw and a non-empty seed map.** A killed probe is **never resumed** —
-restart it fresh under a new `--run-id`; a killed **night** still resumes unchanged (below).
+`PASS` on every draw and a non-empty seed map.** The declared inputs are pinned as well: the
+ledger's declared draws **must equal** `sampling.K` (`K = 16`, declared in
+`whetstone.loop.sampling`, never a flag), and the ledger's held-out record **must equal** the
+digest of the committed `tasks/heldout/source-b.json` — the command compares them through the
+same loader and digest function the night uses. Both are declared-input checks, not new yield
+thresholds: they can only add a violation, never a way to proceed. A killed probe is
+**never resumed** — restart it fresh under a new `--run-id`; a killed **night** still resumes
+unchanged (below).
 
 ## The night
 

@@ -686,12 +686,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Decide whether the night proceeds behind a probe run, reading the run's ledger "
             "against the pre-committed rule "
             "(docs/planning/p2-rollouts/night-door/runbook.md:78-80): the night proceeds iff "
-            "every draw's harness is PASS and the recorded seed map is non-empty. Exits 0 "
-            "when the rule holds; 1 on a named violation — a draw whose harness is not PASS, "
-            "or an empty seed map — and no night runs behind it; 2 on a refusal an operator "
-            "can fix by retyping: a directory that is not a probe run, a ledger that cannot "
-            "be read, an incomplete run. There is no UNVERIFIED exit: this command reads "
-            "documents rather than running anything, so it either answers or refuses."
+            "every draw's harness is PASS, the recorded seed map is non-empty, the declared "
+            "draws is sampling.K, and — when --heldout is passed — the ledger's held-out "
+            "digest is the committed document's. Exits 0 when the rule holds; 1 on a named "
+            "violation — a draw whose harness is not PASS, an empty seed map, a declared "
+            "budget that is not sampling.K, or a held-out digest that is not the committed "
+            "document's (or no record at all) — and no night runs behind it; 2 on a refusal "
+            "an operator can fix by retyping: a directory that is not a probe run, a ledger "
+            "that cannot be read, an incomplete run, a --heldout document that cannot be read. "
+            "There is no UNVERIFIED exit: this command reads documents rather than running "
+            "anything, so it either answers or refuses."
         ),
     )
     check_probe.add_argument(
@@ -701,6 +705,19 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="<runs/id>",
         help=(
             "the probe run directory to decide, as a --probe night wrote it under runs/<id>/"
+        ),
+    )
+    check_probe.add_argument(
+        "--heldout",
+        type=Path,
+        default=None,
+        metavar="<path>",
+        help=(
+            "optional: the committed held-out document (tasks/heldout/source-b.json) the probe "
+            "must have excluded. Read through its own fail-closed loader; the ledger's recorded "
+            "digest is compared to the document's. A different digest, or a ledger with no "
+            "held-out record, is a named violation; an unreadable document is a refusal. "
+            "Without it the budget pin still decides"
         ),
     )
 
@@ -1303,16 +1320,18 @@ def run_check_probe_cli(args: argparse.Namespace) -> int:
     are the only five edges and that all five are function-local.
 
     **The exits are the existing contract, no fifth code**: the rule holds → 0, a named
-    violation → 1 (a draw whose harness is not `PASS`, or an empty seed map — the night does
-    not run behind it, and that is a finding, not a mistyped command), and a refusal an
-    operator can fix by retyping — a directory that is not a probe run, a ledger that cannot
-    be read, an incomplete run — → 2. There is no `UNVERIFIED` exit here: this command reads
-    documents rather than running anything, so it either answers or refuses.
+    violation → 1 (a draw whose harness is not `PASS`, an empty seed map, a declared draws that
+    is not `sampling.K`, or — with `--heldout` — a held-out digest that is not the committed
+    document's, or no held-out record at all; the night does not run behind it, and that is a
+    finding, not a mistyped command), and a refusal an operator can fix by retyping — a
+    directory that is not a probe run, a ledger that cannot be read, an incomplete run, a
+    `--heldout` document that cannot be read — → 2. There is no `UNVERIFIED` exit here: this
+    command reads documents rather than running anything, so it either answers or refuses.
     """
     from whetstone.loop.check_probe import REFUSALS, disclosure, run_check
 
     try:
-        report = run_check(args.run)
+        report = run_check(args.run, heldout=args.heldout)
     except REFUSALS as refusal:
         print(f"whetstone check-probe: {refusal}", file=sys.stderr)
         return USAGE_ERROR

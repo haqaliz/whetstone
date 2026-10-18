@@ -5,8 +5,9 @@ night proceeds iff the probe completes with the control arm `PASS` on every draw
 non-empty seed map — and this suite pins the command that holds it: `run_check(run)` reads
 one probe run directory and returns a `ProbeReport`. The rule's two conditions are enforced
 exactly as pre-committed — the fold compared against `Status` by identity, the seed map
-literally non-empty (`len(seeds) > 0`) — and every other shape of run directory is refused
-by name, never decided.
+literally non-empty (`len(seeds) > 0`) — and the two declared-input pins narrow it: the
+ledger's draws must be `sampling.K`, and, with `heldout=<doc>`, its held-out digest must be the
+committed document's. Every other shape of run directory is refused by name, never decided.
 
 The fixtures are real `Ledger` documents written by `run_ledger.write`, schema-valid **by
 construction**, so a doctored variant is a genuine adversary rather than a hand-rolled JSON
@@ -26,11 +27,18 @@ from pathlib import Path
 import pytest
 
 from loop.test_run_ledger import _ledger
-from whetstone.loop import check_probe, night
+from whetstone.loop import check_probe, heldout, night, sampling
 from whetstone.loop import draws as run_draws
 from whetstone.loop import ledger as run_ledger
 from whetstone.loop.sampling import Applied
 from whetstone.verify.verdict import Status
+
+#: The committed held-out document the night excludes, read by the test as its own input.
+_COMMITTED_HELDOUT = Path(__file__).resolve().parents[2] / "tasks" / "heldout" / "source-b.json"
+
+#: The held-out record a probe records: the shipped `_ledger()` fixture's placeholder digest and
+#: its 12 members. Overridable per test so a missing or mismatched record can be built.
+_HELDOUT_RECORD = run_ledger.HeldoutRecord(document_digest="d" * 64, membership_count=12)
 
 #: The seed map a genuine probe records: non-empty, in application order.
 _PROBE_SEEDS = (Applied(task_id="alpha", attempt=1, seed=1234),)
@@ -47,13 +55,14 @@ def _probe_run(
     tmp_path: Path,
     *,
     probe: int | None = 1,
-    draws: int = 2,
+    draws: int = sampling.K,
     seeds: tuple[Applied, ...] = _PROBE_SEEDS,
     harness: dict[str, Status] | None = None,
     recorded: tuple[run_ledger.DrawRecord, ...] | None = None,
     journals: bool = True,
     ledger: bool = True,
     unsealed: bool = False,
+    heldout_record: run_ledger.HeldoutRecord | None = _HELDOUT_RECORD,
 ) -> Path:
     """A probe-shaped run directory: a real written `Ledger` plus one journal per draw.
 
@@ -65,6 +74,8 @@ def _probe_run(
     re-based on the shipped generation before the seal: `claims` and `digest` dropped and the
     schema rewritten to `LEDGER_SCHEMA_V2`, the same way `_v2` re-bases the ledger suite's
     fixture. No real `/2` ledger exists, so this fixture is the tolerance's only carrier.
+    `heldout_record` is the ledger's held-out record; `None` builds a probe that applied no
+    split at all.
     """
     run = tmp_path / "runs" / "probe-001"
     run.mkdir(parents=True, exist_ok=True)
@@ -80,7 +91,7 @@ def _probe_run(
     base = _ledger()
     candidate = replace(
         base,
-        task_set=replace(base.task_set, probe=probe),
+        task_set=replace(base.task_set, probe=probe, heldout=heldout_record),
         checkpoint_digest=None,
         checkpoint_absent=(
             "this was a --probe 1 run: the control fold decides the gate, and no checkpoint "
@@ -147,7 +158,7 @@ def test_a_truncated_draws_recorded_is_incomplete(tmp_path: Path) -> None:
 
     with pytest.raises(check_probe.IncompleteRun) as refusal:
         check_probe.run_check(run)
-    assert "1 of 2" in str(refusal.value)
+    assert f"1 of {sampling.K}" in str(refusal.value)
 
 
 def test_a_missing_source_is_incomplete(tmp_path: Path) -> None:
@@ -177,11 +188,107 @@ def test_a_valid_probe_proceeds(tmp_path: Path) -> None:
 
     assert report.proceed is True
     assert report.violation is None
-    assert report.draws == 2
-    assert report.draws_recorded == 2
+    assert report.draws == sampling.K
+    assert report.draws_recorded == sampling.K
     assert report.sources == 2
     assert report.probe == 1
     assert report.seeds == 1
+
+
+def test_a_probe_at_another_budget_is_a_named_violation(tmp_path: Path) -> None:
+    """M2: the ledger's declared draws must equal `sampling.K`, not merely its own record.
+
+    The pre-committed budget is `sampling.K` imported by identity; a probe that ran any other
+    budget proves the harness at a size the night does not use, so it cannot stand behind one.
+    """
+    report = check_probe.run_check(_probe_run(tmp_path, draws=sampling.K - 1))
+
+    assert report.proceed is False
+    assert report.violation is not None
+    assert str(sampling.K) in report.violation
+    assert str(sampling.K - 1) in report.violation
+
+
+def _committed_heldout_digest() -> str:
+    """The committed document's digest, through the same function the night uses."""
+    document = json.loads(_COMMITTED_HELDOUT.read_text(encoding="utf-8"))
+    return heldout.document_digest_of(document)
+
+
+def test_a_matching_heldout_digest_proceeds(tmp_path: Path) -> None:
+    """M3: a probe that excluded the committed document proceeds exactly as before."""
+    digest = _committed_heldout_digest()
+    report = check_probe.run_check(
+        _probe_run(
+            tmp_path,
+            heldout_record=run_ledger.HeldoutRecord(
+                document_digest=digest, membership_count=12
+            ),
+        ),
+        heldout=_COMMITTED_HELDOUT,
+    )
+
+    assert report.proceed is True
+    assert report.violation is None
+
+
+def test_a_mismatched_heldout_digest_is_a_violation(tmp_path: Path) -> None:
+    """M3: a probe that excluded a different split is a named violation naming both digests."""
+    committed = _committed_heldout_digest()
+    recorded = "0" * 64
+    report = check_probe.run_check(
+        _probe_run(
+            tmp_path,
+            heldout_record=run_ledger.HeldoutRecord(
+                document_digest=recorded, membership_count=12
+            ),
+        ),
+        heldout=_COMMITTED_HELDOUT,
+    )
+
+    assert report.proceed is False
+    assert report.violation is not None
+    assert recorded in report.violation
+    assert committed in report.violation
+
+
+def test_a_probe_without_a_heldout_record_is_a_violation(tmp_path: Path) -> None:
+    """M3: a probe ledger that applied no split cannot prove the committed one was excluded."""
+    report = check_probe.run_check(
+        _probe_run(tmp_path, heldout_record=None),
+        heldout=_COMMITTED_HELDOUT,
+    )
+
+    assert report.proceed is False
+    assert report.violation is not None
+    assert "no held-out" in report.violation
+    assert _committed_heldout_digest() in report.violation
+
+
+def test_an_unreadable_heldout_document_is_a_refusal(tmp_path: Path) -> None:
+    """M3: a document the operator mistyped is a refusal, never a verdict about the probe."""
+    unreadable = tmp_path / "heldout.json"
+    unreadable.write_text("not json", encoding="utf-8")
+
+    with pytest.raises(check_probe.HeldoutUnreadable) as refusal:
+        check_probe.run_check(_probe_run(tmp_path), heldout=unreadable)
+    assert str(unreadable) in str(refusal.value)
+
+
+def test_a_refusal_takes_precedence_over_a_budget_violation(tmp_path: Path) -> None:
+    """Refusals come first: a typo in `--heldout` is exit 2 even when the probe is also short.
+
+    The two facts are independent, and the operator should see the mistyped path rather than a
+    budget violation that sends them looking at the wrong thing.
+    """
+    unreadable = tmp_path / "heldout.json"
+    unreadable.write_text("not json", encoding="utf-8")
+
+    with pytest.raises(check_probe.HeldoutUnreadable):
+        check_probe.run_check(
+            _probe_run(tmp_path / "short", draws=sampling.K - 1),
+            heldout=unreadable,
+        )
 
 
 def test_a_v2_probe_ledger_reads_unsealed_and_still_decides(tmp_path: Path) -> None:
@@ -234,7 +341,7 @@ def test_disclosure_states_the_decision_and_counts(tmp_path: Path) -> None:
     lines = check_probe.disclosure(report)
 
     assert any("PROCEED" in line for line in lines), lines
-    assert any("draws: 2" in line for line in lines), lines
+    assert any(f"draws: {sampling.K}" in line for line in lines), lines
     assert any("seeds: 1" in line for line in lines), lines
 
 
@@ -303,10 +410,11 @@ def test_the_probe_check_composes_by_identity() -> None:
     """AC10: every fact the decision reads is the shipped one, asserted `is`.
 
     A second spelling of a source name, the ledger's name, the schema gate, the verdict
-    vocabulary, or the journal path derivation would be a second answer to a question one
-    document already answers — and the day they disagreed neither document would say so.
+    vocabulary, the journal path derivation, the declared budget, or the held-out loader and
+    its digest would be a second answer to a question one document already answers — and the
+    day they disagreed neither document would say so.
     """
-    from whetstone.loop import draws, ledger
+    from whetstone.loop import draws, heldout, ledger
     from whetstone.verify import verdict
 
     assert check_probe.SOURCES[0] is night.PRIVATE
@@ -317,6 +425,9 @@ def test_the_probe_check_composes_by_identity() -> None:
     assert check_probe.Status is verdict.Status
     assert check_probe.evidence_paths is draws.evidence_paths
     assert check_probe.EVIDENCE_DIR is night.EVIDENCE_DIR
+    assert check_probe.K is sampling.K
+    assert check_probe.read_document is heldout.read_document
+    assert check_probe.document_digest_of is heldout.document_digest_of
 
 
 def test_refusals_are_named_and_closed_by_value_error() -> None:
@@ -326,4 +437,5 @@ def test_refusals_are_named_and_closed_by_value_error() -> None:
     assert check_probe.LedgerUnreadable in check_probe.REFUSALS
     assert check_probe.NotAProbe in check_probe.REFUSALS
     assert check_probe.IncompleteRun in check_probe.REFUSALS
+    assert check_probe.HeldoutUnreadable in check_probe.REFUSALS
     assert check_probe.REFUSALS[-1] is ValueError
