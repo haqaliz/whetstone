@@ -11,6 +11,8 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-19
+
 ### Added
 
 - **The K = 16 night's evidence path is hardened and its acceptance pinned; the K=16 night is unrun** (2026-10-18, `k16-night`). The night cannot erase its own evidence: a `write_checkpoint` or `verify_checkpoint` failure is recorded as `checkpoint_absent` with its type and message, and the ledger is still written with every draw recorded. `check-probe` now fails, by identity against `whetstone.loop.sampling.K`, when a probe's `draws` is not the declared budget, and — with the new `--heldout <doc>` flag — when the probe ledger's held-out digest is not the committed document's. `tests/test_k16_night_finding.py` reads a finding's declared run through `ledger.verify_document` and asserts every count it quotes against the ledger, skipping loudly until the finding exists. No number is claimed: the K=16 night is unrun, so no yield, checkpoint or gate decision exists under the new budget, and the finding is a follow-up commit.
