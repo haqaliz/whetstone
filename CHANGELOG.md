@@ -11,6 +11,12 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+### Added
+
+- **A finished night's failure partition is a command, and it renders to a page** (2026-10-19, `night-autopsy`). `python -m whetstone.bakeoff.night_autopsy --run runs/nights/<id>` reads one complete night offline and emits a `whetstone-night-autopsy/1` document plus a markdown render: the per-draw, per-task partition, reconciled against the ledger by identity (`run_ledger.counts_of` over the reconstructed journal `Rollout`s must equal the ledger's own `DrawRecord.counts`), with the coarse classes from `scoring.Outcome`, the causes from `attribution.Cause`, the fine shapes from `autopsy.classify_completion` and the solved predicate from `dataset.trainable`.
+- **It refuses a run missing its ledger, or a declared draw missing its journal or transcript, by name (exit 2), and writes nothing partial.** `NO_ORACLE`/`UNPROVISIONED` rollouts — a journal row, no transcript row — are counted, never treated as incompleteness, and a `NOT_APPLIED`/`NO_DIFF` row whose completion cannot be found is `UNATTRIBUTED` by name. The document and its render are written only under the documented gitignored roots, and are byte-identical across invocations and `PYTHONHASHSEED` 0/1.
+- **The first real partition is the K = 16 night.** The only stored night, night-001, has no ledger (training raised before it was written) and is refused by name, so its partition stays a manual read of its journals rather than a product of this command. **No number about any model is claimed**: the instrument explains a night, it does not measure one and does not increase yield.
+
 ## [0.26.0] - 2026-10-19
 
 ### Added
