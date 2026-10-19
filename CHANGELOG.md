@@ -11,6 +11,8 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-19
+
 ### Added
 
 - **A finished night's failure partition is a command, and it renders to a page** (2026-10-19, `night-autopsy`). `python -m whetstone.bakeoff.night_autopsy --run runs/nights/<id>` reads one complete night offline and emits a `whetstone-night-autopsy/1` document plus a markdown render: the per-draw, per-task partition, reconciled against the ledger by identity (`run_ledger.counts_of` over the reconstructed journal `Rollout`s must equal the ledger's own `DrawRecord.counts`), with the coarse classes from `scoring.Outcome`, the causes from `attribution.Cause`, the fine shapes from `autopsy.classify_completion` and the solved predicate from `dataset.trainable`.
