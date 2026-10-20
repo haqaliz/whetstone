@@ -23,6 +23,10 @@ from __future__ import annotations
 
 import ast
 import inspect
+import sys
+import types
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -204,4 +208,118 @@ def test_the_declared_precision_for_each_device_is_exact() -> None:
         'the pinned {"cuda": "bfloat16", "mps": "float16", "cpu": "bfloat16"}. A loose pin lets '
         "fp16/fp32/bf16 drift silently, and a reader can no longer tell which arithmetic a figure "
         "was measured under"
+    )
+
+
+def _install_fake_runtime(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """Install just enough of Torch/transformers/peft/datasets to watch the load call.
+
+    No runtime is installed anywhere in this suite by design, and the property under test is what
+    the loader *asks for* rather than what the library does with it. `from_pretrained` records its
+    keyword arguments; the rest of each module is the smallest surface `torch_trainer` and
+    `_load_torch` touch.
+    """
+    calls: list[dict[str, Any]] = []
+
+    class _FakeModel:
+        def to(self, device: str) -> _FakeModel:
+            return self
+
+        def eval(self) -> None:
+            return None
+
+        def save_pretrained(self, path: str) -> None:
+            Path(path).mkdir(parents=True, exist_ok=True)
+
+    class _FakeAutoModel:
+        @staticmethod
+        def from_pretrained(*args: Any, **kwargs: Any) -> _FakeModel:
+            calls.append(kwargs)
+            return _FakeModel()
+
+    class _FakeTokenizer:
+        pad_token = None
+        eos_token = "<eos>"
+
+    class _FakeDataset:
+        @staticmethod
+        def from_json(path: str) -> _FakeDataset:
+            return _FakeDataset()
+
+        def map(self, *args: Any, **kwargs: Any) -> _FakeDataset:
+            return self
+
+    class _TrainingArguments:
+        def __init__(self, **kwargs: Any) -> None:
+            self.kwargs = kwargs
+
+    class _Trainer:
+        def __init__(self, **kwargs: Any) -> None:
+            self.kwargs = kwargs
+
+        def train(self) -> None:
+            return None
+
+    torch = types.SimpleNamespace(
+        cuda=types.SimpleNamespace(
+            is_available=lambda: False,
+            reset_peak_memory_stats=lambda: None,
+            max_memory_allocated=lambda: 0,
+        ),
+        backends=types.SimpleNamespace(mps=types.SimpleNamespace(is_available=lambda: False)),
+        bfloat16="bfloat16",
+        float16="float16",
+        float32="float32",
+    )
+    transformers = types.SimpleNamespace(
+        AutoModelForCausalLM=_FakeAutoModel,
+        AutoTokenizer=types.SimpleNamespace(from_pretrained=lambda *a, **k: _FakeTokenizer()),
+        Trainer=_Trainer,
+        TrainingArguments=_TrainingArguments,
+    )
+    peft = types.SimpleNamespace(
+        LoraConfig=lambda **kwargs: kwargs,
+        get_peft_model=lambda model, config: model,
+    )
+    datasets = types.SimpleNamespace(Dataset=_FakeDataset)
+
+    for name, module in (
+        ("torch", torch),
+        ("transformers", transformers),
+        ("peft", peft),
+        ("datasets", datasets),
+    ):
+        monkeypatch.setitem(sys.modules, name, module)
+    return calls
+
+
+def test_the_trainer_asks_for_the_low_memory_load(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The 7B double copy: `from_pretrained` then `.to(mps)` materialises weights twice.
+
+    On unified memory the 0.5B arm's peak is consistent with two copies, and two 7B copies exceed
+    the MPS headroom — a `CapacityExceeded` that writes no checkpoint. `low_cpu_mem_usage` is a
+    necessary-condition fix; the 7B pre-flight remains the measurement of the real peak.
+    """
+    calls = _install_fake_runtime(monkeypatch)
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "train.jsonl").write_text("{}\n", encoding="utf-8")
+    request = sft.TrainingRequest(
+        model_path=tmp_path / "weights",
+        revision="ea3f2471",
+        data=data,
+        adapters=tmp_path / "out",
+        args=sft.TrainingArgs(),
+    )
+
+    torch_runtime.torch_trainer(request)
+
+    assert calls, "the trainer never called `from_pretrained`, so this proves nothing"
+    assert calls[0]["low_cpu_mem_usage"] is True, (
+        f"WHY THIS IS A FAILURE: the trainer loaded with {calls[0]!r}. Without "
+        "`low_cpu_mem_usage=True` the load materialises a second full copy on the CPU before "
+        "moving to MPS, which for a 7B base is the difference between fitting the headroom and "
+        "not starting at all"
     )

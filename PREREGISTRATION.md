@@ -326,6 +326,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-10-11 | The night re-mines the training pool; § 3's pinned "task set" is the scoring held-out split (§ 10.17) | 2 — adds a disclosure | No |
 | 2026-10-11 | The portability arm's CPU precision is declared `bfloat16` (§ 10.18) | 1 — pins the inputs of a measurement | Yes |
 | 2026-10-17 | The nightly loop's draw budget is raised from 8 to 16 (§ 10.19) | 1 — pins the inputs of a measurement | Yes |
+| 2026-10-20 | The main series moves to Torch/MPS on a pinned 7B HF base; the 32B/MLX series remains separate and unretired (§ 10.20) | 1 — pins the inputs of a new series | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1047,4 +1048,54 @@ none is claimed here — the amendment precedes the run, which is the whole of i
 It claims nothing about whether a higher budget yields a strict-`PASS`, nor that it is
 worth its cost; the § 3 baseline remains unspent, the gate's rule and exits are
 unchanged, and a zero is entirely possible. *"Accept the finding"* remains a legitimate
+outcome.
+
+### 10.20 The main series moves to Torch/MPS, on a pinned 7B base — 2026-10-20
+
+**Type 1 (§ 8.1): pins the inputs of a new series, committed before the training it governs
+runs.** It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not
+edit § 10.10**: this document is append-only, and the 32B/MLX pin keeps its text byte-intact.
+What changes is which series is the main one.
+
+**Why the series moves.** The product requirement is a model everyone can use, and an MLX adapter
+is loadable only on Apple Silicon. The loop's Torch/PEFT path emits a standard PEFT adapter
+(`adapter_model.safetensors`) that any `transformers`/`peft` stack can load, so the universal
+artifact is a property of the runtime rather than a preference. § 10.11 opened the portability arm
+for exactly this reason; this amendment promotes that runtime to the main series, on a base large
+enough to have a chance on the task family.
+
+**The base.** The series fine-tunes `Qwen/Qwen2.5-Coder-7B-Instruct`, pinned at the immutable
+revision `c03e6d358207e414f1eca0bb1891e29f1db0e242` (resolved 2026-10-20) and recorded by per-file
+hash in `weights/provenance.json` (gitignored — the weights never leave the box), re-hashed before
+a token is generated; a missing file or a mismatched hash refuses the run. The Torch/MPS sheet
+(`docs/planning/torch-mps-series/night-door/runbook.md`) names the same base and revision, and the
+run ledger records them, so the base this amendment pins and the base the night runs are one and
+the same input.
+
+**The runtime.** `torch` + PEFT on the Mac's Metal backend: device `mps`, precision `float16`
+(`DEVICE_PRECISION["mps"]` in `src/whetstone/loop/torch_runtime.py`), adapter format PEFT
+`adapter_model.safetensors`. The 32B/MLX series' runtime, and the arm's `bfloat16` CPU precision
+(§ 10.18), are untouched.
+
+**What does not change.** The held-out document is `tasks/heldout/source-b.json`, its
+`document_digest` unchanged from § 10.16; the draw budget `K = 16` (§ 10.19) and the retry count
+`R = 3` (§ 10.8) are unchanged. The corpus, the verifier, the gate rule and its exits do not move.
+
+**Comparability, stated plainly.** Every figure measured under the 32B/MLX series, or under any
+portability-arm base, is **non-comparable** to any figure measured under this series: different
+weights, a different runtime, a different device, different kernels and a different precision sit
+between them, and each is sufficient on its own to make the comparison meaningless. § 3 treats a
+change to a pinned input as starting over, and the old series is not extended. The 32B/MLX series
+remains a separate, **non-retired** evidence series: its nights, its reports and its findings stand
+as measured, and nothing here restates one of its figures as this series'.
+
+**No report home.** The gate record stays gitignored under `runs/`, and the series' finding lives
+under `docs/planning/torch-mps-series/`; this series creates no `reports/` directory.
+
+**What is not claimed.** No training has run under this series: no checkpoint, ledger or yield
+figure exists. At the time of this amendment no count has been measured under it and none is
+claimed here — the amendment precedes the training, which is the whole of its value. The § 3
+baseline remains unspent, nothing here claims the 7B fits the MPS headroom or that a Torch/MPS
+night selects a strict-`PASS`, and a zero is entirely possible. Should the probe, the pre-flight or
+the night find the machine cannot host the base, *"accept the finding"* remains a legitimate
 outcome.

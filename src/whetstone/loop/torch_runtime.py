@@ -129,6 +129,10 @@ def torch_trainer(request: TrainingRequest) -> TrainingResult:
     The dataset is the same `train.jsonl` the MLX path reads — one `{"text": ...}` record per
     line — so the two runtimes train on identical bytes and a difference between their adapters
     is a difference between the runtimes rather than between their inputs.
+
+    `low_cpu_mem_usage=True` reduces the CPU→MPS transient: without it the base is materialised
+    on the CPU and then again on MPS, which a 7B base cannot afford. It is a necessary-condition
+    fix, not a measurement — the 7B `train-arm` pre-flight is what settles whether the peak fits.
     """
     import torch
     from datasets import Dataset
@@ -146,7 +150,10 @@ def torch_trainer(request: TrainingRequest) -> TrainingResult:
         tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
-        str(request.model_path), revision=request.revision, dtype=dtype
+        str(request.model_path),
+        revision=request.revision,
+        dtype=dtype,
+        low_cpu_mem_usage=True,
     )
     model = get_peft_model(model, LoraConfig(**peft_lora_config(request.args)))
 
@@ -389,6 +396,9 @@ def _load_torch(
     knows how to map a saved adapter back onto the modules it was trained against. Reproducing
     that mapping here would be reimplementing the part of a library we depend on, which is the
     mistake the arm's own driver made (#34).
+
+    `low_cpu_mem_usage=True` for the trainer's reason: the load must not hold a full CPU copy and
+    then a full device copy. The 7B `train-arm` pre-flight is the measurement of the real peak.
     """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -406,7 +416,10 @@ def _load_torch(
     # become errors. CI's second mypy run — the one with the extra — is what surfaced that, and
     # the annotation is what stops the file typechecking on one machine only.
     model: Any = AutoModelForCausalLM.from_pretrained(
-        str(model_path), revision=revision, dtype=dtype
+        str(model_path),
+        revision=revision,
+        dtype=dtype,
+        low_cpu_mem_usage=True,
     )
 
     if adapter_path is not None:

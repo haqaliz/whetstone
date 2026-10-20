@@ -122,6 +122,7 @@ def run_arm(
     args: sft.TrainingArgs | None = None,
     trainer: sft.Trainer | None = None,
     runtime: BackendRecord | None = None,
+    prefer: str | None = None,
 ) -> ArmRun:
     """Probe, train and seal — through `sft`'s own constructors, every one of them.
 
@@ -140,7 +141,7 @@ def run_arm(
     5. **`write_checkpoint` seals**, with the versions block given the same backend record as the
        backend block, so the two cannot disagree about which runtime ran.
     """
-    runtime = backend_module.detect() if runtime is None else runtime
+    runtime = backend_module.detect(prefer=prefer) if runtime is None else runtime
     trainer = sft.trainer_for(runtime.name) if trainer is None else trainer
     dataset_digest, examples = read_selection(run)
 

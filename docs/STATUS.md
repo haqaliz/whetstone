@@ -10,6 +10,18 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The main series moves to Torch/MPS, and the universal path is wired; the night is unrun** (2026-10-20, `torch-mps-series`). The MLX series emits an MLX adapter, loadable only on Apple Silicon; the product requirement is a model everyone can use. The MPS arm proved the cross-platform format (a PEFT LoRA on `torch`/`mps`/`float16`), so this unit makes Torch/PEFT the new main series and keeps the 32B/MLX series as a separate, non-retired evidence series.
+
+**What shipped.**
+- **The pre-registration.** `PREREGISTRATION.md` § 10.20 (Type 1, 2026-10-20) pins the new series: `Qwen/Qwen2.5-Coder-7B-Instruct` at `c03e6d358207e414f1eca0bb1891e29f1db0e242`, Torch/PEFT on `mps`, `float16`, with the held-out document and `K = 16`/`R = 3` unchanged. Every figure is non-comparable to the MLX series and the portability arm; the old series is not extended. The amendment-log row and a dated `docs/ROADMAP.md` correction record it; no `reports/` home is created.
+- **The runtime is nameable.** `whetstone run --night --runtime {mlx,torch}` and `train-arm --runtime …` resolve the backend through the existing `prefer` path; with both runtimes installed, `AmbiguousBackend`/`NoBackend` are named exit-2 refusals instead of a traceback. The partition guard's edge list is unchanged (no module-scope backend import).
+- **The MPS load path.** Both Torch `from_pretrained` calls request `low_cpu_mem_usage=True`, reducing the CPU→MPS transient that a 7B cannot afford on unified memory.
+- **The sheet.** `docs/planning/torch-mps-series/night-door/runbook.md` and `tests/test_torch_mps_runbook_guards.py`: the 7B HF base is retained (the MLX sheet excludes it), `--runtime torch`, a torch-only environment, the MPS backend read-back, the 7B fit caveat, the 52-task denominator, the held-out document and the resume rule; the MLX sheet and its guard are untouched.
+
+**What is not claimed.** The Torch/MPS night is **unrun**: no yield, training set, checkpoint or gate verdict exists under the new series, and no number is claimed. The 7B fit on MPS is **unmeasured** — the probe writes no checkpoint and never reaches the capacity probe; the `train-arm` pre-flight on the 7B is the measurement, and a `CapacityExceeded` routes to a 3B fallback or a further load fix, never to a lowered headroom. The 7B class has historically produced zero strict-`PASS` on this task family; the only measured nonzero is the 32B MLX series. The § 3 baseline and the P4 headline are a **follow-up**: the baseline door is MLX-only, so this unit stops at the first gate decision. The reward path, the gate rule, `tasks/` and the held-out document are untouched.
+
+---
+
 **A finished night's failure partition is a command, and it renders to a page** (2026-10-19, `night-autopsy`). A night's ledger records, per draw and per source, only `(denominator, unverified, solved)` and the control arm's status; it records no cause for any rollout. The per-rollout facts that explain a zero — `outcome`, `strict`, `weak`, `verdict_kinds`, `detail` — live only in the per-draw journals, and `bakeoff.attribution` reads one transcript while `bakeoff.autopsy` needs a `whetstone-attribution/1` sidecar no night writes. This unit makes the hand-join a command: `python -m whetstone.bakeoff.night_autopsy --run runs/nights/<id>` reads one complete night, reconstructs the journal `Rollout`s, reconciles their partition against the ledger, and emits a `whetstone-night-autopsy/1` document with a markdown page beside it.
 
 **What shipped.**
