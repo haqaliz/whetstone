@@ -225,6 +225,28 @@ def test_the_torch_generator_conforms_to_the_generator_protocol() -> None:
     assert issubclass(torch_runtime.TorchGenerator, Generator)
 
 
+def test_the_generator_loader_asks_for_the_low_memory_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate/generator loader pays the same CPU→MPS double copy the trainer does.
+
+    A candidate 7B is loaded twice in a real gate decision — the candidate and the incumbent —
+    so the transient is not only a training concern. `low_cpu_mem_usage` is the same
+    necessary-condition fix at the second call site; the 7B pre-flight is still the measurement.
+    """
+    from loop.test_torch_trainer import _install_fake_runtime
+
+    calls = _install_fake_runtime(monkeypatch)
+    torch_runtime._load_torch(_model_dir(tmp_path), "ea3f2471", None)
+
+    assert calls, "the loader never called `from_pretrained`, so this proves nothing"
+    assert calls[0]["low_cpu_mem_usage"] is True, (
+        f"WHY THIS IS A FAILURE: the loader asked for {calls[0]!r}. Without the keyword it holds "
+        "a full CPU copy and then a full MPS copy, and a 7B gate evaluation can exceed the "
+        "headroom before it scores a single held-out task"
+    )
+
+
 def test_the_torch_sampler_string_is_not_a_copy_of_mlxs() -> None:
     """The two libraries do not implement the same sampler, so they must not claim to.
 

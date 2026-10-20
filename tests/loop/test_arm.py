@@ -28,9 +28,11 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from whetstone import cli
 from whetstone.bakeoff.scoring import Outcome
 from whetstone.loop import arm, backend, sft
 from whetstone.loop import dataset as training
@@ -336,3 +338,89 @@ def test_the_arm_reads_through_the_verifying_reader_by_identity() -> None:
         "selection could reach training through a path the verifying reader never sees"
     )
     assert "verify_document" in source
+
+
+# --- The runtime flag on the door ------------------------------------------------------------
+
+#: A complete arm invocation. Every test below differs from a working command by one thing.
+ARM_INVOCATION = [
+    "train-arm",
+    "--run",
+    "/tmp/night-001",
+    "--base",
+    "/tmp/weights",
+    "--revision",
+    REVISION,
+    "--repo-id",
+    BASE,
+    "--out",
+    "/tmp/checkpoint",
+    "--run-seed",
+    "20260906",
+]
+
+
+def _substitute_arm(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """Replace the arm's driver with one that records its arguments and prints a fake record."""
+    calls: list[dict[str, Any]] = []
+
+    def fake(**arguments: Any) -> object:
+        calls.append(arguments)
+        return object()
+
+    def recorded(_: object) -> dict[str, Any]:
+        return {
+            "directory": "/tmp/checkpoint",
+            "digest": "d" * 64,
+            "files": [],
+            "backend": {},
+            "capacity_probe": {},
+        }
+
+    monkeypatch.setattr(arm, "run_arm", fake)
+    monkeypatch.setattr(arm, "recorded", recorded)
+    return calls
+
+
+@pytest.mark.parametrize(
+    ("declared", "expected"),
+    [(None, None), ("torch", backend.TORCH), ("mlx", backend.MLX)],
+)
+def test_the_named_runtime_reaches_the_arm(
+    monkeypatch: pytest.MonkeyPatch, declared: str | None, expected: str | None
+) -> None:
+    """The arm is the other door a mixed machine reaches; it must name the runtime too."""
+    calls = _substitute_arm(monkeypatch)
+    argv = ARM_INVOCATION if declared is None else [*ARM_INVOCATION, "--runtime", declared]
+
+    cli.main(argv)
+
+    assert calls[0]["prefer"] == expected, (
+        f"WHY THIS IS A FAILURE: the arm was handed prefer={calls[0].get('prefer')!r} for "
+        f"--runtime {declared!r}, so the 7B fit pre-flight would train on a runtime nobody named"
+    )
+
+
+@pytest.mark.parametrize(
+    "raised",
+    [
+        backend.AmbiguousBackend("both mlx and torch are installed and none was named"),
+        backend.NoBackend("the backend 'torch' was asked for and is not installed here"),
+    ],
+)
+def test_a_backend_refusal_on_the_arm_is_a_named_usage_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], raised: Exception
+) -> None:
+    """A mixed or empty environment is a typo the operator can fix, not a broken harness."""
+    def fake(**_: Any) -> object:
+        raise raised
+
+    monkeypatch.setattr(arm, "run_arm", fake)
+    code = cli.main(ARM_INVOCATION)
+    captured = capsys.readouterr()
+
+    assert code == cli.USAGE_ERROR, (
+        f"WHY THIS IS A FAILURE: a backend refusal exited {code} rather than the usage code"
+    )
+    assert "whetstone train-arm:" in captured.err and str(raised) in captured.err, captured.err
+    assert "Traceback" not in captured.err, captured.err

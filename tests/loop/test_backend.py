@@ -524,6 +524,31 @@ def _ledger() -> Any:
     return built()
 
 
+def test_a_named_runtime_is_honoured_against_every_present_set() -> None:
+    """The choice itself, on fake present sets: named wins, ambiguity still refuses.
+
+    `--runtime` is only as honest as this function. With one runtime and no preference, today's
+    answer must be unchanged; with both, only a name resolves it; a name that is not present is
+    refused rather than substituted.
+    """
+    assert backend.choose(installed=(backend.TORCH,)) == backend.TORCH, (
+        "WHY THIS IS A FAILURE: a single-runtime machine stopped behaving as it did before the "
+        "flag existed"
+    )
+    assert backend.choose(installed=(backend.TORCH,), prefer=backend.TORCH) == backend.TORCH
+    assert backend.choose(installed=(backend.MLX, backend.TORCH), prefer=backend.TORCH) == (
+        backend.TORCH
+    )
+    assert backend.choose(installed=(backend.MLX, backend.TORCH), prefer=backend.MLX) == (
+        backend.MLX
+    )
+
+    with pytest.raises(backend.NoBackend):
+        backend.choose(installed=(backend.MLX,), prefer=backend.TORCH)
+    with pytest.raises(backend.AmbiguousBackend):
+        backend.choose(installed=(backend.MLX, backend.TORCH))
+
+
 def test_a_backend_name_never_carries_an_accelerator() -> None:
     """#30: the name says which runtime; `device` says which chip. Guarded, not merely intended.
 

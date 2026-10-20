@@ -494,6 +494,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     night.add_argument(
+        "--runtime",
+        choices=("mlx", "torch"),
+        metavar="{mlx,torch}",
+        help=(
+            "the runtime this night runs. On a machine with both installed the runtime must be "
+            "named: which one ran decides whether this night's numbers may be compared with "
+            "another's, so an unnamed ambiguity is refused rather than resolved by an order. An "
+            "unavailable runtime is refused too, never substituted"
+        ),
+    )
+    night.add_argument(
         "--no-retries",
         action="store_true",
         help=(
@@ -860,6 +871,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="where the adapter and its provenance are written",
     )
     arm.add_argument(
+        "--runtime",
+        choices=("mlx", "torch"),
+        metavar="{mlx,torch}",
+        help=(
+            "the runtime this arm trains on. On a machine with both installed it must be named, "
+            "for the same reason `run --night` requires it: the runtime is part of what makes the "
+            "result comparable. An unavailable runtime is refused, never substituted"
+        ),
+    )
+    arm.add_argument(
         "--run-seed",
         required=True,
         type=int,
@@ -1189,6 +1210,7 @@ def run_night(args: argparse.Namespace) -> int:
             probe=args.probe,
             stratum=args.stratum,
             retries=not args.no_retries,
+            prefer=args.runtime,
         )
     except REFUSALS as refusal:
         print(f"whetstone run: {refusal}", file=sys.stderr)
@@ -1439,6 +1461,7 @@ def run_train_arm_cli(args: argparse.Namespace) -> int:
             run=args.run,
             destination=args.out,
             run_seed=args.run_seed,
+            prefer=args.runtime,
         )
     except (OSError, ValueError, RuntimeError) as refusal:
         print(f"whetstone train-arm: {refusal}", file=sys.stderr)

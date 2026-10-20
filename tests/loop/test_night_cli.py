@@ -19,6 +19,7 @@ module-scope import would have been bound before the patch.
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ from typing import Any
 import pytest
 
 from whetstone import cli
+from whetstone.loop import backend
 from whetstone.loop import dataset as training
 from whetstone.loop import night as loop_night
 from whetstone.verify.verdict import Status
@@ -222,6 +224,80 @@ def test_an_unproven_harness_is_unverified_rather_than_a_usage_error(
 
     monkeypatch.setattr(loop_night, "run_night", fake)
     assert cli.main(INVOCATION) == cli.UNVERIFIED_EXIT
+
+
+def _subcommand(name: str) -> argparse.ArgumentParser:
+    """The registered parser for one subcommand, by name."""
+    for action in cli.build_parser()._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return action.choices[name]
+    raise AssertionError("the parser registered no subcommands, so this proves nothing")
+
+
+@pytest.mark.parametrize("command", ["run", "train-arm"])
+def test_both_doors_name_the_runtime_with_the_backend_constants(command: str) -> None:
+    """The flag's choices are the backend module's own names, not a second spelling.
+
+    Pinned here rather than imported into `cli.py` at module scope: the partition guard allows
+    `cli.py` exactly the file-local edges it documents, and a module-scope `whetstone.loop.backend`
+    import would be a new one.
+    """
+    choices = _subcommand(command)._option_string_actions["--runtime"].choices
+
+    assert set(choices) == {backend.MLX, backend.TORCH}, (
+        f"WHY THIS IS A FAILURE: {command}'s --runtime accepts {sorted(choices)}, not the "
+        f"backend module's own {{'mlx', 'torch'}}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("declared", "expected"),
+    [(None, None), ("torch", backend.TORCH), ("mlx", backend.MLX)],
+)
+def test_the_named_runtime_reaches_the_loop(
+    monkeypatch: pytest.MonkeyPatch, declared: str | None, expected: str | None
+) -> None:
+    """On a mixed machine the operator's word is what `detect` is told, and absent stays absent.
+
+    The no-flag case must pass `None` rather than a guessed default: with one runtime installed
+    that keeps today's behaviour, and with two it keeps the named ambiguity refusal.
+    """
+    calls = _substitute(monkeypatch, _Night(dataset=_Dataset(), checkpoint=_Checkpoint()))
+    argv = INVOCATION if declared is None else [*INVOCATION, "--runtime", declared]
+
+    cli.main(argv)
+
+    assert calls[0]["prefer"] == expected, (
+        f"WHY THIS IS A FAILURE: the door passed prefer={calls[0].get('prefer')!r} for "
+        f"--runtime {declared!r}. A dropped preference runs the other runtime while the evidence "
+        "is labelled with the one the operator named"
+    )
+
+
+@pytest.mark.parametrize(
+    "raised",
+    [
+        backend.AmbiguousBackend("both mlx and torch are installed and none was named"),
+        backend.NoBackend("the backend 'torch' was asked for and is not installed here"),
+    ],
+)
+def test_a_backend_refusal_is_a_named_usage_error_not_a_traceback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], raised: Exception
+) -> None:
+    """`run --night` on a mixed or empty machine can be re-typed with an answer; it is exit 2."""
+    def fake(**_: Any) -> _Night:
+        raise raised
+
+    monkeypatch.setattr(loop_night, "run_night", fake)
+    code = cli.main(INVOCATION)
+    captured = capsys.readouterr()
+
+    assert code == cli.USAGE_ERROR, (
+        f"WHY THIS IS A FAILURE: a backend refusal exited {code}. On a machine with both runtimes "
+        "the door tracebacks instead of telling the operator to pass --runtime"
+    )
+    assert "whetstone run:" in captured.err and str(raised) in captured.err, captured.err
+    assert "Traceback" not in captured.err, captured.err
 
 
 def test_the_disclosure_reaches_the_terminal(

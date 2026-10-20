@@ -69,6 +69,7 @@ from whetstone.loop import backend as backend_runtime
 from whetstone.loop import dataset as training
 from whetstone.loop import ledger as run_ledger
 from whetstone.loop import sampling, sft
+from whetstone.loop.backend import AmbiguousBackend, NoBackend
 from whetstone.loop.backend import Backend as BackendRecord
 from whetstone.loop.draws import Drawn, sample
 from whetstone.loop.heldout import (
@@ -206,6 +207,7 @@ def run_night(
     trainer: sft.Trainer | None = None,
     seeder: Seeder | None = None,
     runtime: BackendRecord | None = None,
+    prefer: str | None = None,
 ) -> Night:
     """Run a night and return what it produced. The order below is the design.
 
@@ -252,7 +254,7 @@ def run_night(
     # Detected HERE, before a single token is generated. A night whose runtime cannot be
     # identified has nothing to label its evidence with, and discovering that after 26 hours of
     # rollouts is how this project already lost one night's worth of work.
-    runtime = backend_runtime.detect() if runtime is None else runtime
+    runtime = backend_runtime.detect(prefer=prefer) if runtime is None else runtime
     os.environ[HF_HUB_OFFLINE] = "1"
 
     # The re-mine runs at the TOP, before `load_task_roots`, so the grown corpus is what
@@ -862,11 +864,14 @@ def _refuse_published_root(root: Path, flag: str) -> None:
 #: Every refusal a night raises that is an **operator's error** rather than a finding: a private
 #: root pointed at a published directory, a weights provenance that does not match the disk, a
 #: `--only` that matches nothing or several, a dev-subset id that excludes nothing, a held-out
-#: document that cannot be read or whose membership resolves nowhere, an empty task set.
+#: document that cannot be read or whose membership resolves nowhere, an empty task set, and a
+#: runtime that is absent or was not named on a machine holding both.
 #: Collected here so `cli.py` — a guarded root, which may hold exactly one function-local
 #: import into this package — can map them to the documented usage code without importing five
 #: modules of the bake-off to name them.
 REFUSALS: tuple[type[Exception], ...] = (
+    AmbiguousBackend,
+    NoBackend,
     TranscriptNotPrivate,
     ManyCandidates,
     UnknownCandidate,
