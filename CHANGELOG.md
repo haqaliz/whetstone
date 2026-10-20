@@ -11,6 +11,8 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-20
+
 ### Added
 
 - **The main series moves to Torch/PEFT on MPS, and the artifact is universal** (2026-10-20, `torch-mps-series`). `PREREGISTRATION.md` § 10.20 pins the new series — `Qwen/Qwen2.5-Coder-7B-Instruct` at `c03e6d358207e414f1eca0bb1891e29f1db0e242`, Torch/PEFT on `mps`, `float16`, the held-out document unchanged — and declares every figure non-comparable to the MLX series, which remains separate and unretired. `whetstone run --night --runtime {mlx,torch}` (and `train-arm`) names the runtime; with both installed, the ambiguity is a named exit-2 refusal instead of a traceback. Both Torch loads request `low_cpu_mem_usage=True` to reduce the CPU→MPS transient.
