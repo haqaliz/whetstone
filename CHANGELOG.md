@@ -11,6 +11,12 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+### Added
+
+- **The main series moves to Torch/PEFT on MPS, and the artifact is universal** (2026-10-20, `torch-mps-series`). `PREREGISTRATION.md` § 10.20 pins the new series — `Qwen/Qwen2.5-Coder-7B-Instruct` at `c03e6d358207e414f1eca0bb1891e29f1db0e242`, Torch/PEFT on `mps`, `float16`, the held-out document unchanged — and declares every figure non-comparable to the MLX series, which remains separate and unretired. `whetstone run --night --runtime {mlx,torch}` (and `train-arm`) names the runtime; with both installed, the ambiguity is a named exit-2 refusal instead of a traceback. Both Torch loads request `low_cpu_mem_usage=True` to reduce the CPU→MPS transient.
+- **A Torch/MPS night sheet and its own guard** (`docs/planning/torch-mps-series/night-door/runbook.md`, `tests/test_torch_mps_runbook_guards.py`) retain the 7B HF base, pin `--runtime torch`, the torch-only environment, the MPS backend read-back, the 7B fit caveat and the 52-task denominator; the MLX sheet and guard are untouched.
+- **The series shipped; the Torch/MPS night is unrun.** No yield, checkpoint or gate decision exists under the new series, and no number is claimed. The 7B fit is unmeasured until the `train-arm` pre-flight; the 7B class has historically produced zero strict-`PASS`, and the § 3 baseline/headline remains a follow-up because the baseline door is MLX-only.
+
 ## [0.27.0] - 2026-10-19
 
 ### Added

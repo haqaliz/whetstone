@@ -1145,6 +1145,95 @@ def test_the_cpu_dtype_amendment_pins_the_precision() -> None:
     )
 
 
+def test_the_torch_mps_amendment_pins_the_new_series() -> None:
+    """§ 10.20 makes the Torch/MPS 7B series the main series, in the § 10.18 shape.
+
+    The new series' base, revision, runtime, device and precision are pinned inputs (§ 8.1), and
+    every one of them is committed before the training it governs runs. The amendment must carry
+    the Type 1 line, the no-threshold/no-§ 1/§ 4/§ 6-rewording line, the non-comparability
+    paragraph ending "the old series is not extended", the no-training-run sentence and its
+    amendment-log row. The base and revision are cross-pinned against the Torch/MPS sheet (one
+    input, two documents), and `float16` is cross-pinned against
+    `torch_runtime.DEVICE_PRECISION["mps"]`, so a drift between the document, the sheet and the
+    code fails by name.
+    """
+    flat = _flat(_read(PREREGISTRATION))
+    base = "Qwen/Qwen2.5-Coder-7B-Instruct"
+    revision = "c03e6d358207e414f1eca0bb1891e29f1db0e242"
+    precision = torch_runtime.DEVICE_PRECISION["mps"]
+    assert precision == "float16", (
+        f"DEVICE_PRECISION['mps'] is {precision!r}, not 'float16'. § 10.20 pins the MPS series' "
+        "precision, and the amendment's literal must equal the constant the runtime reads."
+    )
+    assert "### 10.20" in flat, (
+        f"{PREREGISTRATION} no longer carries a § 10.20 amendment. The Torch/MPS series' base, "
+        "revision, runtime, device and precision are pinned inputs (§ 8.1), and they must be "
+        "recorded as a dated Type 1 amendment committed before the training they govern; without "
+        "it, a night would train a series the pre-registration never named."
+    )
+    assert (
+        "Type 1 (§ 8.1): pins the inputs of a new series, committed before the training it "
+        "governs runs" in flat
+    ), (
+        f"{PREREGISTRATION} § 10.20 no longer states the Type 1 pin of a new series' inputs. "
+        "§ 8.1's rule is that the input is pinned before the training it governs, and the "
+        "sentence must say the series is new rather than an edit of an existing one."
+    )
+    assert "introduces no success threshold" in flat and (
+        "rewords nothing in § 1, § 4 or § 6" in flat
+    ), (
+        f"{PREREGISTRATION} § 10.20 no longer carries the no-threshold/no-rewording line. "
+        "§ 8.3 forbids an amendment introducing a success threshold, and this one must also "
+        "leave § 1, § 4 and § 6 untouched or the new series reads as a loosening."
+    )
+    assert "does not edit § 10.10" in flat, (
+        f"{PREREGISTRATION} § 10.20 no longer states that § 10.10 is untouched. This document is "
+        "append-only, and the amendment that opened the 32B series must keep its text byte-intact."
+    )
+    assert base in flat and revision in flat, (
+        f"{PREREGISTRATION} § 10.20 no longer names the pinned base {base!r} at revision "
+        f"{revision!r}. A base named without an immutable revision is not a pinned input."
+    )
+    assert 'DEVICE_PRECISION["mps"]' in flat and "`float16`" in flat, (
+        f"{PREREGISTRATION} § 10.20 no longer names the runtime input. The series' precision "
+        "lives in `DEVICE_PRECISION[\"mps\"]`, and the amendment must name both the constant "
+        "and the dtype it declares."
+    )
+    assert "non-comparable" in flat and "different kernels and a different precision" in flat, (
+        f"{PREREGISTRATION} § 10.20 no longer carries the non-comparability paragraph naming "
+        "weights, runtime, device, kernels and precision. Every 32B/MLX or arm figure is "
+        "non-comparable to one measured under this series (§ 3), and each of those differences "
+        "is sufficient on its own."
+    )
+    assert "the old series is not extended" in flat, (
+        f"{PREREGISTRATION} § 10.20 no longer states that the old series is never extended. "
+        "§ 3 treats a change to a pinned input as starting over, and the amendment must say so."
+    )
+    assert "No training has run" in flat, (
+        f"{PREREGISTRATION} § 10.20 no longer states that no training has run under the series. "
+        "The sentence is the disclosure shape § 10.18 pins, and its absence would let a figure "
+        "appear without a record of when the claim began."
+    )
+    assert "the § 3 baseline remains unspent" in flat, (
+        f"{PREREGISTRATION} § 10.20 no longer states that the § 3 baseline is unspent. A new "
+        "series starts no baseline measurement, and a reader must be told so."
+    )
+    assert (
+        "2026-10-20 | The main series moves to Torch/MPS on a pinned 7B HF base; the 32B/MLX "
+        "series remains separate and unretired (§ 10.20) | 1 — pins the inputs of a new series "
+        "| Yes" in flat
+    ), (
+        f"{PREREGISTRATION}'s amendment log no longer records the § 10.20 row as a Type 1 pin of "
+        "a new series' inputs. An amendment that is not in the log is a silent edit (§ 8.4)."
+    )
+    sheet = _flat(_read("docs/planning/torch-mps-series/night-door/runbook.md"))
+    assert base in sheet and revision in sheet, (
+        "docs/planning/torch-mps-series/night-door/runbook.md no longer names the same base and "
+        f"revision § 10.20 pins ({base!r} @ {revision!r}). The amendment and the sheet describe "
+        "one input; a drift means the night trains something the pre-registration never named."
+    )
+
+
 def test_the_roadmap_records_the_re_derived_split_by_dated_correction() -> None:
     """AC8. § 12 referenced the § 10.7 split as live; the correction records the re-derivation.
 
@@ -1264,6 +1353,24 @@ def test_the_write_up_records_the_k16_night_guards() -> None:
     assert "the K=16 night is unrun" in _read("CHANGELOG.md"), (
         "CHANGELOG.md no longer records that the K=16 night is unrun. This file records what "
         "shipped, and the guards shipped without running the night or claiming a number."
+    )
+
+
+def test_the_write_up_records_the_torch_mps_series() -> None:
+    """A capability is written up in the commit that lands it (`CLAUDE.md`).
+
+    The series landed before the operator's night: § 10.20, the `--runtime` flag, the MPS load
+    path and the Torch/MPS sheet. The night is unrun, so the entry claims no number. The STATUS
+    entry is append-only and the CHANGELOG phrase is asserted anywhere in the file so it survives
+    a release moving `[Unreleased]` content under a version.
+    """
+    assert "torch-mps-series" in _read("docs/STATUS.md"), (
+        "docs/STATUS.md no longer records the torch-mps-series unit. The repo's rule is that a "
+        "capability is written up in the commit that lands it, and STATUS.md is that history."
+    )
+    assert "the Torch/MPS night is unrun" in _read("CHANGELOG.md"), (
+        "CHANGELOG.md no longer records that the Torch/MPS night is unrun. This file records "
+        "what shipped, and the series shipped without running the night or claiming a number."
     )
 
 

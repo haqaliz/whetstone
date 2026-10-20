@@ -812,6 +812,21 @@ of the harness, whose control arm has been `INTACT` on every draw of every night
 > is preserved here as a quotation rather than left standing, so the roadmap states the tree
 > it ships in and the change is recorded.
 
+> **Corrected 2026-10-20, when the main series moved to Torch/MPS
+> (`PREREGISTRATION.md` § 10.20).** This section's hardware-ceiling paragraph — *"3B is the
+> largest base this runtime supports as written"* — and the 32B pin it was read against —
+> *"`mlx-community/Qwen2.5-Coder-32B-Instruct-4bit` as the fine-tuned base, before night #1
+> trains"* — describe the plan as it stood. The **main series is now the Torch/MPS 7B series**:
+> `Qwen/Qwen2.5-Coder-7B-Instruct` at revision `c03e6d358207e414f1eca0bb1891e29f1db0e242`,
+> `torch` + PEFT, device `mps`, precision `float16` (`PREREGISTRATION.md` § 10.20, Type 1,
+> 2026-10-20). The 32B/MLX series is **not retired**: it remains a separate, non-comparable
+> evidence series whose measured figures stand. Every figure measured under the 32B/MLX series,
+> or under any portability-arm base, is **non-comparable** to one measured under the new series,
+> and the old series is never extended. The sentences quoted above are kept as they were written;
+> the change is recorded here rather than edited in. No training has run under the new series and
+> no figure is claimed here; § 14's M1 remains the only identified lever on the zero, and a
+> bigger, universal base is not a claim that it works.
+
 **The corpus does not grow, and that is a gap in the thesis rather than a missing feature.**
 `whetstone mine` mints tasks from real donor commits, but a night reads a frozen directory and
 never re-mines. Expert iteration against a fixed task set converges by construction: a night can
