@@ -11,6 +11,8 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-10-22
+
 ### Added
 
 - **Provisioning reliability for the one public task, and a sheet that pre-warms and `caffeinate`s; no night was run** (2026-10-22, `public-task-offline`). For every caller, the public task is provisioned offline: a local mirror, read by `materialise` through `WHETSTONE_REPO_MIRRORS` (canonical URL → bare repo), removes the last network dependency from a night — a missing mirror is a named `CheckoutError`, never a silent fallback, and the verifier's global/system git isolation is unchanged. A clean pre-provisioned checkout at `base_commit` is reused with no clone (another commit is checked out detached when the object is present; a wrong commit, a dirty tree and a populated non-git directory are refused by name), and `_git` neutralises hooks with `core.hooksPath=/dev/null`. The Torch/MPS sheet mirrors flask by hand, exports the mapping in a `printf` form so `$REPO` expands, sets `UV_OFFLINE=1`, copies the probe's `b885fb84763091db` digest dir into the night workspace, and wraps both doors in `caffeinate -dimsu`; the workspace sentence now allows that one pre-warmed dir. The `src/whetstone/verify/repo.py` change is declared in `reward-path-amendments.json` (`2026-10-22-public-task-offline`); it is provisioning, not verdict semantics, and no STRICT/WEAK verdict moved.
