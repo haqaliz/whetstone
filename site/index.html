@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Whetstone — a model that trains itself overnight</title>
+<meta name="description" content="Whetstone points a local nightly loop at your own repositories, grades every candidate fix by re-executing the tests you hold, and LoRA-trains your base on the wins. Pre-release, macOS only. The claim is not yet measured." />
+<meta name="color-scheme" content="light" />
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-inner">
+    <a class="brand" href="#top" aria-label="Whetstone, back to top">
+      <img class="brand-mark" src="assets/logo.svg" alt="" aria-hidden="true" width="40" height="20" />
+      <span class="brand-name">Whetstone</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="#loop">The loop</a>
+      <a href="#why">Why re-execution</a>
+      <a href="#status">Status</a>
+      <a href="#preregistered">Pre-registered</a>
+      <a class="nav-out" href="https://github.com/haqaliz/whetstone">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <div class="hero-blade" aria-hidden="true"></div>
+    <div class="wrap hero-inner">
+      <p class="eyebrow">Local · Nightly · Execution-verified</p>
+
+      <div class="hero-head">
+        <img class="hero-mark" src="assets/logo.svg" alt="The Whetstone mark: a W drawn as two rounded parallelograms plus a dot." width="104" height="53" />
+        <h1 id="hero-title">Whetstone</h1>
+      </div>
+
+      <p class="tagline">A model that trains itself overnight — and proves it didn't cheat.</p>
+
+      <p class="lede">
+        Point it at your own repositories. Each night a local loop proposes candidate fixes,
+        grades every one by re-executing the tests you hold in a sandbox — never by asking a
+        model what it thinks — keeps only the wins, and LoRA-trains your local base on them.
+      </p>
+
+      <div class="install" role="group" aria-label="Install Whetstone">
+        <div class="install-label">
+          <span>Install</span>
+          <span class="install-meta">published as <code>whetstonehq</code></span>
+        </div>
+        <pre class="install-code"><span class="prompt" aria-hidden="true">$ </span><code>uv tool install whetstonehq</code></pre>
+        <p class="install-note">
+          CLI and import package are both <code>whetstone</code>. The nightly loop needs the MLX
+          extra: <code>uv tool install "whetstonehq[mlx]"</code>. macOS on Apple Silicon, Python 3.10+, and <code>uv</code>.
+        </p>
+      </div>
+
+      <div class="hero-links">
+        <a class="btn btn-edge" href="https://github.com/haqaliz/whetstone">Source on GitHub</a>
+        <a class="btn btn-ghost" href="https://pypi.org/project/whetstonehq/">PyPI · whetstonehq</a>
+        <span class="chip chip-warn">pre-release · macOS only</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="loop" aria-labelledby="loop-title">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="section-num">01</p>
+        <h2 id="loop-title">The loop, in three movements</h2>
+        <p class="section-intro">
+          A night is a honing pass: a hard, honest edge, repeated strokes, and a record of what
+          actually came off the blade. Nothing on the reward path asks a model for an opinion.
+        </p>
+      </div>
+
+      <ol class="steps">
+        <li class="step">
+          <p class="step-num">01 · Task</p>
+          <h3>A broken commit, and tests that fail</h3>
+          <p>
+            A task is a repository at a known-broken commit, plus the tests that currently fail
+            and the tests that must stay green. Point the miner at your own repository and it
+            proves each candidate task live before keeping it.
+          </p>
+          <p class="step-detail">The tests are the operator's artifact. The patch is the policy's. They never mix.</p>
+        </li>
+
+        <li class="step">
+          <p class="step-num">02 · Reward</p>
+          <h3>The process exit status</h3>
+          <p>
+            The policy proposes a patch. The reward is whether the declared tests pass and the
+            previously-passing ones still do — in a sandbox with no network, confined writes and
+            a fixed seed. Held tests are restored from the golden copy <em>after</em> the patch
+            lands.
+          </p>
+          <p class="step-detail">No reference answer, no similarity score, no model opinion on the reward path.</p>
+        </li>
+
+        <li class="step">
+          <p class="step-num">03 · Train</p>
+          <h3>Only the wins become examples</h3>
+          <p>
+            A night draws seeded attempts at every task under a frozen generation contract and
+            keeps only the rollouts the strict verifier passed. Those are the training set for a
+            LoRA run on your local base — verified by construction, so an unverified rollout can
+            never become an example.
+          </p>
+          <p class="step-detail">Everything stays on your machine; runs and checkpoints are gitignored.</p>
+        </li>
+      </ol>
+
+      <div class="morning">
+        <div class="morning-copy">
+          <p class="section-num">In the morning</p>
+          <h3>The verified delta, and what strictness caught</h3>
+          <p>
+            The report renders one night's sealed evidence into a page a person reads: the
+            verified delta against the held-out set, what changed, and the reward-hacking count —
+            rollouts a weaker check would have scored as wins.
+          </p>
+          <p>
+            A checkpoint is promoted only on a <em>proven</em> gain over a held-out verified set.
+            Unverified is never a win, and never rendered as <code>PASS</code>.
+          </p>
+        </div>
+        <aside class="formula" aria-labelledby="formula-title">
+          <p class="formula-title" id="formula-title">The reward-hacking count</p>
+          <pre><code>N := count(rollouts where
+      WEAK == PASS and STRICT == FAIL)</code></pre>
+          <p class="formula-note">
+            Reported verbatim as “N rollouts a weaker check would have scored as wins.” A claim
+            about what the strictness caught, not about intent.
+          </p>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-warm" id="why" aria-labelledby="why-title">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="section-num">02</p>
+        <h2 id="why-title">Why re-execution, not a judge</h2>
+      </div>
+
+      <div class="why-grid">
+        <blockquote class="citation">
+          <p>
+            <a href="https://github.com/haqaliz/whetstone#why-whetstone"><cite>“One Token to Fool LLM-as-a-Judge”</cite></a>
+            reports up to <strong>35% false positives</strong> against a judge reward.
+          </p>
+          <footer>Quoted exactly from the README · Why Whetstone.</footer>
+        </blockquote>
+
+        <div class="why-copy">
+          <p class="kicker">A guess about correctness is not a verification of it.</p>
+          <p>
+            And a policy will find the guess. The usual patch — have a model grade the model —
+            leaves the reward in the same place as the thing being measured.
+          </p>
+          <p>
+            Whetstone's reward is a process exit status. The verifier checks out the broken commit
+            into a sandbox, rejects any patch that touches an operator-held test path, restores
+            every held test from the golden copy, then runs the declared tests with a zero-skip
+            rule and an exact executed-set check — so <code>-k</code>, <code>-m</code> and
+            <code>--deselect</code> cannot quietly remove a test from the run.
+          </p>
+          <p>
+            The reward path is a guarded root: a scoped AST guard fails the build if an inference
+            library is even <em>importable</em> from it. The classic failure mode is designed out
+            rather than monitored for.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-status" id="status" aria-labelledby="status-title">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="section-num">03</p>
+        <h2 id="status-title">Status: honest</h2>
+        <p class="section-intro">
+          Read this before anything else. The machinery is built and the claim is not yet measured.
+        </p>
+      </div>
+
+      <div class="status-grid">
+        <div class="status-built">
+          <h3>Built and tested</h3>
+          <p>
+            The reward, task ingestion, the nightly loop, the never-regress promotion gate, the
+            baseline machinery, the honest-number report writer, the signed morning report, and
+            the probe decision gate.
+          </p>
+          <p class="status-links">
+            <a href="https://github.com/haqaliz/whetstone#status-what-exists-today">The full status table</a>
+            <span aria-hidden="true">·</span>
+            <a href="https://github.com/haqaliz/whetstone#coverage--limits-stated-exactly">Coverage &amp; limits</a>
+          </p>
+        </div>
+
+        <div class="status-unmeasured">
+          <h3>Not measured: everything the product claims</h3>
+          <ul class="status-facts">
+            <li>
+              <strong>The nightly loop has run once.</strong> Night #1: 496 rollouts over 26.6
+              hours, with the control arm <code>INTACT</code> on every one of them.
+            </li>
+            <li>
+              <strong>It ended without a checkpoint.</strong> The training step raised inside the
+              pinned <code>mlx-lm</code> before it wrote one. No trained model exists.
+            </li>
+            <li>
+              <strong>The promotion gate has never scored a real checkpoint.</strong>
+            </li>
+            <li>
+              <strong>The morning report has never been rendered from a real night.</strong>
+            </li>
+          </ul>
+          <p class="status-bottom">
+            A training set and a yield figure now exist. A trained model does not. No performance
+            number, gain, or benchmark figure appears on this page, because none has been measured.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="preregistered" aria-labelledby="preregistered-title">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="section-num">04</p>
+        <h2 id="preregistered-title">Pre-registered</h2>
+      </div>
+
+      <div class="prereg">
+        <p class="prereg-lede">
+          <code>PREREGISTRATION.md</code> was committed on 2026-07-29, in P1, before any number
+          about a model existed. It fixed what any future number may claim — the headline, the
+          metrics, the reporting rules, and the known limitations — while the outcome was still
+          invisible. That timing is the whole of its value.
+        </p>
+        <div class="prereg-rule">
+          <p>When the first honest number exists, it will be published whether it is a gain, a zero, or a regression.</p>
+          <p class="prereg-small">Publication is not gated on the result. There is no configuration of the numbers under which nothing is published.</p>
+          <a href="https://github.com/haqaliz/whetstone/blob/master/PREREGISTRATION.md">Read PREREGISTRATION.md</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap foot-inner">
+    <div class="foot-brand">
+      <img class="foot-mark" src="assets/logo.svg" alt="" aria-hidden="true" width="56" height="28" />
+      <p>Whetstone — sharpening a model against a hard, honest edge.</p>
+    </div>
+    <ul class="foot-links">
+      <li><a href="https://github.com/haqaliz/whetstone/blob/master/LICENSE">Apache-2.0</a></li>
+      <li><a href="https://github.com/haqaliz/whetstone">Repository</a></li>
+      <li><a href="https://pypi.org/project/whetstonehq/">PyPI</a></li>
+    </ul>
+    <p class="foot-fine">Pre-release · macOS only. No analytics, no cookies.</p>
+  </div>
+</footer>
+
+</body>
+</html>
