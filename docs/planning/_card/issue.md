@@ -1,79 +1,81 @@
-# feat torch-mps-series — a universal main series on Torch/PEFT
+# chore public-task-offline — a long night must not end on the public task's network
 
-**Source:** inline brief, from the 2026-10-20 decision after the MPS arm. No GitHub issue exists for
-this slug. Branch `feat/torch-mps-series/aliz`, worktree
-`.claude/worktrees/feat-torch-mps-series`.
+**Source:** inline brief, from the two lost Torch/MPS nights (`torch-mps-night-001`,
+`torch-mps-night-002`, both `EXIT 3` `UNVERIFIED`). No GitHub issue exists for this slug. Branch
+`chore/public-task-offline/aliz`, worktree `.claude/worktrees/chore-public-task-offline`.
 
-## Brief
+## The evidence, from two runs
 
-The MLX series produces an **MLX adapter**, loadable only on Apple Silicon. The user wants a model
-**everyone can use**, and the MPS arm proved the cross-platform path locally: a Torch/PEFT LoRA
-(`torch 2.14.1`, `mps`, `float16`, 0.5B base) trained in ~21 minutes and sealed a PEFT adapter that
-any `transformers`/`peft` stack can load on CUDA, CPU, MPS, Linux, Windows or Mac. That arm is a
-demo, not a model: it trained on night #1's 6 examples and `check-leakage` exits 1 (4 of 6 touch
-`donor-a-c6e4d4c4de87`).
+Both nights drew all 832 rollouts and then refused:
 
-This unit plans the **Torch/PEFT main series on the Mac's MPS**, with a base large enough to have a
-chance at a strict-`PASS` and small enough to fit the declared MPS headroom. The artifact is a
-universal PEFT adapter; the private corpus never leaves the machine. The MLX 32B series remains a
-separate, Apple-only evidence series and may be run later.
+```
+the control arm proved nothing about the harness ... none of its 1 tasks reached INTACT
+```
 
-**The MPS ceiling, measured:** the arm's backend records `device_memory_bytes = 30,150,672,384`
-(30.15 GB) and the declared headroom is 0.85 × that = **25.6 GB**. A 7B base at `float16` is ~14 GB
-and fits; a 14B at `float16` is ~28 GB and does not fit the declared headroom. The base is
-therefore a **7B-class HF model**, not the MLX 4-bit directories on disk (those are MLX format and
-the Torch runtime cannot load them).
+The one public task, `pallets__flask-4045`, was `SKIPPED` in all 16 draws:
 
-**Honest risk, stated before anything runs:** the 7B-class base has historically produced **zero**
-strict-`PASS` on this task family in the MLX format-hardening arm; the only nonzero yield measured
-is the 32B. A Torch/MPS 7B night may also select nothing. A zero is a valid published outcome; the
-response is not a looser verifier.
+```
+the environment for task 'pallets__flask-4045' could not be built:
+CheckoutError: could not clone 'https://github.com/pallets/flask.git':
+fatal: unable to access ... Could not resolve host: github.com
+```
+
+The public task is processed **last** (the loop is task-major), so the failure lands at the end of a
+5–6 h night and takes the whole run with it. `_select` is right to refuse: a run of zeroes against
+an unproven harness is not a result about any base. But the cause is a **network dependency at the
+end of a long run**, not a fact about the 7B — and it has now cost two nights.
+
+The short probe cloned the same task successfully; the long nights failed only at the end. The Mac
+was not held awake (`caffeinate` was missing), and a global git `insteadOf` mirror was deliberately
+ignored: `verify/repo.py:_git` sets `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null`
+so no machine config can change what gets verified. That isolation is correct and stays.
+
+## The fix
+
+1. **Reuse a pre-provisioned checkout.** `materialise(task, destination)` currently clones
+   unconditionally and raises `CheckoutError: destination path already exists` if the destination is
+   populated — the same failure the worktrees skill warns about on a reused workspace. It should
+   treat an existing checkout at `task.base_commit` as provisioned and skip the clone, with no
+   network. An existing checkout at another commit is moved to the base commit when the object is
+   present locally; when it is not, it is a named `CheckoutError`, never a silent wrong commit.
+2. **The operator pre-warms the public task.** The probe's workspace already holds the flask
+   checkout and venv under its digest directory. The sheet gains a step that copies that digest
+   directory into the night workspace before the night, so the one network task is provisioned from
+   a proven local copy. The private tasks clone local donor repos and never needed the network.
+3. **`caffeinate` the night.** The night command is wrapped in `caffeinate -dimsu` (macOS), so the
+   machine cannot sleep through a long run. The sheet and its guard pin it.
+
+Nothing here touches the reward: the strict verifier, the sandbox, the task contract and the
+held-out document are unchanged. The `_git` config isolation is not weakened.
 
 ## Acceptance criteria (written first)
 
-1. **A Type 1 `PREREGISTRATION.md` amendment** pins the new main series: runtime `torch` on `mps`,
-   precision `float16`, the base repo id and immutable revision, and the fact that its figures are
-   **non-comparable** to every MLX figure and to the portability arm's; the MLX series is not
-   retired, it is a separate series. The amendment is committed **before** the night that records it.
-2. **The base is fetched and recorded** through the existing weight fetch, with `==`-style
-   provenance (repo id, revision, hashes), and it fits the MPS headroom as measured by the capacity
-   probe.
-3. **A Torch/MPS night sheet** exists for the new series, held by a guard: the same corpus, dev
-   subset, held-out document and `check-probe` pins as the MLX sheet, but the Torch runtime, the 7B
-   base, the torch-only environment, absolute paths, and the pause/resume rule. It names no
-   worktree.
-4. **A probe on MPS exits 0** through `check-probe` (control `PASS` every draw, seed map non-empty,
-   `draws == sampling.K`, held-out digest matches), and the probe's ledger records the Torch/MPS
-   backend.
-5. **The night** writes a ledger; if it selects at least one strict-`PASS`, it writes a sealed v2
-   PEFT checkpoint whose provenance records `torch`/`mps`/`float16`. If it selects none, the ledger
-   states the zero and the finding accepts it.
-6. **`check-leakage` exits 0** on the night's clean training set, and **`gate` returns
-   `promoted`/`rejected`** on the Torch/MPS candidate against the **untrained Torch/MPS incumbent**
-   (a cross-runtime comparison is refused, correctly).
-7. **The finding** records the partition, the universal artifact (or the zero), the pause/resume
-   behaviour actually observed, and no number the ledger does not carry.
-8. **Nothing on the reward path moves:** `src/whetstone/verify/`, `tasks/`, the held-out document
-   and the gate rule are byte-unchanged; the MLX series and its reports are untouched.
+1. `materialise` on a destination that already holds `base_commit` succeeds **without invoking
+   `git clone` or any network operation**; a test with an unreachable `repo_url` proves it.
+2. A destination at another commit with the base object present is checked out to the base commit;
+   with the object absent, the call raises `CheckoutError` naming the commit (no silent wrong
+   commit).
+3. A missing destination still clones exactly as today (existing tests unchanged).
+4. A `provision`/`Interpreters` test proves a pre-populated digest directory is reused, and the
+   public task's control arm can run from it with `repo_url` unreachable.
+5. The Torch/MPS night sheet wraps the command in `caffeinate -dimsu`, and
+   `tests/test_torch_mps_runbook_guards.py` pins it.
+6. `src/whetstone/verify/`'s reward semantics, `tasks/`, the held-out document and the gate rule
+   are unchanged apart from `materialise`'s reuse branch; the adversarial and reward-path suites
+   stay green.
 
 ## Core-loop placement
 
-Element **② the nightly improvement loop** (a second production runtime) and element **③ the
-never-regress gate** (a Torch/MPS candidate against a Torch/MPS incumbent). The reward (①) is
-untouched: the same STRICT verifier, sandbox, operator-held tests and held-out document.
+Element **② the nightly loop**'s operator reliability, and the **verifier's provisioning** boundary
+(not its reward path). `UNVERIFIED` remains `UNVERIFIED`; nothing is promoted.
 
 ## Roadmap grounding
 
-- `docs/ROADMAP.md` § 14 M1: a night must select ≥ 1 strict-`PASS`; the 32B MLX arm is the only
-  base with a measured nonzero, and its artifact is Apple-only.
-- `reports/portability-arm/report.md`: the arm exists to demonstrate the loop on a second runtime
-  and emit the adapter in the **interchange format**; it claims no delta. `PREREGISTRATION.md`
-  § 10.11 and § 10.18 pin the arm and the CPU dtype.
-- `docs/STATUS.md`: the portability arm's CPU host (x131) cannot run `bfloat16` — measured at
-  13,000–18,500 s/iteration on an AVX2-only i7-8650U — which is why this series runs on MPS.
-- `CLAUDE.md` #3/#4/#5: local/private, build what improves with the base, ship the honest number.
-
-## Related issues (context only)
-
-- **#64** (open) — the patch-application wall; the representation directions are spent.
-- **#62** (open) — held-out split identity; out of scope.
+- `docs/ROADMAP.md` § 8: the public SWE-bench fetch is the declared network exception; the draw is
+  meant to be offline. A checkout that needs the network at verification time is the same exception
+  leaking into the run.
+- `docs/planning/torch-mps-series/`: the series and its sheet; the two lost nights are its first
+  operator runs.
+- `src/whetstone/verify/repo.py:57-90` (`materialise`), `:155-200` (`_git`'s config isolation);
+  `src/whetstone/bakeoff/scoring.py:296-362` (`Interpreters`); the worktrees skill's
+  "destination path already exists" warning.

@@ -8,6 +8,14 @@
         "src/whetstone/verify/sandbox.py"
       ],
       "reason": "The verifier could not run off macOS at all. `sandbox.py` refused on any non-Darwin platform, which was the correct behaviour for a sandbox that cannot contain -- but the STRICT verifier is the reward and the sandbox is its boundary, so the reward existed on exactly one operating system. This amendment adds a bubblewrap backend for Linux behind the same `run_confined` seam, enforcing the same three properties by different means: `--unshare-all` for network denial, and `--ro-bind / /` plus exactly one `--bind <scope>` for write confinement -- the inverse of Seatbelt's `(deny file-write*)` plus one allow, landing in the same place. No property is relaxed and no profile is weakened; the macOS path is byte-for-byte the same policy it was. The mechanism is probed rather than inferred from a filename, because Ubuntu 24.04 ships `bwrap` and blocks it, and a sandbox that fails open is worse than none. Running the suite on a real Ubuntu 24.04 host found three defects a Mac could not have surfaced: a `--tmpfs /tmp` that let writes outside the scope succeed, a never-started marker matching only `sandbox-exec:` so a command bubblewrap could not start came back FAIL rather than UNVERIFIED, and two probes whose vocabulary was Seatbelt's errno rather than the property. All three are fixed here; the fifteen containment assertions now pass on both platforms."
+    },
+    {
+      "id": "2026-10-22-public-task-offline",
+      "recorded_on": "2026-10-22",
+      "paths": [
+        "src/whetstone/verify/repo.py"
+      ],
+      "reason": "The one public task's checkout needed the network at the end of a long night, so its control arm could not run and two six-hour nights were lost to UNVERIFIED. `materialise` is the boundary every caller meets, so the fix lives here: an explicit local mirror (`WHETSTONE_REPO_MIRRORS`), reuse of a clean pre-provisioned checkout at `base_commit` (never deleted, never cloned over), and repo-local hooks neutralised with `core.hooksPath=/dev/null` plus `GIT_NO_LAZY_FETCH=1`. No verdict moves: STRICT and WEAK, the sandbox, the task contract, the held-out document and the gate rule are untouched; the reward is still the same re-execution against the same operator-held tests. The two lost nights are the evidence for the change, and the new tests exercise the mirror, the reuse and the hook refusal."
     }
   ]
 }

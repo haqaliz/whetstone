@@ -1,6 +1,6 @@
 """The one way the reward path is allowed to move, and the shape that permission has to take.
 
-Three guards freeze `src/whetstone/verify/` byte-identical against `origin/master`, because a
+Four guards freeze `src/whetstone/verify/` byte-identical against `origin/master`, because a
 branch that publishes counts must not also change the thing those counts were graded against —
 a modified verifier means the measurement and the measured drift apart, and *nothing in the
 output would look wrong while it happened*. That reasoning is sound and this module does not
