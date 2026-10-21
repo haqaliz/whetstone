@@ -36,6 +36,7 @@ from pathlib import Path
 
 import pytest
 
+from bakeoff.reward_amendments import AMENDMENTS_FILE, undeclared
 from bakeoff.test_night_autopsy import night
 from whetstone.bakeoff import attribution, autopsy, night_autopsy, scoring
 from whetstone.loop import dataset
@@ -240,15 +241,27 @@ def test_the_reward_path_and_corpus_did_not_move() -> None:
     modified `verify/` file means the measurement and the thing it measures drift apart, and the
     counts describe a verifier that no longer exists; a modified `tasks/` file means the corpus the
     partition is keyed by changed under it. Either would be invisible in the output.
+
+    A declared move is permitted and an undeclared one is not; changing the reward is allowed,
+    never quietly: declare the files and the reason in `reward-path-amendments.json`.
     """
+    # `--name-only`, not `--stat`: the guard now has to answer "which files moved" rather
+    # than "did anything move", because a DECLARED move is permitted and an undeclared one is
+    # not. The freeze itself is unchanged — what changed is that there is now exactly one way
+    # through it, and it leaves a committed artefact behind (`reward_amendments`).
     result = _git(
-        ["diff", "--stat", "origin/master", "--", "src/whetstone/verify", "tasks"], cwd=REPO_ROOT
+        ["diff", "--name-only", "origin/master", "--", "src/whetstone/verify", "tasks"],
+        cwd=REPO_ROOT,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "", (
-        f"the reward path or the corpus moved on this branch:\n{result.stdout}\n"
+    moved = frozenset(line for line in result.stdout.splitlines() if line.strip())
+    unauthorised = undeclared(moved, REPO_ROOT)
+    assert unauthorised == frozenset(), (
+        f"the reward path or the corpus moved on this branch with no amendment: "
+        f"{sorted(unauthorised)}\n\n"
         "WHY THIS IS A FAILURE: a branch that publishes a partition must not also change the "
         "reward the rollouts were graded against or the corpus they were drawn from — the "
         "measurement and the measured drift apart and nothing in the output looks wrong while it "
-        "happens."
+        f"happens. Changing the reward is allowed, but never quietly: declare it in "
+        f"{AMENDMENTS_FILE}."
     )
