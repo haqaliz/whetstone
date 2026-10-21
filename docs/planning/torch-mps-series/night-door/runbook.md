@@ -32,6 +32,11 @@ Run one night at a time. The Torch path seeds `torch.manual_seed` globally, so a
 drawing in the same session perturbs this run's draws. The determinism claim (same seed →
 byte-identical training set) is scoped to a machine running one night.
 
+Both door commands are wrapped in `caffeinate -dimsu`: the public task is processed last, and a
+sleeping Mac dropped the network after 832 rollouts on two separate nights. `-s` holds only while
+the machine is on **power**; `-d/-i/-m/-u` still apply on battery, but a night is committed to on
+AC.
+
 ## Candidate resolution (retained, decided before the run)
 
 **Retained: `Qwen/Qwen2.5-Coder-7B-Instruct` at revision
@@ -87,20 +92,42 @@ load fix or the 3B fallback. Do not read a green probe as proof that the 7B trai
 ## Before the night
 
 1. **Empty the workspace.** `$REPO/runs/<torch-night-run-id>-workspace` must not exist or must be
-   empty (the probe's own likewise, before its command). The run is not resumable from a partially
-   deleted workspace.
+   empty except the pre-warmed public digest dir (below); the probe's own must not exist or must be
+   empty before its command. The run is not resumable from a partially deleted workspace.
 2. **Declare the inputs.** `--run-id`, `--run-seed` and `--recorded-on` are typed by the operator
    before the run and written down in the operator's own log. None is read from a clock or
    generated. This sheet declares **two** run ids — `<torch-probe-run-id>` for the probe, then
    `<torch-night-run-id>` for the night — distinct tokens, never one reused for both.
 3. **Run the probe first.** The chain is validated cheaply before a night is committed to.
 
+## Going offline (before the probe)
+
+The one public task (`pallets__flask-4045`) is processed last; both lost nights cloned it after
+the Mac had slept and the network dropped. The run therefore takes the task's repository from a
+local mirror, explicitly, and holds the machine awake.
+
+The mirror is refreshed by hand — the only network use on this sheet:
+
+```bash
+git clone --mirror https://github.com/pallets/flask.git "$REPO/runs/flask-mirror.git"
+export WHETSTONE_REPO_MIRRORS=$(printf '{"https://github.com/pallets/flask.git":"%s/runs/flask-mirror.git"}' "$REPO")
+export UV_OFFLINE=1
+```
+
+If the mirror already exists, refresh it with `git -C "$REPO/runs/flask-mirror.git" fetch --all
+--prune` instead of cloning. The `printf` builds the JSON with `$REPO` already expanded, so the
+mapping the verifier subprocesses inherit is absolute. The mirror is an operator input, never
+`~/.gitconfig`: the verifier still nulls the global and system config. It must contain the task's
+`base_commit`; a stale mirror fails the detached checkout by name rather than silently reaching
+GitHub. `UV_OFFLINE=1` makes a cold uv cache fail loudly before the run instead of reaching an
+index mid-night.
+
 ## The probe pass
 
 **Run with CWD at the primary checkout (`$REPO`):**
 
 ```bash
-uv run --extra torch whetstone run --night \
+caffeinate -dimsu uv run --extra torch whetstone run --night \
   --probe 2 \
   --runtime torch \
   --tasks $REPO/tasks/local/donor-b \
@@ -151,10 +178,26 @@ must equal the digest of the committed `tasks/heldout/source-b.json`. A killed p
 resumed** — restart it fresh under a new `<torch-probe-run-id>`; a killed **night** still resumes
 unchanged (below).
 
+## The pre-warm (after the probe, before the night)
+
+The probe has already built the public task's digest dir. Copy it into the night workspace so
+`provision` finds the checkout and the venv without a network:
+
+```bash
+mkdir -p "$REPO/runs/<torch-night-run-id>-workspace/environments"
+cp -a "$REPO/runs/<torch-probe-run-id>-workspace/environments/b885fb84763091db" "$REPO/runs/<torch-night-run-id>-workspace/environments/"
+```
+
+The literal `b885fb84763091db` is the `Interpreters` key for the committed public manifest's pins
+(python and pins only — the digest excludes the repo and commit), and a test cross-pins it. A
+manifest pin change moves the digest, so the copy fails loudly instead of silently cloning. The
+private tasks clone their local donors and need no pre-warm. The control arm and the oracle clone
+into fresh destinations; those are covered by the mirror, not by this copy.
+
 ## The night
 
 ```bash
-uv run --extra torch whetstone run --night \
+caffeinate -dimsu uv run --extra torch whetstone run --night \
   --runtime torch \
   --tasks $REPO/tasks/local/donor-b \
   --tasks $REPO/tasks/local/donor-a \

@@ -27,7 +27,9 @@ Properties this sheet owns, in addition to the shape the MLX guard pins:
    held-out document on both doors and on `check-probe`, and the resume rule;
 9. the night re-mines from the operator-declared donor; the probe does not;
 10. operator-declared run ids (never `probe-001`/`night-001`), the finding home under
-    `docs/planning/`, no `/reports/` value, and the § 10.20 citation.
+    `docs/planning/`, no `/reports/` value, and the § 10.20 citation;
+11. the public task is provisioned offline: a flask mirror export, `UV_OFFLINE=1`, the probe's
+    digest dir pre-warmed into the night workspace, and `caffeinate -dimsu` on both doors.
 """
 
 from __future__ import annotations
@@ -65,6 +67,19 @@ LEAKAGE_CHECK = "whetstone check-leakage"
 #: The torch-only environment the whole sheet runs under: the primary venv is mixed and carries
 #: the arm's ad-hoc installs, so the extra is named on every command.
 ENVIRONMENT = "uv run --extra torch"
+
+#: Both doors are wrapped in `caffeinate`: two nights drew every rollout and then found the
+#: network gone at the one public task, because the Mac slept. `-s` holds only on AC power.
+CAFFEINATE = "caffeinate -dimsu"
+
+#: The one public task's canonical URL and the operator's local bare mirror of it. The mirror is
+#: an explicit input the run inherits, never ambient git config (`_git`'s isolation stays).
+FLASK_URL = "https://github.com/pallets/flask.git"
+MIRROR = "$REPO/runs/flask-mirror.git"
+
+#: The digest dir `provision` keys the committed public manifest's pins to. A literal, because
+#: the digest excludes the repo and commit: a pin change must re-clone, and fail offline.
+PUBLIC_DIGEST = "b885fb84763091db"
 
 #: The candidate this series retains. The base must be the plain HF repo — the on-disk MLX 4-bit
 #: directories are not Torch-loadable — and the full id is the value that cannot also match an
@@ -308,6 +323,77 @@ def test_both_doors_name_the_torch_runtime_in_the_torch_environment() -> None:
     ):
         assert block and ENVIRONMENT in block, (
             f"WHY THIS IS A FAILURE: the {label} block does not run under `{ENVIRONMENT}`"
+        )
+
+
+def test_both_doors_hold_the_machine_awake() -> None:
+    """A night is 5-6 hours; the Mac slept and the public task's clone lost its network.
+
+    The prefix is on the door blocks only: `check-probe` and `check-leakage` read local files and
+    finish in seconds. `-s` holds only while the machine is on power; `-d/-i/-m/-u` still apply.
+    """
+    for block in _door_blocks(_bash_blocks(_runbook())):
+        assert block.startswith(f"{CAFFEINATE} {ENVIRONMENT} {DOOR}"), (
+            f"WHY THIS IS A FAILURE: a door block does not begin with `{CAFFEINATE} "
+            f"{ENVIRONMENT} {DOOR}`. The public task is processed last; a sleeping Mac dropped "
+            "the network after 832 rollouts and the whole night was UNVERIFIED"
+        )
+
+
+def test_the_sheet_can_provision_the_public_task_offline() -> None:
+    """The mirror is an export, not git config, and the printf form lets `$REPO` expand."""
+    text = _runbook()
+    flat = _flat(text)
+    assert f'git clone --mirror {FLASK_URL} "{MIRROR}"' in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not name the one human-run network step — "
+        f"`git clone --mirror {FLASK_URL} \"{MIRROR}\"` — so the mirror the run reads is "
+        "never refreshed from the canonical URL"
+    )
+    assert (
+        "export WHETSTONE_REPO_MIRRORS=$(printf "
+        f"'{{\"{FLASK_URL}\":\"%s/runs/flask-mirror.git\"}}' \"$REPO\")"
+    ) in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not export WHETSTONE_REPO_MIRRORS as a JSON "
+        "mapping of the canonical flask URL to the mirror, built with printf so `$REPO` expands. "
+        "Without the mapping the control arm and oracle clone the unreachable URL"
+    )
+    assert "export UV_OFFLINE=1" in text, (
+        "WHY THIS IS A FAILURE: the sheet does not set UV_OFFLINE=1. A cold uv cache would reach "
+        "an index mid-night instead of failing loudly before the run"
+    )
+
+
+def test_the_sheet_pre_warms_the_public_digest_dir() -> None:
+    """The digest dir is the `provision` half; the mirror covers every `materialise` clone."""
+    flat = _flat(_runbook())
+    assert (
+        f'cp -a "$REPO/runs/{PROBE_RUN_ID}-workspace/environments/{PUBLIC_DIGEST}" '
+        f'"$REPO/runs/{NIGHT_RUN_ID}-workspace/environments/"'
+    ) in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not copy the probe's public digest dir "
+        f"`{PUBLIC_DIGEST}` into the night workspace. The literal is the committed manifest's "
+        "`Interpreters` key; a copied-at-run-time path is a digest that can change silently"
+    )
+
+
+def test_the_workspace_may_hold_only_the_pre_warmed_digest_dir() -> None:
+    """The old 'must be empty' sentence contradicts the pre-warm; say the exception."""
+    text = _runbook()
+    flat = _flat(text)
+    assert "empty except the pre-warmed public digest dir" in flat, (
+        "WHY THIS IS A FAILURE: the sheet still says the night workspace must be empty, which "
+        "the pre-warm makes false. The exception must be stated, or an operator deletes the "
+        "paid-for digest dir before the night"
+    )
+    assert "need no pre-warm" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not say the private tasks need no pre-warm. They "
+        "clone local donors, and an operator copying digest dirs for them has wasted the step"
+    )
+    for token in HISTORICAL_IDS:
+        assert token not in text, (
+            f"WHY THIS IS A FAILURE: the sheet names the historical run id {token!r}. The pre-warm "
+            "addresses the operator's own `<torch-probe-run-id>`; a past run's workspace is not "
+            "this run's evidence"
         )
 
 

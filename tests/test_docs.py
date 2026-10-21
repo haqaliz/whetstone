@@ -1374,6 +1374,25 @@ def test_the_write_up_records_the_torch_mps_series() -> None:
     )
 
 
+def test_the_write_up_records_public_task_offline() -> None:
+    """A capability is written up in the commit that lands it (`CLAUDE.md`).
+
+    The mirror/reuse/hooks and the sheet's pre-warm/caffeinate landed before any night; no night
+    ran, so the entry claims no number. As with the k16 and torch-mps guards, the STATUS entry is
+    append-only history and the CHANGELOG phrase is asserted anywhere in the file so it survives a
+    release moving `[Unreleased]` content under a version.
+    """
+    assert "public-task-offline" in _read("docs/STATUS.md"), (
+        "docs/STATUS.md no longer records the public-task-offline unit. The repo's rule is that a "
+        "capability is written up in the commit that lands it, and STATUS.md is that history."
+    )
+    assert "the public task is provisioned offline" in _read("CHANGELOG.md"), (
+        "CHANGELOG.md no longer records that the public task is provisioned offline. This file "
+        "records what shipped, and the mirror/reuse/hooks shipped without running a night or "
+        "claiming a number."
+    )
+
+
 def test_the_roadmap_records_the_cpu_precision_change_by_dated_correction() -> None:
     """AC7. § 13 said the runtime loaded `float32` on CPU; the correction records § 10.18.
 
