@@ -3,8 +3,9 @@
 `docs/planning/torch-mps-series/night-door/runbook.md` is the operator's sheet for the Torch/PEFT
 series on the Mac's MPS. It is a second series, not an edit of the MLX sheet: the MLX guard
 (`tests/test_night_runbook_guards.py`) is hardcoded to that sheet and pins a 32B candidate with the
-7B **excluded** by name, which is the exact base this series retains. One guard module per sheet is
-the precedent (`test_probe_runbook_guards.py`, `test_larger_base_runbook_guards.py`,
+7B **excluded** by name. This series moved past that 7B to an 8B HF base (§ 10.21). One guard
+module per sheet is the precedent (`test_probe_runbook_guards.py`,
+`test_larger_base_runbook_guards.py`,
 `test_gate_runbook_guards.py`): the command-independent parse helpers are imported **by identity**,
 asserted `is`, and only the door-keyed ones are re-implemented against this sheet's command.
 
@@ -16,18 +17,18 @@ Properties this sheet owns, in addition to the shape the MLX guard pins:
 3. `--runs`/`--checkpoints`/`--workspace` are absolute or `$REPO`-anchored, `$REPO` is exported,
    and no worktree is named anywhere;
 4. both doors name `--runtime torch` and run under the torch extra (`uv run --extra torch`);
-5. the retained candidate is the 7B HF base, passed exactly once in `--only`, and no
+5. the retained candidate is the 8B HF base, passed exactly once in `--only`, and no
    `mlx-community` value appears in any `--only`;
 6. the MPS read-back is commanded in the sheet's own words (`backend.name == "torch"`,
    `backend.device == "mps"`, `backend.precision == "float16"`), because `check-probe` does not pin
    the backend;
 7. the fit caveat: the probe writes no checkpoint and does not validate training; the `train-arm`
-   pre-flight is the 7B fit measurement;
+   pre-flight is the 8B fit measurement;
 8. the 52-task denominator (51 private + 1 public), the five declared dev ids, the committed
    held-out document on both doors and on `check-probe`, and the resume rule;
 9. the night re-mines from the operator-declared donor; the probe does not;
 10. operator-declared run ids (never `probe-001`/`night-001`), the finding home under
-    `docs/planning/`, no `/reports/` value, and the § 10.20 citation;
+    `docs/planning/`, no `/reports/` value, and the § 10.21 citation;
 11. the public task is provisioned offline: a flask mirror export, `UV_OFFLINE=1`, the probe's
     digest dir pre-warmed into the night workspace, and `caffeinate -dimsu` on both doors.
 """
@@ -84,11 +85,11 @@ PUBLIC_DIGEST = "b885fb84763091db"
 #: The candidate this series retains. The base must be the plain HF repo — the on-disk MLX 4-bit
 #: directories are not Torch-loadable — and the full id is the value that cannot also match an
 #: MLX directory in the substring matcher.
-CANDIDATE = "Qwen/Qwen2.5-Coder-7B-Instruct"
+CANDIDATE = "Qwen/Qwen3-8B"
 
-#: The immutable base revision `PREREGISTRATION.md` § 10.20 pins. The sheet must carry the same
+#: The immutable base revision `PREREGISTRATION.md` § 10.21 pins. The sheet must carry the same
 #: string, so a fetched `main` that moved is refused by the door's re-hash rather than by memory.
-REVISION = "c03e6d358207e414f1eca0bb1891e29f1db0e242"
+REVISION = "b968826d9c46dd6066d109eabc6255188de91218"
 
 #: The five dev ids the hardened contract declared (`PREREGISTRATION.md` § 10.4), in the
 #: post-§ 10.16 corpus form. Two of them are also held-out members; the sheet states both roles.
@@ -397,21 +398,21 @@ def test_the_workspace_may_hold_only_the_pre_warmed_digest_dir() -> None:
         )
 
 
-def test_both_doors_retain_the_7b_hf_base() -> None:
-    """The 7B is the retained candidate here, unlike the MLX sheet's named exclusion.
+def test_both_doors_retain_the_8b_hf_base() -> None:
+    """The 8B is the retained candidate here, unlike the MLX sheet's named exclusion.
 
     The MLX exclusion is a measured statement about the MLX 4-bit directory's zero ceiling, not
     about Torch/MPS; copying it would exclude the only class that fits the MPS headroom.
     """
     text = _flat(_runbook())
-    assert CANDIDATE in text, "the sheet never names the retained 7B HF base"
+    assert CANDIDATE in text, "the sheet never names the retained 8B HF base"
     assert REVISION in text, (
-        "WHY THIS IS A FAILURE: the sheet never names the immutable base revision § 10.20 pins. "
+        "WHY THIS IS A FAILURE: the sheet never names the immutable base revision § 10.21 pins. "
         "A fetch of `main` that moved is exactly what the revision and the per-file hashes exist "
         "to refuse"
     )
     assert "retained" in text.lower(), (
-        "WHY THIS IS A FAILURE: the sheet never says the 7B is retained. A resolution decided in "
+        "WHY THIS IS A FAILURE: the sheet never says the 8B is retained. A resolution decided in "
         "someone's head is one that can be re-decided after a result"
     )
     assert "25.6 GB" in text and "headroom" in text, (
@@ -453,7 +454,7 @@ def test_the_sheet_reads_the_mps_backend_back() -> None:
 
 
 def test_the_sheet_states_the_fit_caveat() -> None:
-    """A green probe is not a 7B fit check; the `train-arm` pre-flight is the measurement."""
+    """A green probe is not an 8B fit check; the `train-arm` pre-flight is the measurement."""
     flat = _flat(_runbook())
     for phrase in (
         "writes no checkpoint",
@@ -643,10 +644,10 @@ def test_the_finding_lives_under_planning_and_nothing_is_published() -> None:
 
 
 def test_the_sheet_cites_the_amendment_that_pins_the_series() -> None:
-    """The sheet commits a night under § 10.20; it must name the amendment that pinned it."""
+    """The sheet commits a night under § 10.21; it must name the amendment that pinned it."""
     flat = _flat(_runbook())
-    assert "`PREREGISTRATION.md` § 10.20" in flat, (
-        "WHY THIS IS A FAILURE: the sheet does not cite `PREREGISTRATION.md` § 10.20, the "
+    assert "`PREREGISTRATION.md` § 10.21" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not cite `PREREGISTRATION.md` § 10.21, the "
         "amendment that pins the runtime, the base and the precision this sheet runs"
     )
     assert "§ 10.7" not in flat, (
