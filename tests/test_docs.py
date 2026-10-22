@@ -1152,10 +1152,9 @@ def test_the_torch_mps_amendment_pins_the_new_series() -> None:
     every one of them is committed before the training it governs runs. The amendment must carry
     the Type 1 line, the no-threshold/no-§ 1/§ 4/§ 6-rewording line, the non-comparability
     paragraph ending "the old series is not extended", the no-training-run sentence and its
-    amendment-log row. The base and revision are cross-pinned against the Torch/MPS sheet (one
-    input, two documents), and `float16` is cross-pinned against
-    `torch_runtime.DEVICE_PRECISION["mps"]`, so a drift between the document, the sheet and the
-    code fails by name.
+    amendment-log row. `float16` is cross-pinned against
+    `torch_runtime.DEVICE_PRECISION["mps"]`, so a drift between the document and the code fails by
+    name. The sheet cross-pin moved to § 10.21 when the base moved; § 10.20 keeps its own text.
     """
     flat = _flat(_read(PREREGISTRATION))
     base = "Qwen/Qwen2.5-Coder-7B-Instruct"
@@ -1226,10 +1225,73 @@ def test_the_torch_mps_amendment_pins_the_new_series() -> None:
         f"{PREREGISTRATION}'s amendment log no longer records the § 10.20 row as a Type 1 pin of "
         "a new series' inputs. An amendment that is not in the log is a silent edit (§ 8.4)."
     )
+
+
+def test_the_base_swap_amendment_pins_the_8b_base() -> None:
+    """§ 10.21 moves the main series to Qwen3-8B, in the § 10.20 shape.
+
+    The 7B measured its wall (613 NO_DIFF of 816, zero solved) and the pre-flight cleared the
+    format bar at 6 of 8 private tasks. The new base and its revision are pinned inputs (§ 8.1)
+    committed before the training they govern; § 10.20 stays byte-intact and its series stays a
+    separate, non-retired evidence series. The sheet must carry the same base and revision.
+    """
+    flat = _flat(_read(PREREGISTRATION))
+    base = "Qwen/Qwen3-8B"
+    revision = "b968826d9c46dd6066d109eabc6255188de91218"
+    assert "### 10.21" in flat, (
+        f"{PREREGISTRATION} no longer carries a § 10.21 amendment. The 8B base, its revision and "
+        "the unchanged inputs are pinned by this amendment; without it the night trains a series "
+        "the pre-registration never named."
+    )
+    assert (
+        "Type 1 (§ 8.1): pins the inputs of a new series, committed before the training it "
+        "governs runs" in flat
+    ), (
+        f"{PREREGISTRATION} § 10.21 no longer states the Type 1 pin of a new series' inputs. "
+        "§ 8.1's rule is that the input is pinned before the training it governs."
+    )
+    assert "introduces no success threshold" in flat and (
+        "rewords nothing in § 1, § 4 or § 6" in flat
+    ), (
+        f"{PREREGISTRATION} § 10.21 no longer carries the no-threshold/no-rewording line. "
+        "§ 8.3 forbids an amendment introducing a success threshold."
+    )
+    assert "does not edit § 10.20" in flat, (
+        f"{PREREGISTRATION} § 10.21 no longer states that § 10.20 is untouched. This document is "
+        "append-only, and the 7B pin keeps its text byte-intact."
+    )
+    assert base in flat and revision in flat, (
+        f"{PREREGISTRATION} § 10.21 no longer names the pinned base {base!r} at revision "
+        f"{revision!r}. A base named without an immutable revision is not a pinned input."
+    )
+    assert "8.96 GB" in flat and "25.6" in flat, (
+        f"{PREREGISTRATION} § 10.21 no longer records the measured MPS fit (8.96 GB peak against "
+        "the 25.6 GB headroom). The fit is the input the night's capacity probe is read against."
+    )
+    assert "non-comparable" in flat and "the old series is not extended" in flat, (
+        f"{PREREGISTRATION} § 10.21 no longer carries the non-comparability paragraph and the "
+        "'old series is not extended' sentence. § 3 starts over on a pinned-input change."
+    )
+    assert "No training has run" in flat and "the § 3 baseline remains unspent" in flat, (
+        f"{PREREGISTRATION} § 10.21 no longer states that no training has run and that the § 3 "
+        "baseline is unspent. A new series starts no baseline measurement."
+    )
+    assert "format conformance" in flat and "not a solve" in flat, (
+        f"{PREREGISTRATION} § 10.21 no longer states that the pre-flight GO is format conformance, "
+        "not a solve. The pre-flight solved nothing."
+    )
+    assert (
+        "2026-10-22 | The main series' base moves to a pinned 8B HF model; the 7B Torch/MPS "
+        "series remains separate and unretired (§ 10.21) | 1 — pins the inputs of a new series "
+        "| Yes" in flat
+    ), (
+        f"{PREREGISTRATION}'s amendment log no longer records the § 10.21 row as a Type 1 pin of "
+        "a new series' inputs. An amendment that is not in the log is a silent edit (§ 8.4)."
+    )
     sheet = _flat(_read("docs/planning/torch-mps-series/night-door/runbook.md"))
     assert base in sheet and revision in sheet, (
         "docs/planning/torch-mps-series/night-door/runbook.md no longer names the same base and "
-        f"revision § 10.20 pins ({base!r} @ {revision!r}). The amendment and the sheet describe "
+        f"revision § 10.21 pins ({base!r} @ {revision!r}). The amendment and the sheet describe "
         "one input; a drift means the night trains something the pre-registration never named."
     )
 
