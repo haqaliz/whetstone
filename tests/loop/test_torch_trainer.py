@@ -211,6 +211,15 @@ def test_the_declared_precision_for_each_device_is_exact() -> None:
     )
 
 
+#: Which loads were prepared for k-bit training, so the branch is asserted rather than assumed.
+PREPARED: list[Any] = []
+
+
+def _prepare_kbit(model: Any, use_gradient_checkpointing: bool = True) -> Any:
+    PREPARED.append(use_gradient_checkpointing)
+    return model
+
+
 def _install_fake_runtime(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     """Install just enough of Torch/transformers/peft/datasets to watch the load call.
 
@@ -220,8 +229,11 @@ def _install_fake_runtime(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any
     `_load_torch` touch.
     """
     calls: list[dict[str, Any]] = []
+    PREPARED.clear()
 
     class _FakeModel:
+        is_quantized = False
+
         def to(self, device: str) -> _FakeModel:
             return self
 
@@ -235,7 +247,9 @@ def _install_fake_runtime(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any
         @staticmethod
         def from_pretrained(*args: Any, **kwargs: Any) -> _FakeModel:
             calls.append(kwargs)
-            return _FakeModel()
+            model = _FakeModel()
+            model.is_quantized = "quantization_config" in kwargs
+            return model
 
     class _FakeTokenizer:
         pad_token = None
@@ -271,15 +285,21 @@ def _install_fake_runtime(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any
         float16="float16",
         float32="float32",
     )
+    class _FakeBnb:
+        def __init__(self, **kwargs: Any) -> None:
+            self.kwargs = kwargs
+
     transformers = types.SimpleNamespace(
         AutoModelForCausalLM=_FakeAutoModel,
         AutoTokenizer=types.SimpleNamespace(from_pretrained=lambda *a, **k: _FakeTokenizer()),
+        BitsAndBytesConfig=_FakeBnb,
         Trainer=_Trainer,
         TrainingArguments=_TrainingArguments,
     )
     peft = types.SimpleNamespace(
         LoraConfig=lambda **kwargs: kwargs,
         get_peft_model=lambda model, config: model,
+        prepare_model_for_kbit_training=_prepare_kbit,
     )
     datasets = types.SimpleNamespace(Dataset=_FakeDataset)
 
@@ -291,6 +311,64 @@ def _install_fake_runtime(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any
     ):
         monkeypatch.setitem(sys.modules, name, module)
     return calls
+
+
+def test_a_4bit_base_is_prepared_for_kbit_training(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A frozen 4-bit base needs `prepare_model_for_kbit_training` before LoRA is attached."""
+    calls = _install_fake_runtime(monkeypatch)
+    model_dir = tmp_path / "weights"
+    model_dir.mkdir()
+    (model_dir / torch_runtime.QUANTIZE_SIDECAR).write_text(
+        '{"bnb_4bit_quant_type": "nf4"}', encoding="utf-8"
+    )
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "train.jsonl").write_text("{}\n", encoding="utf-8")
+    request = sft.TrainingRequest(
+        model_path=model_dir,
+        revision="ea3f2471",
+        data=data,
+        adapters=tmp_path / "out",
+        args=sft.TrainingArgs(),
+    )
+
+    torch_runtime.torch_trainer(request)
+
+    assert calls[0].get("quantization_config") is not None, (
+        f"WHY THIS IS A FAILURE: the trainer loaded {calls[0]!r} beside a quantize.json. A 4-bit "
+        "base loaded in full precision does not fit the machine the night is committed to"
+    )
+    assert [request.args.grad_checkpoint] == PREPARED, (
+        f"WHY THIS IS A FAILURE: prepare_model_for_kbit_training was called {PREPARED!r}. A "
+        "4-bit base must be prepared before LoRA; skipping it leaves the adapter attached to "
+        "frozen quantized weights in the wrong dtype"
+    )
+
+
+def test_a_full_precision_base_is_not_prepared_for_kbit_training(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The 8B path must not run the k-bit preparation: it is not a quantized model."""
+    _install_fake_runtime(monkeypatch)
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "train.jsonl").write_text("{}\n", encoding="utf-8")
+    request = sft.TrainingRequest(
+        model_path=tmp_path / "weights",
+        revision="ea3f2471",
+        data=data,
+        adapters=tmp_path / "out",
+        args=sft.TrainingArgs(),
+    )
+
+    torch_runtime.torch_trainer(request)
+
+    assert PREPARED == [], (
+        f"WHY THIS IS A FAILURE: a full-precision base was prepared for k-bit training "
+        f"({PREPARED!r}). The preparation detaches and casts weights for a quantized model"
+    )
 
 
 def test_the_trainer_asks_for_the_low_memory_load(
