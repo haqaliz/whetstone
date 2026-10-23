@@ -32,6 +32,11 @@ Run one night at a time. The Torch path seeds `torch.manual_seed` globally, so a
 drawing in the same session perturbs this run's draws. The determinism claim (same seed →
 byte-identical training set) is scoped to a machine running one night.
 
+The torch floor is **2.14.1**. The 8B night ran 2.14.0 and lost its Metal command buffer after
+~35 h (`kIOGPUCommandBufferCallbackErrorOutOfMemory`), then failed deterministically on a corrupted
+attention mask (#86). 2.14.1 ran the 8B pre-flight's 144 draws without either failure, and every
+draw now calls `torch.mps.empty_cache()`. A ledger recording a lower torch version is a halt.
+
 Both door commands are wrapped in `caffeinate -dimsu`: the public task is processed last, and a
 sleeping Mac dropped the network after 832 rollouts on two separate nights. `-s` holds only while
 the machine is on **power**; `-d/-i/-m/-u` still apply on battery, but a night is committed to on

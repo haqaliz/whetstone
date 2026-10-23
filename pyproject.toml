@@ -63,7 +63,7 @@ mlx = ["mlx-lm>=0.31,<0.32"]
 # it. The index is the caller's choice because the hardware is — which is exactly why it belongs
 # on the one command that installs torch, and not on the one that resolves the project.
 torch = [
-  "torch>=2.4,<3",
+  "torch>=2.14.1,<2.15",
   "transformers>=4.44,<6",
   "peft>=0.13,<1",
   "datasets>=3,<5",

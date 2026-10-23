@@ -431,6 +431,19 @@ def test_both_doors_retain_the_8b_hf_base() -> None:
         )
 
 
+def test_the_sheet_pins_the_torch_floor() -> None:
+    """#86: torch 2.14.0 lost the Metal command buffer; 2.14.1 ran the pre-flight clean."""
+    flat = _flat(_runbook())
+    assert "torch floor is **2.14.1**" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not pin the torch floor. The 8B night ran 2.14.0 "
+        "and lost its Metal command buffer after ~35 h, then failed on a corrupted attention mask"
+    )
+    assert "2.14.0" in flat and "#86" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not name the version that crashed and the defect "
+        "record. A pin without the reason is one that gets lowered after the next result"
+    )
+
+
 def test_the_sheet_reads_the_mps_backend_back() -> None:
     """`check-probe` pins the budget and the split, never the backend; the sheet must.
 

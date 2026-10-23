@@ -355,6 +355,9 @@ class TorchGenerator:
         # decoding the whole sequence returns the task's own prompt, which holds the failing test.
         completion = produced[0][prompt_tokens:]
         answer = self._tokenizer.decode(completion, skip_special_tokens=True)
+        if self._device == "mps":
+            # #86: 816 draws fragmented the MPS cache until a command-buffer OOM after ~35 h.
+            torch.mps.empty_cache()
         if not isinstance(answer, str):
             raise TypeError(
                 f"the tokeniser returned {type(answer).__name__}, not str. Coercing it here "

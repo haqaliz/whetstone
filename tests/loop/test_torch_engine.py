@@ -138,6 +138,45 @@ def test_the_prompt_is_sliced_off_by_token_count(tmp_path: Path) -> None:
     )
 
 
+def test_a_mps_draw_releases_the_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#86: 816 draws fragmented the MPS cache until a command-buffer OOM at ~35 hours."""
+    calls: list[str] = []
+
+    class _Torch:
+        class no_grad:
+            def __enter__(self) -> None:
+                return None
+
+            def __exit__(self, *exc: object) -> bool:
+                return False
+
+        class mps:
+            @staticmethod
+            def empty_cache() -> None:
+                calls.append("empty")
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "torch", _Torch())
+    generator = torch_runtime.TorchGenerator.__new__(torch_runtime.TorchGenerator)
+    generator._tokenizer = _FakeTokenizer(prompt_tokens=2)  # type: ignore[attr-defined]
+    generator._device = "mps"  # type: ignore[attr-defined]
+    generator._draws = 1  # type: ignore[attr-defined]
+    generator._max_tokens = 8  # type: ignore[attr-defined]
+
+    class _Model:
+        def generate(self, **kwargs: Any) -> list[list[int]]:
+            return [[0, 0, 7]]
+
+    generator._model = _Model()  # type: ignore[attr-defined]
+
+    assert generator.generate("a prompt") == "7"
+    assert calls == ["empty"], (
+        "WHY THIS IS A FAILURE: an MPS draw never released the cache. 816 draws grew it until "
+        "the Metal command buffer OOM'd (#86); the release is the mitigation that bounds it"
+    )
+
+
 class _FakeTorch:
     """Just enough `torch` for the decode path: `no_grad` as a context manager."""
 
