@@ -149,12 +149,20 @@ def torch_trainer(request: TrainingRequest) -> TrainingResult:
         # padding token changes what the loss is computed over.
         tokenizer.pad_token = tokenizer.eos_token
 
+    quantize = quantization_config(request.model_path)
     model = AutoModelForCausalLM.from_pretrained(
         str(request.model_path),
         revision=request.revision,
         dtype=dtype,
         low_cpu_mem_usage=True,
+        **({} if quantize is None else {"quantization_config": quantize}),
     )
+    if getattr(model, "is_quantized", False):
+        from peft import prepare_model_for_kbit_training
+
+        model = prepare_model_for_kbit_training(
+            model, use_gradient_checkpointing=request.args.grad_checkpoint
+        )
     model = get_peft_model(model, LoraConfig(**peft_lora_config(request.args)))
 
     def tokenise(batch: dict[str, list[str]]) -> Any:
@@ -390,6 +398,40 @@ class TorchGenerator:
         )
 
 
+
+#: The sidecar a base directory carries when it must be loaded 4-bit. A sidecar rather than a
+#: `config.json` edit, so the fetched snapshot's own files stay byte-intact and the declaration
+#: is one more input the ledger names.
+QUANTIZE_SIDECAR = "quantize.json"
+
+
+def quantization_config(model_path: Path) -> Any | None:
+    """Build the 4-bit load config from the base's `quantize.json`, or None when it has none.
+
+    The 8B base loads in full precision; a QLoRA base loads 4-bit. The declaration lives beside
+    the weights so the night's base and its precision are one recorded input, not a flag that can
+    be turned after a result.
+    """
+    sidecar = Path(model_path) / QUANTIZE_SIDECAR
+    if not sidecar.is_file():
+        return None
+    import json
+
+    import torch
+    from transformers import BitsAndBytesConfig
+
+    declared = json.loads(sidecar.read_text(encoding="utf-8"))
+    # Routed through an `Any` local for the reason `_load_torch` records at its own call site:
+    # under plain `uv sync` this symbol is `Any`, and with the extra installed it is untyped, so
+    # a direct call is either unchecked or a `no-untyped-call` in one of the two mypy runs.
+    factory: Any = BitsAndBytesConfig
+    return factory(
+        load_in_4bit=True,
+        bnb_4bit_quant_type=declared.get("bnb_4bit_quant_type", "nf4"),
+        bnb_4bit_compute_dtype=getattr(torch, declared.get("bnb_4bit_compute_dtype", "float16")),
+        bnb_4bit_use_double_quant=bool(declared.get("bnb_4bit_use_double_quant", True)),
+    )
+
 def _load_torch(
     model_path: Path, revision: str, adapter_path: Path | None
 ) -> tuple[Any, Any, str]:
@@ -418,11 +460,13 @@ def _load_torch(
     # `_Wrapped` typed against `PreTrainedModel` and `.eval()` is untyped, so the same two lines
     # become errors. CI's second mypy run — the one with the extra — is what surfaced that, and
     # the annotation is what stops the file typechecking on one machine only.
+    quantize = quantization_config(model_path)
     model: Any = AutoModelForCausalLM.from_pretrained(
         str(model_path),
         revision=revision,
         dtype=dtype,
         low_cpu_mem_usage=True,
+        **({} if quantize is None else {"quantization_config": quantize}),
     )
 
     if adapter_path is not None:

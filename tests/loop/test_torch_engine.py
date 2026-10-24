@@ -286,6 +286,44 @@ def test_the_generator_loader_asks_for_the_low_memory_load(
     )
 
 
+def test_a_quantize_sidecar_asks_for_the_4bit_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """QLoRA is declared beside the weights, not chosen by a flag after a result."""
+    from loop.test_torch_trainer import _install_fake_runtime
+
+    calls = _install_fake_runtime(monkeypatch)
+    model_dir = _model_dir(tmp_path)
+    (model_dir / torch_runtime.QUANTIZE_SIDECAR).write_text(
+        '{"bnb_4bit_quant_type": "nf4"}', encoding="utf-8"
+    )
+
+    torch_runtime._load_torch(model_dir, "ea3f2471", None)
+
+    quantize = calls[0].get("quantization_config")
+    assert quantize is not None and quantize.kwargs["load_in_4bit"] is True, (
+        f"WHY THIS IS A FAILURE: the loader asked for {calls[0]!r} beside a quantize.json. A "
+        "14B/30B base is loaded 4-bit; loading it in full precision exceeds the RAM and the MPS "
+        "headroom, and the ledger would name a precision the run never used"
+    )
+
+
+def test_a_base_without_the_sidecar_loads_in_full_precision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 8B series must not be quantized by accident: the sidecar is the only switch."""
+    from loop.test_torch_trainer import _install_fake_runtime
+
+    calls = _install_fake_runtime(monkeypatch)
+    torch_runtime._load_torch(_model_dir(tmp_path), "ea3f2471", None)
+
+    assert "quantization_config" not in calls[0], (
+        f"WHY THIS IS A FAILURE: the loader passed {calls[0]!r} for a base with no quantize.json. "
+        "A base's precision is an input; it must not change because a neighbouring base declares "
+        "4-bit"
+    )
+
+
 def test_the_torch_sampler_string_is_not_a_copy_of_mlxs() -> None:
     """The two libraries do not implement the same sampler, so they must not claim to.
 
