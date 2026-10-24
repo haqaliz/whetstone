@@ -71,6 +71,17 @@ hf upload <namespace>/<model-name> "$REPO/runs/torch-mps/<run-id>/README.md" REA
   --repo-type model
 ```
 
+## What the leakage check does *not* do
+
+`check-leakage` compares **task identity** with the held-out membership. It does not test
+memorization: an adapter trained on donor code can reproduce strings from it. Exit 0 is
+**necessary, not sufficient** for a public artifact.
+
+Before an upload, run a small memorization audit: load the adapter on its base, prompt it with
+donor-shaped prompts, and search the completions for long verbatim spans from the donor corpus. A
+reproduced span stops the upload. The private corpus's owner makes that call; no automated check
+here replaces it.
+
 ## What is not claimed
 
 - A zero night publishes nothing. A leakage refusal publishes nothing. A `CapacityExceeded`
