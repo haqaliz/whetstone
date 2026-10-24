@@ -421,7 +421,7 @@ def quantization_config(model_path: Path) -> Any | None:
     from transformers import BitsAndBytesConfig
 
     declared = json.loads(sidecar.read_text(encoding="utf-8"))
-    return BitsAndBytesConfig(
+    return BitsAndBytesConfig(  # type: ignore[no-untyped-call]
         load_in_4bit=True,
         bnb_4bit_quant_type=declared.get("bnb_4bit_quant_type", "nf4"),
         bnb_4bit_compute_dtype=getattr(torch, declared.get("bnb_4bit_compute_dtype", "float16")),
