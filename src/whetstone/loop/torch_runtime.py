@@ -421,7 +421,11 @@ def quantization_config(model_path: Path) -> Any | None:
     from transformers import BitsAndBytesConfig
 
     declared = json.loads(sidecar.read_text(encoding="utf-8"))
-    return BitsAndBytesConfig(  # type: ignore[no-untyped-call]
+    # Routed through an `Any` local for the reason `_load_torch` records at its own call site:
+    # under plain `uv sync` this symbol is `Any`, and with the extra installed it is untyped, so
+    # a direct call is either unchecked or a `no-untyped-call` in one of the two mypy runs.
+    factory: Any = BitsAndBytesConfig
+    return factory(
         load_in_4bit=True,
         bnb_4bit_quant_type=declared.get("bnb_4bit_quant_type", "nf4"),
         bnb_4bit_compute_dtype=getattr(torch, declared.get("bnb_4bit_compute_dtype", "float16")),
