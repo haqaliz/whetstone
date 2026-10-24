@@ -328,6 +328,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-10-17 | The nightly loop's draw budget is raised from 8 to 16 (§ 10.19) | 1 — pins the inputs of a measurement | Yes |
 | 2026-10-20 | The main series moves to Torch/MPS on a pinned 7B HF base; the 32B/MLX series remains separate and unretired (§ 10.20) | 1 — pins the inputs of a new series | Yes |
 | 2026-10-22 | The main series' base moves to a pinned 8B HF model; the 7B Torch/MPS series remains separate and unretired (§ 10.21) | 1 — pins the inputs of a new series | Yes |
+| 2026-10-24 | The main series' base moves to a pinned 14B HF model at 4-bit (NF4 QLoRA); the 8B and 7B Torch series remain separate and unretired (§ 10.22) | 1 — pins the inputs of a new series | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1160,3 +1161,61 @@ that is a legitimate outcome. The § 3 baseline remains unspent, nothing here cl
 the MPS headroom in training beyond the fit probe, or that a Torch/MPS night selects a
 strict-`PASS`, and a zero is entirely possible. Should the night find the machine cannot host the
 base, *"accept the finding"* remains a legitimate outcome.
+
+### 10.22 The main series' base moves to a pinned 14B model at 4-bit — 2026-10-24
+
+**Type 1 (§ 8.1): pins the inputs of a new series, committed before the training it governs
+runs.** It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not
+edit § 10.21**: this document is append-only, and the 8B pin keeps its text byte-intact. What
+changes is which base the main series trains, and in what storage.
+
+**Why the base moves.** The 8B series measured its answer: 0 strict-`PASS` in 816 private draws
+(206 real diffs in 624 evaluable draws), no checkpoint. It broke the format wall the 7B did not,
+and it did not solve. The next class had to fit this machine at 4-bit and stay on the text-only
+loader path. `Qwen/Qwen3-14B` was fetched on 2026-10-24, and its 4-bit fit was measured.
+
+**The base.** The series fine-tunes `Qwen/Qwen3-14B`, pinned at the immutable revision
+`40c069824f4251a91eefaf281ebe4c544efd3e18` (resolved 2026-10-24), Apache-2.0, 14.8B parameters,
+architecture `Qwen3ForCausalLM`; recorded by per-file hash in `weights/provenance.json`
+(gitignored — the weights never leave the box), re-hashed before a token is generated. The 4-bit
+declaration lives in the base's `quantize.json` sidecar: **NF4**, double quantization, `float16`
+compute, loaded through `BitsAndBytesConfig` by `torch_runtime.quantization_config`, and the
+adapter is prepared with `prepare_model_for_kbit_training` before LoRA. The MPS fit probe measured
+a peak of **17.67 GB** against the **25.6 GB** headroom (`fits: True`), at about 123 s per step.
+The Torch/MPS sheet (`docs/planning/torch-mps-series/night-door/runbook.md`) names the same base,
+revision, sidecar and torch floor.
+
+**The runtime.** `torch` **2.14.1** + PEFT on the Mac's Metal backend, device `mps`, compute
+precision `float16`, base storage **NF4 4-bit**; adapter format PEFT `adapter_model.safetensors`.
+torch 2.14.0 lost the Metal command buffer after ~35 hours and failed on a corrupted attention
+mask (#86); 2.14.1 is the measured floor, and every draw releases the MPS cache.
+
+**The format pre-flight, recorded before its probe.** The rule is committed before the probe runs:
+`whetstone run --night --probe 8` on the 14B, the first 8 private tasks plus the one public task at
+`K = 16`; **GO iff at least 4 of the 8 private probe tasks have at least one rollout whose outcome
+is not `NO_DIFF`**. A GO is **format conformance, not a solve**: it says the base produces a diff
+at all, and it claims no solve, no model and no delta. The probe's counts are recorded in the
+finding, not here, because this amendment precedes the probe.
+
+**What does not change.** The held-out document is `tasks/heldout/source-b.json`, its
+`document_digest` unchanged from § 10.16; the draw budget `K = 16` (§ 10.19) and the retry count
+`R = 3` (§ 10.8) are unchanged. The corpus, the verifier, the gate rule and its exits do not move.
+
+**Comparability, stated plainly.** Every figure measured under the 8B series (§ 10.21), the 7B
+Torch/MPS series (§ 10.20), the 32B/MLX series (§ 10.10), or any portability-arm base is
+**non-comparable** to any figure measured under this series: different weights, a different
+storage precision, different quantization kernels and a different runtime version sit between
+them, and each is sufficient on its own to make the comparison meaningless. § 3 treats a change to
+a pinned input as starting over, and the old series is not extended. The 8B and 7B Torch/MPS
+series remain separate, **non-retired** evidence series: their nights, reports and findings stand
+as measured, and nothing here restates one of their figures as this series'.
+
+**No report home.** The gate record stays gitignored under `runs/`, and the series' finding lives
+under `docs/planning/torch-mps-series/`; this series creates no `reports/` directory.
+
+**What is not claimed.** No training has run under this series: no checkpoint, ledger or yield
+figure exists. The 8B's zero is not evidence the 14B will solve; the 14B has never drawn a
+single rollout under this amendment, and a zero is entirely possible. The § 3 baseline remains
+unspent, nothing here claims the 14B selects a strict-`PASS`, and should the fit, the pre-flight
+or the night find the machine cannot host the base, *"accept the finding"* remains a legitimate
+outcome.
