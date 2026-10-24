@@ -16,7 +16,8 @@ reason — the donor is one operator's checkout, and the night mines whatever th
 the anchor at rather than a path committed into the sheet.
 
 This is the Torch/MPS series' own sheet, not the MLX sheet with a flag changed. The MLX sheet pins
-a 32B MLX directory and excludes the 7B by name; this series retains an 8B **HF** base, runs Torch
+a 32B MLX directory and excludes the 7B by name; this series retains a 14B **HF** base, loaded
+4-bit, runs Torch
 on the Mac's MPS, and emits a PEFT adapter any `transformers`/`peft` stack can load. The two
 series are non-comparable in weights, runtime, device, kernels and precision, and no figure from
 one may be restated as the other's.
@@ -44,31 +45,35 @@ AC.
 
 ## Candidate resolution (retained, decided before the run)
 
-**Retained: `Qwen/Qwen3-8B` at revision
-`b968826d9c46dd6066d109eabc6255188de91218`.** It is the plain HF 8B base, retained because the
-7B measured its wall on this family (613 `NO_DIFF` of 816 private rollouts, zero solved) and the
-8B is the next text-only class: the shipped Torch loader needs no change, and the MPS fit probe
-measured a peak of 8.96 GB against the 25.6 GB headroom (`fits: True`). `--only` is passed exactly
-once, with the full `Qwen/...` id: a night trains **one** candidate, and the shorter id would also
-match an on-disk MLX 4-bit directory in the substring matcher and be refused as two candidates.
+**Retained: `Qwen/Qwen3-14B` at revision
+`40c069824f4251a91eefaf281ebe4c544efd3e18`.** It is the plain HF 14B base, retained because the
+8B measured its answer on this family (0 strict-`PASS` in 816 private draws, 206 real diffs) and
+the 14B is the next text-only class that fits this machine at 4-bit: its MPS fit probe measured a
+peak of 17.67 GB against the 25.6 GB headroom (`fits: True`) at ~123 s/step. The base loads NF4
+through the `quantize.json` sidecar beside its weights (`BitsAndBytesConfig`, double quantization,
+`float16` compute); the loader and the trainer both read it, and the trainer prepares the k-bit
+model before LoRA. `--only` is passed exactly once, with the full `Qwen/...` id: a night trains
+**one** candidate, and the shorter id would also match an on-disk MLX 4-bit directory in the
+substring matcher and be refused as two candidates.
 
 The MLX sheet's 7B exclusion is **not** copied here. It is a measured statement about the MLX
 4-bit directory's zero ceiling on the MLX series, not about Torch/MPS on this series' HF base.
 
-Excluded by the same headroom: the 14B fp16 (~29.5 GB steady-state) exceeds the 25.6 GB headroom,
-and the 32B is not considered. Qwen3.5-9B needs a multimodal loader the shipped Torch path does
-not carry, and the Qwen3-Coder-30B-A3B 4-bit needs QLoRA support the loop does not carry; neither
-is a base swap. The on-disk `*-4bit` directories are MLX format (packed weights) and are not
-Torch-loadable; this series never points `--only` at one.
+Excluded: the 8B is retired to its own evidence series (§ 10.21); the 30B-A3B fp16 is ~61 GB and
+this Mac has 36 GB of unified memory, so the on-the-fly 4-bit load is the blocker — it needs a
+pre-quantized checkpoint or a CUDA host. The on-disk `*-4bit` directories are MLX format (packed
+weights) and are not Torch-loadable; this series never points `--only` at one.
 
-The base must be fetched before the night — ~16.4 GB of public weights through
+The base must be fetched before the night — ~28 GB of public weights through
 `whetstone.bakeoff.weights.fetch` into `$REPO/weights`, with per-file hashes written to
-`weights/provenance.json`. The door re-hashes every named file; a mismatch refuses the run.
+`weights/provenance.json`. The door re-hashes every named file; a mismatch refuses the run. The
+`quantize.json` sidecar is written beside the weights by the operator and named by § 10.22.
 
 ## The held-out set (unchanged by the runtime or the base)
 
-`PREREGISTRATION.md` § 10.21 (Type 1, 2026-10-22) pins this series: Torch/PEFT, `mps`, `float16`,
-the 8B HF repo and revision, and declares every figure non-comparable to the 7B and MLX series. The
+`PREREGISTRATION.md` § 10.22 (Type 1, 2026-10-24) pins this series: Torch/PEFT, `mps`, `float16`
+compute, the 14B HF repo at NF4 and revision, and declares every figure non-comparable to the 8B,
+7B and MLX series. The
 held-out document and its `document_digest` are **unchanged** from `PREREGISTRATION.md` § 10.16
 (Type 1, 2026-09-27), which re-derived the split under the scorable rule — a member is held out
 only if its oracle can be built under the declared budget.
@@ -89,14 +94,15 @@ run could record MLX and still pass — so this read-back is the sheet's own che
 a halt, never a rerun under the same id. A digest that does not match the committed document is the
 same halt: the run excluded a different split than the one pre-registered.
 
-## The 8B fit caveat (read before committing a night)
+## The 14B fit caveat (read before committing a night)
 
 The probe draws against a declared sample and writes no checkpoint; it returns before the LoRA
 capacity probe. It does not validate training — the generation/verifier chain is what it proves.
-The 8B fit is measured by the `train-arm` pre-flight on 2026-10-22: a peak of 8.96 GB against the
-25.6 GB headroom (`fits: True`) at about 118 s/step, so a 200-step training projects to ~6.6 h. A
-`CapacityExceeded` on the night still writes no checkpoint and records the finding; it never
-loosens the capacity check. Do not read a green probe as proof that the 8B selects a candidate.
+The 14B 4-bit fit is measured by the `train-arm` pre-flight on 2026-10-24: a peak of 17.67 GB
+against the 25.6 GB headroom (`fits: True`) at about 123 s/step, so a 200-step training projects
+to ~6.8 h. A `CapacityExceeded` on the night still writes no checkpoint and records the finding;
+it never loosens the capacity check. Do not read a green probe as proof that the 14B selects a
+candidate.
 
 ## Before the night
 
@@ -144,7 +150,7 @@ caffeinate -dimsu uv run --extra torch whetstone run --night \
   --public $REPO/tasks/public/instances \
   --pool $REPO/tasks/public/pool.json \
   --weights $REPO/weights \
-  --only Qwen/Qwen3-8B \
+  --only Qwen/Qwen3-14B \
   --runs $REPO/runs/torch-mps-probe \
   --checkpoints $REPO/checkpoints/torch-mps-probe \
   --workspace $REPO/runs/<torch-probe-run-id>-workspace \
@@ -217,7 +223,7 @@ caffeinate -dimsu uv run --extra torch whetstone run --night \
   --public $REPO/tasks/public/instances \
   --pool $REPO/tasks/public/pool.json \
   --weights $REPO/weights \
-  --only Qwen/Qwen3-8B \
+  --only Qwen/Qwen3-14B \
   --runs $REPO/runs/torch-mps \
   --checkpoints $REPO/checkpoints/torch-mps \
   --workspace $REPO/runs/<torch-night-run-id>-workspace \
@@ -316,9 +322,9 @@ non-zero exit halts here, before the gate.
    writes no checkpoint.
 4. **A zero strict-PASS yield.** This is **not** a halt: it is a legitimate, published outcome. The
    night completes, writes no checkpoint, states the empty outcome in the ledger, and exits
-   non-zero. The 7B class produced zero on this task family, and the 8B pre-flight solved nothing
-   either (0 `SOLVED` in 144 draws); the response is to raise `K` — in a diff, before the next
-   night — never to loosen what counts as a win.
+   non-zero. The 7B produced zero and so did the 8B (0 `SOLVED` in 816 private draws); the 14B has
+   drawn nothing yet. The response is to raise `K` — in a diff, before the next night — never to
+   loosen what counts as a win.
 
 ## The finding, and what is not published
 

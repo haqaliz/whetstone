@@ -1288,11 +1288,68 @@ def test_the_base_swap_amendment_pins_the_8b_base() -> None:
         f"{PREREGISTRATION}'s amendment log no longer records the § 10.21 row as a Type 1 pin of "
         "a new series' inputs. An amendment that is not in the log is a silent edit (§ 8.4)."
     )
+
+def test_the_14b_qlora_amendment_pins_the_base() -> None:
+    """§ 10.22 moves the main series to Qwen3-14B at 4-bit, after the 8B zeroed.
+
+    The 8B produced 0 strict-PASS in 816 private draws; the 14B is the next class, and the
+    measured 4-bit fit (17.67 GB peak against the 25.6 GB headroom) makes it the first QLoRA
+    series. § 10.21 stays byte-intact and its series stays separate and non-retired.
+    """
+    flat = _flat(_read(PREREGISTRATION))
+    base = "Qwen/Qwen3-14B"
+    revision = "40c069824f4251a91eefaf281ebe4c544efd3e18"
+    assert "### 10.22" in flat, (
+        f"{PREREGISTRATION} no longer carries a § 10.22 amendment. The 14B QLoRA base, its "
+        "revision, the NF4 storage and the unchanged inputs are pinned by this amendment."
+    )
+    assert (
+        "Type 1 (§ 8.1): pins the inputs of a new series, committed before the training it "
+        "governs runs" in flat
+    ), (
+        f"{PREREGISTRATION} § 10.22 no longer states the Type 1 pin of a new series' inputs."
+    )
+    assert "introduces no success threshold" in flat and (
+        "rewords nothing in § 1, § 4 or § 6" in flat
+    ), (
+        f"{PREREGISTRATION} § 10.22 no longer carries the no-threshold/no-rewording line."
+    )
+    assert "does not edit § 10.21" in flat, (
+        f"{PREREGISTRATION} § 10.22 no longer states that § 10.21 is untouched. This document is "
+        "append-only."
+    )
+    assert base in flat and revision in flat, (
+        f"{PREREGISTRATION} § 10.22 no longer names the pinned base {base!r} at revision "
+        f"{revision!r}."
+    )
+    assert "NF4" in flat and "17.67 GB" in flat and "25.6" in flat, (
+        f"{PREREGISTRATION} § 10.22 no longer records the NF4 storage and the measured fit "
+        "(17.67 GB peak against the 25.6 GB headroom)."
+    )
+    assert "non-comparable" in flat and "the old series is not extended" in flat, (
+        f"{PREREGISTRATION} § 10.22 no longer carries the non-comparability paragraph and the "
+        "'old series is not extended' sentence."
+    )
+    assert "No training has run" in flat and "the § 3 baseline remains unspent" in flat, (
+        f"{PREREGISTRATION} § 10.22 no longer states that no training has run and that the § 3 "
+        "baseline is unspent."
+    )
+    assert "format conformance" in flat and "not a solve" in flat, (
+        f"{PREREGISTRATION} § 10.22 no longer states that the pre-flight GO is format "
+        "conformance, not a solve."
+    )
+    assert (
+        "2026-10-24 | The main series' base moves to a pinned 14B HF model at 4-bit (NF4 QLoRA); "
+        "the 8B and 7B Torch series remain separate and unretired (§ 10.22) | 1 — pins the "
+        "inputs of a new series | Yes" in flat
+    ), (
+        f"{PREREGISTRATION}'s amendment log no longer records the § 10.22 row as a Type 1 pin of "
+        "a new series' inputs."
+    )
     sheet = _flat(_read("docs/planning/torch-mps-series/night-door/runbook.md"))
     assert base in sheet and revision in sheet, (
         "docs/planning/torch-mps-series/night-door/runbook.md no longer names the same base and "
-        f"revision § 10.21 pins ({base!r} @ {revision!r}). The amendment and the sheet describe "
-        "one input; a drift means the night trains something the pre-registration never named."
+        f"revision § 10.22 pins ({base!r} @ {revision!r})."
     )
 
 
