@@ -125,6 +125,28 @@ def test_a_repair_run_freezes_the_repair_prompt(tmp_path: Path) -> None:
     )
 
 
+def test_a_repair_generation_does_not_issue_a_nested_retry(tmp_path: Path) -> None:
+    """The repair is one attempt: a retry built from a repair prompt is not in the contract."""
+    first = "the first prompt"
+    repaired = repair_prompt(first)
+    engine = StubGenerator({repaired: "prose"})
+    composed = Retry(
+        inner=engine,
+        transcript=Transcript(path=tmp_path / "t.jsonl"),
+        candidate=CANDIDATE,
+        contract={
+            prompt_hash(first): "alpha",
+            prompt_hash(repaired): "alpha",
+        },
+    )
+
+    assert composed.generate_repair(repaired) == "prose", (
+        "WHY THIS IS A FAILURE: the repair generation did not return the inner completion. "
+        "A repair that re-enters the retry wrapper asks for a nested prompt (repair + retry) "
+        "that the freeze never posed, and the seal voids the run at the first malformed repair"
+    )
+
+
 def test_every_prompt_a_retry_run_issues_was_frozen_into_the_contract(tmp_path: Path) -> None:
     """Seal-held (PRD AC8): first attempts and every retry are in the frozen `posed` map.
 
