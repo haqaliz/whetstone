@@ -59,9 +59,11 @@ from whetstone.bakeoff.diffcheck import Trigger, diagnosis_of
 from whetstone.bakeoff.generator import Generator, StubGenerator, UnstubbedPrompt
 from whetstone.bakeoff.rendering import prompt_hash
 from whetstone.bakeoff.retry import (
+    REPAIR_INSTRUCTION,
     RETRY_BUDGET,
     RETRY_INSTRUCTION,
     Retry,
+    repair_prompt,
     retry_prompt,
     retry_template_sha256,
 )
@@ -129,6 +131,21 @@ def test_retry_prompt_is_a_pure_function_of_prompt_and_trigger(trigger: Trigger)
     assert retry_prompt(FIRST, trigger) != retry_prompt(FIRST + "\n", trigger), (
         "WHY THIS IS A FAILURE: two different first-attempt prompts produced the same "
         "retry prompt, so the retry would not carry the question it is a second draw of"
+    )
+
+
+def test_the_repair_prompt_is_the_first_prompt_plus_the_verdict() -> None:
+    """The repair is pure (B1): the first prompt and a fixed verdict sentence, nothing else."""
+    repaired = repair_prompt(FIRST)
+
+    assert repaired == FIRST + "\n\n" + REPAIR_INSTRUCTION, (
+        f"WHY THIS IS A FAILURE: repair_prompt returned {repaired!r}. The repair prompt must be "
+        "the first prompt plus the fixed verdict instruction, or the freeze cannot pre-render "
+        "it and the seal aborts"
+    )
+    assert repair_prompt(FIRST) == repaired, (
+        "WHY THIS IS A FAILURE: repair_prompt is not a pure function of the first prompt, so a "
+        "repair prompt issued at runtime cannot be the one frozen before the run"
     )
 
 

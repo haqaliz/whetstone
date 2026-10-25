@@ -64,6 +64,7 @@ from pathlib import Path
 from whetstone.bakeoff.generator import Generator
 from whetstone.bakeoff.patch import Extracted, extract_patch
 from whetstone.bakeoff.rendering import prompt_hash, render_prompt
+from whetstone.bakeoff.retry import repair_prompt
 from whetstone.bakeoff.sources import oracle_sources
 from whetstone.tasks.environment import NotProvisionable, capture
 from whetstone.tasks.gates import Ineligible, check_environment
@@ -372,6 +373,7 @@ def score(
     interpreters: Interpreters,
     pool: Path | None = None,
     renderer: Renderer | None = None,
+    repair: int = 0,
 ) -> Rollout:
     """Ask `candidate` for a patch to `task`, verify it both ways, and record what happened.
 
@@ -455,7 +457,7 @@ def score(
         # rollout indistinguishable from a malformed diff.
         return replace(record, outcome=Outcome.NO_DIFF, detail=extraction.reason)
 
-    return _verify(
+    verified = _verify(
         record,
         task,
         extraction.diff,
@@ -463,6 +465,25 @@ def score(
         timeout=timeout,
         interpreter=acquired.interpreter,
     )
+    for attempt in range(repair):
+        if verified.outcome is not Outcome.NOT_SOLVED:
+            break
+        started = time.perf_counter()
+        completion = generator.generate(repair_prompt(prompt))
+        verified = replace(verified, generation_seconds=time.perf_counter() - started)
+        extraction = extract_patch(completion)
+        if not isinstance(extraction, Extracted):
+            verified = replace(verified, outcome=Outcome.NO_DIFF, detail=extraction.reason)
+            continue
+        verified = _verify(
+            verified,
+            task,
+            extraction.diff,
+            sandbox_root=Path(sandbox_root) / f"repair-{attempt + 1}",
+            timeout=timeout,
+            interpreter=acquired.interpreter,
+        )
+    return verified
 
 
 def _verify(

@@ -513,6 +513,16 @@ def build_parser() -> argparse.ArgumentParser:
             "the evidence for this candidate was produced under; the ledger records which ran"
         ),
     )
+    night.add_argument(
+        "--repair",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "re-ask up to N times with the pre-posed repair prompt after a patch applies and "
+            "the tests fail (0 disables; the repair prompts are frozen into the contract)"
+        ),
+    )
 
     gate = commands.add_parser(
         "gate",
@@ -1210,6 +1220,7 @@ def run_night(args: argparse.Namespace) -> int:
             probe=args.probe,
             stratum=args.stratum,
             retries=not args.no_retries,
+            repair=args.repair,
             prefer=args.runtime,
         )
     except REFUSALS as refusal:

@@ -39,7 +39,7 @@ from pathlib import Path
 from whetstone.bakeoff.diffcheck import diagnosis_vocabulary_sha256
 from whetstone.bakeoff.mlx_runtime import DEFAULT_MAX_TOKENS
 from whetstone.bakeoff.report import _UNCOVERED, GenerationContract
-from whetstone.bakeoff.retry import RETRY_BUDGET, retry_template_sha256
+from whetstone.bakeoff.retry import RETRY_BUDGET, repair_template_sha256, retry_template_sha256
 from whetstone.bakeoff.run import (
     HF_HUB_OFFLINE,
     Contract,
@@ -203,6 +203,7 @@ def run_night(
     only: Sequence[str] = (),
     probe: int | None = None,
     retries: bool = True,
+    repair: int = 0,
     engine: Engine | None = None,
     trainer: sft.Trainer | None = None,
     seeder: Seeder | None = None,
@@ -349,7 +350,9 @@ def run_night(
             "contract is frozen or anything is generated"
         )
 
-    contract = freeze((*private_tasks, *public_tasks), pool=pool, retry=retries)
+    contract = freeze(
+        (*private_tasks, *public_tasks), pool=pool, retry=retries, repair=repair > 0
+    )
     fetched = select_candidates(load_weights(weights), only)
     if len(fetched) != 1:
         raise ManyCandidates(
@@ -385,6 +388,7 @@ def run_night(
         pool=pool,
         seeder=chosen_seeder,
         retries=retries,
+        repair=repair,
     )
 
     texts, denominator, unverified = _select(drawn, run_seed=run_seed)
@@ -419,6 +423,7 @@ def run_night(
             max_tokens=max_tokens,
             declared=declared,
             retries=retries,
+            repair=repair,
             # The runtime that was detected, exactly as `engine`, `seeder`, `trainer` and
             # `tool_versions` above. This argument is the whole of #45: the other four were
             # dispatched and this one was not, so a Torch night published an MLX sampler.
@@ -746,6 +751,7 @@ def _contract(
     declared: Sequence[str],
     retries: bool,
     backend_name: str,
+    repair: int = 0,
 ) -> GenerationContract:
     """The night's contract in the bake-off's own published shape, so the two are comparable.
 
@@ -763,6 +769,8 @@ def _contract(
         retry_template_sha256=retry_template_sha256() if retries else "",
         diagnosis_vocabulary_version=diagnosis_vocabulary_sha256() if retries else "",
         retrieval="oracle",
+        repair_budget=repair,
+        repair_template_sha256=repair_template_sha256() if repair else "",
     )
 
 

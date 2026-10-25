@@ -88,6 +88,31 @@ def retry_prompt(prompt: str, trigger: Trigger) -> str:
     return prompt + "\n\n" + RETRY_INSTRUCTION + "\n" + diagnosis_of(trigger)
 
 
+#: The fixed repair instruction: the patch applied, and the tests still failed. It carries the
+#: verdict and never the test output or the prior completion (B1), so the repair prompt is a pure
+#: function of the first prompt and the seal can pre-render it.
+REPAIR_INSTRUCTION = (
+    "Your previous diff applied cleanly, but the task's tests still failed. Reply again with a "
+    "single unified diff and nothing else, inside one fenced block tagged `diff`. Change the "
+    "behaviour the tests exercise; do not repeat the same patch."
+)
+
+
+def repair_prompt(prompt: str) -> str:
+    """The repair draw of `prompt`: the same question plus the failed-tests verdict.
+
+    Pure by construction for the reason `retry_prompt` is (B1): the seal accepts only prompts
+    frozen before the run, so the repair prompt cannot carry the test output or the previous
+    completion. It tells the model that the patch applied and the tests failed, and nothing more.
+    """
+    return prompt + "\n\n" + REPAIR_INSTRUCTION
+
+
+def repair_template_sha256() -> str:
+    """A digest of the repair instruction, published beside the retry template's."""
+    return hashlib.sha256(REPAIR_INSTRUCTION.encode("utf-8")).hexdigest()
+
+
 def retry_template_sha256() -> str:
     """A digest of the retry template — the instruction plus the sorted diagnosis sentences.
 

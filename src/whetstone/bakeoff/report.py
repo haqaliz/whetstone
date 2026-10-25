@@ -217,6 +217,14 @@ class GenerationContract:
     #: be told apart programmatically (`p2-yield-probe/prd.md` D9), which § 10.1 asks for.
     retrieval: str
 
+    #: How many repair draws a (candidate, task) may get after a NOT_SOLVED verdict. `0` is the
+    #: no-repairs state: a contract without repair prompts frozen into it declares no budget.
+    repair_budget: int = 0
+
+    #: A digest of the repair instruction, recomputable with stdlib alone. Blank exactly when
+    #: `repair_budget` is `0`.
+    repair_template_sha256: str = ""
+
     @classmethod
     def parse(cls, block: Mapping[str, Any]) -> GenerationContract:
         """Read a sidecar's `generation_contract` block, including one that predates this shape.
@@ -241,6 +249,8 @@ class GenerationContract:
             retry_template_sha256=block.get("retry_template_sha256", ""),
             diagnosis_vocabulary_version=block.get("diagnosis_vocabulary_version", ""),
             retrieval=block.get("retrieval", "oracle"),
+            repair_budget=block.get("repair_budget", 0),
+            repair_template_sha256=block.get("repair_template_sha256", ""),
         )
 
 

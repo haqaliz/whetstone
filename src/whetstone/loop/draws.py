@@ -104,6 +104,7 @@ def sample(
     pool: Path | None = None,
     seeder: Seeder = mlx_seeder,
     retries: bool = False,
+    repair: int = 0,
 ) -> tuple[Drawn, ...]:
     """Draw `draws` seeded attempts at every task in every source, with one control arm per task.
 
@@ -193,6 +194,7 @@ def sample(
                         timeout=timeout,
                         interpreters=interpreters,
                         pool=pool,
+                        repair=repair,
                     ),
                 )
                 journals[attempt].append(step)
