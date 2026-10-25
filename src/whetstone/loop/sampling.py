@@ -203,18 +203,38 @@ class Draw:
                 f"attempt must be one-based, got {self.attempt}: draw i of k is attempt i"
             )
 
-    def generate(self, prompt: str) -> str:
-        """Seed for this (task, attempt), then delegate. An unfrozen prompt goes down untouched."""
+    def _seed(self, prompt: str, *, record: bool = True) -> bool:
+        """Apply and record the draw's seed for a posed prompt; nothing for an unfrozen one."""
         task_id = self.contract.get(prompt_hash(prompt))
         if task_id is None:
-            return self.inner.generate(prompt)
+            return False
         seed = attempt_seed(self.run_seed, task_id, self.attempt)
         # Applied before the call and recorded before the call, because the seeding is what the
         # record is about: a draw that raised still drew under this seed, and a record written
         # afterwards would silently omit exactly the attempts a reader is trying to explain.
         self.seeder(seed)
-        self.applied.append(Applied(task_id=task_id, attempt=self.attempt, seed=seed))
+        if record:
+            self.applied.append(Applied(task_id=task_id, attempt=self.attempt, seed=seed))
+        return True
+
+    def generate(self, prompt: str) -> str:
+        """Seed for this (task, attempt), then delegate. An unfrozen prompt goes down untouched."""
+        self._seed(prompt)
         return self.inner.generate(prompt)
+
+    def generate_repair(self, prompt: str) -> str:
+        """Seed and delegate a one-shot repair; never re-enter the completion-retry wrapper.
+
+        The repair prompt is posed under the same task, so it takes the same draw's seed. The
+        retry wrapper's `generate_repair` is the delegate when present; a wrapper without it is
+        asked normally, exactly as the unfrozen case is. A retry built *from* a repair prompt is
+        not in the contract, so the repair never re-enters `Retry.generate`.
+        """
+        # The draw's seed is applied again; it is already recorded once for this (task, attempt),
+        # and a duplicate entry would read as a second draw of the same index.
+        self._seed(prompt, record=False)
+        ask = getattr(self.inner, "generate_repair", self.inner.generate)
+        return ask(prompt)
 
 
 def sampler_for(draws: int) -> Any:
