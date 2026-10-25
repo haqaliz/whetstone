@@ -469,7 +469,8 @@ def score(
         if verified.outcome is not Outcome.NOT_SOLVED:
             break
         started = time.perf_counter()
-        completion = generator.generate(repair_prompt(prompt))
+        ask = getattr(generator, "generate_repair", generator.generate)
+        completion = ask(repair_prompt(prompt))
         verified = replace(verified, generation_seconds=time.perf_counter() - started)
         extraction = extract_patch(completion)
         if not isinstance(extraction, Extracted):
