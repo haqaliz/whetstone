@@ -329,6 +329,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-10-20 | The main series moves to Torch/MPS on a pinned 7B HF base; the 32B/MLX series remains separate and unretired (§ 10.20) | 1 — pins the inputs of a new series | Yes |
 | 2026-10-22 | The main series' base moves to a pinned 8B HF model; the 7B Torch/MPS series remains separate and unretired (§ 10.21) | 1 — pins the inputs of a new series | Yes |
 | 2026-10-24 | The main series' base moves to a pinned 14B HF model at 4-bit (NF4 QLoRA); the 8B and 7B Torch series remain separate and unretired (§ 10.22) | 1 — pins the inputs of a new series | Yes |
+| 2026-10-25 | The main series returns to the 8B base under a bounded repair contract after the 14B NF4 pre-flight failed; the 14B series is not extended (§ 10.23) | 1 — pins the inputs of a new series | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1219,3 +1220,60 @@ single rollout under this amendment, and a zero is entirely possible. The § 3 b
 unspent, nothing here claims the 14B selects a strict-`PASS`, and should the fit, the pre-flight
 or the night find the machine cannot host the base, *"accept the finding"* remains a legitimate
 outcome.
+
+### 10.23 The main series returns to the 8B base, with a bounded repair contract — 2026-10-25
+
+**Type 1 (§ 8.1): pins the inputs of a new series, committed before the training it governs
+runs.** It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not
+edit § 10.21 or § 10.22**: this document is append-only, and both pins keep their text byte-intact.
+What changes is the contract the main series draws under.
+
+**Why the series returns.** The 14B NF4 pre-flight (`torch-14b-probe-001`) produced **7 draws, all
+`NO_DIFF`**, at about 9 minutes per draw, then hung on the eighth in an uninterruptible Metal wait
+(`_local_scalar_dense_mps`, the same path as #86's crash) on torch 2.14.1. The 4-bit path is
+unusable on this machine regardless of its format, and § 10.22's series is not extended: it has no
+night, no checkpoint and no figure. The 8B fp16 series is the only measured stable runtime here
+(35 hours, no hang), and its 206 real diffs in 624 evaluable draws include **51 patches that applied
+and failed their tests** — the near-misses a repair can convert.
+
+**The base.** Unchanged from § 10.21: `Qwen/Qwen3-8B` at
+`b968826d9c46dd6066d109eabc6255188de91218` (Apache-2.0, 8.19B parameters), recorded by per-file
+hash in `weights/provenance.json` (gitignored — the weights never leave the box) and re-hashed
+before a token is generated.
+
+**The runtime.** Unchanged: `torch` **2.14.1** + PEFT on the Mac's Metal backend, device `mps`,
+precision `float16`; adapter format PEFT `adapter_model.safetensors`.
+
+**The repair contract.** After a rollout applies cleanly and the STRICT verifier returns not-solved,
+the run may re-ask up to **`R_repair = 2`** times. The repair prompt is the first-attempt prompt
+plus a fixed instruction that the patch applied and the tests failed; it carries **no test output
+and no prior completion**, so it is a pure function of the first prompt and the seal pre-poses it.
+Every repair is re-verified by the same STRICT verifier: a repair is not a loosened verifier, and a
+repaired patch that passes is a strict-`PASS`. The ledger records `repair_budget` and
+`repair_template_sha256`.
+
+**The pre-flight, recorded before its probe.** The format wall was measured under § 10.21 and is not
+re-measured. The repair probe is a **yield** test: `whetstone run --night --probe 8 --repair 2` on
+the 8B, the first 8 private tasks plus the one public task at `K = 16`; **GO iff at least one of the
+probe's 144 draws is strict-`PASS`**. A GO is the first solve evidence under the repair contract; it
+claims no model, no delta and no gate decision.
+
+**What does not change.** The held-out document is `tasks/heldout/source-b.json`, its
+`document_digest` unchanged from § 10.16; the draw budget `K = 16` (§ 10.19) and the retry count
+`R = 3` (§ 10.8) are unchanged. The corpus, the verifier, the gate rule and its exits do not move.
+
+**Comparability, stated plainly.** Every figure measured under § 10.21 (the 8B without repairs),
+§ 10.22 (the 14B), § 10.20, § 10.10 or a portability-arm base is **non-comparable** to any figure
+measured under this series: a different contract, or different weights, sits between them, and each
+is sufficient on its own to make the comparison meaningless. § 3 treats a change to a pinned input
+as starting over, and the old series is not extended. The § 10.21 zero is not restated as this
+series' figure, and the 14B series is not extended.
+
+**No report home.** The gate record stays gitignored under `runs/`, and the series' finding lives
+under `docs/planning/torch-mps-series/`; this series creates no `reports/` directory.
+
+**What is not claimed.** No training has run under this series: no checkpoint, ledger or yield
+figure exists. The probe may return zero, and a zero is a legitimate published outcome; the repair
+raises the ceiling, it does not promise a solve. The § 3 baseline remains unspent, nothing here
+claims the 8B selects a strict-`PASS`, and should the probe or the night find the machine cannot
+host the base, *"accept the finding"* remains a legitimate outcome.
