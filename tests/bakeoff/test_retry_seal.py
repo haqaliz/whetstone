@@ -40,7 +40,7 @@ from whetstone.bakeoff import diffcheck
 from whetstone.bakeoff.diffcheck import Trigger
 from whetstone.bakeoff.generator import Generator, StubGenerator
 from whetstone.bakeoff.rendering import prompt_hash, render_prompt
-from whetstone.bakeoff.retry import Retry, retry_prompt
+from whetstone.bakeoff.retry import Retry, repair_prompt, retry_prompt
 from whetstone.bakeoff.run import Contract, ContractChanged, Sealed, freeze
 from whetstone.bakeoff.sources import oracle_sources
 from whetstone.bakeoff.transcript import Transcript
@@ -107,6 +107,22 @@ def _records(transcript: Transcript) -> list[dict[str, object]]:
     return [
         json.loads(line) for line in transcript.path.read_text(encoding="utf-8").splitlines()
     ]
+
+
+def test_a_repair_run_freezes_the_repair_prompt(tmp_path: Path) -> None:
+    """A repair run's seal carries the repair prompt, filed under its task."""
+    task = _task(tmp_path, "alpha")
+    contract = freeze([task], repair=True)
+    repaired = repair_prompt(_posed(task))
+
+    assert prompt_hash(repaired) in contract.posed, (
+        "WHY THIS IS A FAILURE: a repair-enabled contract does not carry the repair prompt. "
+        "Sealed would refuse it at the first NOT_SOLVED, after the draws are already paid for"
+    )
+    assert contract.posed[prompt_hash(repaired)] == task.task_id, (
+        "WHY THIS IS A FAILURE: the repair prompt is filed under a different task, so the "
+        "recorder would attribute the repaired completion to a question it did not answer"
+    )
 
 
 def test_every_prompt_a_retry_run_issues_was_frozen_into_the_contract(tmp_path: Path) -> None:

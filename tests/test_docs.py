@@ -1346,10 +1346,52 @@ def test_the_14b_qlora_amendment_pins_the_base() -> None:
         f"{PREREGISTRATION}'s amendment log no longer records the § 10.22 row as a Type 1 pin of "
         "a new series' inputs."
     )
+
+def test_the_repair_amendment_pins_the_8b_repair_contract() -> None:
+    """§ 10.23 returns the main series to the 8B with a bounded repair contract.
+
+    The 14B NF4 pre-flight failed (7/7 NO_DIFF, then a Metal hang); the 8B is the stable runtime,
+    and its 51 applied-and-failed patches are the near-misses. The repair is a contract change, so
+    it is a new series with its own pin and its own probe rule.
+    """
+    flat = _flat(_read(PREREGISTRATION))
+    base = "Qwen/Qwen3-8B"
+    revision = "b968826d9c46dd6066d109eabc6255188de91218"
+    assert "### 10.23" in flat, f"{PREREGISTRATION} no longer carries a § 10.23 amendment."
+    assert (
+        "Type 1 (§ 8.1): pins the inputs of a new series, committed before the training it "
+        "governs runs" in flat
+    ), f"{PREREGISTRATION} § 10.23 no longer states the Type 1 pin."
+    assert "introduces no success threshold" in flat and (
+        "rewords nothing in § 1, § 4 or § 6" in flat
+    ), f"{PREREGISTRATION} § 10.23 no longer carries the no-threshold/no-rewording line."
+    assert "does not edit § 10.21 or § 10.22" in flat, (
+        f"{PREREGISTRATION} § 10.23 no longer states that both prior pins are untouched."
+    )
+    assert base in flat and revision in flat, (
+        f"{PREREGISTRATION} § 10.23 no longer names {base!r} at {revision!r}."
+    )
+    assert "R_repair = 2" in flat and "no test output" in flat, (
+        f"{PREREGISTRATION} § 10.23 no longer pins the repair budget or the bounded prompt."
+    )
+    assert "at least one" in flat and "144" in flat, (
+        f"{PREREGISTRATION} § 10.23 no longer states the probe's GO rule."
+    )
+    assert "non-comparable" in flat and "the old series is not extended" in flat, (
+        f"{PREREGISTRATION} § 10.23 no longer carries the non-comparability paragraph."
+    )
+    assert "No training has run" in flat and "the § 3 baseline remains unspent" in flat, (
+        f"{PREREGISTRATION} § 10.23 no longer states that no training has run."
+    )
+    assert (
+        "2026-10-25 | The main series returns to the 8B base under a bounded repair contract "
+        "after the 14B NF4 pre-flight failed; the 14B series is not extended (§ 10.23) | 1 — pins "
+        "the inputs of a new series | Yes" in flat
+    ), f"{PREREGISTRATION}'s amendment log no longer records the § 10.23 row."
     sheet = _flat(_read("docs/planning/torch-mps-series/night-door/runbook.md"))
     assert base in sheet and revision in sheet, (
         "docs/planning/torch-mps-series/night-door/runbook.md no longer names the same base and "
-        f"revision § 10.22 pins ({base!r} @ {revision!r})."
+        f"revision § 10.23 pins ({base!r} @ {revision!r})."
     )
 
 

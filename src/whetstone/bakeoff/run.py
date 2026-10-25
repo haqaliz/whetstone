@@ -69,7 +69,13 @@ from whetstone.bakeoff.report import (
     funnel_from_ledger,
     write,
 )
-from whetstone.bakeoff.retry import RETRY_BUDGET, Retry, retry_prompt, retry_template_sha256
+from whetstone.bakeoff.retry import (
+    RETRY_BUDGET,
+    Retry,
+    repair_prompt,
+    retry_prompt,
+    retry_template_sha256,
+)
 from whetstone.bakeoff.scoring import Interpreters, Rollout
 from whetstone.bakeoff.selection import Contender
 from whetstone.bakeoff.sources import oracle_sources
@@ -415,7 +421,13 @@ def select_candidates(fetched: Sequence[Any], only: Sequence[str]) -> tuple[Any,
     return tuple(one for one in fetched if one in chosen)
 
 
-def freeze(tasks: Sequence[Task], *, pool: Path | None = None, retry: bool = False) -> Contract:
+def freeze(
+    tasks: Sequence[Task],
+    *,
+    pool: Path | None = None,
+    retry: bool = False,
+    repair: bool = False,
+) -> Contract:
     """Fix the question, over the scored set, before anything is loaded or generated.
 
     Takes the tasks rather than reading the template's source. A source digest would move when a
@@ -467,6 +479,8 @@ def freeze(tasks: Sequence[Task], *, pool: Path | None = None, retry: bool = Fal
         if retry:
             for trigger in Trigger:
                 posed.setdefault(prompt_hash(retry_prompt(first, trigger)), task.task_id)
+        if repair:
+            posed.setdefault(prompt_hash(repair_prompt(first)), task.task_id)
     return Contract(
         sha256=hashlib.sha256("\n".join(sorted(posed)).encode("utf-8")).hexdigest(),
         posed=MappingProxyType(posed),

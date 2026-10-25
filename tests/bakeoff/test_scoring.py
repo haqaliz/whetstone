@@ -185,6 +185,32 @@ CORRUPT_COUNTS = """\
 """
 
 
+def test_a_failed_patch_is_repaired_before_the_rollout_is_graded(tmp_path: Path) -> None:
+    """A NOT_SOLVED draw is re-asked with the pre-posed repair prompt; a repaired PASS is kept."""
+    from whetstone.bakeoff.retry import repair_prompt
+
+    fixture = build_mined_task(tmp_path / "task")
+    prompt = posed(fixture.task)
+    wrong = make_patch(fixture.donor, {"calc.py": STILL_BROKEN}, at=fixture.parent)
+    right = make_patch(fixture.donor, {"calc.py": MINED_CALC_FIXED}, at=fixture.parent)
+
+    record = score(
+        candidate="repair",
+        task=fixture.task,
+        generator=StubGenerator({prompt: wrong, repair_prompt(prompt): right}),
+        sandbox_root=tmp_path / "runs" / "repair",
+        timeout=TIMEOUT,
+        interpreters=Interpreters(workspace=tmp_path / "envs"),
+        repair=1,
+    )
+
+    assert record.outcome is Outcome.SOLVED, (
+        "WHY THIS IS A FAILURE: the first patch applied and failed (NOT_SOLVED), the repair "
+        f"returned a passing patch, and the record is {record.outcome!r}. A repair that is "
+        "generated but not graded is a second draw nobody counted"
+    )
+
+
 @pytest.mark.parametrize(
     ("answer", "git_says"),
     [(WRONG_CONTEXT, "did not apply"), (CORRUPT_COUNTS, "could not be parsed")],
