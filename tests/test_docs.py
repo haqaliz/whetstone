@@ -1395,6 +1395,41 @@ def test_the_repair_amendment_pins_the_8b_repair_contract() -> None:
     )
 
 
+def test_the_repair_night_amendment_pins_the_measurement() -> None:
+    """§ 10.24 makes the 51-task night the repair's measurement after the vacuous probe."""
+    flat = _flat(_read(PREREGISTRATION))
+    base = "Qwen/Qwen3-8B"
+    revision = "b968826d9c46dd6066d109eabc6255188de91218"
+    assert "### 10.24" in flat, f"{PREREGISTRATION} no longer carries a § 10.24 amendment."
+    assert (
+        "Type 1 (§ 8.1): pins the inputs of a measurement, committed before the night it governs "
+        "runs" in flat
+    ), f"{PREREGISTRATION} § 10.24 no longer states the Type 1 pin."
+    assert "introduces no success threshold" in flat and (
+        "rewords nothing in § 1, § 4 or § 6" in flat
+    ), f"{PREREGISTRATION} § 10.24 no longer carries the no-threshold/no-rewording line."
+    assert "does not edit § 10.23" in flat, (
+        f"{PREREGISTRATION} § 10.24 no longer states that § 10.23 is untouched."
+    )
+    assert base in flat and revision in flat, (
+        f"{PREREGISTRATION} § 10.24 no longer names {base!r} at {revision!r}."
+    )
+    assert "0 `SOLVED` and 0 `NOT_SOLVED`" in flat and "no publish threshold" in flat, (
+        f"{PREREGISTRATION} § 10.24 no longer records why the night follows the vacuous probe."
+    )
+    assert "51 applied-and-failed" in flat, (
+        f"{PREREGISTRATION} § 10.24 no longer names the population the repair targets."
+    )
+    assert "No count has been measured" in flat and "the § 3 baseline remains unspent" in flat, (
+        f"{PREREGISTRATION} § 10.24 no longer states that no count exists."
+    )
+    assert (
+        "2026-10-26 | The 51-task repair night is the repair's measurement after the eight-task "
+        "probe produced no target event (§ 10.24) | 1 — pins the inputs of a measurement | Yes"
+        in flat
+    ), f"{PREREGISTRATION}'s amendment log no longer records the § 10.24 row."
+
+
 def test_the_roadmap_records_the_re_derived_split_by_dated_correction() -> None:
     """AC8. § 12 referenced the § 10.7 split as live; the correction records the re-derivation.
 
