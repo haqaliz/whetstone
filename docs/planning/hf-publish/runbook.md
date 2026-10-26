@@ -57,6 +57,7 @@ must exit 0, before any of the commands below run.
   a run directory.
 - The **namespace and repo name are the operator's decision**; nothing in this repository
   hardcodes them. A model card naming the wrong namespace is worse than no card.
+  **Confirmed by the operator on 2026-10-26: `haqaliz/whetstone-8b-lora`.**
 - The upload is the only step that leaves the machine. The private corpus never does.
 
 ## Commands (to run only after steps 1–4)

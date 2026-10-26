@@ -330,6 +330,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-10-22 | The main series' base moves to a pinned 8B HF model; the 7B Torch/MPS series remains separate and unretired (§ 10.21) | 1 — pins the inputs of a new series | Yes |
 | 2026-10-24 | The main series' base moves to a pinned 14B HF model at 4-bit (NF4 QLoRA); the 8B and 7B Torch series remain separate and unretired (§ 10.22) | 1 — pins the inputs of a new series | Yes |
 | 2026-10-25 | The main series returns to the 8B base under a bounded repair contract after the 14B NF4 pre-flight failed; the 14B series is not extended (§ 10.23) | 1 — pins the inputs of a new series | Yes |
+| 2026-10-26 | The 51-task repair night is the repair's measurement after the eight-task probe produced no target event (§ 10.24) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1277,3 +1278,39 @@ figure exists. The probe may return zero, and a zero is a legitimate published o
 raises the ceiling, it does not promise a solve. The § 3 baseline remains unspent, nothing here
 claims the 8B selects a strict-`PASS`, and should the probe or the night find the machine cannot
 host the base, *"accept the finding"* remains a legitimate outcome.
+
+### 10.24 The 51-task repair night is the repair's measurement — 2026-10-26
+
+**Type 1 (§ 8.1): pins the inputs of a measurement, committed before the night it governs runs.**
+It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not edit
+§ 10.23**: this document is append-only, and the repair pin keeps its text byte-intact.
+
+**Why a night follows a NO-GO probe.** § 10.23's probe rule returned **NO-GO** with **0 `SOLVED`
+and 0 `NOT_SOLVED`** in 144 draws: the eight probe tasks produced no applied-and-failed patch, so
+the repair never fired. That is a NO-GO for the rule, not a measurement of the repair. The repair
+targets the population the 8B night measured: **51 applied-and-failed patches across the 51-task
+corpus**. The night is the smallest measurement that exercises it.
+
+**The measurement.** `whetstone run --night --repair 2` on § 10.23's base and runtime:
+`Qwen/Qwen3-8B` at `b968826d9c46dd6066d109eabc6255188de91218`, torch 2.14.1, `float16`, MPS; 51
+private + 1 public tasks × `K = 16`, the § 10.16 held-out document, the existing corpus (no
+re-mine). The strict-`PASS` set is the night's own selection; a zero writes no checkpoint, no
+dataset and no model card, and is a legitimate published outcome. The gate (§ 3) still decides
+whether a checkpoint is promoted; this amendment sets no publish threshold and no new success rule.
+
+**What does not change.** The base and revision, the runtime, `float16`, `K = 16` (§ 10.19),
+`R = 3` (§ 10.8), `R_repair = 2` (§ 10.23), the verifier, the gate rule and its exits, and the
+held-out document and its digest. The `NO_ORACLE` tasks stay unverified, never failures.
+
+**Comparability.** Every figure measured under § 10.23's eight-task probe (a different question
+set), under the 8B night without repairs (§ 10.21), the 14B (§ 10.22), the 7B (§ 10.20), the
+32B/MLX (§ 10.10) or an arm is **non-comparable** to any figure measured under this night. The old
+series is not extended, and the § 10.21 zero is not restated as this night's.
+
+**No report home.** The gate record stays gitignored under `runs/`; the finding lives under
+`docs/planning/torch-mps-series/`; no `reports/` directory is created.
+
+**What is not claimed.** No count has been measured under this night: no checkpoint, ledger or
+yield figure exists at the time of this amendment. The repair may convert nothing; a zero is
+possible and legitimate. The § 3 baseline remains unspent, and nothing here claims the night
+selects a strict-`PASS` or that any checkpoint will be promoted or published.
