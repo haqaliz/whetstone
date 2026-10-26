@@ -71,3 +71,27 @@ Consequences:
 
 Raw counts and the per-draw journals stay in the gitignored `runs/` store; this finding is the
 planning record.
+
+## The 14B NF4 pre-flight — 2026-10-24
+
+`torch-14b-probe-001` (Qwen3-14B, NF4 through `bitsandbytes` 0.50.2, torch 2.14.1, `--probe 8`)
+produced **7 draws, all `NO_DIFF`**, at about 9 minutes per draw, then hung on the eighth: no
+journal write for 64+ minutes, process state uninterruptible (`U+`), and a `sample` showing the
+same `_local_scalar_dense_mps` path as the 8B crash (#86). The 900 s draw timeout could not fire.
+The 4-bit path is unusable on this machine regardless of its format; § 10.22's series is **not
+extended**, and no night was run under it. The fit had passed (17.67 GB peak against the 25.6 GB
+headroom); the failure is the runtime, not the memory.
+
+## The repair arm — 2026-10-25/26
+
+§ 10.23 returns the main series to the 8B with a bounded repair contract (`R_repair = 2`): after a
+patch applies and the tests fail, the run re-asks with a pre-posed repair prompt that carries the
+verdict and **not** the test output. The probe rule, committed before the probe: **GO iff at least
+one of the 144 probe draws is strict-`PASS`**.
+
+Two probe launches (`torch-8b-repair-probe-001`, `-002`) voided on a harness defect: the repair
+generation re-entered the completion-retry wrapper and asked for a nested retry prompt the freeze
+had never posed; `Sealed` raised `ContractChanged` and stopped the runs (41 and 26 draws). Both are
+quarantined and produced no result. The fix (#92, #93) makes the repair one attempt, through both
+wrapper layers, and is pinned by a `Draw → Retry` composition test — the shape `score()` actually
+sees. `torch-8b-repair-probe-003` is the measurement; its result is recorded here when it returns.
