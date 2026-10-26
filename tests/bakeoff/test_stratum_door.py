@@ -58,6 +58,33 @@ HARDENED_CONTRACT_BLOCK: dict[str, object] = {
 }
 
 
+def test_a_repair_contract_publishes_its_budget() -> None:
+    """The machine block carries the repair fields; a missing field is a guessed contract."""
+    from whetstone.bakeoff.report import GenerationContract, _contract_block
+
+    contract = GenerationContract(
+        prompt_sha256="a" * 64,
+        sampler="greedy",
+        max_tokens=1,
+        extractor_version="2",
+        dev_subset=(),
+        retry_budget=2,
+        retry_template_sha256="d" * 64,
+        diagnosis_vocabulary_version="e" * 64,
+        retrieval="oracle",
+        repair_budget=2,
+        repair_template_sha256="f" * 64,
+    )
+
+    block = _contract_block(contract)
+
+    assert block["repair_budget"] == 2 and block["repair_template_sha256"] == "f" * 64, (
+        f"WHY THIS IS A FAILURE: the published contract block is {block!r}. The probe's ledger "
+        "omitted the repair fields because the two explicit serializers were not updated; a "
+        "repair run would be indistinguishable from a no-repair one"
+    )
+
+
 def _step(
     candidate: str,
     task_id: str,

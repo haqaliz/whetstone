@@ -366,6 +366,11 @@ def _contract_fields(contract: GenerationContract) -> str:
             f"retry template SHA-256 `{contract.retry_template_sha256}`",
             f"diagnosis vocabulary version `{contract.diagnosis_vocabulary_version}`",
         ]
+    if contract.repair_budget > 0:
+        parts += [
+            f"repair budget {contract.repair_budget}",
+            f"repair template SHA-256 `{contract.repair_template_sha256}`",
+        ]
     return "; ".join(parts)
 
 
@@ -1815,7 +1820,7 @@ def _contract_block(contract: GenerationContract) -> dict[str, Any]:
     always stated here, never defaulted: a reader of the sidecar must not have to guess which
     contract a figure was measured under.
     """
-    return {
+    block: dict[str, Any] = {
         "pinned": False,
         "prompt_sha256": contract.prompt_sha256,
         "sampler": contract.sampler,
@@ -1827,6 +1832,12 @@ def _contract_block(contract: GenerationContract) -> dict[str, Any]:
         "diagnosis_vocabulary_version": contract.diagnosis_vocabulary_version,
         "retrieval": contract.retrieval,
     }
+    if contract.repair_budget > 0:
+        # Absent, not zero, on a no-repair contract: the no-repair ledger is a published artifact
+        # and its bytes must not move (the remine golden pins them).
+        block["repair_budget"] = contract.repair_budget
+        block["repair_template_sha256"] = contract.repair_template_sha256
+    return block
 
 
 def _counts(counts: Tally) -> dict[str, Any]:
