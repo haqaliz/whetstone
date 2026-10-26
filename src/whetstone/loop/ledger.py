@@ -413,6 +413,14 @@ def _body(ledger: Ledger) -> dict[str, Any]:
             "retry_template_sha256": ledger.contract.retry_template_sha256,
             "diagnosis_vocabulary_version": ledger.contract.diagnosis_vocabulary_version,
             "retrieval": ledger.contract.retrieval,
+            **(
+                {
+                    "repair_budget": ledger.contract.repair_budget,
+                    "repair_template_sha256": ledger.contract.repair_template_sha256,
+                }
+                if ledger.contract.repair_budget > 0
+                else {}
+            ),
         },
         "task_set": {
             "private": ledger.task_set.private,

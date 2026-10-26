@@ -95,3 +95,18 @@ had never posed; `Sealed` raised `ContractChanged` and stopped the runs (41 and 
 quarantined and produced no result. The fix (#92, #93) makes the repair one attempt, through both
 wrapper layers, and is pinned by a `Draw → Retry` composition test — the shape `score()` actually
 sees. `torch-8b-repair-probe-003` is the measurement; its result is recorded here when it returns.
+
+**Probe 003 — 2026-10-26.** 144 draws: **0 `SOLVED`, 0 `NOT_SOLVED`** — `NO_DIFF` 73,
+`NOT_APPLIED` 39, `NO_ORACLE` 32 (two tasks). The repair never fired: the probe's eight tasks
+produced no applied-and-failed patch, so the pre-committed GO rule returned **NO-GO** on a probe
+that could not exercise the repair at all. That is a NO-GO for the rule, not evidence that the
+repair cannot convert a near-miss. The population the repair targets is the 8B night's **51
+`NOT_SOLVED` across 51 tasks**, and the probe's eight tasks are not that population (the earlier
+8B pre-flight on the same eight tasks had only 4 `NOT_SOLVED` in 144; this seed had none).
+
+**A provenance gap the probe exposed.** The 003 ledger's `generation_contract` omitted
+`repair_budget` and `repair_template_sha256`: the dataclass gained the fields, but the two
+explicit serializers (`loop/ledger.py` and `report._contract_block`) were not updated. A repair
+run was therefore indistinguishable from a no-repair run by its published contract. Fixed in this
+change — the machine block and the prose now state the repair budget when it is non-zero — and
+pinned by a contract-block test. The 003 ledger is evidence as written and is not rewritten.
