@@ -147,6 +147,34 @@ def test_a_repair_generation_does_not_issue_a_nested_retry(tmp_path: Path) -> No
     )
 
 
+def test_the_draw_wrapper_forwards_a_repair_without_a_nested_retry(tmp_path: Path) -> None:
+    """The outermost wrapper forwards the repair; `score()` never falls back to `generate`."""
+    from whetstone.loop.sampling import Draw
+
+    first = "the first prompt"
+    repaired = repair_prompt(first)
+    posed = {prompt_hash(first): "alpha", prompt_hash(repaired): "alpha"}
+    retry = Retry(
+        inner=StubGenerator({repaired: "prose"}),
+        transcript=Transcript(path=tmp_path / "t.jsonl"),
+        candidate=CANDIDATE,
+        contract=posed,
+    )
+    draw = Draw(
+        inner=retry,
+        contract=posed,
+        run_seed=1,
+        attempt=1,
+        seeder=lambda seed: None,
+    )
+
+    assert draw.generate_repair(repaired) == "prose", (
+        "WHY THIS IS A FAILURE: the Draw wrapper did not forward the repair. `score()` asks the "
+        "outermost generator for `generate_repair`; without it the call falls back to `generate`, "
+        "re-enters the retry wrapper, and asks for a nested prompt the freeze never posed"
+    )
+
+
 def test_every_prompt_a_retry_run_issues_was_frozen_into_the_contract(tmp_path: Path) -> None:
     """Seal-held (PRD AC8): first attempts and every retry are in the frozen `posed` map.
 
