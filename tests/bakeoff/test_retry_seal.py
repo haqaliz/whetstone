@@ -40,7 +40,7 @@ from whetstone.bakeoff import diffcheck
 from whetstone.bakeoff.diffcheck import Trigger
 from whetstone.bakeoff.generator import Generator, StubGenerator
 from whetstone.bakeoff.rendering import prompt_hash, render_prompt
-from whetstone.bakeoff.retry import Retry, repair_prompt, retry_prompt
+from whetstone.bakeoff.retry import FAILURE_OUTCOMES, Retry, repair_prompt, retry_prompt
 from whetstone.bakeoff.run import Contract, ContractChanged, Sealed, freeze
 from whetstone.bakeoff.sources import oracle_sources
 from whetstone.bakeoff.transcript import Transcript
@@ -145,6 +145,21 @@ def test_a_repair_generation_does_not_issue_a_nested_retry(tmp_path: Path) -> No
         "A repair that re-enters the retry wrapper asks for a nested prompt (repair + retry) "
         "that the freeze never posed, and the seal voids the run at the first malformed repair"
     )
+
+
+def test_a_repair_run_freezes_the_declared_test_prompts(tmp_path: Path) -> None:
+    """Every (declared test x junit outcome) repair prompt is pre-posed, so a repair is sealed."""
+    task = _task(tmp_path, "alpha")
+    contract = freeze([task], repair=True)
+    first = _posed(task)
+    node = task.fail_to_pass[0]
+
+    for outcome in FAILURE_OUTCOMES:
+        assert prompt_hash(repair_prompt(first, node, outcome)) in contract.posed, (
+            f"WHY THIS IS A FAILURE: the contract does not carry the repair prompt for "
+            f"({node!r}, {outcome!r}). The failure-class repair would be refused by the seal at "
+            "the first near-miss, after the draws were paid for"
+        )
 
 
 def test_the_draw_wrapper_forwards_a_repair_without_a_nested_retry(tmp_path: Path) -> None:

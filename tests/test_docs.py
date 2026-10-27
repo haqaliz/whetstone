@@ -1430,6 +1430,41 @@ def test_the_repair_night_amendment_pins_the_measurement() -> None:
     ), f"{PREREGISTRATION}'s amendment log no longer records the § 10.24 row."
 
 
+def test_the_failure_repair_amendment_pins_the_probe() -> None:
+    """§ 10.25 carries the failing declared test and junit outcome into the repair prompt."""
+    flat = _flat(_read(PREREGISTRATION))
+    base = "Qwen/Qwen3-8B"
+    revision = "b968826d9c46dd6066d109eabc6255188de91218"
+    assert "### 10.25" in flat, f"{PREREGISTRATION} no longer carries a § 10.25 amendment."
+    assert (
+        "Type 1 (§ 8.1): pins the inputs of a measurement, committed before the probe it governs "
+        "runs" in flat
+    ), f"{PREREGISTRATION} § 10.25 no longer states the Type 1 pin."
+    assert "introduces no success threshold" in flat and (
+        "rewords nothing in § 1, § 4 or § 6" in flat
+    ), f"{PREREGISTRATION} § 10.25 no longer carries the no-threshold/no-rewording line."
+    assert "does not edit § 10.23 or § 10.24" in flat, (
+        f"{PREREGISTRATION} § 10.25 no longer states that both prior pins are untouched."
+    )
+    assert base in flat and revision in flat, (
+        f"{PREREGISTRATION} § 10.25 no longer names {base!r} at {revision!r}."
+    )
+    assert "junit outcome" in flat and "no test body" in flat, (
+        f"{PREREGISTRATION} § 10.25 no longer pins the vocabulary or the leak boundary."
+    )
+    assert "probe 16" in flat and "272" in flat and "at least one" in flat, (
+        f"{PREREGISTRATION} § 10.25 no longer states the probe rule."
+    )
+    assert "No count has been measured" in flat and "the § 3 baseline remains unspent" in flat, (
+        f"{PREREGISTRATION} § 10.25 no longer states that no count exists."
+    )
+    assert (
+        "2026-10-28 | The repair prompt carries the first unpassed declared test and its junit "
+        "outcome; the 16-task probe measures it (§ 10.25) | 1 — pins the inputs of a measurement "
+        "| Yes" in flat
+    ), f"{PREREGISTRATION}'s amendment log no longer records the § 10.25 row."
+
+
 def test_the_roadmap_records_the_re_derived_split_by_dated_correction() -> None:
     """AC8. § 12 referenced the § 10.7 split as live; the correction records the re-derivation.
 

@@ -70,6 +70,7 @@ from whetstone.bakeoff.report import (
     write,
 )
 from whetstone.bakeoff.retry import (
+    FAILURE_OUTCOMES,
     RETRY_BUDGET,
     Retry,
     repair_prompt,
@@ -481,6 +482,11 @@ def freeze(
                 posed.setdefault(prompt_hash(retry_prompt(first, trigger)), task.task_id)
         if repair:
             posed.setdefault(prompt_hash(repair_prompt(first)), task.task_id)
+            for node_id in task.fail_to_pass:
+                for outcome in FAILURE_OUTCOMES:
+                    posed.setdefault(
+                        prompt_hash(repair_prompt(first, node_id, outcome)), task.task_id
+                    )
     return Contract(
         sha256=hashlib.sha256("\n".join(sorted(posed)).encode("utf-8")).hexdigest(),
         posed=MappingProxyType(posed),

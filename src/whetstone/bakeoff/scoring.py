@@ -60,6 +60,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from whetstone.bakeoff.generator import Generator
 from whetstone.bakeoff.patch import Extracted, extract_patch
@@ -200,6 +201,14 @@ class Rollout:
 
     #: Wall-clock seconds inside `verify_weak`. `0.0` when it did not run.
     weak_seconds: float
+
+    #: The first declared fail-to-pass node id that did not pass, and pytest's junit outcome for
+    #: it. Empty when the reward passed or no verifier ran. The repair vocabulary: the ids are
+    #: the task's own declaration and the outcomes are the report's closed set.
+    failing: str = ""
+
+    #: The junit outcome of `failing` (`failed`, `error`, `skipped`, `absent`); empty with it.
+    failing_outcome: str = ""
 
 
 #: How a task's environment is built. Takes the task and a private directory to build it in,
@@ -465,12 +474,15 @@ def score(
         timeout=timeout,
         interpreter=acquired.interpreter,
     )
+    # The first attempt's failing test is the trigger for every repair, and it stays on the
+    # record even when a repair succeeds: the near-miss is what the rollout's provenance is about.
+    trigger = (verified.failing, verified.failing_outcome)
     for attempt in range(repair):
         if verified.outcome is not Outcome.NOT_SOLVED:
             break
         started = time.perf_counter()
         ask = getattr(generator, "generate_repair", generator.generate)
-        completion = ask(repair_prompt(prompt))
+        completion = ask(repair_prompt(prompt, trigger[0], trigger[1]))
         verified = replace(verified, generation_seconds=time.perf_counter() - started)
         extraction = extract_patch(completion)
         if not isinstance(extraction, Extracted):
@@ -484,6 +496,7 @@ def score(
             timeout=timeout,
             interpreter=acquired.interpreter,
         )
+        verified = replace(verified, failing=trigger[0], failing_outcome=trigger[1])
     return verified
 
 
@@ -536,8 +549,11 @@ def _verify(
 
     kinds = tuple(verdict.kind for verdict in strict.verdicts)
     outcome = _classify(strict.status, kinds)
+    failing, failing_outcome = _first_unpassed(strict.verdicts)
     return replace(
         record,
+        failing=failing,
+        failing_outcome=failing_outcome,
         outcome=outcome,
         # `patch-apply` is the one sole verdict whose kind does not say what happened: git read
         # the patch and refused it, or could not read it at all. Its message carries git's own
@@ -550,6 +566,23 @@ def _verify(
         strict_seconds=strict_seconds,
         weak_seconds=weak_seconds,
     )
+
+
+def _first_unpassed(verdicts: Any) -> tuple[str, str]:
+    """The first declared test that did not pass, and its junit outcome.
+
+    The `fail-to-pass` verdict already holds this: `observed` maps each unpassed declared node id
+    to the outcome pytest's report carried. Nothing is parsed from captured output, and the
+    vocabulary is finite — the task's declaration times the report's closed outcome set.
+    """
+    for verdict in verdicts:
+        if verdict.kind != "fail-to-pass" or verdict.status is not Status.FAIL:
+            continue
+        observed = verdict.observed
+        if isinstance(observed, Mapping) and observed:
+            node_id = sorted(observed)[0]
+            return node_id, str(observed[node_id])
+    return "", ""
 
 
 def _classify(status: Status, kinds: tuple[str, ...]) -> Outcome:
