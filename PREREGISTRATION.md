@@ -331,6 +331,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-10-24 | The main series' base moves to a pinned 14B HF model at 4-bit (NF4 QLoRA); the 8B and 7B Torch series remain separate and unretired (§ 10.22) | 1 — pins the inputs of a new series | Yes |
 | 2026-10-25 | The main series returns to the 8B base under a bounded repair contract after the 14B NF4 pre-flight failed; the 14B series is not extended (§ 10.23) | 1 — pins the inputs of a new series | Yes |
 | 2026-10-26 | The 51-task repair night is the repair's measurement after the eight-task probe produced no target event (§ 10.24) | 1 — pins the inputs of a measurement | Yes |
+| 2026-10-28 | The repair prompt carries the first unpassed declared test and its junit outcome; the 16-task probe measures it (§ 10.25) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1314,3 +1315,44 @@ series is not extended, and the § 10.21 zero is not restated as this night's.
 yield figure exists at the time of this amendment. The repair may convert nothing; a zero is
 possible and legitimate. The § 3 baseline remains unspent, and nothing here claims the night
 selects a strict-`PASS` or that any checkpoint will be promoted or published.
+
+### 10.25 The repair carries the failing declared test and its junit outcome — 2026-10-28
+
+**Type 1 (§ 8.1): pins the inputs of a measurement, committed before the probe it governs runs.**
+It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not edit
+§ 10.23 or § 10.24**: both pins keep their text byte-intact. What changes is the repair vocabulary
+and the probe that measures it.
+
+**Why the vocabulary changes.** § 10.24's night fired the bounded repair ten times and converted
+none: "your patch applied cleanly, the tests still failed" is the verdict without the evidence.
+The verifier already knows more, finitely: the declared fail-to-pass node ids and pytest's junit
+outcome for each. The repair prompt may carry the first unpassed declared node id and its outcome
+(`failed`, `error`, `skipped`, `absent`) — a closed vocabulary (the task's declaration × the
+report's outcomes), so every prompt is pre-posed and the seal stays finite. It carries **no test
+body, no captured output and no prior completion**: the node id is declared metadata, not the
+answer key.
+
+**The measurement.** `whetstone run --night --probe 16 --repair 2` on § 10.23's base and runtime:
+`Qwen/Qwen3-8B` at `b968826d9c46dd6066d109eabc6255188de91218`, torch 2.14.1, `float16`; the first
+16 private tasks plus the one public task at `K = 16` (**272 draws**). At the 8B's measured rate
+the sample expects roughly sixteen near-misses. **GO iff at least one of the 272 draws is
+strict-`PASS`.** A GO is the first solve evidence under the failure-class repair; it claims no
+model and no delta.
+
+**What does not change.** The base and revision, the runtime and precision, `K = 16` (§ 10.19),
+`R = 3` (§ 10.8), `R_repair = 2` (§ 10.23), the score-both-ways verifier, the gate rule and its
+exits, and the held-out document and its digest. A repair is still one attempt, re-verified by the
+same STRICT verifier; a repaired pass is a strict-`PASS`.
+
+**Comparability.** Every figure measured under § 10.23 (generic repair), § 10.24 (the 51-task
+night), § 10.21 (no repairs), § 10.22, § 10.20, § 10.10 or an arm is **non-comparable** to any
+figure measured under this probe: a different repair vocabulary or different weights sits between
+them. The old series is not extended.
+
+**No report home.** The gate record stays gitignored under `runs/`; the finding lives under
+`docs/planning/torch-mps-series/`; no `reports/` directory is created.
+
+**What is not claimed.** No count has been measured under this probe. The failing test id may
+still be too little information; a zero is possible and legitimate. The § 3 baseline remains
+unspent, nothing here claims the probe selects a strict-`PASS`, and a NO-GO returns the lever to
+a human, never to a loosened verifier.

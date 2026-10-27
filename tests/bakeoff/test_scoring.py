@@ -194,16 +194,24 @@ def test_a_failed_patch_is_repaired_before_the_rollout_is_graded(tmp_path: Path)
     wrong = make_patch(fixture.donor, {"calc.py": STILL_BROKEN}, at=fixture.parent)
     right = make_patch(fixture.donor, {"calc.py": MINED_CALC_FIXED}, at=fixture.parent)
 
+    node = "tests/test_addition.py::test_add_is_addition"
     record = score(
         candidate="repair",
         task=fixture.task,
-        generator=StubGenerator({prompt: wrong, repair_prompt(prompt): right}),
+        generator=StubGenerator(
+            {prompt: wrong, repair_prompt(prompt, node, "failed"): right}
+        ),
         sandbox_root=tmp_path / "runs" / "repair",
         timeout=TIMEOUT,
         interpreters=Interpreters(workspace=tmp_path / "envs"),
         repair=1,
     )
 
+    assert (record.failing, record.failing_outcome) == (node, "failed"), (
+        f"WHY THIS IS A FAILURE: the record carries {record.failing!r}/"
+        f"{record.failing_outcome!r}. The repair prompt and the record must name the first "
+        "declared test the patch did not pass, or the repair is the verdict-only form again"
+    )
     assert record.outcome is Outcome.SOLVED, (
         "WHY THIS IS A FAILURE: the first patch applied and failed (NOT_SOLVED), the repair "
         f"returned a passing patch, and the record is {record.outcome!r}. A repair that is "

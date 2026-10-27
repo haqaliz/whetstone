@@ -94,23 +94,39 @@ def retry_prompt(prompt: str, trigger: Trigger) -> str:
 REPAIR_INSTRUCTION = (
     "Your previous diff applied cleanly, but the task's tests still failed. Reply again with a "
     "single unified diff and nothing else, inside one fenced block tagged `diff`. Change the "
-    "behaviour the tests exercise; do not repeat the same patch."
+    "behaviour the tests exercise; do not repeat the same patch, and do not edit the tests."
+)
+
+#: The closed set of outcomes pytest's junit report can carry for a declared test that did not
+#: pass. Finite by construction, which is what lets the freeze pre-render the prompts.
+FAILURE_OUTCOMES = ("absent", "error", "failed", "skipped")
+
+REPAIR_TEST_INSTRUCTION = (
+    "Your previous diff applied cleanly, but the task's declared test `{node_id}` did not pass "
+    "({outcome}). Reply again with a single unified diff and nothing else, inside one fenced "
+    "block tagged `diff`. Fix the behaviour that test exercises; do not repeat the same patch, "
+    "and do not edit the tests."
 )
 
 
-def repair_prompt(prompt: str) -> str:
-    """The repair draw of `prompt`: the same question plus the failed-tests verdict.
+def repair_prompt(prompt: str, node_id: str = "", outcome: str = "") -> str:
+    """The repair draw of `prompt`: the question plus the failed-tests verdict.
 
-    Pure by construction for the reason `retry_prompt` is (B1): the seal accepts only prompts
-    frozen before the run, so the repair prompt cannot carry the test output or the previous
-    completion. It tells the model that the patch applied and the tests failed, and nothing more.
+    When the verifier named a declared test and a junit outcome, the prompt carries both; those
+    are finite (the task's own declaration times the report's closed outcome set), so the freeze
+    can pre-render every variant. It never carries the test body, the test output or the prior
+    completion (B1): a repair prompt that varied with the execution would be unfreezable.
     """
+    if node_id and outcome in FAILURE_OUTCOMES:
+        instruction = REPAIR_TEST_INSTRUCTION.format(node_id=node_id, outcome=outcome)
+        return prompt + "\n\n" + instruction
     return prompt + "\n\n" + REPAIR_INSTRUCTION
 
 
 def repair_template_sha256() -> str:
-    """A digest of the repair instruction, published beside the retry template's."""
-    return hashlib.sha256(REPAIR_INSTRUCTION.encode("utf-8")).hexdigest()
+    """A digest of the repair vocabulary, published beside the retry template's."""
+    material = "\n".join((REPAIR_INSTRUCTION, REPAIR_TEST_INSTRUCTION, *FAILURE_OUTCOMES))
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 def retry_template_sha256() -> str:
