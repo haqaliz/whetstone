@@ -110,3 +110,19 @@ explicit serializers (`loop/ledger.py` and `report._contract_block`) were not up
 run was therefore indistinguishable from a no-repair run by its published contract. Fixed in this
 change — the machine block and the prose now state the repair budget when it is non-zero — and
 pinned by a contract-block test. The 003 ledger is evidence as written and is not rewritten.
+
+**The repair night — 2026-10-26/27.** `torch-8b-repair-night-001`: 832 draws (51 private + 1 public
+× 16), **0 strict-`PASS`** — `NO_DIFF` 414, `NOT_APPLIED` 214, `NOT_SOLVED` 10, `NO_ORACLE` 192
+(12 tasks), `UNVERIFIED` 2; **38 of 52 tasks produced a real diff**. The ledger records
+`repair_budget: 2`. **Ten near-misses fired the repair; none converted.** No checkpoint, no
+training, no card: the run wrote its ledger and exited non-zero, as a zero-yield night does.
+
+This is the answer to the bounded-repair question: a prompt carrying the verdict — "applied
+cleanly, tests still failed" — but **not the failing test output** does not convert the near-misses
+(0/10). The repair the data now supports is the one that carries the test output, and that is a
+**seal redesign**, not a prompt tweak: the repair prompt is finite only because every prompt is
+pre-posed before the run, while a prompt carrying a test failure is a function of the execution,
+not of the first prompt. That is the next design question, with its own pre-registration.
+
+The 8B series' conclusion stands: it follows the edit format and does not solve this corpus. No
+model was produced, and nothing is published.
