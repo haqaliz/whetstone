@@ -77,6 +77,7 @@ from whetstone.bakeoff.weights import (
     WeightsUnverified,
     load_weights,
 )
+from whetstone.loop import backend as backend_module
 from whetstone.loop import gate as gate_module
 from whetstone.loop import heldout as heldout_module
 from whetstone.loop import night as night_module
@@ -109,6 +110,26 @@ _retry_side = gate_module._retry_side
 #: through. One definition, in gate.py; a second copy of the load would be a second answer
 #: to "how is an untrained checkpoint scored".
 baseline_engine = gate_module.baseline_engine
+
+
+def engine_for(name: str) -> Callable[..., Generator]:
+    """The base-only engine belonging to the runtime `name`, by identity.
+
+    The § 3 baseline scores an **untrained** checkpoint, so each runtime's own gate engine is
+    already the right load: MLX's `baseline_engine` and Torch's `torch_gate_engine` both take
+    a checkpoint with `untrained: true`, load the base alone and decode greedily. Neither is
+    copied here — a second load would be a second answer to "how is an untrained checkpoint
+    scored", and the two answers would drift.
+
+    `name` is a recorded backend name, classified by `backend.family` (which tolerates the
+    legacy `torch-*` spelling). The Torch import is function-local, the loop package's rule:
+    `import whetstone.loop.baseline` must not load an inference stack.
+    """
+    if backend_module.family(name) == backend_module.TORCH:
+        from whetstone.loop import torch_runtime
+
+        return torch_runtime.torch_gate_engine
+    return baseline_engine
 
 #: The declared retry budget `R`, by identity — revisable only by a dated amendment to
 #: `PREREGISTRATION.md` § 7.2, never by a number written beside it.
@@ -1360,6 +1381,7 @@ __all__ = [
     "baseline_engine",
     "build_parser",
     "disclosure",
+    "engine_for",
     "main",
     "measure",
     "read_baseline_document",

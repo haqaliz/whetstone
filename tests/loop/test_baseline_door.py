@@ -48,7 +48,7 @@ from whetstone.bakeoff.run import TranscriptNotPrivate
 from whetstone.bakeoff.scoring import Outcome, Rollout
 from whetstone.bakeoff.stratum import OutUnderLocalCorpus
 from whetstone.bakeoff.weights import load_weights
-from whetstone.loop import baseline, gate, heldout, night, sft
+from whetstone.loop import backend, baseline, gate, heldout, night, sft
 from whetstone.verify.verdict import Status
 
 #: The guarded module under test, walked over its own bytes rather than this process's
@@ -56,7 +56,7 @@ from whetstone.verify.verdict import Status
 MODULE = Path(__file__).resolve().parents[2] / "src" / "whetstone" / "loop" / "baseline.py"
 
 #: The import roots that may appear only inside function bodies in `baseline.py`.
-FORBIDDEN_IMPORT_ROOTS = frozenset({"mlx", "mlx_lm"})
+FORBIDDEN_IMPORT_ROOTS = frozenset({"mlx", "mlx_lm", "torch"})
 
 # --------------------------------------------------------------------------------------------
 # Task B fixtures: the gate's own shapes, restated — real untrained checkpoint, loader-valid
@@ -939,6 +939,25 @@ def test_series_identity_equality() -> None:
     assert hash(first) == hash(
         baseline.SeriesIdentity(repo_id="r", revision="v1", heldout_digest="b" * 64)
     )
+
+
+def test_engine_for_dispatches_by_identity() -> None:
+    """The runtime name decides the engine, and every arm is the owning module's own object.
+
+    The MLX arm is the module-level `baseline_engine` — the seam the CLI tests replace, so
+    the dispatch must return the name at call time, never a copy bound at import time. The
+    Torch arm is `torch_runtime.torch_gate_engine` by identity; a second load would be a
+    second answer to "how is an untrained checkpoint scored". The legacy `torch-*` spelling
+    is accepted through `backend.family`, and an unknown name is refused rather than
+    defaulted.
+    """
+    from whetstone.loop import torch_runtime
+
+    assert baseline.engine_for(backend.MLX) is gate.baseline_engine
+    assert baseline.engine_for(backend.TORCH) is torch_runtime.torch_gate_engine
+    assert baseline.engine_for("torch-cpu") is torch_runtime.torch_gate_engine
+    with pytest.raises(backend.UnknownRuntime):
+        baseline.engine_for("jax")
 
 
 def test_baseline_engine_is_a_smoke_tested_factory() -> None:
