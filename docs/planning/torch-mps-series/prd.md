@@ -132,6 +132,11 @@ instructs the operator to read `ledger.backend.name == "torch"`, `device == "mps
 **N1 — a `check-probe --backend torch/mps/float16` pin**, with tests, if the code slice is small
 enough. Otherwise the sheet read-back is the slice.
 
+> **Built 2026-10-29, in `probe-backend-pin`.** The pin is spelled as three flags, not one:
+> `--runtime {mlx,torch}`, `--device <device>`, `--precision <dtype>`. Any of them turns on the
+> ledger-backend comparison and can only add a named violation (exit 1); with no pins the
+> decision is unchanged. The S2 sheet read-back remains as the cross-check.
+
 ## Acceptance Criteria (testable, written first)
 
 1. **Runtime flag.** A mixed environment with `--runtime torch` selects Torch; `--runtime mlx`

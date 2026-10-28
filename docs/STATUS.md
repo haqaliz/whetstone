@@ -10,6 +10,18 @@ carries the current state and the rules that still bind.
 
 ---
 
+**`check-probe` can pin the probe's recorded backend; the § 10.25 probe is still unrun** (2026-10-29, `probe-backend-pin`). The § 10.25 probe is a Torch/MPS `float16` run, but `whetstone check-probe` decided its GO/NO-GO from the control fold, the seed map, the declared budget and the held-out digest alone. The ledger records the runtime it actually ran under; the Torch sheet read it back by eye; the command's exit did not check it.
+
+**What shipped.**
+- **Three optional pins.** `whetstone check-probe --runtime {mlx,torch} --device <device> --precision <dtype>` compares the ledger's `backend` block to the declared values. The runtime compares through `backend.family` (the legacy `torch-*` spelling is Torch); the device and precision compare exactly.
+- **A pin can only add a violation.** A mismatch, an unknown recorded runtime, or a missing backend block under a pin is a named exit-1 finding naming both sides; it never turns a failing probe green. An unreadable run or document is still exit 2, and there is still no fifth code.
+- **The report and disclosure show both sides.** `ProbeReport` carries the recorded backend and the pins; the disclosure prints `pins: …` and `backend: …` before the decision's violation line.
+- **The sheet uses it.** `docs/planning/torch-mps-series/night-door/runbook.md`'s check-probe block passes all three, and its MPS read-back remains as the cross-check; the guard that asserted the door was silent about the backend now asserts the new sentence and the flags.
+
+**What is not claimed.** **No probe was run.** The § 10.25 measurement, its 272-draw budget, held-out document, base/runtime and GO rule are untouched; no number is claimed. The `whetstone-run/2` tolerance path still decides without pins, and a pin over a `/2` ledger with no backend is a violation, not a refusal. The reward path, the gate rule, `tasks/`, `K` and `R` are untouched.
+
+---
+
 **The § 3 baseline door can measure the Torch/MPS main series; the measurement is unspent** (2026-10-28, `torch-baseline-door`). The § 3 door binds `gate.baseline_engine`, which loads MLX only, while § 10.20/§ 10.21 moved the main series to Torch/PEFT on MPS. The declaration at `reports/baseline-measurement/report.json` still says `"measured": false`, and `honest_report` refuses a declaration-state baseline — so the series that exists today had no way to produce its own anchor.
 
 **What shipped.**
