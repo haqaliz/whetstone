@@ -62,6 +62,13 @@ retired.
   **follow-up unit**, not this one. This unit's exit is the first **gate decision** for the new
   series, not a published delta.
 
+> **Corrected 2026-10-28, when `torch-baseline-door` landed.** The paragraph above describes the
+> tree before the follow-up: the § 3 baseline door now accepts `--runtime {mlx,torch}`, dispatches
+> `torch_runtime.torch_gate_engine` on an untrained checkpoint, and records the backend in the
+> sealed evidence and artifact. The **measurement itself remains unspent** — § 12 puts it last,
+> and the § 10.25 probe still decides whether the 8B base survives. The § 1 headline remains a
+> later operator step; the door only makes it possible.
+
 **The night sheet must be its own sheet.**
 - `tests/test_night_runbook_guards.py` is hardcoded to one sheet and asserts exactly two door
   blocks and one retained `--only`. A Torch block in the MLX sheet fails it.

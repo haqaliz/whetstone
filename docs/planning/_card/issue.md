@@ -29,6 +29,9 @@ No reward, gate, corpus, held-out set, `K`, `R`, or series-key change.
 - A stub-engine end-to-end fixture where `honest_report` accepts the measured baseline for a
   same-series promotion record.
 - The full suite green; no number claimed.
+- **Refined in the PRD:** the MLX command line and the counts are unchanged, but a measured
+  MLX evidence now carries the backend block and a `tool_versions` filtered to the runtime
+  that ran. No measured baseline exists, so no figure moves; the declaration is not rewritten.
 - Caveat: the baseline is spent once and the base may move after the § 10.25 probe, so this
   unit builds the door only; the 8B/Torch measurement is the operator's after the probe
   settles the base. The measurement also includes the public task that produced the MPS

@@ -10,6 +10,19 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The § 3 baseline door can measure the Torch/MPS main series; the measurement is unspent** (2026-10-28, `torch-baseline-door`). The § 3 door binds `gate.baseline_engine`, which loads MLX only, while § 10.20/§ 10.21 moved the main series to Torch/PEFT on MPS. The declaration at `reports/baseline-measurement/report.json` still says `"measured": false`, and `honest_report` refuses a declaration-state baseline — so the series that exists today had no way to produce its own anchor.
+
+**What shipped.**
+- **The runtime is nameable, and ambiguity is refused.** `python -m whetstone.loop.baseline` gains an optional `--runtime {mlx,torch}`. With no flag and one installed runtime it uses that one; with both installed and no flag `AmbiguousBackend` is a named exit 2; a named runtime that is not installed is `NoBackend`, also exit 2. The MLX-only command line is unchanged.
+- **The engine is dispatched by identity.** `baseline.engine_for` returns the module-level `baseline_engine` for MLX and `torch_runtime.torch_gate_engine` for Torch, imported inside the function. Torch's engine already loads an untrained checkpoint base-only and decodes greedily, so the reward and the counts are untouched.
+- **The runtime is sealed provenance.** `measure` detects (or accepts) the backend after the measured-once guard, dispatches the engine, and carries the record on `BaselineMeasurement`. `write_evidence` writes `backend.recorded()` and calls `tool_versions(backend=...)`, so a Torch measurement names `torch` at its real version and never records `mlx-lm` (defect #33). The committed artifact carries the same block inside `document_digest`; a hand-edited backend is refused by the seal. The declaration carries no backend and the existing sealed declaration still reads, unrewritten.
+- **The series key did not move.** `SeriesIdentity` is still `(repo_id, revision, heldout_digest)`; a same-base measurement under another runtime is the same series and is refused by the measured-once guard. Making the runtime a key would be a Type 1 amendment, not a quiet second measurement.
+- **The honest-number chain composes.** A measured baseline artifact carrying a Torch backend renders against a same-series promotion record through `honest_report` — proven on a stub-engine fixture, with no change to `honest_report.py`.
+
+**What is not claimed.** **No measurement was run.** The unit builds the door only; § 12 puts the one-shot baseline last so a base that changes cannot strand it, and the § 10.25 repair probe still decides whether the 8B base survives. No weights, no GPU, no evidence document and no number exist under the new path. The measurement also includes the public task that produced the 8B night's MPS out-of-memory and corrupted-mask hang (`docs/planning/torch-mps-series/finding.md:42-61`); the door does not fix that. The reward path, the gate's rule and exits, `tasks/`, the held-out document, `K` and `R` are untouched.
+
+---
+
 **The public task is provisioned offline, and the night sheet holds the machine awake; no night was run** (2026-10-22, `public-task-offline`). Two Torch/MPS nights drew all 832 rollouts and then refused `UNVERIFIED`: the one public task (`pallets__flask-4045`) is processed last, the Mac had slept, and its clone could not resolve `github.com`. A digest-dir pre-warm alone could not fix it — the control arm and the oracle clone into fresh destinations through `materialise` — so the fix sits at that boundary, and the sheet stops the sleep.
 
 **What shipped.**

@@ -47,7 +47,11 @@ This file orients a coding agent working in this repository. Read it first.
 > discipline behind one shared `loop.seal` module, so `check-leakage --checkpoint` compares a
 > sealed checkpoint claim against a verified run document and prints each side's seal state
 > (tamper-evidence, not authentication); the real documents stay v1 — night-001's dataset and
-> probe-001's ledger — read unsealed, never rewritten.
+> probe-001's ledger — read unsealed, never rewritten. Then the **torch-baseline-door** unit
+> (2026-10-28): the § 3 baseline door accepts an optional `--runtime {mlx,torch}`, dispatches the
+> base-only engine by identity, and seals the recorded backend into the evidence and the
+> committed artifact — the current Torch/MPS series can now spend its own baseline, which
+> remains unspent until the § 10.25 probe settles the base.
 >
 > **The corpus, stated precisely.** Source B (private, pre-registered headline):
 > **66 tasks**, each proven live rather than asserted. Source A (public SWE-bench-Lite):

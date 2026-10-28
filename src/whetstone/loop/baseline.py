@@ -192,7 +192,10 @@ class SeriesIdentity:
 
     `PREREGISTRATION.md` § 3's baseline is measured once, re-measured never, and the series
     is what "once" keys on — the base's repo id and revision and the held-out document's
-    digest, nothing else. The checkpoint digest is deliberately NOT part of the identity:
+    digest, nothing else. The runtime is **not** part of the identity: it is recorded
+    provenance (in the evidence and the artifact), not a second key. A same-base measurement
+    under another runtime is the same series and is refused; making the runtime a key would be
+    a Type 1 amendment. The checkpoint digest is deliberately NOT part of the identity:
     an untrained checkpoint records no files, so its `/1` digest is `_digest_of(())` — the
     same constant for every untrained v1 base, whatever the repo id or revision (a `/2`
     untrained digest folds in `base`) — and a series
@@ -353,9 +356,9 @@ class BaselineDocument:
 
     The loader's checks are the gate: the document is accepted only after every check has
     passed, and the returned object carries the fields the P4 writer needs, verbatim from
-    the document. A declaration (`measured=False`) carries no series, no sides, no counts —
-    those fields are `None` — and the one field that decides whether a count may be read
-    at all is `measured` itself.
+    the document. A declaration (`measured=False`) carries no series, no sides, no counts and
+    no backend — those fields are `None` — and the one field that decides whether a count may
+    be read at all is `measured` itself.
     """
 
     #: The declared schema, carried rather than assumed.
@@ -455,10 +458,11 @@ def read_baseline_document(path: Path) -> BaselineDocument:
     checks. The checks are, in order: the file reads and is an object; the schema is the
     writer's own (`BASELINE_REPORT_SCHEMA`, by identity); no field is unknown; the state
     is declared (`measured`); a declaration carries its sentence and is sealed; a measured
-    document's series identity is validated by `read_series_identity` **by identity**, both
-    sources are present, every count is an integer and non-negative, `weaker_wins` never
-    exceeds its own denominator; and the document digest — recomputed with the writer's own
-    function — seals the payload. Each refusal names the file and the offending field.
+    document's series identity is validated by `read_series_identity` **by identity**, its
+    backend block is validated, both sources are present, every count is an integer and
+    non-negative, `weaker_wins` never exceeds its own denominator; and the document digest —
+    recomputed with the writer's own function — seals the payload. Each refusal names the file
+    and the offending field.
     """
     location = Path(path)
     try:
@@ -780,11 +784,14 @@ def write_evidence(
     """Write the evidence document — schema `whetstone-baseline-run/1` — deterministically.
 
     Local evidence, never published: the base identity (the checkpoint's own provenance,
-    read by identity), hashes and verdicts only. Each rollout carries the
+    read by identity), the runtime it was measured under, and hashes and verdicts only. Each
+    rollout carries the
     task id, the outcome, both verifiers' statuses, the prompt's hash, the first attempt's
     completion hash (the recorder's own, by identity) and the three wall-clock fields — a
     prompt, a completion or a patch text is never stored, so a source-B task's contents
-    cannot leak through it. The retry is recorded as all three of what governed it
+    cannot leak through it. `backend` is the record `backend.detect` produced, written by
+    `Backend.recorded` and fed to `tool_versions` so the versions block names the runtime that
+    actually ran. The retry is recorded as all three of what governed it
     (`retry_count`, the declared `R` by identity), what it spent (per-task
     `before`/`after`/`retries_used`), and the counts each source's post-retry rollouts
     reduce to — `weaker_wins` over the held-out set is the baseline `N`.

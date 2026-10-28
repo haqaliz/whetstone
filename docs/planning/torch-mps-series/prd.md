@@ -158,6 +158,11 @@ enough. Otherwise the sheet read-back is the slice.
 
 - **No § 3 baseline or § 1 headline for the new series.** The baseline door is MLX-only; that is a
   follow-up unit with a code change. This unit's exit is the first **gate decision**, not a delta.
+
+> **Corrected 2026-10-28, when `torch-baseline-door` landed.** The follow-up above is built: the
+> baseline door now accepts `--runtime {mlx,torch}` and records the backend in the sealed
+> evidence/artifact. The § 3 **measurement** and the § 1 headline remain unspent/operator-run;
+> this unit's exit is still the gate decision, not a delta.
 - **No 14B/32B on MPS.** The 14B fp16 (~29.5 GB) exceeds the 25.6 GB headroom; the 32B is not
   considered.
 - **No MLX change.** The 32B/MLX series, its sheet, its reports and its night are untouched; it is
