@@ -81,6 +81,7 @@ from whetstone.loop import backend as backend_module
 from whetstone.loop import gate as gate_module
 from whetstone.loop import heldout as heldout_module
 from whetstone.loop import night as night_module
+from whetstone.loop.backend import Backend
 from whetstone.loop.heldout import (
     EmptyHeldout,
     HeldoutDigestMismatch,
@@ -110,6 +111,10 @@ _retry_side = gate_module._retry_side
 #: through. One definition, in gate.py; a second copy of the load would be a second answer
 #: to "how is an untrained checkpoint scored".
 baseline_engine = gate_module.baseline_engine
+
+#: The runtime detector, by identity — the one `choose`/`describe` pair every GPU door uses.
+#: Bound here so the door tests can replace it without loading a runtime.
+detect = backend_module.detect
 
 
 def engine_for(name: str) -> Callable[..., Generator]:
@@ -530,6 +535,9 @@ class BaselineMeasurement:
     #: The re-hashed checkpoint's digest.
     checkpoint_digest: str
 
+    #: The runtime that produced this measurement: the recorded backend, not a host guess.
+    backend: Backend
+
     #: The held-out document's digest, recomputed from the payload the loader accepted.
     heldout_digest: str
 
@@ -571,7 +579,9 @@ def measure(
     weights: Path,
     out: Path,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    engine: Callable[..., Generator] = baseline_engine,
+    engine: Callable[..., Generator] | None = None,
+    prefer: str | None = None,
+    backend: Backend | None = None,
 ) -> BaselineMeasurement:
     """Score the single baseline checkpoint on the held-out split, exactly once.
 
@@ -581,11 +591,15 @@ def measure(
     anything compares; the base weights are verified and resolved from the checkpoint's own
     provenance; and only then is a token generated.
 
-    `engine` is the machine seam — `baseline_engine` for a real run, a stub in every test.
-    It receives the **verified** checkpoint, so scoring always runs under the re-hashed
-    bytes. `recorded_on` is an input, never the clock, and `run_id` names the evidence
-    directory — both for the arms' rule: evidence that dated or named itself would differ
-    between two renders of the same documented command.
+    `engine` is the machine seam — resolved from the runtime when not injected, a stub in
+    every test. `prefer` names the runtime the operator chose (`--runtime`); absent, `detect`
+    uses the only installed runtime or refuses an ambiguous machine rather than defaulting.
+    `backend` lets a caller supply the already-detected record; a caller that injects an engine
+    must also say which runtime it stands for, so a measured document can never be silent about
+    what produced it. The engine receives the **verified** checkpoint, so scoring always runs
+    under the re-hashed bytes. `recorded_on` is an input, never the clock, and `run_id` names the
+    evidence directory — both for the arms' rule: evidence that dated or named itself would
+    differ between two renders of the same documented command.
 
     The evidence document is written only at the end of a successful measurement: a killed
     run leaves the gitignored runs home and no artifact, and a re-run uses a fresh
@@ -627,6 +641,16 @@ def measure(
             f"measured on {_artifact_recorded_on(artifact_path)}; the § 3 baseline is "
             "measured once, re-measured never, and a changed pinned input is a new series, "
             "never a second measurement"
+        )
+
+    if engine is None:
+        backend = backend or detect(prefer=prefer)
+        engine = engine_for(backend.name)
+    elif backend is None:
+        raise ValueError(
+            "a measurement with an injected engine must name the backend it stands for: the "
+            "committed baseline is the 'before' of every delta, and a document silent about "
+            "the runtime that produced it cannot be interpreted later"
         )
 
     recorder = _CompletionRecorder(engine(base, checkpoint_obj, max_tokens))
@@ -676,6 +700,7 @@ def measure(
     )
     return BaselineMeasurement(
         checkpoint_digest=checkpoint_obj.digest,
+        backend=backend,
         heldout_digest=heldout_digest,
         heldout_tally=heldout_tally,
         public_tally=public_tally,
@@ -1104,6 +1129,9 @@ def disclosure(measurement: BaselineMeasurement) -> tuple[str, ...]:
     spent = sum(one.retries_used for one in measurement.retries)
     return (
         f"baseline checkpoint: {measurement.checkpoint_digest[:12]}",
+        f"runtime: {measurement.backend.name} ({measurement.backend.library} "
+        f"{measurement.backend.version}, {measurement.backend.device}, "
+        f"{measurement.backend.precision or 'unstated'})",
         f"held-out document: {measurement.heldout_digest[:12]}",
         f"source B (held-out): {heldout_tally.solved} solved of {heldout_tally.denominator}, "
         f"{heldout_tally.unverified} unverified of {heldout_tally.denominator}, "
@@ -1334,7 +1362,6 @@ def _measure_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
             weights=args.weights,
             out=args.out,
             max_tokens=args.max_tokens,
-            engine=baseline_engine,
         )
     except REFUSALS as refusal:
         print(f"whetstone baseline: {refusal}", file=sys.stderr)

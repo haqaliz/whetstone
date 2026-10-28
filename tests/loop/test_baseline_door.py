@@ -66,6 +66,36 @@ FORBIDDEN_IMPORT_ROOTS = frozenset({"mlx", "mlx_lm", "torch"})
 #: The one base the fixture checkpoint names. The weights root holds exactly this candidate.
 _BASE = "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit"
 
+#: The two runtimes as the door records them. The stub engine drives both; the record is what
+#: the evidence and the artifact must carry, so the tests name a plausible backend without
+#: loading one.
+_MLX_BACKEND = backend.Backend(
+    name=backend.MLX,
+    library="mlx-lm",
+    version="0.31.3",
+    device="Apple M4 Max",
+    device_memory_bytes=30_150_672_384,
+)
+_TORCH_BACKEND = backend.Backend(
+    name=backend.TORCH,
+    library="torch",
+    version="2.14.1",
+    device="mps",
+    device_memory_bytes=25_628_071_526,
+    precision="float16",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test in this module loads a runtime to discover one.
+
+    `measure` detects when no engine is injected, and the door tests monkeypatch the engine
+    seam rather than a GPU. The detector is replaced with the fixture MLX record; a test that
+    is about detection or a refusal overrides this within its own body.
+    """
+    monkeypatch.setattr(baseline, "detect", lambda *, prefer=None: _MLX_BACKEND)
+
 #: The loaded private corpus the fixture document is defined over: eleven tasks, ten held
 #: out by the document, one ("t-11") left outside the membership — the gate's own shape.
 _PRIVATE_IDS = tuple(f"t-{i:02d}" for i in range(1, 12))
@@ -168,6 +198,7 @@ def _fixtures(
     revision: str | None = None,
     canary: str | None = None,
     legacy_v1: bool = False,
+    backend_record: backend.Backend = _MLX_BACKEND,
 ) -> dict[str, Any]:
     """Everything one `measure()` invocation needs on disk — checkpoint, document, corpus,
     weights — plus the stub engine keyed on the checkpoint's digest.
@@ -247,6 +278,7 @@ def _fixtures(
         "run_id": run_id,
         "out": tmp_path / "out" / "baseline.json",
         "engine": engine,
+        "backend": backend_record,
         "stub": stub,
         "used_checkpoints": used_checkpoints,
         "private_built": private_built,
@@ -277,6 +309,7 @@ def _measure(fixtures: dict[str, Any], **overrides: Any) -> baseline.BaselineMea
         "weights": fixtures["weights"],
         "out": fixtures["out"],
         "engine": fixtures["engine"],
+        "backend": fixtures["backend"],
     }
     arguments.update(overrides)
     return baseline.measure(**arguments)
@@ -292,6 +325,7 @@ def _run_measure(
     revision: str | None = None,
     canary: str | None = None,
     legacy_v1: bool = False,
+    backend_record: backend.Backend = _MLX_BACKEND,
     **overrides: Any,
 ) -> tuple[baseline.BaselineMeasurement, dict[str, Any]]:
     """One full measurement over the shared fixtures — see `_fixtures`."""
@@ -304,6 +338,7 @@ def _run_measure(
         revision=revision,
         canary=canary,
         legacy_v1=legacy_v1,
+        backend_record=backend_record,
     )
     return _measure(fixtures, **overrides), fixtures
 
@@ -468,6 +503,67 @@ def test_measure_counts_n_via_tally_by_identity(tmp_path: Path) -> None:
     by_task = {record.task_id: record for record in heldout_records}
     assert by_task[_FIRST].outcome is Outcome.OUT_OF_SCOPE
     assert by_task[_FIRST].strict is Status.FAIL and by_task[_FIRST].weak is Status.PASS
+
+
+def test_measure_carries_the_backend_and_discloses_the_runtime(tmp_path: Path) -> None:
+    """A measurement knows which runtime produced it, and says so.
+
+    The backend is the one record that makes a baseline figure interpretable months later: the
+    same base under another runtime is not the same experiment. It is carried on the result and
+    printed in the disclosure, beside the counts it describes.
+    """
+    measurement, _ = _run_measure(tmp_path, backend_record=_TORCH_BACKEND)
+
+    assert measurement.backend is _TORCH_BACKEND
+    printed = "\n".join(baseline.disclosure(measurement))
+    assert "runtime: torch (torch 2.14.1, mps, float16)" in printed, printed
+
+
+def test_measure_refuses_an_engine_without_a_backend(tmp_path: Path) -> None:
+    """An injected engine must name the runtime it stands for — before any token is generated.
+
+    The stub seam exists so tests can score without a GPU; it does not excuse a measurement
+    from recording what produced it. The refusal is a programmer error, not an operator one,
+    and it fires before the engine is asked.
+    """
+    fixtures = _fixtures(tmp_path)
+
+    with pytest.raises(ValueError) as refused:
+        _measure(fixtures, backend=None)
+
+    message = str(refused.value)
+    assert "backend" in message and "engine" in message, refused.value
+    assert fixtures["stub"].asked == [], (
+        "WHY THIS IS A FAILURE: the missing-backend refusal fired after a token was generated"
+    )
+
+
+def test_measure_detects_the_runtime_when_no_engine_is_injected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The door path: no engine, no backend — `detect` picks one and `engine_for` dispatches it.
+
+    This is the path the operator takes. `detect` is replaced with a fixture (the real one
+    loads a runtime), and `engine_for` records the name it was asked for and returns the stub.
+    """
+    fixtures = _fixtures(tmp_path)
+    asked: list[str] = []
+
+    monkeypatch.setattr(baseline, "detect", lambda *, prefer=None: _TORCH_BACKEND)
+
+    def engine_for(name: str) -> Any:
+        asked.append(name)
+        return fixtures["engine"]
+
+    monkeypatch.setattr(baseline, "engine_for", engine_for)
+
+    measurement = _measure(fixtures, engine=None, backend=None)
+
+    assert asked == [backend.TORCH], asked
+    assert measurement.backend is _TORCH_BACKEND
+    assert fixtures["stub"].asked, (
+        "WHY THIS IS A FAILURE: detection ran but the dispatched stub engine was never asked"
+    )
 
 
 def test_retry_fires_only_on_no_verdict(
