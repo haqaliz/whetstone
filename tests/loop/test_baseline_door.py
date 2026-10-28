@@ -48,7 +48,7 @@ from whetstone.bakeoff.run import TranscriptNotPrivate
 from whetstone.bakeoff.scoring import Outcome, Rollout
 from whetstone.bakeoff.stratum import OutUnderLocalCorpus
 from whetstone.bakeoff.weights import load_weights
-from whetstone.loop import baseline, gate, heldout, night, sft
+from whetstone.loop import backend, baseline, gate, heldout, night, sft
 from whetstone.verify.verdict import Status
 
 #: The guarded module under test, walked over its own bytes rather than this process's
@@ -56,7 +56,7 @@ from whetstone.verify.verdict import Status
 MODULE = Path(__file__).resolve().parents[2] / "src" / "whetstone" / "loop" / "baseline.py"
 
 #: The import roots that may appear only inside function bodies in `baseline.py`.
-FORBIDDEN_IMPORT_ROOTS = frozenset({"mlx", "mlx_lm"})
+FORBIDDEN_IMPORT_ROOTS = frozenset({"mlx", "mlx_lm", "torch"})
 
 # --------------------------------------------------------------------------------------------
 # Task B fixtures: the gate's own shapes, restated — real untrained checkpoint, loader-valid
@@ -65,6 +65,36 @@ FORBIDDEN_IMPORT_ROOTS = frozenset({"mlx", "mlx_lm"})
 
 #: The one base the fixture checkpoint names. The weights root holds exactly this candidate.
 _BASE = "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit"
+
+#: The two runtimes as the door records them. The stub engine drives both; the record is what
+#: the evidence and the artifact must carry, so the tests name a plausible backend without
+#: loading one.
+_MLX_BACKEND = backend.Backend(
+    name=backend.MLX,
+    library="mlx-lm",
+    version="0.31.3",
+    device="Apple M4 Max",
+    device_memory_bytes=30_150_672_384,
+)
+_TORCH_BACKEND = backend.Backend(
+    name=backend.TORCH,
+    library="torch",
+    version="2.14.1",
+    device="mps",
+    device_memory_bytes=25_628_071_526,
+    precision="float16",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test in this module loads a runtime to discover one.
+
+    `measure` detects when no engine is injected, and the door tests monkeypatch the engine
+    seam rather than a GPU. The detector is replaced with the fixture MLX record; a test that
+    is about detection or a refusal overrides this within its own body.
+    """
+    monkeypatch.setattr(baseline, "detect", lambda *, prefer=None: _MLX_BACKEND)
 
 #: The loaded private corpus the fixture document is defined over: eleven tasks, ten held
 #: out by the document, one ("t-11") left outside the membership — the gate's own shape.
@@ -168,6 +198,7 @@ def _fixtures(
     revision: str | None = None,
     canary: str | None = None,
     legacy_v1: bool = False,
+    backend_record: backend.Backend = _MLX_BACKEND,
 ) -> dict[str, Any]:
     """Everything one `measure()` invocation needs on disk — checkpoint, document, corpus,
     weights — plus the stub engine keyed on the checkpoint's digest.
@@ -247,6 +278,7 @@ def _fixtures(
         "run_id": run_id,
         "out": tmp_path / "out" / "baseline.json",
         "engine": engine,
+        "backend": backend_record,
         "stub": stub,
         "used_checkpoints": used_checkpoints,
         "private_built": private_built,
@@ -277,6 +309,7 @@ def _measure(fixtures: dict[str, Any], **overrides: Any) -> baseline.BaselineMea
         "weights": fixtures["weights"],
         "out": fixtures["out"],
         "engine": fixtures["engine"],
+        "backend": fixtures["backend"],
     }
     arguments.update(overrides)
     return baseline.measure(**arguments)
@@ -292,6 +325,7 @@ def _run_measure(
     revision: str | None = None,
     canary: str | None = None,
     legacy_v1: bool = False,
+    backend_record: backend.Backend = _MLX_BACKEND,
     **overrides: Any,
 ) -> tuple[baseline.BaselineMeasurement, dict[str, Any]]:
     """One full measurement over the shared fixtures — see `_fixtures`."""
@@ -304,6 +338,7 @@ def _run_measure(
         revision=revision,
         canary=canary,
         legacy_v1=legacy_v1,
+        backend_record=backend_record,
     )
     return _measure(fixtures, **overrides), fixtures
 
@@ -468,6 +503,131 @@ def test_measure_counts_n_via_tally_by_identity(tmp_path: Path) -> None:
     by_task = {record.task_id: record for record in heldout_records}
     assert by_task[_FIRST].outcome is Outcome.OUT_OF_SCOPE
     assert by_task[_FIRST].strict is Status.FAIL and by_task[_FIRST].weak is Status.PASS
+
+
+def test_measure_carries_the_backend_and_discloses_the_runtime(tmp_path: Path) -> None:
+    """A measurement knows which runtime produced it, and says so.
+
+    The backend is the one record that makes a baseline figure interpretable months later: the
+    same base under another runtime is not the same experiment. It is carried on the result and
+    printed in the disclosure, beside the counts it describes.
+    """
+    measurement, _ = _run_measure(tmp_path, backend_record=_TORCH_BACKEND)
+
+    assert measurement.backend is _TORCH_BACKEND
+    printed = "\n".join(baseline.disclosure(measurement))
+    assert "runtime: torch (torch 2.14.1, mps, float16)" in printed, printed
+
+
+def test_measure_refuses_an_engine_without_a_backend(tmp_path: Path) -> None:
+    """An injected engine must name the runtime it stands for — before any token is generated.
+
+    The stub seam exists so tests can score without a GPU; it does not excuse a measurement
+    from recording what produced it. The refusal is a programmer error, not an operator one,
+    and it fires before the engine is asked.
+    """
+    fixtures = _fixtures(tmp_path)
+
+    with pytest.raises(ValueError) as refused:
+        _measure(fixtures, backend=None)
+
+    message = str(refused.value)
+    assert "backend" in message and "engine" in message, refused.value
+    assert fixtures["stub"].asked == [], (
+        "WHY THIS IS A FAILURE: the missing-backend refusal fired after a token was generated"
+    )
+
+
+def test_measure_detects_the_runtime_when_no_engine_is_injected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The door path: no engine, no backend — `detect` picks one and `engine_for` dispatches it.
+
+    This is the path the operator takes. `detect` is replaced with a fixture (the real one
+    loads a runtime), and `engine_for` records the name it was asked for and returns the stub.
+    """
+    fixtures = _fixtures(tmp_path)
+    asked: list[str] = []
+
+    monkeypatch.setattr(baseline, "detect", lambda *, prefer=None: _TORCH_BACKEND)
+
+    def engine_for(name: str) -> Any:
+        asked.append(name)
+        return fixtures["engine"]
+
+    monkeypatch.setattr(baseline, "engine_for", engine_for)
+
+    measurement = _measure(fixtures, engine=None, backend=None)
+
+    assert asked == [backend.TORCH], asked
+    assert measurement.backend is _TORCH_BACKEND
+    assert fixtures["stub"].asked, (
+        "WHY THIS IS A FAILURE: detection ran but the dispatched stub engine was never asked"
+    )
+
+
+def test_the_evidence_records_the_backend_and_the_runtime_versions(tmp_path: Path) -> None:
+    """A Torch measurement names Torch, not the MLX library the old tool block assumed.
+
+    `ledger.tool_versions(backend=...)` is the one filter that keeps a run's versions block
+    from naming a runtime it never loaded (defect #33). The evidence is where the committed
+    artifact's provenance comes from, so this is the join that matters.
+    """
+    measurement, _ = _run_measure(tmp_path, backend_record=_TORCH_BACKEND)
+    evidence = _evidence(measurement)
+
+    assert evidence["backend"] == _TORCH_BACKEND.recorded()
+    assert evidence["tool_versions"]["torch"] == _TORCH_BACKEND.version
+    assert "mlx-lm" not in evidence["tool_versions"], (
+        "WHY THIS IS A FAILURE: a Torch measurement recorded the MLX library, the exact "
+        "provenance inaccuracy #33 fixed for the ledger"
+    )
+
+
+def test_the_artifact_carries_the_sealed_backend(tmp_path: Path) -> None:
+    """The rendered § 3 artifact keeps the runtime the evidence recorded.
+
+    The artifact is the committed document a later delta is read against; a reader must be
+    able to see that this anchor came from Torch without opening gitignored evidence.
+    """
+    measurement, fixtures = _run_measure(tmp_path, backend_record=_TORCH_BACKEND)
+    out = tmp_path / "artifact"
+    baseline.render_artifact(
+        evidence=measurement.evidence_path,
+        out=out,
+        recorded_on=fixtures["recorded_on"],
+        checkpoint=fixtures["checkpoint"],
+    )
+
+    loaded = baseline.read_baseline_document(out / "report.json")
+
+    assert loaded.measured is True
+    assert loaded.backend == _TORCH_BACKEND.recorded()
+
+
+def test_a_same_base_under_another_runtime_is_still_the_same_series(tmp_path: Path) -> None:
+    """The runtime is provenance, not the series key — the measured-once refusal holds.
+
+    § 3's key is the base identity and the held-out digest. A same-base MLX run after a Torch
+    run is the same series and is refused; making the runtime a key is a Type 1 amendment,
+    not a quiet second measurement. The stub is never asked on the second run.
+    """
+    first, fixtures = _run_measure(tmp_path / "first", backend_record=_TORCH_BACKEND)
+    out = tmp_path / "artifact"
+    baseline.render_artifact(
+        evidence=first.evidence_path,
+        out=out,
+        recorded_on=fixtures["recorded_on"],
+        checkpoint=fixtures["checkpoint"],
+    )
+
+    with pytest.raises(baseline.BaselineAlreadyMeasured):
+        _run_measure(
+            tmp_path / "second",
+            run_id="baseline-002",
+            backend_record=_MLX_BACKEND,
+            out=out,
+        )
 
 
 def test_retry_fires_only_on_no_verdict(
@@ -941,6 +1101,25 @@ def test_series_identity_equality() -> None:
     )
 
 
+def test_engine_for_dispatches_by_identity() -> None:
+    """The runtime name decides the engine, and every arm is the owning module's own object.
+
+    The MLX arm is the module-level `baseline_engine` — the seam the CLI tests replace, so
+    the dispatch must return the name at call time, never a copy bound at import time. The
+    Torch arm is `torch_runtime.torch_gate_engine` by identity; a second load would be a
+    second answer to "how is an untrained checkpoint scored". The legacy `torch-*` spelling
+    is accepted through `backend.family`, and an unknown name is refused rather than
+    defaulted.
+    """
+    from whetstone.loop import torch_runtime
+
+    assert baseline.engine_for(backend.MLX) is gate.baseline_engine
+    assert baseline.engine_for(backend.TORCH) is torch_runtime.torch_gate_engine
+    assert baseline.engine_for("torch-cpu") is torch_runtime.torch_gate_engine
+    with pytest.raises(backend.UnknownRuntime):
+        baseline.engine_for("jax")
+
+
 def test_baseline_engine_is_a_smoke_tested_factory() -> None:
     """The seam exists, is callable, and is never invoked by this test.
 
@@ -1122,6 +1301,110 @@ def test_the_door_refuses_a_missing_recorded_on(
     assert run_id.value.code == 2
 
 
+def test_the_door_passes_the_runtime_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--runtime torch` reaches `detect`, and the dispatched engine is the Torch one.
+
+    The operator names the runtime once; the door must not re-decide it. The stub stands in
+    for both engines, so the assertions are about the wiring: `prefer` reaches the detector,
+    the detector's answer names the engine, and the evidence records the backend.
+    """
+    fixtures = _fixtures(tmp_path)
+    prefers: list[str | None] = []
+    dispatched: list[str] = []
+
+    def detect(*, prefer: str | None = None) -> backend.Backend:
+        prefers.append(prefer)
+        return _TORCH_BACKEND
+
+    def engine_for(name: str) -> Any:
+        dispatched.append(name)
+        return fixtures["engine"]
+
+    monkeypatch.setattr(baseline, "detect", detect)
+    monkeypatch.setattr(baseline, "engine_for", engine_for)
+
+    code = baseline.main(_argv(fixtures, "--runtime", "torch"))
+
+    assert code == 0, capsys.readouterr().err
+    assert prefers == [backend.TORCH], prefers
+    assert dispatched == [backend.TORCH], dispatched
+    evidence = json.loads(
+        (fixtures["runs"] / str(fixtures["run_id"]) / "evidence.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert evidence["backend"]["name"] == backend.TORCH, evidence["backend"]
+
+
+def test_the_door_refuses_an_ambiguous_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two runtimes and no `--runtime` is a named exit 2, before a token is generated.
+
+    A default would make the answer depend on the order of a list, and two runs on that
+    machine could then differ in backend while their evidence agreed in every field.
+    """
+    fixtures = _fixtures(tmp_path)
+
+    def ambiguous(*, prefer: str | None = None) -> backend.Backend:
+        raise backend.AmbiguousBackend(
+            "more than one runtime is installed and none was named; pass --runtime"
+        )
+
+    monkeypatch.setattr(baseline, "detect", ambiguous)
+
+    code = baseline.main(_argv(fixtures))
+
+    assert code == 2
+    assert "more than one runtime" in capsys.readouterr().err
+    assert fixtures["stub"].asked == [], (
+        "WHY THIS IS A FAILURE: the ambiguity refusal fired after a token was generated"
+    )
+
+
+def test_the_door_refuses_an_unavailable_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A named runtime that is not installed is refused, never substituted."""
+    fixtures = _fixtures(tmp_path)
+
+    def unavailable(*, prefer: str | None = None) -> backend.Backend:
+        raise backend.NoBackend(f"the backend {prefer!r} was asked for and is not installed")
+
+    monkeypatch.setattr(baseline, "detect", unavailable)
+
+    code = baseline.main(_argv(fixtures, "--runtime", "torch"))
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "torch" in err and "not installed" in err
+    assert fixtures["stub"].asked == []
+
+
+def test_a_render_mode_refuses_the_runtime_flag(tmp_path: Path) -> None:
+    """`--runtime` is a measuring flag; a render mode beside it is a usage error."""
+    fixtures = _fixtures(tmp_path)
+    argv = [
+        "--render",
+        str(tmp_path / "evidence.json"),
+        "--checkpoint",
+        str(fixtures["checkpoint"]),
+        "--out",
+        str(tmp_path / "out"),
+        "--recorded-on",
+        "2026-10-28",
+        "--runtime",
+        backend.MLX,
+    ]
+
+    with pytest.raises(SystemExit) as raised:
+        baseline.main(argv)
+
+    assert raised.value.code == 2
+
+
 def test_every_flag_is_in_the_parser(tmp_path: Path) -> None:
     """The spec's flag set, asserted against `build_parser()` — the surface aspect 4 pins.
 
@@ -1153,11 +1436,13 @@ def test_every_flag_is_in_the_parser(tmp_path: Path) -> None:
         "--run-id",
         "--pool",
         "--max-tokens",
+        "--runtime",
         "--render",
         "--render-declaration",
     }, flags
 
     parsed = parser.parse_args(_argv(fixtures))
+    assert parsed.runtime is None
     assert parsed.weights == fixtures["weights"]
     assert parsed.checkpoint == fixtures["checkpoint"]
     assert parsed.heldout == fixtures["heldout"]
@@ -1171,6 +1456,7 @@ def test_every_flag_is_in_the_parser(tmp_path: Path) -> None:
     assert parsed.run_id == fixtures["run_id"]
     assert parsed.pool == fixtures["pool"]
     assert parsed.max_tokens is DEFAULT_MAX_TOKENS
+    assert parser.parse_args(_argv(fixtures, "--runtime", "torch")).runtime == "torch"
 
 
 def test_baseline_module_imports_no_mlx_at_module_scope() -> None:

@@ -69,6 +69,7 @@ def test_the_loader_accepts_a_writer_round_trip(tmp_path: Path) -> None:
     assert loaded.retries == payload["retries"]
     assert loaded.evidence == payload["evidence"]
     assert loaded.tool_versions == payload["tool_versions"]
+    assert loaded.backend == payload["backend"]
     assert loaded.measured is True
 
     declared_sidecar = _written(tmp_path / "declaration", _declaration())
@@ -77,7 +78,57 @@ def test_the_loader_accepts_a_writer_round_trip(tmp_path: Path) -> None:
     assert declared.series is None
     assert declared.sides is None
     assert declared.n is None
+    assert declared.backend is None
     assert declared.recorded_on == RECORDED_ON
+
+
+def test_the_committed_declaration_reads_without_a_backend() -> None:
+    """The § 3 artifact already in the tree predates the runtime field and must keep reading.
+
+    `reports/baseline-measurement/report.json` is a sealed declaration with no measurement
+    and no backend; adding the field to the known set must not turn it into an unreadable
+    artifact or force a rewrite of a sealed document.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    loaded = baseline_module.read_baseline_document(
+        repo_root / "reports" / "baseline-measurement" / "report.json"
+    )
+
+    assert loaded.measured is False
+    assert loaded.series is None
+    assert loaded.backend is None
+
+
+def test_the_loader_refuses_a_measured_document_without_a_backend(tmp_path: Path) -> None:
+    """A measured document silent about its runtime is refused by name, before the seal.
+
+    The refusal names the missing field rather than the stale digest: the missing provenance
+    is the defect, and a reader should be told what to add.
+    """
+    document = dict(_document())
+    document.pop("backend")
+    sidecar = _raw(tmp_path, document)
+
+    with pytest.raises(ValueError) as refused:
+        baseline_module.read_baseline_document(sidecar)
+
+    assert "backend" in str(refused.value), refused.value
+
+
+def test_the_loader_refuses_a_backend_edit_without_the_seal(tmp_path: Path) -> None:
+    """Changing the runtime without regenerating the digest is refused by the seal.
+
+    The backend is provenance a reader may rely on — "this baseline was measured under Torch"
+    — so it is inside the seal, not beside it.
+    """
+    document = json.loads(json.dumps(_document()))
+    document["backend"]["version"] = "9.9.9"
+    sidecar = _raw(tmp_path, document)
+
+    with pytest.raises(ValueError) as refused:
+        baseline_module.read_baseline_document(sidecar)
+
+    assert "document_digest" in str(refused.value), refused.value
 
 
 def test_the_loader_refuses_a_hand_edited_document(tmp_path: Path) -> None:

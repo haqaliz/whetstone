@@ -24,6 +24,8 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
+import pytest
+
 from whetstone.bakeoff import report
 from whetstone.bakeoff.scoring import Outcome, Rollout
 from whetstone.loop import baseline as baseline_module
@@ -60,6 +62,17 @@ RECORDED_ON = "2026-08-26"
 EVIDENCE_DIGEST = "e" * 64
 
 TOOL_VERSIONS = {"python": "3.12.7", "uv": "0.5.18"}
+
+#: The runtime a measured baseline records. The writer only seals it; these tests never load
+#: one, and a different name is enough to prove the block is provenance rather than a key.
+BACKEND = {
+    "name": "torch",
+    "library": "torch",
+    "version": "2.14.1",
+    "device": "mps",
+    "device_memory_bytes": 25_628_071_526,
+    "precision": "float16",
+}
 
 
 def _rollout(candidate: str, task_id: str, outcome: Outcome) -> Rollout:
@@ -126,6 +139,7 @@ def _document() -> Mapping[str, object]:
         evidence_digest=EVIDENCE_DIGEST,
         recorded_on=RECORDED_ON,
         tool_versions=TOOL_VERSIONS,
+        backend=BACKEND,
     )
 
 
@@ -245,6 +259,50 @@ def test_the_measured_document_carries_both_sources_and_n() -> None:
     )
 
 
+def test_the_measured_document_carries_its_runtime_and_requires_one() -> None:
+    """The backend is provenance the measured document must state, and the declaration must not.
+
+    A figure measured under Torch and one measured under MLX are not the same experiment, so
+    the measured document records the runtime beside the counts. The declaration is the state
+    before any measurement: it carries no runtime, and passing one is a contradiction rather
+    than a field to ignore.
+    """
+    document = _document()
+
+    assert document["backend"] == BACKEND, (
+        "WHY THIS IS A FAILURE: the measured document does not carry the runtime it was "
+        "measured under; a later reader could not tell a Torch baseline from an MLX one"
+    )
+
+    with pytest.raises(ValueError) as missing:
+        report.build_baseline_report(
+            series=SERIES,
+            heldout_tally=report.tally("baseline", _heldout_records()),
+            public_tally=report.tally("baseline", _public_records()),
+            retries=_retries(),
+            retry_count=3,
+            evidence_digest=EVIDENCE_DIGEST,
+            recorded_on=RECORDED_ON,
+            tool_versions=TOOL_VERSIONS,
+        )
+    assert "backend" in str(missing.value), missing.value
+
+    with pytest.raises(ValueError) as declared:
+        report.build_baseline_report(
+            series=SERIES,
+            heldout_tally=report.tally("baseline", _heldout_records()),
+            public_tally=report.tally("baseline", _public_records()),
+            retries=_retries(),
+            retry_count=3,
+            evidence_digest=EVIDENCE_DIGEST,
+            recorded_on=RECORDED_ON,
+            tool_versions=TOOL_VERSIONS,
+            measured=False,
+            backend=BACKEND,
+        )
+    assert "declaration" in str(declared.value), declared.value
+
+
 def test_the_base_sentence_states_section_7_3_open(tmp_path: Path) -> None:
     """The base is recorded as this series' pinned input, and § 7.3 stays open.
 
@@ -331,6 +389,7 @@ def test_the_writer_is_pure_and_deterministic(tmp_path: Path) -> None:
         evidence_digest=EVIDENCE_DIGEST,
         recorded_on="2026-08-27",
         tool_versions=TOOL_VERSIONS,
+        backend=BACKEND,
     )
     third = report.write_baseline_report(different_date, tmp_path / "three")
     for one, three in zip(first, third, strict=True):
@@ -374,6 +433,7 @@ def test_the_declaration_carries_no_count_in_any_spelling(tmp_path: Path) -> Non
         "series",
         "tool_versions",
         "generation_contract",
+        "backend",
     ):
         assert name not in payload, (
             f"WHY THIS IS A FAILURE: the declaration carries {name}, but no measurement "

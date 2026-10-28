@@ -11,6 +11,11 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+### Added
+
+- **The § 3 baseline door can measure the Torch/MPS main series, and the runtime is sealed provenance** (2026-10-28, `torch-baseline-door`). `python -m whetstone.loop.baseline` gains an optional `--runtime {mlx,torch}`: with no flag it uses the only installed runtime and refuses an ambiguous machine by name, and a named runtime that is unavailable is refused too. The base-only engine is dispatched by identity — MLX's `baseline_engine`, Torch's `torch_gate_engine`, which already loads an untrained checkpoint greedily — and the detected backend is written into the evidence (`whetstone-baseline-run/1`) and the committed artifact (`whetstone-baseline/1`), inside the seal. `tool_versions(backend=...)` names the runtime that actually ran, so a Torch measurement no longer records `mlx-lm` (#33). The measured-once series key is unchanged: the runtime is provenance, not a key, and a same-base measurement under another runtime is refused.
+- **The § 3 measurement is unspent, and no number is claimed.** The unit builds the door only; § 12 puts the one-shot measurement last so a base that changes cannot strand it, and the § 10.25 repair probe still decides whether the 8B base survives. The committed declaration at `reports/baseline-measurement/report.json` still reads with no backend and was not rewritten; the honest-number door accepts a measured baseline carrying either runtime. The reward path, the gate rule, `tasks/`, the held-out document and the series key are untouched.
+
 ## [0.28.1] - 2026-10-22
 
 ### Added

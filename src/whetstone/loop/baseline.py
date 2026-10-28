@@ -77,9 +77,11 @@ from whetstone.bakeoff.weights import (
     WeightsUnverified,
     load_weights,
 )
+from whetstone.loop import backend as backend_module
 from whetstone.loop import gate as gate_module
 from whetstone.loop import heldout as heldout_module
 from whetstone.loop import night as night_module
+from whetstone.loop.backend import AmbiguousBackend, Backend, NoBackend
 from whetstone.loop.heldout import (
     EmptyHeldout,
     HeldoutDigestMismatch,
@@ -109,6 +111,30 @@ _retry_side = gate_module._retry_side
 #: through. One definition, in gate.py; a second copy of the load would be a second answer
 #: to "how is an untrained checkpoint scored".
 baseline_engine = gate_module.baseline_engine
+
+#: The runtime detector, by identity — the one `choose`/`describe` pair every GPU door uses.
+#: Bound here so the door tests can replace it without loading a runtime.
+detect = backend_module.detect
+
+
+def engine_for(name: str) -> Callable[..., Generator]:
+    """The base-only engine belonging to the runtime `name`, by identity.
+
+    The § 3 baseline scores an **untrained** checkpoint, so each runtime's own gate engine is
+    already the right load: MLX's `baseline_engine` and Torch's `torch_gate_engine` both take
+    a checkpoint with `untrained: true`, load the base alone and decode greedily. Neither is
+    copied here — a second load would be a second answer to "how is an untrained checkpoint
+    scored", and the two answers would drift.
+
+    `name` is a recorded backend name, classified by `backend.family` (which tolerates the
+    legacy `torch-*` spelling). The Torch import is function-local, the loop package's rule:
+    `import whetstone.loop.baseline` must not load an inference stack.
+    """
+    if backend_module.family(name) == backend_module.TORCH:
+        from whetstone.loop import torch_runtime
+
+        return torch_runtime.torch_gate_engine
+    return baseline_engine
 
 #: The declared retry budget `R`, by identity — revisable only by a dated amendment to
 #: `PREREGISTRATION.md` § 7.2, never by a number written beside it.
@@ -166,7 +192,10 @@ class SeriesIdentity:
 
     `PREREGISTRATION.md` § 3's baseline is measured once, re-measured never, and the series
     is what "once" keys on — the base's repo id and revision and the held-out document's
-    digest, nothing else. The checkpoint digest is deliberately NOT part of the identity:
+    digest, nothing else. The runtime is **not** part of the identity: it is recorded
+    provenance (in the evidence and the artifact), not a second key. A same-base measurement
+    under another runtime is the same series and is refused; making the runtime a key would be
+    a Type 1 amendment. The checkpoint digest is deliberately NOT part of the identity:
     an untrained checkpoint records no files, so its `/1` digest is `_digest_of(())` — the
     same constant for every untrained v1 base, whatever the repo id or revision (a `/2`
     untrained digest folds in `base`) — and a series
@@ -327,9 +356,9 @@ class BaselineDocument:
 
     The loader's checks are the gate: the document is accepted only after every check has
     passed, and the returned object carries the fields the P4 writer needs, verbatim from
-    the document. A declaration (`measured=False`) carries no series, no sides, no counts —
-    those fields are `None` — and the one field that decides whether a count may be read
-    at all is `measured` itself.
+    the document. A declaration (`measured=False`) carries no series, no sides, no counts and
+    no backend — those fields are `None` — and the one field that decides whether a count may
+    be read at all is `measured` itself.
     """
 
     #: The declared schema, carried rather than assumed.
@@ -340,6 +369,10 @@ class BaselineDocument:
 
     #: The series identity — the base identity and the held-out digest the guard keys on.
     series: SeriesIdentity | None
+
+    #: The runtime the measurement ran under, or `None` for the declaration state. Required on
+    #: a measured document; it is provenance, never part of the series identity.
+    backend: Mapping[str, Any] | None
 
     #: The § 7.3-open sentence about the base, verbatim — the pinned base input is the series.
     base: Mapping[str, str] | None
@@ -379,6 +412,43 @@ def _refuse_unsealed(raw: Mapping[str, Any], location: Path) -> None:
         )
 
 
+def _checked_backend(
+    block: Any, location: Path, *, kind: str
+) -> dict[str, Any]:
+    """A recorded backend block, validated — the same shape in the evidence and the artifact.
+
+    The runtime is provenance a later reader relies on ("this anchor came from Torch"), so a
+    missing, malformed or unknown-runtime block is refused by name rather than read past. The
+    `backend.family` check is the one classifier: a name this repository does not implement
+    cannot be a record of a run it performed.
+    """
+    if not isinstance(block, dict):
+        raise ValueError(f"{kind} {str(location)!r} has a missing or non-object backend")
+    for field in ("name", "library", "version", "device"):
+        if not isinstance(block.get(field), str):
+            raise ValueError(
+                f"{kind} {str(location)!r} has a missing or non-string backend.{field}"
+            )
+    memory = block.get("device_memory_bytes")
+    if isinstance(memory, bool) or not isinstance(memory, int) or memory < 0:
+        raise ValueError(
+            f"{kind} {str(location)!r} has a missing, non-integer or negative "
+            "backend.device_memory_bytes"
+        )
+    precision = block.get("precision")
+    if precision is not None and not isinstance(precision, str):
+        raise ValueError(
+            f"{kind} {str(location)!r} has a non-string backend.precision"
+        )
+    try:
+        backend_module.family(block["name"])
+    except backend_module.UnknownRuntime as exc:
+        raise ValueError(
+            f"{kind} {str(location)!r} names no runtime this repository implements: {exc}"
+        ) from exc
+    return dict(block)
+
+
 def read_baseline_document(path: Path) -> BaselineDocument:
     """Read the committed § 3 baseline document, or refuse it by name.
 
@@ -388,10 +458,11 @@ def read_baseline_document(path: Path) -> BaselineDocument:
     checks. The checks are, in order: the file reads and is an object; the schema is the
     writer's own (`BASELINE_REPORT_SCHEMA`, by identity); no field is unknown; the state
     is declared (`measured`); a declaration carries its sentence and is sealed; a measured
-    document's series identity is validated by `read_series_identity` **by identity**, both
-    sources are present, every count is an integer and non-negative, `weaker_wins` never
-    exceeds its own denominator; and the document digest — recomputed with the writer's own
-    function — seals the payload. Each refusal names the file and the offending field.
+    document's series identity is validated by `read_series_identity` **by identity**, its
+    backend block is validated, both sources are present, every count is an integer and
+    non-negative, `weaker_wins` never exceeds its own denominator; and the document digest —
+    recomputed with the writer's own function — seals the payload. Each refusal names the file
+    and the offending field.
     """
     location = Path(path)
     try:
@@ -429,11 +500,17 @@ def read_baseline_document(path: Path) -> BaselineDocument:
                 f"baseline artifact {str(location)!r} has a missing or non-string "
                 "declaration"
             )
+        if "backend" in raw:
+            raise ValueError(
+                f"baseline artifact {str(location)!r} is a declaration but carries a backend; "
+                "the state before any measurement has no runtime to record"
+            )
         _refuse_unsealed(raw, location)
         return BaselineDocument(
             schema=raw["schema"],
             recorded_on=recorded_on,
             series=None,
+            backend=None,
             base=None,
             sides=None,
             n=None,
@@ -448,6 +525,7 @@ def read_baseline_document(path: Path) -> BaselineDocument:
         )
 
     series = _baseline_series_reader(location)
+    backend = _checked_backend(raw.get("backend"), location, kind="baseline artifact")
 
     sides = raw.get("sides")
     if not isinstance(sides, dict):
@@ -485,6 +563,7 @@ def read_baseline_document(path: Path) -> BaselineDocument:
         schema=raw["schema"],
         recorded_on=recorded_on,
         series=series,
+        backend=backend,
         base=raw["base"],
         sides=sides,
         n=raw["n"],
@@ -508,6 +587,9 @@ class BaselineMeasurement:
 
     #: The re-hashed checkpoint's digest.
     checkpoint_digest: str
+
+    #: The runtime that produced this measurement: the recorded backend, not a host guess.
+    backend: Backend
 
     #: The held-out document's digest, recomputed from the payload the loader accepted.
     heldout_digest: str
@@ -550,7 +632,9 @@ def measure(
     weights: Path,
     out: Path,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    engine: Callable[..., Generator] = baseline_engine,
+    engine: Callable[..., Generator] | None = None,
+    prefer: str | None = None,
+    backend: Backend | None = None,
 ) -> BaselineMeasurement:
     """Score the single baseline checkpoint on the held-out split, exactly once.
 
@@ -560,11 +644,15 @@ def measure(
     anything compares; the base weights are verified and resolved from the checkpoint's own
     provenance; and only then is a token generated.
 
-    `engine` is the machine seam — `baseline_engine` for a real run, a stub in every test.
-    It receives the **verified** checkpoint, so scoring always runs under the re-hashed
-    bytes. `recorded_on` is an input, never the clock, and `run_id` names the evidence
-    directory — both for the arms' rule: evidence that dated or named itself would differ
-    between two renders of the same documented command.
+    `engine` is the machine seam — resolved from the runtime when not injected, a stub in
+    every test. `prefer` names the runtime the operator chose (`--runtime`); absent, `detect`
+    uses the only installed runtime or refuses an ambiguous machine rather than defaulting.
+    `backend` lets a caller supply the already-detected record; a caller that injects an engine
+    must also say which runtime it stands for, so a measured document can never be silent about
+    what produced it. The engine receives the **verified** checkpoint, so scoring always runs
+    under the re-hashed bytes. `recorded_on` is an input, never the clock, and `run_id` names the
+    evidence directory — both for the arms' rule: evidence that dated or named itself would
+    differ between two renders of the same documented command.
 
     The evidence document is written only at the end of a successful measurement: a killed
     run leaves the gitignored runs home and no artifact, and a re-run uses a fresh
@@ -608,6 +696,16 @@ def measure(
             "never a second measurement"
         )
 
+    if engine is None:
+        backend = backend or detect(prefer=prefer)
+        engine = engine_for(backend.name)
+    elif backend is None:
+        raise ValueError(
+            "a measurement with an injected engine must name the backend it stands for: the "
+            "committed baseline is the 'before' of every delta, and a document silent about "
+            "the runtime that produced it cannot be interpreted later"
+        )
+
     recorder = _CompletionRecorder(engine(base, checkpoint_obj, max_tokens))
     interpreters = Interpreters(workspace=workspace / "environments")
     sandbox_root = workspace / "sandbox"
@@ -647,6 +745,7 @@ def measure(
         revision=base_identity["revision"],
         checkpoint_digest=checkpoint_obj.digest,
         heldout_digest=heldout_digest,
+        backend=backend,
         rollouts=post_retry,
         retries=retries,
         recorder=recorder,
@@ -655,6 +754,7 @@ def measure(
     )
     return BaselineMeasurement(
         checkpoint_digest=checkpoint_obj.digest,
+        backend=backend,
         heldout_digest=heldout_digest,
         heldout_tally=heldout_tally,
         public_tally=public_tally,
@@ -674,6 +774,7 @@ def write_evidence(
     revision: str,
     checkpoint_digest: str,
     heldout_digest: str,
+    backend: Backend,
     rollouts: Sequence[Rollout],
     retries: Sequence[gate_module.RetryOutcome],
     recorder: _CompletionRecorder,
@@ -683,11 +784,14 @@ def write_evidence(
     """Write the evidence document — schema `whetstone-baseline-run/1` — deterministically.
 
     Local evidence, never published: the base identity (the checkpoint's own provenance,
-    read by identity), hashes and verdicts only. Each rollout carries the
+    read by identity), the runtime it was measured under, and hashes and verdicts only. Each
+    rollout carries the
     task id, the outcome, both verifiers' statuses, the prompt's hash, the first attempt's
     completion hash (the recorder's own, by identity) and the three wall-clock fields — a
     prompt, a completion or a patch text is never stored, so a source-B task's contents
-    cannot leak through it. The retry is recorded as all three of what governed it
+    cannot leak through it. `backend` is the record `backend.detect` produced, written by
+    `Backend.recorded` and fed to `tool_versions` so the versions block names the runtime that
+    actually ran. The retry is recorded as all three of what governed it
     (`retry_count`, the declared `R` by identity), what it spent (per-task
     `before`/`after`/`retries_used`), and the counts each source's post-retry rollouts
     reduce to — `weaker_wins` over the held-out set is the baseline `N`.
@@ -702,6 +806,7 @@ def write_evidence(
         "base": {"repo_id": repo_id, "revision": revision},
         "checkpoint": {"digest": checkpoint_digest},
         "heldout": {"document_digest": heldout_digest},
+        "backend": backend.recorded(),
         "rollouts": [
             {
                 "task_id": record.task_id,
@@ -732,7 +837,7 @@ def write_evidence(
             "heldout": _counts_payload(heldout_tally),
             "public": _counts_payload(public_tally),
         },
-        "tool_versions": dict(sorted(tool_versions().items())),
+        "tool_versions": dict(sorted(tool_versions(backend=backend).items())),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -814,6 +919,7 @@ def _read_evidence(path: Path) -> dict[str, Any]:
             f"baseline evidence {str(location)!r} has a missing or non-string "
             "base.revision"
         )
+    _checked_backend(raw.get("backend"), location, kind="baseline evidence")
     counts = raw.get("counts")
     if not isinstance(counts, dict) or not all(
         isinstance(counts.get(source), dict) for source in ("heldout", "public")
@@ -1001,6 +1107,7 @@ def render_artifact(
             evidence_digest=_evidence_digest(evidence),
             recorded_on=recorded_on,
             tool_versions=document["tool_versions"],
+            backend=document["backend"],
         ),
         out,
     )
@@ -1062,6 +1169,8 @@ REFUSALS: tuple[type[Exception], ...] = (
     ProvenanceUnreadable,
     WeightsUnverified,
     BaselineAlreadyMeasured,
+    AmbiguousBackend,
+    NoBackend,
     ValueError,
 )
 
@@ -1083,6 +1192,9 @@ def disclosure(measurement: BaselineMeasurement) -> tuple[str, ...]:
     spent = sum(one.retries_used for one in measurement.retries)
     return (
         f"baseline checkpoint: {measurement.checkpoint_digest[:12]}",
+        f"runtime: {measurement.backend.name} ({measurement.backend.library} "
+        f"{measurement.backend.version}, {measurement.backend.device}, "
+        f"{measurement.backend.precision or 'unstated'})",
         f"held-out document: {measurement.heldout_digest[:12]}",
         f"source B (held-out): {heldout_tally.solved} solved of {heldout_tally.denominator}, "
         f"{heldout_tally.unverified} unverified of {heldout_tally.denominator}, "
@@ -1180,6 +1292,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MAX_TOKENS,
         help="the generation budget",
     )
+    parser.add_argument(
+        "--runtime",
+        choices=(backend_module.MLX, backend_module.TORCH),
+        metavar="{mlx,torch}",
+        help=(
+            "the runtime this measurement runs. On a machine with both installed the runtime "
+            "must be named: which one ran decides whether this baseline may be compared with "
+            "another's, so an unnamed ambiguity is refused rather than resolved by an order. "
+            "An unavailable runtime is refused too, never substituted"
+        ),
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--render",
@@ -1216,6 +1339,7 @@ def _measure_flags(args: argparse.Namespace) -> dict[str, object]:
         "--workspace": args.workspace,
         "--timeout": args.timeout,
         "--run-id": args.run_id,
+        "--runtime": args.runtime,
     }
 
 
@@ -1313,7 +1437,7 @@ def _measure_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
             weights=args.weights,
             out=args.out,
             max_tokens=args.max_tokens,
-            engine=baseline_engine,
+            prefer=args.runtime,
         )
     except REFUSALS as refusal:
         print(f"whetstone baseline: {refusal}", file=sys.stderr)
@@ -1360,6 +1484,7 @@ __all__ = [
     "baseline_engine",
     "build_parser",
     "disclosure",
+    "engine_for",
     "main",
     "measure",
     "read_baseline_document",

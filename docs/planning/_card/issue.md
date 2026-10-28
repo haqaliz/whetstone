@@ -1,51 +1,39 @@
-# feat base-swap — Qwen3-8B
+# feat torch-baseline-door
 
-**Source:** inline brief, from the 2026-10-22 base research and the 7B wall. Branch
-`feat/base-swap/aliz` (created 2026-10-22), worktree `.claude/worktrees/feat-base-swap`.
+**Source:** inline brief, from the `whetstone-next` pick on 2026-10-28 and the
+`torch-mps-series` PRD's own follow-up note.
 
-## Why this base
+## Brief
 
-The 7B (`Qwen/Qwen2.5-Coder-7B-Instruct`) produced **613 `NO_DIFF` of 816** private rollouts and
-**zero solved** in its last valid-partition observation; the runtime and the universal PEFT
-artifact are proven. The failure is the base's edit-format following, not the harness.
+The § 3 baseline door cannot measure the current main series. `python -m
+whetstone.loop.baseline` binds `gate.baseline_engine`, which loads MLX only
+(`src/whetstone/loop/gate.py:560-599`), while `PREREGISTRATION.md` § 10.20/§ 10.21 pinned the
+main series to Qwen3-8B on Torch/MPS. `src/whetstone/loop/honest_report.py:61-62` refuses a
+declaration-state baseline, and the only baseline artifact is a declaration
+(`reports/baseline-measurement/report.json`, `"measured": false`) — so the P4 honest number
+has no anchor for the series that now exists.
 
-`Qwen/Qwen3-8B` @ `b968826d9c46dd6066d109eabc6255188de91218`, Apache-2.0, `Qwen3ForCausalLM`,
-8.19B. It is a text-only HF model, so the existing Torch loader works unchanged. The MPS fit
-probe passed: **peak 8.96 GB** against the 25.63 GB headroom (`fits: True`), ~118 s/step. It was
-not present on the Mac, x131 (only the 0.5B; unreachable earlier, and 15 GB/no GPU), or x118
-(empty); it was fetched to the primary `weights/` on 2026-10-22.
+Add `--runtime {mlx,torch}` to the baseline measure door, dispatch the base-only greedy engine
+by identity (MLX → `baseline_engine`; Torch → `torch_gate_engine` on an untrained checkpoint),
+record the backend name/device/precision in the evidence and rendered artifact compatibly with
+the existing sealed declaration, and refuse exit 2 by name when both runtimes are installed
+with no flag and when the named runtime is unavailable. The MLX-only path stays byte-identical.
+No reward, gate, corpus, held-out set, `K`, `R`, or series-key change.
 
-## The format pre-flight — rule committed before the probe
+## Acceptance
 
-Run `whetstone run --night --probe 8` on the 8B: the first 8 private tasks after the dev/held-out
-exclusion, plus the one public task, at `K = 16` (9 tasks × 16 = 144 rollouts). It writes no
-checkpoint; the journals are the evidence.
-
-**GO iff at least 4 of the 8 private probe tasks have at least one rollout whose outcome is not
-`NO_DIFF` across their 16 draws.** `NO-GO` otherwise.
-
-- The threshold is **format conformance**, not yield: a GO says the base produces a diff at all;
-  it claims no solve, no model and no delta.
-- The 8 private tasks are source B (the headline); the public task's outcome is reported beside.
-- A task with zero non-`NO_DIFF` rollouts contributes nothing to the count, even if its
-  `NO_DIFF` rollouts are well-formed prose.
-- On `NO-GO`, the next candidates are Qwen3.5-9B (needs a multimodal loader change) or
-  Qwen3-Coder-30B-A3B 4-bit (needs QLoRA support); do **not** run a night on the 8B.
-
-## If GO
-
-The unit becomes: the Type 1 § 10.21 amendment pinning Qwen3-8B (runtime/device/precision
-unchanged, held-out/K/R unchanged, non-comparable to the 7B and MLX series), the Torch/MPS sheet's
-`--only` and model/revision, the night, `check-leakage`, the gate vs the untrained 8B, `card`/
-`fuse`, and the finding. A zero at the night is still a valid outcome.
-
-## Acceptance (the unit)
-
-1. The pre-flight rule is committed before the probe; the partition is read from the journals and
-   the GO/NO-GO is stated with its counts.
-2. On GO: § 10.21 pins the base/revision; the sheet and its guard name the 8B; the night writes a
-   ledger and, if it selects, a sealed Torch/MPS PEFT checkpoint.
-3. On GO and a checkpoint: `check-leakage` exit 0; the gate returns one of its three exits; the
-   finding and the universal artifact.
-4. On NO-GO: a finding records the partition and the candidate rejection; no night, no checkpoint,
-   no number.
+- Dispatch by identity for both runtimes; no second sampler.
+- Both runtime refusals, named, exit 2.
+- The backend round-trips through the evidence and the rendered artifact; the existing sealed
+  declaration at `reports/baseline-measurement/report.json` still reads.
+- A stub-engine end-to-end fixture where `honest_report` accepts the measured baseline for a
+  same-series promotion record.
+- The full suite green; no number claimed.
+- **Refined in the PRD:** the MLX command line and the counts are unchanged, but a measured
+  MLX evidence now carries the backend block and a `tool_versions` filtered to the runtime
+  that ran. No measured baseline exists, so no figure moves; the declaration is not rewritten.
+- Caveat: the baseline is spent once and the base may move after the § 10.25 probe, so this
+  unit builds the door only; the 8B/Torch measurement is the operator's after the probe
+  settles the base. The measurement also includes the public task that produced the MPS
+  OOM/mask hang (`docs/planning/torch-mps-series/finding.md:42-61`), which this unit does not
+  fix.
