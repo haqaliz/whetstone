@@ -28,15 +28,15 @@ from pathlib import Path
 
 import pytest
 
-from loop.test_check_probe import _probe_run
+from loop.test_check_probe import _TORCH_BACKEND, _probe_run
 from whetstone import cli
 from whetstone.loop import night, sampling
 from whetstone.verify.verdict import Status
 
 
-def _argv(run: Path) -> list[str]:
+def _argv(run: Path, *extra: str) -> list[str]:
     """The command line, in the order the runbook writes it."""
-    return ["check-probe", "--run", str(run)]
+    return ["check-probe", "--run", str(run), *extra]
 
 
 def test_check_probe_exits_zero_for_a_valid_probe(
@@ -102,14 +102,59 @@ def _check_probe_parser() -> argparse.ArgumentParser:
     return subparsers[0].choices["check-probe"]
 
 
+def test_the_backend_pins_pass_through(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The three pins reach the core and the disclosure shows both sides of the comparison.
+
+    This is the § 10.25 form of the command: a Torch/MPS/float16 probe is only GO when the
+    ledger says it ran that way.
+    """
+    run = _probe_run(tmp_path / "runs" / "probe-001", backend_record=_TORCH_BACKEND)
+
+    code = cli.main(
+        _argv(
+            run,
+            "--runtime",
+            "torch",
+            "--device",
+            "mps",
+            "--precision",
+            "float16",
+        )
+    )
+    out = capsys.readouterr().out
+
+    assert code == 0, out
+    assert "PROCEED" in out, out
+    assert "pins: runtime=torch, device=mps, precision=float16" in out, out
+    assert "backend: torch (torch 2.14.1, mps, float16)" in out, out
+
+
+def test_a_backend_mismatch_exits_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A pin mismatch is a finding (1), not a usage error (2) and not a pass."""
+    run = _probe_run(tmp_path / "runs" / "probe-001", backend_record=_TORCH_BACKEND)
+
+    code = cli.main(_argv(run, "--device", "cpu"))
+    captured = capsys.readouterr()
+
+    assert code == 1, captured.out
+    assert captured.err == "", captured.err
+    assert "DO NOT PROCEED" in captured.out, captured.out
+    assert "mps" in captured.out and "cpu" in captured.out, captured.out
+
+
 def test_the_check_probe_flag_surface() -> None:
-    """The parser exposes exactly `--run` and the `--heldout` document pin, nothing else.
+    """The parser exposes `--run`, the `--heldout` document pin, and the three backend pins.
 
     The flag surface is pinned because the operator's sheet will spell the command out. No
     flag may set a budget, a seed, a timeout or a pass bar: a second flag that narrowed the
     draw set or relaxed the fold would let a failing probe be turned green at the command
-    line, which is the one thing a go/no-go must not allow. `--heldout` does none of that — it
-    names the document the split pin compares against, and it can only add a violation.
+    line, which is the one thing a go/no-go must not allow. `--heldout` names the document
+    the split pin compares against, and `--runtime`/`--device`/`--precision` name the
+    backend pins; every one of them can only add a violation.
     """
     probe = _check_probe_parser()
     offered = sorted(
@@ -119,7 +164,14 @@ def test_the_check_probe_flag_surface() -> None:
         if option.startswith("--")
     )
 
-    assert offered == ["--heldout", "--help", "--run"], offered
+    assert offered == [
+        "--device",
+        "--heldout",
+        "--help",
+        "--precision",
+        "--run",
+        "--runtime",
+    ], offered
 
 
 def test_heldout_is_not_required_and_the_budget_pin_still_decides(

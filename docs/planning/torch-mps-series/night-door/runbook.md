@@ -87,11 +87,11 @@ refusal.
 ## The MPS read-back (after the probe and after the night)
 
 Read `runs/.../<run-id>/ledger.json` and confirm `backend.name == "torch"`,
-`backend.device == "mps"` and `backend.precision == "float16"`. `check-probe` pins the budget, the
-held-out digest, the harness and the seed map, but it does not pin the backend — a mis-provisioned
-run could record MLX and still pass — so this read-back is the sheet's own check, and a mismatch is
-a halt, never a rerun under the same id. A digest that does not match the committed document is the
-same halt: the run excluded a different split than the one pre-registered.
+`backend.device == "mps"` and `backend.precision == "float16"`. `check-probe` pins it too
+(`--runtime torch --device mps --precision float16`); this read-back remains the cross-check,
+because a pin can only compare what the ledger records. A mismatch is a halt, never a rerun under
+the same id. A digest that does not match the committed document is the same halt: the run excluded
+a different split than the one pre-registered.
 
 ## The 8B fit caveat (read before committing a night)
 
@@ -175,7 +175,10 @@ reader the gate uses.
 ```bash
 uv run --extra torch whetstone check-probe \
   --run $REPO/runs/torch-mps-probe/<torch-probe-run-id> \
-  --heldout $REPO/tasks/heldout/source-b.json
+  --heldout $REPO/tasks/heldout/source-b.json \
+  --runtime torch \
+  --device mps \
+  --precision float16
 ```
 
 The decision is the command's exit: `whetstone check-probe` reads the run directory the probe block

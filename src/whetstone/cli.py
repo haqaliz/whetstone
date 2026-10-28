@@ -741,6 +741,33 @@ def build_parser() -> argparse.ArgumentParser:
             "Without it the budget pin still decides"
         ),
     )
+    check_probe.add_argument(
+        "--runtime",
+        choices=("mlx", "torch"),
+        metavar="{mlx,torch}",
+        help=(
+            "optional: the runtime the probe must have run under. Compared to the ledger's "
+            "recorded backend name through the one backend classifier (a legacy torch-* record "
+            "is Torch). A mismatch, or a ledger with no backend block, is a named violation; "
+            "without the pin the decision is unchanged"
+        ),
+    )
+    check_probe.add_argument(
+        "--device",
+        metavar="<device>",
+        help=(
+            "optional: the exact device the probe must have run on (mps, cuda, cpu). A "
+            "mismatch, or a ledger with no backend block, is a named violation"
+        ),
+    )
+    check_probe.add_argument(
+        "--precision",
+        metavar="<dtype>",
+        help=(
+            "optional: the exact precision the probe must have run in (float16, bfloat16). A "
+            "mismatch, or a ledger with no backend block, is a named violation"
+        ),
+    )
 
     publish = commands.add_parser(
         "card",
@@ -1364,7 +1391,13 @@ def run_check_probe_cli(args: argparse.Namespace) -> int:
     from whetstone.loop.check_probe import REFUSALS, disclosure, run_check
 
     try:
-        report = run_check(args.run, heldout=args.heldout)
+        report = run_check(
+            args.run,
+            heldout=args.heldout,
+            runtime=args.runtime,
+            device=args.device,
+            precision=args.precision,
+        )
     except REFUSALS as refusal:
         print(f"whetstone check-probe: {refusal}", file=sys.stderr)
         return USAGE_ERROR

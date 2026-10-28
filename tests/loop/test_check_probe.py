@@ -27,7 +27,7 @@ from pathlib import Path
 import pytest
 
 from loop.test_run_ledger import _ledger
-from whetstone.loop import check_probe, heldout, night, sampling
+from whetstone.loop import backend, check_probe, heldout, night, sampling
 from whetstone.loop import draws as run_draws
 from whetstone.loop import ledger as run_ledger
 from whetstone.loop.sampling import Applied
@@ -50,6 +50,16 @@ _HARNESS = {night.PRIVATE: Status.PASS, night.PUBLIC: Status.PASS}
 #: solved)` shape.
 _COUNTS = {night.PRIVATE: (61, 7, 1), night.PUBLIC: (1, 0, 0)}
 
+#: The backend the § 10.25 probe runs under, and the one a pin is expected to find.
+_TORCH_BACKEND = backend.Backend(
+    name=backend.TORCH,
+    library="torch",
+    version="2.14.1",
+    device="mps",
+    device_memory_bytes=25_628_071_526,
+    precision="float16",
+)
+
 
 def _probe_run(
     tmp_path: Path,
@@ -63,6 +73,7 @@ def _probe_run(
     ledger: bool = True,
     unsealed: bool = False,
     heldout_record: run_ledger.HeldoutRecord | None = _HELDOUT_RECORD,
+    backend_record: backend.Backend | None = None,
 ) -> Path:
     """A probe-shaped run directory: a real written `Ledger` plus one journal per draw.
 
@@ -100,6 +111,7 @@ def _probe_run(
         draws=draws,
         seeds=seeds,
         draws_recorded=recorded,
+        backend=backend_record or base.backend,
     )
     run_ledger.write(run / run_ledger.LEDGER_FILE, candidate)
     if unsealed:
@@ -193,6 +205,126 @@ def test_a_valid_probe_proceeds(tmp_path: Path) -> None:
     assert report.sources == 2
     assert report.probe == 1
     assert report.seeds == 1
+
+
+def test_a_matching_backend_pin_proceeds(tmp_path: Path) -> None:
+    """A probe recorded under the pinned runtime, device and precision still proceeds.
+
+    The pin is a declared-input check, not a new bar: it compares the ledger's own backend
+    block to what the operator says the probe ran under, and adds nothing to the GO rule.
+    """
+    report = check_probe.run_check(
+        _probe_run(tmp_path, backend_record=_TORCH_BACKEND),
+        runtime=backend.TORCH,
+        device="mps",
+        precision="float16",
+    )
+
+    assert report.proceed is True
+    assert report.violation is None
+    assert report.backend == _TORCH_BACKEND.recorded()
+    assert report.pins == (
+        ("runtime", backend.TORCH),
+        ("device", "mps"),
+        ("precision", "float16"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("pin", "pinned", "recorded"),
+    [
+        ("runtime", backend.MLX, backend.TORCH),
+        ("device", "cpu", "mps"),
+        ("precision", "bfloat16", "float16"),
+    ],
+)
+def test_a_backend_mismatch_is_a_named_violation(
+    tmp_path: Path, pin: str, pinned: str, recorded: str
+) -> None:
+    """Each pin can only add a violation, and it names both sides of the disagreement.
+
+    A runtime comparison goes through `backend.family`, so a legacy `torch-*` record is still
+    Torch; a device and a precision are pinned values and compare exactly.
+    """
+    report = check_probe.run_check(
+        _probe_run(tmp_path, backend_record=_TORCH_BACKEND), **{pin: pinned}
+    )
+
+    assert report.proceed is False
+    assert report.violation is not None
+    assert pinned in report.violation, report.violation
+    assert recorded in report.violation, report.violation
+
+
+def test_an_unknown_recorded_runtime_is_a_violation_not_a_traceback(tmp_path: Path) -> None:
+    """A record naming no implemented runtime is a named violation, never an exception."""
+    unknown = backend.Backend(
+        name="jax",
+        library="jax",
+        version="0.9",
+        device="tpu",
+        device_memory_bytes=1,
+    )
+
+    report = check_probe.run_check(
+        _probe_run(tmp_path, backend_record=unknown), runtime=backend.TORCH
+    )
+
+    assert report.proceed is False
+    assert report.violation is not None
+    assert "jax" in report.violation, report.violation
+
+
+def test_a_pin_without_a_recorded_backend_is_a_violation(tmp_path: Path) -> None:
+    """A `/2` ledger may carry no backend; a pin over it is a violation, not a refusal.
+
+    The tolerance path exists so an old ledger can still decide the budget; it cannot prove a
+    runtime it never recorded, so the pin refuses the GO/NO-GO rather than reading past it.
+    """
+    run = _probe_run(tmp_path, unsealed=True)
+    path = run / run_ledger.LEDGER_FILE
+    document = json.loads(path.read_text(encoding="utf-8"))
+    del document["backend"]
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    report = check_probe.run_check(run, runtime=backend.TORCH)
+
+    assert report.proceed is False
+    assert report.violation is not None
+    assert "backend" in report.violation, report.violation
+
+
+def test_no_pin_keeps_the_old_decision_and_still_shows_the_backend(tmp_path: Path) -> None:
+    """Without a pin the decision is unchanged, and the recorded runtime is still disclosed."""
+    report = check_probe.run_check(_probe_run(tmp_path))
+
+    assert report.proceed is True
+    assert report.pins == ()
+    assert report.backend is not None
+    lines = check_probe.disclosure(report)
+    assert any(line.startswith("backend: mlx (mlx-lm 0.31.3,") for line in lines), lines
+
+
+def test_disclosure_shows_the_pins_and_the_recorded_backend(tmp_path: Path) -> None:
+    """A pinned probe prints what it pinned and what the ledger recorded, before the decision.
+
+    An operator reading a refused run sees the two runtime records side by side; the violation
+    line names the field that disagreed.
+    """
+    report = check_probe.run_check(
+        _probe_run(tmp_path, backend_record=_TORCH_BACKEND),
+        runtime=backend.TORCH,
+        device="mps",
+        precision="float16",
+    )
+    lines = check_probe.disclosure(report)
+
+    assert any(
+        line == "pins: runtime=torch, device=mps, precision=float16" for line in lines
+    ), lines
+    assert any(
+        line == "backend: torch (torch 2.14.1, mps, float16)" for line in lines
+    ), lines
 
 
 def test_a_probe_at_another_budget_is_a_named_violation(tmp_path: Path) -> None:
