@@ -81,7 +81,7 @@ from whetstone.loop import backend as backend_module
 from whetstone.loop import gate as gate_module
 from whetstone.loop import heldout as heldout_module
 from whetstone.loop import night as night_module
-from whetstone.loop.backend import Backend
+from whetstone.loop.backend import AmbiguousBackend, Backend, NoBackend
 from whetstone.loop.heldout import (
     EmptyHeldout,
     HeldoutDigestMismatch,
@@ -1162,6 +1162,8 @@ REFUSALS: tuple[type[Exception], ...] = (
     ProvenanceUnreadable,
     WeightsUnverified,
     BaselineAlreadyMeasured,
+    AmbiguousBackend,
+    NoBackend,
     ValueError,
 )
 
@@ -1283,6 +1285,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MAX_TOKENS,
         help="the generation budget",
     )
+    parser.add_argument(
+        "--runtime",
+        choices=(backend_module.MLX, backend_module.TORCH),
+        metavar="{mlx,torch}",
+        help=(
+            "the runtime this measurement runs. On a machine with both installed the runtime "
+            "must be named: which one ran decides whether this baseline may be compared with "
+            "another's, so an unnamed ambiguity is refused rather than resolved by an order. "
+            "An unavailable runtime is refused too, never substituted"
+        ),
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--render",
@@ -1319,6 +1332,7 @@ def _measure_flags(args: argparse.Namespace) -> dict[str, object]:
         "--workspace": args.workspace,
         "--timeout": args.timeout,
         "--run-id": args.run_id,
+        "--runtime": args.runtime,
     }
 
 
@@ -1416,6 +1430,7 @@ def _measure_main(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
             weights=args.weights,
             out=args.out,
             max_tokens=args.max_tokens,
+            prefer=args.runtime,
         )
     except REFUSALS as refusal:
         print(f"whetstone baseline: {refusal}", file=sys.stderr)

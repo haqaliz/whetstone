@@ -1301,6 +1301,110 @@ def test_the_door_refuses_a_missing_recorded_on(
     assert run_id.value.code == 2
 
 
+def test_the_door_passes_the_runtime_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--runtime torch` reaches `detect`, and the dispatched engine is the Torch one.
+
+    The operator names the runtime once; the door must not re-decide it. The stub stands in
+    for both engines, so the assertions are about the wiring: `prefer` reaches the detector,
+    the detector's answer names the engine, and the evidence records the backend.
+    """
+    fixtures = _fixtures(tmp_path)
+    prefers: list[str | None] = []
+    dispatched: list[str] = []
+
+    def detect(*, prefer: str | None = None) -> backend.Backend:
+        prefers.append(prefer)
+        return _TORCH_BACKEND
+
+    def engine_for(name: str) -> Any:
+        dispatched.append(name)
+        return fixtures["engine"]
+
+    monkeypatch.setattr(baseline, "detect", detect)
+    monkeypatch.setattr(baseline, "engine_for", engine_for)
+
+    code = baseline.main(_argv(fixtures, "--runtime", "torch"))
+
+    assert code == 0, capsys.readouterr().err
+    assert prefers == [backend.TORCH], prefers
+    assert dispatched == [backend.TORCH], dispatched
+    evidence = json.loads(
+        (fixtures["runs"] / str(fixtures["run_id"]) / "evidence.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert evidence["backend"]["name"] == backend.TORCH, evidence["backend"]
+
+
+def test_the_door_refuses_an_ambiguous_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two runtimes and no `--runtime` is a named exit 2, before a token is generated.
+
+    A default would make the answer depend on the order of a list, and two runs on that
+    machine could then differ in backend while their evidence agreed in every field.
+    """
+    fixtures = _fixtures(tmp_path)
+
+    def ambiguous(*, prefer: str | None = None) -> backend.Backend:
+        raise backend.AmbiguousBackend(
+            "more than one runtime is installed and none was named; pass --runtime"
+        )
+
+    monkeypatch.setattr(baseline, "detect", ambiguous)
+
+    code = baseline.main(_argv(fixtures))
+
+    assert code == 2
+    assert "more than one runtime" in capsys.readouterr().err
+    assert fixtures["stub"].asked == [], (
+        "WHY THIS IS A FAILURE: the ambiguity refusal fired after a token was generated"
+    )
+
+
+def test_the_door_refuses_an_unavailable_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A named runtime that is not installed is refused, never substituted."""
+    fixtures = _fixtures(tmp_path)
+
+    def unavailable(*, prefer: str | None = None) -> backend.Backend:
+        raise backend.NoBackend(f"the backend {prefer!r} was asked for and is not installed")
+
+    monkeypatch.setattr(baseline, "detect", unavailable)
+
+    code = baseline.main(_argv(fixtures, "--runtime", "torch"))
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "torch" in err and "not installed" in err
+    assert fixtures["stub"].asked == []
+
+
+def test_a_render_mode_refuses_the_runtime_flag(tmp_path: Path) -> None:
+    """`--runtime` is a measuring flag; a render mode beside it is a usage error."""
+    fixtures = _fixtures(tmp_path)
+    argv = [
+        "--render",
+        str(tmp_path / "evidence.json"),
+        "--checkpoint",
+        str(fixtures["checkpoint"]),
+        "--out",
+        str(tmp_path / "out"),
+        "--recorded-on",
+        "2026-10-28",
+        "--runtime",
+        backend.MLX,
+    ]
+
+    with pytest.raises(SystemExit) as raised:
+        baseline.main(argv)
+
+    assert raised.value.code == 2
+
+
 def test_every_flag_is_in_the_parser(tmp_path: Path) -> None:
     """The spec's flag set, asserted against `build_parser()` — the surface aspect 4 pins.
 
@@ -1332,11 +1436,13 @@ def test_every_flag_is_in_the_parser(tmp_path: Path) -> None:
         "--run-id",
         "--pool",
         "--max-tokens",
+        "--runtime",
         "--render",
         "--render-declaration",
     }, flags
 
     parsed = parser.parse_args(_argv(fixtures))
+    assert parsed.runtime is None
     assert parsed.weights == fixtures["weights"]
     assert parsed.checkpoint == fixtures["checkpoint"]
     assert parsed.heldout == fixtures["heldout"]
@@ -1350,6 +1456,7 @@ def test_every_flag_is_in_the_parser(tmp_path: Path) -> None:
     assert parsed.run_id == fixtures["run_id"]
     assert parsed.pool == fixtures["pool"]
     assert parsed.max_tokens is DEFAULT_MAX_TOKENS
+    assert parser.parse_args(_argv(fixtures, "--runtime", "torch")).runtime == "torch"
 
 
 def test_baseline_module_imports_no_mlx_at_module_scope() -> None:
