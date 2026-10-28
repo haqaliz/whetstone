@@ -25,6 +25,7 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -64,6 +65,25 @@ HELDOUT = 12
 #: The tool versions both sealed documents carry.
 _TOOLS = {"python": "3.12.7", "uv": "0.5.18"}
 
+#: The runtime a fixture baseline records. The fixture base is the MLX 32B, so the default is
+#: its runtime; the Torch arm proves the honest-number door accepts either.
+_BACKEND = {
+    "name": "mlx",
+    "library": "mlx-lm",
+    "version": "0.31.3",
+    "device": "Apple M4 Max",
+    "device_memory_bytes": 30_150_672_384,
+    "precision": None,
+}
+_TORCH_BACKEND = {
+    "name": "torch",
+    "library": "torch",
+    "version": "2.14.1",
+    "device": "mps",
+    "device_memory_bytes": 25_628_071_526,
+    "precision": "float16",
+}
+
 
 def _tally(
     candidate: str, *, solved: int, denominator: int, unverified: int, weaker_wins: int
@@ -85,7 +105,11 @@ def _tally(
 
 
 def _baseline_artifact(
-    root: Path, *, revision: str = _REVISION, heldout_digest: str = _HELDOUT_DIGEST
+    root: Path,
+    *,
+    revision: str = _REVISION,
+    heldout_digest: str = _HELDOUT_DIGEST,
+    backend: Mapping[str, Any] = _BACKEND,
 ) -> Path:
     """A measured, sealed § 3 baseline artifact, built through the writer — never hand-typed.
 
@@ -106,6 +130,7 @@ def _baseline_artifact(
         evidence_digest="e" * 64,
         recorded_on="2026-08-26",
         tool_versions=_TOOLS,
+        backend=backend,
     )
     return write_baseline_report(document, root / "baseline")[1]
 
@@ -278,7 +303,7 @@ def _ledger(root: Path, *, run_id: str = _RUN_ID) -> Path:
     return path
 
 
-def _fixtures(root: Path) -> dict[str, Path]:
+def _fixtures(root: Path, *, backend: Mapping[str, Any] = _BACKEND) -> dict[str, Path]:
     """The full fixture pair plus the checkpoints and the ledger, in their real homes.
 
     `out` sits beside the real home's name — `reports/honest-number` — inside the test
@@ -287,7 +312,7 @@ def _fixtures(root: Path) -> dict[str, Path]:
     never parses.
     """
     return {
-        "baseline": _baseline_artifact(root),
+        "baseline": _baseline_artifact(root, backend=backend),
         "record": _record(root),
         "candidate": _checkpoint(root, "candidate").directory,
         "incumbent": _checkpoint(root, "incumbent").directory,
@@ -530,6 +555,28 @@ def test_render_writes_the_three_artifacts_from_the_fixture_evidence(
     assert code == 0, capsys.readouterr().err
     for name in ("report.md", "report.json", "cost.json"):
         assert (fixtures["out"] / name).is_file(), name
+    payload = json.loads((fixtures["out"] / "report.json").read_text(encoding="utf-8"))
+    assert payload["schema"] == bakeoff_report.HONEST_NUMBER_REPORT_SCHEMA, payload
+    assert payload["measured"] is True, payload
+
+
+def test_render_composes_a_torch_baseline_into_the_honest_number(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The § 3 anchor of the current series can reach the P4 report.
+
+    The baseline door now records a Torch backend; the honest-number door reads the same
+    document and compares its series to the promotion record. Nothing in `honest_report.py`
+    knows or cares which engine produced the bytes — the composition is the proof that the
+    follow-up unit closes the chain for the series that exists today.
+    """
+    from whetstone.loop import honest_report
+
+    fixtures = _fixtures(tmp_path, backend=_TORCH_BACKEND)
+
+    code = honest_report.main(_argv(fixtures))
+
+    assert code == 0, capsys.readouterr().err
     payload = json.loads((fixtures["out"] / "report.json").read_text(encoding="utf-8"))
     assert payload["schema"] == bakeoff_report.HONEST_NUMBER_REPORT_SCHEMA, payload
     assert payload["measured"] is True, payload

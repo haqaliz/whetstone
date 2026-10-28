@@ -566,6 +566,70 @@ def test_measure_detects_the_runtime_when_no_engine_is_injected(
     )
 
 
+def test_the_evidence_records_the_backend_and_the_runtime_versions(tmp_path: Path) -> None:
+    """A Torch measurement names Torch, not the MLX library the old tool block assumed.
+
+    `ledger.tool_versions(backend=...)` is the one filter that keeps a run's versions block
+    from naming a runtime it never loaded (defect #33). The evidence is where the committed
+    artifact's provenance comes from, so this is the join that matters.
+    """
+    measurement, _ = _run_measure(tmp_path, backend_record=_TORCH_BACKEND)
+    evidence = _evidence(measurement)
+
+    assert evidence["backend"] == _TORCH_BACKEND.recorded()
+    assert evidence["tool_versions"]["torch"] == _TORCH_BACKEND.version
+    assert "mlx-lm" not in evidence["tool_versions"], (
+        "WHY THIS IS A FAILURE: a Torch measurement recorded the MLX library, the exact "
+        "provenance inaccuracy #33 fixed for the ledger"
+    )
+
+
+def test_the_artifact_carries_the_sealed_backend(tmp_path: Path) -> None:
+    """The rendered § 3 artifact keeps the runtime the evidence recorded.
+
+    The artifact is the committed document a later delta is read against; a reader must be
+    able to see that this anchor came from Torch without opening gitignored evidence.
+    """
+    measurement, fixtures = _run_measure(tmp_path, backend_record=_TORCH_BACKEND)
+    out = tmp_path / "artifact"
+    baseline.render_artifact(
+        evidence=measurement.evidence_path,
+        out=out,
+        recorded_on=fixtures["recorded_on"],
+        checkpoint=fixtures["checkpoint"],
+    )
+
+    loaded = baseline.read_baseline_document(out / "report.json")
+
+    assert loaded.measured is True
+    assert loaded.backend == _TORCH_BACKEND.recorded()
+
+
+def test_a_same_base_under_another_runtime_is_still_the_same_series(tmp_path: Path) -> None:
+    """The runtime is provenance, not the series key — the measured-once refusal holds.
+
+    § 3's key is the base identity and the held-out digest. A same-base MLX run after a Torch
+    run is the same series and is refused; making the runtime a key is a Type 1 amendment,
+    not a quiet second measurement. The stub is never asked on the second run.
+    """
+    first, fixtures = _run_measure(tmp_path / "first", backend_record=_TORCH_BACKEND)
+    out = tmp_path / "artifact"
+    baseline.render_artifact(
+        evidence=first.evidence_path,
+        out=out,
+        recorded_on=fixtures["recorded_on"],
+        checkpoint=fixtures["checkpoint"],
+    )
+
+    with pytest.raises(baseline.BaselineAlreadyMeasured):
+        _run_measure(
+            tmp_path / "second",
+            run_id="baseline-002",
+            backend_record=_MLX_BACKEND,
+            out=out,
+        )
+
+
 def test_retry_fires_only_on_no_verdict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

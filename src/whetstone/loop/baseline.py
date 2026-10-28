@@ -367,6 +367,10 @@ class BaselineDocument:
     #: The series identity — the base identity and the held-out digest the guard keys on.
     series: SeriesIdentity | None
 
+    #: The runtime the measurement ran under, or `None` for the declaration state. Required on
+    #: a measured document; it is provenance, never part of the series identity.
+    backend: Mapping[str, Any] | None
+
     #: The § 7.3-open sentence about the base, verbatim — the pinned base input is the series.
     base: Mapping[str, str] | None
 
@@ -403,6 +407,43 @@ def _refuse_unsealed(raw: Mapping[str, Any], location: Path) -> None:
             "its payload; a hand edit that changes a count without regenerating the digest "
             "is refused, never trusted"
         )
+
+
+def _checked_backend(
+    block: Any, location: Path, *, kind: str
+) -> dict[str, Any]:
+    """A recorded backend block, validated — the same shape in the evidence and the artifact.
+
+    The runtime is provenance a later reader relies on ("this anchor came from Torch"), so a
+    missing, malformed or unknown-runtime block is refused by name rather than read past. The
+    `backend.family` check is the one classifier: a name this repository does not implement
+    cannot be a record of a run it performed.
+    """
+    if not isinstance(block, dict):
+        raise ValueError(f"{kind} {str(location)!r} has a missing or non-object backend")
+    for field in ("name", "library", "version", "device"):
+        if not isinstance(block.get(field), str):
+            raise ValueError(
+                f"{kind} {str(location)!r} has a missing or non-string backend.{field}"
+            )
+    memory = block.get("device_memory_bytes")
+    if isinstance(memory, bool) or not isinstance(memory, int) or memory < 0:
+        raise ValueError(
+            f"{kind} {str(location)!r} has a missing, non-integer or negative "
+            "backend.device_memory_bytes"
+        )
+    precision = block.get("precision")
+    if precision is not None and not isinstance(precision, str):
+        raise ValueError(
+            f"{kind} {str(location)!r} has a non-string backend.precision"
+        )
+    try:
+        backend_module.family(block["name"])
+    except backend_module.UnknownRuntime as exc:
+        raise ValueError(
+            f"{kind} {str(location)!r} names no runtime this repository implements: {exc}"
+        ) from exc
+    return dict(block)
 
 
 def read_baseline_document(path: Path) -> BaselineDocument:
@@ -455,11 +496,17 @@ def read_baseline_document(path: Path) -> BaselineDocument:
                 f"baseline artifact {str(location)!r} has a missing or non-string "
                 "declaration"
             )
+        if "backend" in raw:
+            raise ValueError(
+                f"baseline artifact {str(location)!r} is a declaration but carries a backend; "
+                "the state before any measurement has no runtime to record"
+            )
         _refuse_unsealed(raw, location)
         return BaselineDocument(
             schema=raw["schema"],
             recorded_on=recorded_on,
             series=None,
+            backend=None,
             base=None,
             sides=None,
             n=None,
@@ -474,6 +521,7 @@ def read_baseline_document(path: Path) -> BaselineDocument:
         )
 
     series = _baseline_series_reader(location)
+    backend = _checked_backend(raw.get("backend"), location, kind="baseline artifact")
 
     sides = raw.get("sides")
     if not isinstance(sides, dict):
@@ -511,6 +559,7 @@ def read_baseline_document(path: Path) -> BaselineDocument:
         schema=raw["schema"],
         recorded_on=recorded_on,
         series=series,
+        backend=backend,
         base=raw["base"],
         sides=sides,
         n=raw["n"],
@@ -692,6 +741,7 @@ def measure(
         revision=base_identity["revision"],
         checkpoint_digest=checkpoint_obj.digest,
         heldout_digest=heldout_digest,
+        backend=backend,
         rollouts=post_retry,
         retries=retries,
         recorder=recorder,
@@ -720,6 +770,7 @@ def write_evidence(
     revision: str,
     checkpoint_digest: str,
     heldout_digest: str,
+    backend: Backend,
     rollouts: Sequence[Rollout],
     retries: Sequence[gate_module.RetryOutcome],
     recorder: _CompletionRecorder,
@@ -748,6 +799,7 @@ def write_evidence(
         "base": {"repo_id": repo_id, "revision": revision},
         "checkpoint": {"digest": checkpoint_digest},
         "heldout": {"document_digest": heldout_digest},
+        "backend": backend.recorded(),
         "rollouts": [
             {
                 "task_id": record.task_id,
@@ -778,7 +830,7 @@ def write_evidence(
             "heldout": _counts_payload(heldout_tally),
             "public": _counts_payload(public_tally),
         },
-        "tool_versions": dict(sorted(tool_versions().items())),
+        "tool_versions": dict(sorted(tool_versions(backend=backend).items())),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -860,6 +912,7 @@ def _read_evidence(path: Path) -> dict[str, Any]:
             f"baseline evidence {str(location)!r} has a missing or non-string "
             "base.revision"
         )
+    _checked_backend(raw.get("backend"), location, kind="baseline evidence")
     counts = raw.get("counts")
     if not isinstance(counts, dict) or not all(
         isinstance(counts.get(source), dict) for source in ("heldout", "public")
@@ -1047,6 +1100,7 @@ def render_artifact(
             evidence_digest=_evidence_digest(evidence),
             recorded_on=recorded_on,
             tool_versions=document["tool_versions"],
+            backend=document["backend"],
         ),
         out,
     )

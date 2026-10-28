@@ -1181,6 +1181,7 @@ _BASELINE_DIGESTED_FIELDS = (
     "evidence",
     "tool_versions",
     "non_comparable",
+    "backend",
 )
 
 #: Every field the document may carry: the digested set plus the digest itself. Anything
@@ -1225,6 +1226,7 @@ def build_baseline_report(
     recorded_on: str,
     tool_versions: Mapping[str, str],
     measured: bool = True,
+    backend: Mapping[str, Any] | None = None,
 ) -> Mapping[str, Any]:
     """The § 3 baseline's committed document — the "before" of every later delta.
 
@@ -1253,6 +1255,12 @@ def build_baseline_report(
     refused by name. The declaration state seals its own fields with the same function.
     """
     if not measured:
+        if backend is not None:
+            raise ValueError(
+                "a declaration is the state before any measurement; it carries no runtime, "
+                "and a backend passed with measured=False is a contradiction rather than a "
+                "field to ignore"
+            )
         document: dict[str, Any] = {
             "schema": BASELINE_REPORT_SCHEMA,
             "measured": False,
@@ -1260,10 +1268,17 @@ def build_baseline_report(
             "declaration": _BASELINE_DECLARATION,
         }
     else:
+        if backend is None:
+            raise ValueError(
+                "a measured baseline must record the backend it was measured under; a "
+                "document silent about its runtime is not interpretable beside another "
+                "series' figure"
+            )
         document = {
             "schema": BASELINE_REPORT_SCHEMA,
             "measured": True,
             "recorded_on": recorded_on,
+            "backend": dict(backend),
             "series": {
                 "repo_id": series.repo_id,
                 "revision": series.revision,
