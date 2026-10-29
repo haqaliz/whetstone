@@ -451,12 +451,22 @@ def test_the_sheet_pins_the_torch_floor() -> None:
 
 
 def test_the_sheet_reads_the_mps_backend_back() -> None:
-    """`check-probe` pins the budget and the split, never the backend; the sheet must.
+    """`check-probe` pins the backend now, and the sheet still reads it back.
 
-    A mis-provisioned run could record MLX and still pass the probe. The ledger read-back is the
-    sheet's own check: name, device and precision, in the values the amendment pinned.
+    The command pin and the operator's read-back are independent checks: the pin makes a
+    mis-provisioned probe exit 1, and the read-back lets the operator see the recorded values
+    before the night commits. Both the flags and the values the amendment pinned must be in
+    the sheet.
     """
-    flat = _flat(_runbook())
+    text = _runbook()
+    flat = _flat(text)
+    block = _probe_check_block(_bash_blocks(text))
+    for phrase in ("--runtime torch", "--device mps", "--precision float16"):
+        assert phrase in block, (
+            f"WHY THIS IS A FAILURE: the sheet's check-probe block does not pass {phrase!r}. "
+            "The § 10.25 probe is a Torch/MPS/float16 run, and the door can only refuse a "
+            "mismatch if the sheet names the pins"
+        )
     for phrase in (
         'backend.name == "torch"',
         'backend.device == "mps"',
@@ -464,11 +474,11 @@ def test_the_sheet_reads_the_mps_backend_back() -> None:
     ):
         assert phrase in flat, (
             f"WHY THIS IS A FAILURE: the sheet never demands {phrase} from the run's ledger. "
-            "Nothing else on the probe path records which runtime actually ran"
+            "The pin and the read-back are independent checks"
         )
-    assert "does not pin the backend" in flat, (
-        "WHY THIS IS A FAILURE: the sheet does not say why the read-back exists — `check-probe` "
-        "does not pin the backend, so the operator's read is the only check"
+    assert "pins it too" in flat, (
+        "WHY THIS IS A FAILURE: the sheet still says `check-probe` does not pin the backend. "
+        "It now does, and the read-back is the cross-check"
     )
 
 

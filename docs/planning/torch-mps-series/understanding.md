@@ -77,9 +77,15 @@ retired.
   command-independent helpers by identity and re-pinning the door-specific ones.
 - The MLX sheet **excludes the 7B by name** for a measured zero ceiling. The Torch/MPS sheet must
   **retain** the 7B-class base; copying the exclusion would exclude the intended candidate.
-- `check-probe` pins the budget, held-out digest, harness and seed map, but **not the backend**. The
-  Torch sheet must read `ledger.backend.name/device/precision` back itself, or the unit adds a
-  backend pin to `check-probe` (a code change; the sheet read-back is the smaller slice).
+- `check-probe` pins the budget, held-out digest, harness and seed map, and — since 2026-10-29,
+  `probe-backend-pin` — the recorded backend through `--runtime`, `--device`, `--precision`. The
+  Torch sheet passes all three and still reads `ledger.backend.name/device/precision` back as the
+  cross-check; the pin and the read are independent.
+
+> **Corrected 2026-10-29, when `probe-backend-pin` landed.** The sentence above described the
+> door before the follow-up. The `check-probe` pin is now built (three explicit flags, a named
+> exit-1 violation on a mismatch or a missing backend), and the sheet's read-back remains. No
+> probe was run; the § 10.25 measurement is still unspent.
 - A **probe writes no checkpoint and never reaches the capacity probe**; the probe validates the
   generation/verifier chain, not MPS training fit. The 7B `train-arm` pre-flight is the fit check.
 

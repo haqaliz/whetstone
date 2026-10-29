@@ -51,7 +51,10 @@ This file orients a coding agent working in this repository. Read it first.
 > (2026-10-28): the § 3 baseline door accepts an optional `--runtime {mlx,torch}`, dispatches the
 > base-only engine by identity, and seals the recorded backend into the evidence and the
 > committed artifact — the current Torch/MPS series can now spend its own baseline, which
-> remains unspent until the § 10.25 probe settles the base.
+> remains unspent until the § 10.25 probe settles the base. Then the **probe-backend-pin** unit
+> (2026-10-29): `whetstone check-probe` accepts `--runtime/--device/--precision` pins and refuses a
+> probe whose ledger records a different backend, and the Torch sheet passes all three; the
+> § 10.25 probe itself remains unrun.
 >
 > **The corpus, stated precisely.** Source B (private, pre-registered headline):
 > **66 tasks**, each proven live rather than asserted. Source A (public SWE-bench-Lite):

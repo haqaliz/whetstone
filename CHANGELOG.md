@@ -11,6 +11,10 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+### Added
+
+- **`check-probe` can pin the probe's recorded backend, and the Torch sheet uses it** (2026-10-29, `probe-backend-pin`). `whetstone check-probe --runtime {mlx,torch} --device <device> --precision <dtype>` compares the ledger's `whetstone-run/3` backend block to the declared pins: the runtime through `backend.family` (a legacy `torch-*` record is Torch), the device and precision exactly. A mismatch, an unknown recorded runtime, or a missing backend block under a pin is a named exit-1 violation; with no pins the decision is unchanged. The Torch/MPS sheet passes all three on its probe check and keeps the ledger read-back as the cross-check. The § 10.25 measurement, its budget, split and GO rule are untouched; **no probe was run and no number is claimed.**
+
 ## [0.29.0] - 2026-10-29
 
 ### Added

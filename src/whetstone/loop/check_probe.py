@@ -54,6 +54,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from whetstone.loop.backend import UnknownRuntime, family
 from whetstone.loop.draws import evidence_paths
 from whetstone.loop.heldout import document_digest_of, read_document
 from whetstone.loop.ledger import LEDGER_FILE, LedgerUnreadable
@@ -143,8 +144,22 @@ class ProbeReport:
     #: How many seeds the ledger records.
     seeds: int
 
+    #: The backend block the ledger records, or `None` when the tolerated `/2` document has
+    #: none. Read-only provenance: it is disclosed, never re-derived.
+    backend: Mapping[str, Any] | None = None
 
-def run_check(run: Path, *, heldout: Path | None = None) -> ProbeReport:
+    #: The pins this run was checked against, in declaration order — empty when unpinned.
+    pins: tuple[tuple[str, str], ...] = ()
+
+
+def run_check(
+    run: Path,
+    *,
+    heldout: Path | None = None,
+    runtime: str | None = None,
+    device: str | None = None,
+    precision: str | None = None,
+) -> ProbeReport:
     """Decide a probe run's go/no-go from one run directory.
 
     The order is the design: the run is identified before it is read (a directory without a
@@ -157,6 +172,12 @@ def run_check(run: Path, *, heldout: Path | None = None) -> ProbeReport:
     is loaded and digested by the night's own functions, and the ledger's recorded digest is
     compared to it after the budget pin. Without it the budget pin still decides; the flag is
     optional at this level because the night sheet always passes it.
+
+    `runtime` / `device` / `precision` are the declared backend pins. Any one of them turns on
+    the backend check: the ledger's recorded `backend` block must exist and match. The runtime
+    compares through `backend.family` (so a legacy `torch-*` record is Torch); the device and
+    precision compare exactly. A pin can only add a violation — it never relaxes the fold, the
+    budget or the split — and a probe with no pins decides exactly as it did before.
     """
     ledger = run / LEDGER_FILE
     if not ledger.is_file():
@@ -205,6 +226,69 @@ def run_check(run: Path, *, heldout: Path | None = None) -> ProbeReport:
                 payload=payload,
                 probe=probe,
             )
+    pins = tuple(
+        (name, value)
+        for name, value in (
+            ("runtime", runtime),
+            ("device", device),
+            ("precision", precision),
+        )
+        if value is not None
+    )
+    if pins:
+        record = payload.get("backend")
+        pinned = ", ".join(f"{name}={value}" for name, value in pins)
+        if not isinstance(record, Mapping):
+            return _report(
+                proceed=False,
+                violation=(
+                    f"the ledger records no backend, but the pinned {pinned} must match one"
+                ),
+                payload=payload,
+                probe=probe,
+                pins=pins,
+            )
+        recorded_name = record.get("name")
+        if runtime is not None:
+            try:
+                recorded_family = (
+                    family(recorded_name) if isinstance(recorded_name, str) else None
+                )
+            except UnknownRuntime:
+                recorded_family = None
+            if recorded_family != family(runtime):
+                return _report(
+                    proceed=False,
+                    violation=(
+                        f"the ledger records runtime {recorded_name!r}, not the pinned "
+                        f"{runtime!r}"
+                    ),
+                    payload=payload,
+                    probe=probe,
+                    pins=pins,
+                )
+        if device is not None and record.get("device") != device:
+            return _report(
+                proceed=False,
+                violation=(
+                    f"the ledger records device {record.get('device')!r}, not the pinned "
+                    f"{device!r}"
+                ),
+                payload=payload,
+                probe=probe,
+                pins=pins,
+            )
+        if precision is not None and record.get("precision") != precision:
+            return _report(
+                proceed=False,
+                violation=(
+                    f"the ledger records precision {record.get('precision')!r}, not the "
+                    f"pinned {precision!r}"
+                ),
+                payload=payload,
+                probe=probe,
+                pins=pins,
+            )
     for entry in payload["draws_recorded"]:
         for source in SOURCES:
             value = entry["harness"].get(source)
@@ -225,7 +309,7 @@ def run_check(run: Path, *, heldout: Path | None = None) -> ProbeReport:
             payload=payload,
             probe=probe,
         )
-    return _report(proceed=True, violation=None, payload=payload, probe=probe)
+    return _report(proceed=True, violation=None, payload=payload, probe=probe, pins=pins)
 
 
 def disclosure(report: ProbeReport) -> tuple[str, ...]:
@@ -242,6 +326,15 @@ def disclosure(report: ProbeReport) -> tuple[str, ...]:
         f"probe: {report.probe}",
         f"seeds: {report.seeds}",
     ]
+    if report.pins:
+        lines.append("pins: " + ", ".join(f"{name}={value}" for name, value in report.pins))
+    if report.backend is not None:
+        lines.append(
+            f"backend: {report.backend.get('name')} "
+            f"({report.backend.get('library')} {report.backend.get('version')}, "
+            f"{report.backend.get('device')}, "
+            f"{report.backend.get('precision') or 'unstated'})"
+        )
     if report.violation is not None:
         lines.append(f"violation: {report.violation}")
     return tuple(lines)
@@ -253,8 +346,10 @@ def _report(
     violation: str | None,
     payload: Mapping[str, Any],
     probe: int,
+    pins: tuple[tuple[str, str], ...] = (),
 ) -> ProbeReport:
     """One `ProbeReport` with every count read from the payload the decision was made on."""
+    recorded = payload.get("backend")
     return ProbeReport(
         proceed=proceed,
         violation=violation,
@@ -263,6 +358,8 @@ def _report(
         sources=len(SOURCES),
         probe=probe,
         seeds=len(payload.get("seeds", ())),
+        backend=dict(recorded) if isinstance(recorded, Mapping) else None,
+        pins=pins,
     )
 
 
