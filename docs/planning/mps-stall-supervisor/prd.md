@@ -47,10 +47,10 @@ run's final ledger and any remaining draws, and the operator has to notice by ey
    and calls the pure supervisor. Reached through the existing `whetstone.loop.night` edge, never
    a new `cli.py -> whetstone.loop.supervise` edge.
 4. **The CLI**: `run --night` gains `--supervise` (store_true) and `--stall-seconds <seconds>`
-   (float, default 3600 when supervising). `main` passes the raw argv to `run_night`; the handler
+   (float, default 5400 when supervising). `main` passes the raw argv to `run_night`; the handler
    delegates to `supervise_night` when `--supervise`; `--stall-seconds` without `--supervise` is a
    usage error. The child argv has `--supervise` and `--stall-seconds` + value stripped.
-5. **The sheet**: the Torch/MPS probe and night blocks pass `--supervise --stall-seconds 3600`;
+5. **The sheet**: the Torch/MPS probe and night blocks pass `--supervise --stall-seconds 5400`;
    the guard pins the flags. The MLX sheet is untouched.
 6. **Tests**: a healthy child passes through; a stalled child is killed and the marker written;
    a failure code passes through; an old-journal resume is not killed; an unrelated signal is a
@@ -76,9 +76,9 @@ run's final ledger and any remaining draws, and the operator has to notice by ey
 
 ## Risks & open questions
 
-- **A legitimate long verification** can go ~1 h without a journal write; the default 3600 s is the
-  conservative boundary, and the operator can raise it. A stall at the boundary is a false
-  positive; the resume replays the journals.
+- **A legitimate long verification** can go over an hour without a journal write; the default
+  5400 s clears the `--timeout 900` × retries worst case, and the operator can raise it. A stall
+  at the boundary is a false positive; the resume replays the journals.
 - **A child killed by the OS** (OOM killer) is a failure (1), not a stall; the parent cannot tell
   the cause apart from the signal code and does not write a stall marker.
 - **`SIGKILL` of the process group** also kills the sandbox verification subprocesses; the run is

@@ -496,7 +496,7 @@ def test_both_doors_are_supervised() -> None:
             "WHY THIS IS A FAILURE: a door runs without the supervisor; an MPS hang would "
             "again take the whole run and its final ledger with it"
         )
-        assert _values(block).get("--stall-seconds") == ["3600"], (
+        assert _values(block).get("--stall-seconds") == ["5400"], (
             "WHY THIS IS A FAILURE: the door does not declare the supervisor's interval"
         )
 

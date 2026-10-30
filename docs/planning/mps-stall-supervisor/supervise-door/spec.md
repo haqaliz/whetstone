@@ -6,7 +6,7 @@
 
 1. `src/whetstone/loop/supervise.py` (new, stdlib only):
    - `STALL_SCHEMA = "whetstone-stall/1"`, `STALL_FILE = "stalled.json"`,
-     `DEFAULT_STALL_SECONDS = 3600.0`, `POLL_SECONDS = 5.0`;
+     `DEFAULT_STALL_SECONDS = 5400.0`, `POLL_SECONDS = 5.0`;
    - `without_supervise(argv)` strips `--supervise` and `--stall-seconds` (both spellings);
    - `child_command(argv)` builds the `sys.executable -c "from whetstone.cli import main;
      raise SystemExit(main())"` command;
@@ -38,5 +38,5 @@ The root-cause fix; the probe/night run; a reward/gate/corpus change; a sixth `c
   `-c` form; `supervise_night` refuses a `--runs` under `reports/`.
 - `cli.main(["run","--night",...,"--supervise","--stall-seconds","12"])` delegates with 12,
   the run id/date and a stripped argv; `--stall-seconds` alone exits 2.
-- The Torch sheet blocks pass `--supervise --stall-seconds 3600`; the guard pins them.
+- The Torch sheet blocks pass `--supervise --stall-seconds 5400`; the guard pins them.
 - `uv run pytest`, `mypy src`, `ruff check src tests` green.

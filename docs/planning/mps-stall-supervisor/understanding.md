@@ -54,8 +54,8 @@ reward (①), the gate (③) and the report (④) are untouched; no number is pr
   "the defect must be fixed before any next night" becomes "must be contained"; the write-up says
   so rather than claiming a fix.
 - **A legitimate long verification could look idle.** The night's `--timeout 900` is per
-  verification, and `R = 3` retries can spend ~1 h without a journal write; a 3600 s default is
-  the conservative boundary. The flag is operator-declared, and the default is stated.
+  verification, and `R = 3` retries plus repair can spend over an hour without a journal write; a
+  5400 s default clears that worst case. The flag is operator-declared, and the default is stated.
 - **A child killed by an unrelated signal** (OOM killer) is a failure, not a stall; the parent
   returns 1 and does not write a stall marker. Only the parent's own timeout writes one.
 - **The marker is local evidence**, under the gitignored run home; it is never published. It

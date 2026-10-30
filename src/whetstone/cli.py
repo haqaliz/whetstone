@@ -539,7 +539,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="<seconds>",
         help=(
-            "the journal-inactivity interval for --supervise (default 3600). A legitimate "
+            "the journal-inactivity interval for --supervise (default 5400). A legitimate "
             "verification can spend --timeout 900 per retry, so the default is deliberately "
             "conservative; only meaningful with --supervise"
         ),

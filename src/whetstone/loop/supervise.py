@@ -31,8 +31,9 @@ STALL_SCHEMA = "whetstone-stall/1"
 STALL_FILE = "stalled.json"
 
 #: The declared interval. A legitimate verification can spend `--timeout 900` per retry with
-#: `R = 3`; an hour is the conservative boundary, and the operator can raise it.
-DEFAULT_STALL_SECONDS = 3600.0
+#: `R = 3`, and a repair adds further attempts; ninety minutes clears the worst case, and the
+#: operator can raise it.
+DEFAULT_STALL_SECONDS = 5400.0
 
 #: How often the parent looks. The child's own draws are minutes apart; five seconds is cheap.
 POLL_SECONDS = 5.0

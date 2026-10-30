@@ -146,7 +146,7 @@ caffeinate -dimsu uv run --extra torch whetstone run --night \
   --runtime torch \
   --repair 2 \
   --supervise \
-  --stall-seconds 3600 \
+  --stall-seconds 5400 \
   --tasks $REPO/tasks/local/donor-b \
   --tasks $REPO/tasks/local/donor-a \
   --public $REPO/tasks/public/instances \
@@ -221,7 +221,7 @@ caffeinate -dimsu uv run --extra torch whetstone run --night \
   --runtime torch \
   --repair 2 \
   --supervise \
-  --stall-seconds 3600 \
+  --stall-seconds 5400 \
   --tasks $REPO/tasks/local/donor-b \
   --tasks $REPO/tasks/local/donor-a \
   --remine $DONOR \
