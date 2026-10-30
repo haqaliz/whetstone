@@ -60,6 +60,12 @@ Consequences:
   task's mask path. Neither is evidence about the base, and neither is a reason to change a
   success rule.
 
+> **Corrected 2026-10-30, when `mps-stall-supervisor` landed.** "Must be fixed" is now "must be
+> contained": `whetstone run --night --supervise` runs the night as a child the parent can kill on
+> journal inactivity, writes `runs/<id>/stalled.json` and exits 2, and the operator resumes from
+> the completed draws. The root cause — the long-run MPS memory growth and the public task's mask
+> path — is **not** fixed. No probe or night has run under the supervisor.
+
 ## What this does and does not say
 
 - It says the 8B follows the edit format far better than the 7B, and still does not solve this
