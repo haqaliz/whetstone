@@ -11,6 +11,8 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-10-31
+
 ### Added
 
 - **A night can be supervised, so an uninterruptible MPS hang is a recorded stall** (2026-10-30, `mps-stall-supervisor`). `whetstone run --night --supervise --stall-seconds N` runs the night as a child in its own process group; if no journal is written for the interval, the parent kills the group, writes `runs/<id>/stalled.json` (`whetstone-stall/1`), and exits 2; a healthy child's exit code is passed through. A resumed run uses the spawn as the baseline, so yesterday's journals cannot trigger a kill. `--stall-seconds` without `--supervise` is a usage error, and the child argv is stripped so the supervisor cannot recurse. The Torch/MPS sheet wraps both doors. **The root cause is not fixed and no probe or night was run; the reward, gate, corpus, held-out, `K` and `R` are untouched.**
