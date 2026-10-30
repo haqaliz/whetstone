@@ -523,6 +523,27 @@ def build_parser() -> argparse.ArgumentParser:
             "the tests fail (0 disables; the repair prompts are frozen into the contract)"
         ),
     )
+    night.add_argument(
+        "--supervise",
+        action="store_true",
+        help=(
+            "run the night as a supervised child. If no journal is written for --stall-seconds, "
+            "the parent kills the child's process group, writes runs/<id>/stalled.json and exits "
+            "2; the completed draws replay on the same command. The only reliable breaker for an "
+            "uninterruptible Metal call"
+        ),
+    )
+    night.add_argument(
+        "--stall-seconds",
+        type=float,
+        default=None,
+        metavar="<seconds>",
+        help=(
+            "the journal-inactivity interval for --supervise (default 3600). A legitimate "
+            "verification can spend --timeout 900 per retry, so the default is deliberately "
+            "conservative; only meaningful with --supervise"
+        ),
+    )
 
     gate = commands.add_parser(
         "gate",
@@ -1170,7 +1191,7 @@ def run_mine(
     return PASS_EXIT
 
 
-def run_night(args: argparse.Namespace) -> int:
+def run_night(args: argparse.Namespace, *, argv: list[str] | None = None) -> int:
     """Dispatch one night into `whetstone.loop`, print its disclosure, and return the exit code.
 
     **The import is function-local, and that is the whole design of this function.** This module
@@ -1190,8 +1211,36 @@ def run_night(args: argparse.Namespace) -> int:
     nothing, or a verified rollout whose completion was never recorded, is `UNVERIFIED_EXIT`:
     nothing could be concluded, which is deliberately neither 0 nor a usage error.
     """
-    from whetstone.loop.night import REFUSALS, UNPROVEN, disclosure
+    from whetstone.loop.night import (
+        DEFAULT_STALL_SECONDS,
+        REFUSALS,
+        UNPROVEN,
+        disclosure,
+        supervise_night,
+    )
     from whetstone.loop.night import run_night as conduct_night
+
+    # The supervisor is a parent process: it owns the child's process group and can kill an
+    # uninterruptible Metal call that no in-process timeout can reach. It refuses a published
+    # runs root itself and strips its own flags before spawning the real night.
+    if args.supervise:
+        return supervise_night(
+            argv=list(sys.argv[1:] if argv is None else argv),
+            runs=args.runs,
+            run_id=args.run_id,
+            recorded_on=args.recorded_on,
+            stall_seconds=(
+                args.stall_seconds
+                if args.stall_seconds is not None
+                else DEFAULT_STALL_SECONDS
+            ),
+        )
+    if args.stall_seconds is not None:
+        print(
+            "whetstone run: --stall-seconds only means something with --supervise",
+            file=sys.stderr,
+        )
+        return USAGE_ERROR
 
     # The re-mine flags are validated here, before the loop runs, so a mismatched pairing or a
     # missing companion is a usage error naming the flag rather than a night that ran and did
@@ -1685,7 +1734,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if namespace.command == "run":
-        return run_night(namespace)
+        return run_night(namespace, argv=args)
 
     if namespace.command == "gate":
         return run_gate_cli(namespace)

@@ -90,6 +90,13 @@ from whetstone.loop.sampling import (
     attempt_seed,
     sampler_description_for,
 )
+from whetstone.loop.supervise import (
+    DEFAULT_STALL_SECONDS,
+    POLL_SECONDS,
+    child_command,
+    supervise,
+    without_supervise,
+)
 from whetstone.tasks.manifest import load_tasks
 from whetstone.verify.verdict import Status, Verdict, reduce
 
@@ -869,6 +876,35 @@ def _refuse_published_root(root: Path, flag: str) -> None:
         )
 
 
+def supervise_night(
+    *,
+    argv: Sequence[str],
+    runs: Path,
+    run_id: str,
+    recorded_on: str,
+    stall_seconds: float = DEFAULT_STALL_SECONDS,
+    poll_seconds: float = POLL_SECONDS,
+) -> int:
+    """Run one night under the stall supervisor, and return the supervisor's exit code.
+
+    The parent refuses a published runs root by identity before spawning, strips its own flags
+    from the child argv, and hands the real `whetstone` invocation to `supervise`. The child is
+    a separate process group, so a stall kills the night and its verification subprocesses
+    together. A healthy child's code is passed through; only the supervisor's own interval
+    returns 2, with a marker under `runs/<run-id>/stalled.json`.
+    """
+    location = Path(runs)
+    _refuse_published_root(location, "--runs")
+    return supervise(
+        command=child_command(without_supervise(argv)),
+        run=location / run_id,
+        run_id=run_id,
+        recorded_on=recorded_on,
+        stall_seconds=stall_seconds,
+        poll_seconds=poll_seconds,
+    )
+
+
 #: Every refusal a night raises that is an **operator's error** rather than a finding: a private
 #: root pointed at a published directory, a weights provenance that does not match the disk, a
 #: `--only` that matches nothing or several, a dev-subset id that excludes nothing, a held-out
@@ -903,6 +939,7 @@ UNPROVEN: tuple[type[Exception], ...] = (HarnessNotProven, training.NotTrainable
 __all__ = [
     "DATASET_FILE",
     "DATA_DIR",
+    "DEFAULT_STALL_SECONDS",
     "EVIDENCE_DIR",
     "PRIVATE",
     "PUBLIC",
@@ -915,4 +952,5 @@ __all__ = [
     "UnknownCandidate",
     "disclosure",
     "run_night",
+    "supervise_night",
 ]

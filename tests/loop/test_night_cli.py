@@ -149,6 +149,43 @@ def test_the_door_passes_every_declared_input_through_to_the_loop(
     )
 
 
+def test_the_night_can_be_supervised(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--supervise` delegates the night to the parent, with the declared interval and run id.
+
+    The loop must not run in the guarded CLI process; the supervisor is the parent that owns
+    the child's process group. The fake records the arguments the real binding receives.
+    """
+    seen: dict[str, Any] = {}
+
+    def fake(**kwargs: Any) -> int:
+        seen.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(loop_night, "supervise_night", fake)
+
+    code = cli.main([*INVOCATION, "--supervise", "--stall-seconds", "12"])
+
+    assert code == 0, capsys.readouterr().err
+    assert seen["run_id"] == "night-001"
+    assert seen["recorded_on"] == "2026-08-20"
+    assert seen["stall_seconds"] == 12
+    argv = seen["argv"]
+    assert isinstance(argv, list)
+    assert argv[-3:] == ["--supervise", "--stall-seconds", "12"]
+
+
+def test_stall_seconds_without_supervise_is_a_usage_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A stall interval with no supervisor is a command nobody meant; refuse it by name."""
+    code = cli.main([*INVOCATION, "--stall-seconds", "12"])
+
+    assert code == 2
+    assert "--supervise" in capsys.readouterr().err
+
+
 def test_no_retries_reaches_the_loop(monkeypatch: pytest.MonkeyPatch) -> None:
     """The opt-out exists and is not merely documented."""
     calls = _substitute(monkeypatch, _Night(dataset=_Dataset(), checkpoint=_Checkpoint()))

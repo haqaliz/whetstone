@@ -482,6 +482,25 @@ def test_the_sheet_reads_the_mps_backend_back() -> None:
     )
 
 
+def test_both_doors_are_supervised() -> None:
+    """Every `run --night` block is wrapped by the stall supervisor.
+
+    A hang is the one failure an in-process timeout cannot break; the parent is the breaker.
+    The sheet's two doors must use it, with the declared interval.
+    """
+    blocks = _door_blocks(_bash_blocks(_runbook()))
+
+    assert blocks, "the sheet has no `run --night` block"
+    for block in blocks:
+        assert "--supervise" in block, (
+            "WHY THIS IS A FAILURE: a door runs without the supervisor; an MPS hang would "
+            "again take the whole run and its final ledger with it"
+        )
+        assert _values(block).get("--stall-seconds") == ["3600"], (
+            "WHY THIS IS A FAILURE: the door does not declare the supervisor's interval"
+        )
+
+
 def test_the_sheet_states_the_fit_caveat() -> None:
     """A green probe is not an 8B fit check; the `train-arm` pre-flight is the measurement."""
     flat = _flat(_runbook())
