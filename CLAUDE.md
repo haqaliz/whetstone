@@ -54,7 +54,10 @@ This file orients a coding agent working in this repository. Read it first.
 > remains unspent until the § 10.25 probe settles the base. Then the **probe-backend-pin** unit
 > (2026-10-29): `whetstone check-probe` accepts `--runtime/--device/--precision` pins and refuses a
 > probe whose ledger records a different backend, and the Torch sheet passes all three; the
-> § 10.25 probe itself remains unrun.
+> § 10.25 probe itself remains unrun. Then the **mps-stall-supervisor** unit (2026-10-30):
+> `whetstone run --night --supervise` runs the night as a child the parent can kill on journal
+> inactivity, writes `stalled.json`, and lets the operator resume — containment for the recorded
+> MPS hang, not a root-cause fix; no probe or night has run.
 >
 > **The corpus, stated precisely.** Source B (private, pre-registered headline):
 > **66 tasks**, each proven live rather than asserted. Source A (public SWE-bench-Lite):

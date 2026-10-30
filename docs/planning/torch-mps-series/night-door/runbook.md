@@ -145,6 +145,8 @@ caffeinate -dimsu uv run --extra torch whetstone run --night \
   --probe 2 \
   --runtime torch \
   --repair 2 \
+  --supervise \
+  --stall-seconds 5400 \
   --tasks $REPO/tasks/local/donor-b \
   --tasks $REPO/tasks/local/donor-a \
   --public $REPO/tasks/public/instances \
@@ -218,6 +220,8 @@ into fresh destinations; those are covered by the mirror, not by this copy.
 caffeinate -dimsu uv run --extra torch whetstone run --night \
   --runtime torch \
   --repair 2 \
+  --supervise \
+  --stall-seconds 5400 \
   --tasks $REPO/tasks/local/donor-b \
   --tasks $REPO/tasks/local/donor-a \
   --remine $DONOR \

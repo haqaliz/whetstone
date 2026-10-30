@@ -10,6 +10,18 @@ carries the current state and the rules that still bind.
 
 ---
 
+**A night can be supervised, so an uninterruptible MPS hang is a recorded stall; the root cause is not fixed** (2026-10-30, `mps-stall-supervisor`). The 8B night hit an MPS OOM on the public task after ~35 h and hung; a resume failed on a corrupted attention mask and a second resume hung. The 14B pre-flight hung in an uninterruptible Metal wait, and its 900 s draw timeout could not fire. An in-process timeout cannot break that; a parent process can.
+
+**What shipped.**
+- **`--supervise` / `--stall-seconds`.** `whetstone run --night` can run the night as a child in its own process group. The parent watches the per-draw journal and transcript mtimes; if none is written for the interval, it kills the group, writes `runs/<id>/stalled.json` (`whetstone-stall/1`) atomically, and exits 2 with the resume instruction.
+- **A resumed run is not killed for old journals.** The spawn's time is the baseline, never the newest existing journal's mtime — the first resumed night must replay its completed draws before the interval can matter.
+- **The child's code passes through.** A healthy night returns its own 0/1/3; a child killed by an unrelated signal is a failure (1), not a stall; only the parent's own interval returns 2. The child argv has the supervisor flags stripped, so it cannot recurse or refuse them.
+- **The Torch sheet wraps both doors.** The probe and night blocks pass `--supervise --stall-seconds 5400`; the guard pins them. The supervisor is reached through the existing `whetstone.loop.night` edge, not a new reward-path edge.
+
+**What is not claimed.** **No probe or night was run.** This is containment, not a fix: the MPS OOM/mask path and `_local_scalar_dense_mps` are unchanged. A legitimate long verification can spend up to the per-verification timeout across retries, so the default interval is deliberately conservative; a stall at the boundary is a false positive the resume replays. The marker is local evidence under the gitignored runs home, never a published report. The reward, gate, corpus, held-out document, `K`, `R` and the § 10.25 inputs are untouched.
+
+---
+
 **`check-probe` can pin the probe's recorded backend; the § 10.25 probe is still unrun** (2026-10-29, `probe-backend-pin`). The § 10.25 probe is a Torch/MPS `float16` run, but `whetstone check-probe` decided its GO/NO-GO from the control fold, the seed map, the declared budget and the held-out digest alone. The ledger records the runtime it actually ran under; the Torch sheet read it back by eye; the command's exit did not check it.
 
 **What shipped.**
