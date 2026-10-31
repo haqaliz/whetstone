@@ -35,6 +35,7 @@ nothing has proven nothing, so every guard below also asserts the corrected text
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -1463,6 +1464,88 @@ def test_the_failure_repair_amendment_pins_the_probe() -> None:
         "outcome; the 16-task probe measures it (§ 10.25) | 1 — pins the inputs of a measurement "
         "| Yes" in flat
     ), f"{PREREGISTRATION}'s amendment log no longer records the § 10.25 row."
+
+
+def test_the_probe_sample_amendment_names_the_sample() -> None:
+    """§ 10.26 names the § 10.25 probe's 16-task sample, so the measurement is auditable."""
+    dev = {
+        "donor-b-2e149603209a",
+        "donor-b-353359e9ac6e",
+        "donor-b-3e3051c4192a",
+        "donor-b-844db07ed482",
+        "donor-b-9dba3ea557f5",
+    }
+    root = Path(__file__).resolve().parents[1]
+    ledger = json.loads((root / "tasks/local-ledger.json").read_text())
+    heldout = json.loads((root / "tasks/heldout/source-b.json").read_text())
+    ids = sorted(task["task_id"] for task in ledger["tasks"])
+    # The sheet's roots order is donor-b then donor-a; a reorder changes the sample.
+    roots = [i for i in ids if i.startswith("donor-b-")] + [
+        i for i in ids if i.startswith("donor-a-")
+    ]
+    survivors = [i for i in roots if i not in dev and i not in set(heldout["membership"])]
+    sample = survivors[:16]
+    assert len(sample) == 16, (
+        f"the committed corpus now yields {len(sample)} tasks after the dev overlay and the "
+        "held-out exclusion; § 10.26 names a 16-task sample and the records disagree."
+    )
+
+    text = _read(PREREGISTRATION)
+    assert "### 10.26" in text, f"{PREREGISTRATION} no longer carries a § 10.26 amendment."
+    section = text.split("### 10.26", 1)[1].split("\n### ", 1)[0]
+    flat = _flat(section)
+    assert "pins the inputs of a measurement" in flat, (
+        f"{PREREGISTRATION} § 10.26 no longer states the Type 1 pin."
+    )
+    assert "does not edit § 10.25" in flat, (
+        f"{PREREGISTRATION} § 10.26 no longer states that § 10.25 is untouched."
+    )
+    assert "introduces no success threshold" in flat and (
+        "rewords nothing in § 1, § 4 or § 6" in flat
+    ), f"{PREREGISTRATION} § 10.26 no longer carries the no-threshold/no-rewording line."
+
+    block = re.search(
+        r"the first\s+16 private tasks are:(.*?)Plus the one public task", section, re.DOTALL
+    )
+    assert block is not None, (
+        f"{PREREGISTRATION} § 10.26 no longer names the sample between 'the first 16 private "
+        "tasks are:' and 'Plus the one public task'."
+    )
+    found = set(re.findall(r"donor-[ab]-[0-9a-f]{12}", block.group(1)))
+    assert found == set(sample), (
+        f"{PREREGISTRATION} § 10.26's sample no longer matches the committed corpus: "
+        f"missing {sorted(set(sample) - found)}, extra {sorted(found - set(sample))}."
+    )
+
+    assert "272" in section and "at least one" in section, (
+        f"{PREREGISTRATION} § 10.26 no longer states the 272 draws and the GO rule."
+    )
+    assert "No count has been measured" in flat and "§ 3 baseline remains unspent" in flat, (
+        f"{PREREGISTRATION} § 10.26 no longer states that no count exists."
+    )
+
+    excluded = [i for i in sample if i in heldout["excluded"]]
+    assert len(excluded) == 4, (
+        f"{len(excluded)} of the named sample tasks are in the held-out document's `excluded` "
+        "map; § 10.26 discloses four."
+    )
+    for task_id in excluded:
+        assert task_id in section, (
+            f"{PREREGISTRATION} § 10.26 no longer discloses the unscorable sample task "
+            f"{task_id!r}."
+        )
+    assert "64" in section and "NO_ORACLE" in flat, (
+        f"{PREREGISTRATION} § 10.26 no longer states the 64 expected `NO_ORACLE` draws."
+    )
+    assert "not dropped" in flat and "not re-drawn" in flat, (
+        f"{PREREGISTRATION} § 10.26 no longer states that the four tasks stay in the denominator."
+    )
+
+    assert (
+        "2026-10-31 | The § 10.25 probe's 16-task sample is named by id, with four known "
+        "`NO_ORACLE` tasks disclosed; the measurement's inputs are unchanged (§ 10.26) | 1 — pins "
+        "the inputs of a measurement | Yes" in _flat(text)
+    ), f"{PREREGISTRATION}'s amendment log no longer records the § 10.26 row."
 
 
 def test_the_roadmap_records_the_re_derived_split_by_dated_correction() -> None:

@@ -1,5 +1,10 @@
 # Spec — night-sheet
 
+> **Superseded 2026-10-31.** This aspect spec describes the § 10.20 sheet. The live sheet is
+> `../night-door/runbook.md`; its probe is § 10.25's 16-task measurement, named by § 10.26. The
+> `--probe 2`, 7B candidate and "check-probe does not pin the backend" statements below are
+> history, not instructions.
+
 **Aspect:** `night-sheet` · **Unit:** `torch-mps-series` · **PRD:** `../prd.md` M4/M5 ·
 **Date:** 2026-10-20
 
