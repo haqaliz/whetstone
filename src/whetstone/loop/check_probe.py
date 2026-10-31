@@ -17,7 +17,7 @@ Two conditions carry the pre-committed decision, exactly as written and nothing 
   re-derived, and never grown into a coverage assertion: the pre-committed rule sets no bar
   beyond non-emptiness.
 
-Two **declared-input pins** are also read, and neither is a new yield threshold:
+The **declared-input pins** are also read, and none is a new yield threshold:
 
 - **The declared draw budget** is `whetstone.loop.sampling.K`, imported by identity. A ledger
   whose `draws` is any other value proves the harness at a size the night does not run, so it
@@ -27,8 +27,15 @@ Two **declared-input pins** are also read, and neither is a new yield threshold:
   `heldout.document_digest_of`, both by identity — the same loader and digest function the
   night uses. The ledger's recorded digest must equal it; a different digest, or no held-out
   record at all, is a named violation. A document that cannot be read is a refusal, because it
-  is an operator error rather than a fact about the probe. Both pins can only add a violation,
-  never a way to proceed.
+  is an operator error rather than a fact about the probe.
+- **The declared sample size**, when `probe=<n>` is passed, is the ledger's `task_set.probe`:
+  a different recorded size is a named violation, while a run that is not a probe at all is
+  still a refusal (`NotAProbe`). It pins the size, not the task ids.
+- **The declared backend**, when `runtime`/`device`/`precision` is passed, is the ledger's
+  `backend` block: its absence is a named violation, the runtime compares through the one
+  classifier, and the device and precision compare exactly.
+
+Every pin can only add a violation, never a way to proceed.
 
 Refusals come first, each by name and all exit-2: a directory without a ledger is not a run
 (`NotARun`), a ledger that fails the schema gate is unreadable (`LedgerUnreadable`, via
