@@ -159,6 +159,7 @@ def run_check(
     runtime: str | None = None,
     device: str | None = None,
     precision: str | None = None,
+    probe: int | None = None,
 ) -> ProbeReport:
     """Decide a probe run's go/no-go from one run directory.
 
@@ -172,6 +173,10 @@ def run_check(
     is loaded and digested by the night's own functions, and the ledger's recorded digest is
     compared to it after the budget pin. Without it the budget pin still decides; the flag is
     optional at this level because the night sheet always passes it.
+
+    `probe`, when passed, is the declared sample size: a different recorded `task_set.probe`
+    is a named violation, a full night remains a refusal, and with no pin the decision is
+    unchanged.
 
     `runtime` / `device` / `precision` are the declared backend pins. Any one of them turns on
     the backend check: the ledger's recorded `backend` block must exist and match. The runtime
@@ -187,7 +192,7 @@ def run_check(
             "unidentified run proves nothing about any night"
         )
     payload = read_ledger(ledger)
-    probe = _probe_of(payload, run)
+    declared = _probe_of(payload, run)
     _require_complete(payload, run)
     # Refusals come first: an unreadable `--heldout` document is an operator error, so it is
     # loaded (and refused) before a budget violation is reported. A wrong budget and a typo in
@@ -201,7 +206,7 @@ def run_check(
                 f"declared draws is {draws}, not the pre-committed sampling.K = {K}"
             ),
             payload=payload,
-            probe=probe,
+            probe=declared,
         )
     if expected is not None:
         record = payload["task_set"].get("heldout")
@@ -214,7 +219,7 @@ def run_check(
                     f"digest is {expected}"
                 ),
                 payload=payload,
-                probe=probe,
+                probe=declared,
             )
         if recorded != expected:
             return _report(
@@ -224,9 +229,9 @@ def run_check(
                     f"document's {expected}"
                 ),
                 payload=payload,
-                probe=probe,
+                probe=declared,
             )
-    pins = tuple(
+    backend_pins = tuple(
         (name, value)
         for name, value in (
             ("runtime", runtime),
@@ -235,9 +240,18 @@ def run_check(
         )
         if value is not None
     )
-    if pins:
+    pins = (("probe", str(probe)), *backend_pins) if probe is not None else backend_pins
+    if probe is not None and declared != probe:
+        return _report(
+            proceed=False,
+            violation=f"declared sample is {declared} tasks, not the pinned {probe}",
+            payload=payload,
+            probe=declared,
+            pins=pins,
+        )
+    if backend_pins:
         record = payload.get("backend")
-        pinned = ", ".join(f"{name}={value}" for name, value in pins)
+        pinned = ", ".join(f"{name}={value}" for name, value in backend_pins)
         if not isinstance(record, Mapping):
             return _report(
                 proceed=False,
@@ -245,7 +259,7 @@ def run_check(
                     f"the ledger records no backend, but the pinned {pinned} must match one"
                 ),
                 payload=payload,
-                probe=probe,
+                probe=declared,
                 pins=pins,
             )
         recorded_name = record.get("name")
@@ -264,7 +278,7 @@ def run_check(
                         f"{runtime!r}"
                     ),
                     payload=payload,
-                    probe=probe,
+                    probe=declared,
                     pins=pins,
                 )
         if device is not None and record.get("device") != device:
@@ -275,7 +289,7 @@ def run_check(
                     f"{device!r}"
                 ),
                 payload=payload,
-                probe=probe,
+                probe=declared,
                 pins=pins,
             )
         if precision is not None and record.get("precision") != precision:
@@ -286,7 +300,7 @@ def run_check(
                     f"pinned {precision!r}"
                 ),
                 payload=payload,
-                probe=probe,
+                probe=declared,
                 pins=pins,
             )
     for entry in payload["draws_recorded"]:
@@ -299,7 +313,7 @@ def run_check(
                         f"draw {entry['attempt']} ({source}): harness is {value}"
                     ),
                     payload=payload,
-                    probe=probe,
+                    probe=declared,
                 )
     seeds: Any = payload.get("seeds", ())
     if len(seeds) == 0:
@@ -307,9 +321,9 @@ def run_check(
             proceed=False,
             violation="the seed map is empty",
             payload=payload,
-            probe=probe,
+            probe=declared,
         )
-    return _report(proceed=True, violation=None, payload=payload, probe=probe, pins=pins)
+    return _report(proceed=True, violation=None, payload=payload, probe=declared, pins=pins)
 
 
 def disclosure(report: ProbeReport) -> tuple[str, ...]:

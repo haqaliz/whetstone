@@ -10,12 +10,12 @@ directory's ledger and returns the code an operator's sheet can branch on.
 
 The codes are the CLI's existing four-code contract (`cli.py:64-84`), no fifth: the rule
 holds → 0, a named violation → 1 (a draw whose harness is not `PASS`, an empty seed map, a
-declared budget that is not `sampling.K`, or — with `--heldout` — a mismatched digest or no
-held-out record — the night does not run behind it, and that is a finding, not a mistyped
-command), and a refusal an operator can fix by retyping — a directory that is not a probe run,
-a ledger that cannot be read, an incomplete run, a `--heldout` document that cannot be read —
-→ 2. There is no `UNVERIFIED` exit here: the command reads documents rather than running
-anything, so it either answers or refuses.
+declared budget that is not `sampling.K`, a declared sample that is not the pinned `--probe`,
+or — with `--heldout` — a mismatched digest or no held-out record — the night does not run
+behind it, and that is a finding, not a mistyped command), and a refusal an operator can fix by
+retyping — a directory that is not a probe run, a ledger that cannot be read, an incomplete
+run, a `--heldout` document that cannot be read — → 2. There is no `UNVERIFIED` exit here: the
+command reads documents rather than running anything, so it either answers or refuses.
 
 No model, no `mlx`, no network: the fixtures are the `check-core` suite's own real `Ledger`
 documents, shared by import.
@@ -24,12 +24,14 @@ documents, shared by import.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import pytest
 
 from loop.test_check_probe import _TORCH_BACKEND, _probe_run
 from whetstone import cli
+from whetstone.loop import ledger as run_ledger
 from whetstone.loop import night, sampling
 from whetstone.verify.verdict import Status
 
@@ -146,15 +148,67 @@ def test_a_backend_mismatch_exits_one(
     assert "mps" in captured.out and "cpu" in captured.out, captured.out
 
 
+def test_the_probe_pin_passes_through(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--probe` reaches the core and the disclosure names the sample pin it was checked on."""
+    run = _probe_run(tmp_path / "runs" / "probe-001", probe=16)
+
+    code = cli.main(_argv(run, "--probe", "16"))
+    out = capsys.readouterr().out
+
+    assert code == 0, out
+    assert "PROCEED" in out, out
+    assert "pins: probe=16" in out, out
+
+
+def test_a_probe_pin_mismatch_exits_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A sample mismatch is a finding (1) naming both sizes, not a usage error (2)."""
+    run = _probe_run(tmp_path / "runs" / "probe-001", probe=2)
+
+    code = cli.main(_argv(run, "--probe", "16"))
+    captured = capsys.readouterr()
+
+    assert code == 1, captured.out
+    assert captured.err == "", captured.err
+    assert "DO NOT PROCEED" in captured.out, captured.out
+    assert "2" in captured.out, captured.out
+    assert "16" in captured.out, captured.out
+
+
+def test_the_probe_pin_does_not_require_the_backend_pins(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--probe` alone is not a backend pin: a `/2` ledger with no backend still decides.
+
+    The sheet may pass all four pins, but the command must not couple them: asking about the
+    sample size must not demand a backend record the operator never pinned.
+    """
+    run = _probe_run(tmp_path / "runs" / "probe-001", probe=16, unsealed=True)
+    path = run / run_ledger.LEDGER_FILE
+    document = json.loads(path.read_text(encoding="utf-8"))
+    del document["backend"]
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    code = cli.main(_argv(run, "--probe", "16"))
+    out = capsys.readouterr().out
+
+    assert code == 0, out
+    assert "PROCEED" in out, out
+
+
 def test_the_check_probe_flag_surface() -> None:
-    """The parser exposes `--run`, the `--heldout` document pin, and the three backend pins.
+    """The parser exposes `--run`, the `--heldout` document pin, the three backend pins and the
+    sample pin.
 
     The flag surface is pinned because the operator's sheet will spell the command out. No
     flag may set a budget, a seed, a timeout or a pass bar: a second flag that narrowed the
     draw set or relaxed the fold would let a failing probe be turned green at the command
     line, which is the one thing a go/no-go must not allow. `--heldout` names the document
-    the split pin compares against, and `--runtime`/`--device`/`--precision` name the
-    backend pins; every one of them can only add a violation.
+    the split pin compares against, `--runtime`/`--device`/`--precision` name the backend
+    pins, and `--probe` names the declared sample; every one of them can only add a violation.
     """
     probe = _check_probe_parser()
     offered = sorted(
@@ -169,6 +223,7 @@ def test_the_check_probe_flag_surface() -> None:
         "--heldout",
         "--help",
         "--precision",
+        "--probe",
         "--run",
         "--runtime",
     ], offered

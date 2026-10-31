@@ -732,8 +732,9 @@ def build_parser() -> argparse.ArgumentParser:
             "draws is sampling.K, and — when --heldout is passed — the ledger's held-out "
             "digest is the committed document's. Exits 0 when the rule holds; 1 on a named "
             "violation — a draw whose harness is not PASS, an empty seed map, a declared "
-            "budget that is not sampling.K, or a held-out digest that is not the committed "
-            "document's (or no record at all) — and no night runs behind it; 2 on a refusal "
+            "budget that is not sampling.K, a declared sample that is not the pinned --probe, "
+            "or a held-out digest that is not the committed document's (or no record at "
+            "all) — and no night runs behind it; 2 on a refusal "
             "an operator can fix by retyping: a directory that is not a probe run, a ledger "
             "that cannot be read, an incomplete run, a --heldout document that cannot be read. "
             "There is no UNVERIFIED exit: this command reads documents rather than running "
@@ -787,6 +788,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "optional: the exact precision the probe must have run in (float16, bfloat16). A "
             "mismatch, or a ledger with no backend block, is a named violation"
+        ),
+    )
+    check_probe.add_argument(
+        "--probe",
+        type=int,
+        metavar="<n>",
+        help=(
+            "optional: the probe's declared sample size. A ledger whose task_set.probe is a "
+            "different size is a named violation; a run that is not a probe at all remains a "
+            "refusal; without the pin the decision is unchanged"
         ),
     )
 
@@ -1430,8 +1441,9 @@ def run_check_probe_cli(args: argparse.Namespace) -> int:
 
     **The exits are the existing contract, no fifth code**: the rule holds → 0, a named
     violation → 1 (a draw whose harness is not `PASS`, an empty seed map, a declared draws that
-    is not `sampling.K`, or — with `--heldout` — a held-out digest that is not the committed
-    document's, or no held-out record at all; the night does not run behind it, and that is a
+    is not `sampling.K`, a declared sample that is not the pinned `--probe`, or — with
+    `--heldout` — a held-out digest that is not the committed document's, or no held-out record
+    at all; the night does not run behind it, and that is a
     finding, not a mistyped command), and a refusal an operator can fix by retyping — a
     directory that is not a probe run, a ledger that cannot be read, an incomplete run, a
     `--heldout` document that cannot be read — → 2. There is no `UNVERIFIED` exit here: this
@@ -1446,6 +1458,7 @@ def run_check_probe_cli(args: argparse.Namespace) -> int:
             runtime=args.runtime,
             device=args.device,
             precision=args.precision,
+            probe=args.probe,
         )
     except REFUSALS as refusal:
         print(f"whetstone check-probe: {refusal}", file=sys.stderr)

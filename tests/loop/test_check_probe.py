@@ -327,6 +327,79 @@ def test_disclosure_shows_the_pins_and_the_recorded_backend(tmp_path: Path) -> N
     ), lines
 
 
+def test_a_matching_probe_pin_proceeds(tmp_path: Path) -> None:
+    """A ledger whose declared sample is the pinned one proceeds exactly as it would unpinned.
+
+    The sample pin is a declared-input check like the backend pins: it compares the ledger's
+    own `task_set.probe` to what the operator says the probe measured, and adds no new bar.
+    """
+    run = _probe_run(tmp_path, probe=16)
+
+    report = check_probe.run_check(run, probe=16)
+
+    assert report.proceed is True
+    assert report.violation is None
+    assert report.probe == 16
+    assert report.pins == (("probe", "16"),)
+
+
+def test_a_probe_of_another_sample_is_a_named_violation(tmp_path: Path) -> None:
+    """A probe that measured another sample is a finding naming both sizes, never a pass."""
+    run = _probe_run(tmp_path, probe=2)
+
+    report = check_probe.run_check(run, probe=16)
+
+    assert report.proceed is False
+    assert report.violation is not None
+    assert "2" in report.violation, report.violation
+    assert "16" in report.violation, report.violation
+    assert report.pins == (("probe", "16"),)
+
+
+def test_a_probe_pin_does_not_require_a_backend_block(tmp_path: Path) -> None:
+    """`--probe` alone must not turn on the backend check: the pins are independent switches.
+
+    The `/2` tolerance exists so a ledger with no recorded backend can still decide its
+    budget; pinning the sample size must not demand a record the pin never mentioned.
+    """
+    run = _probe_run(tmp_path, probe=16, unsealed=True)
+    path = run / run_ledger.LEDGER_FILE
+    document = json.loads(path.read_text(encoding="utf-8"))
+    del document["backend"]
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    report = check_probe.run_check(run, probe=16)
+
+    assert report.proceed is True
+    assert report.violation is None
+    assert report.pins == (("probe", "16"),)
+
+
+def test_no_probe_pin_keeps_the_old_decision(tmp_path: Path) -> None:
+    """Without the pin the decision is unchanged — whatever sample the ledger declares."""
+    report = check_probe.run_check(_probe_run(tmp_path, probe=2))
+
+    assert report.proceed is True
+    assert report.pins == ()
+
+
+def test_a_full_night_under_a_probe_pin_is_a_refusal(tmp_path: Path) -> None:
+    """A full night is still exit 2, not a sample violation: the pin never decides a non-probe."""
+    run = _probe_run(tmp_path, probe=None)
+
+    with pytest.raises(check_probe.NotAProbe):
+        check_probe.run_check(run, probe=16)
+
+
+def test_disclosure_shows_the_probe_pin(tmp_path: Path) -> None:
+    """A pinned probe discloses the declared sample and the pin it was checked against."""
+    report = check_probe.run_check(_probe_run(tmp_path, probe=16), probe=16)
+    lines = check_probe.disclosure(report)
+
+    assert "probe: 16" in lines, lines
+    assert "pins: probe=16" in lines, lines
+
+
 def test_a_probe_at_another_budget_is_a_named_violation(tmp_path: Path) -> None:
     """M2: the ledger's declared draws must equal `sampling.K`, not merely its own record.
 
