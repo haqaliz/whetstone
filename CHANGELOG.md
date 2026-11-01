@@ -11,6 +11,10 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+### Added
+
+- **The § 10.25 probe's sample is pinned in `check-probe` and named by id, and the Torch sheet measures 272 draws; the probe is unrun** (2026-11-01, `probe-sample-pin`). `whetstone check-probe --probe N` compares the probe ledger's declared `task_set.probe` to the sample size the sheet says it drew: without `--probe` the decision is unchanged, a probe whose declared size is not `N` is a named exit-1 violation, and a run that is not a probe at all is still refused by name. `PREREGISTRATION.md` § 10.26 names the § 10.25 probe's 16 private tasks by id in the Torch sheet's roots order, plus the one public task: 17 tasks at `K = 16`, **272 draws**, with the GO unchanged — at least one strict-`PASS`. The sheet now draws `--probe 16`, passes the same pin to `check-probe`, and separates the two decisions: the harness rule (`check-probe` exit 0, never the GO) and the § 10.25 GO. It states that 4 of the 16 are oracle-budget-excluded — 64 expected `NO_ORACLE` draws, counted and neither dropped nor re-drawn — and replaces the withdrawn raise-`K` advice and the stale verdict-only repair description with the failure-class repair (first unpassed declared node id and its junit outcome; no test body, captured output or prior completion). **No probe was run: no yield, delta or model is claimed, and the sample includes 4 known `NO_ORACLE` tasks (64 of the 272 expected draws).**
+
 ## [0.31.0] - 2026-10-31
 
 ### Added

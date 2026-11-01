@@ -11,7 +11,7 @@ asserted `is`, and only the door-keyed ones are re-implemented against this shee
 
 Properties this sheet owns, in addition to the shape the MLX guard pins:
 
-1. the parse really reads the sheet: exactly two door blocks (probe + night), `--probe 2` on the
+1. the parse really reads the sheet: exactly two door blocks (probe + night), `--probe 16` on the
    probe and no `--probe` on the night;
 2. every flag the door, `check-probe` and `check-leakage` blocks pass exists in the shipped parser;
 3. `--runs`/`--checkpoints`/`--workspace` are absolute or `$REPO`-anchored, `$REPO` is exported,
@@ -20,8 +20,8 @@ Properties this sheet owns, in addition to the shape the MLX guard pins:
 5. the retained candidate is the 8B repair base, passed exactly once in `--only`, and no
    `mlx-community` value appears in any `--only`;
 6. the MPS read-back is commanded in the sheet's own words (`backend.name == "torch"`,
-   `backend.device == "mps"`, `backend.precision == "float16"`), because `check-probe` does not pin
-   the backend;
+   `backend.device == "mps"`, `backend.precision == "float16"`), because the backend pin and the
+   operator's read-back are independent checks;
 7. the fit caveat: the probe writes no checkpoint and does not validate training; the `train-arm`
    pre-flight is the 8B fit measurement;
 8. the 52-task denominator (51 private + 1 public), the five declared dev ids, the committed
@@ -239,11 +239,44 @@ def test_the_parse_really_reads_the_runbooks_command() -> None:
     night = _night_block(blocks)
     assert probe and DOOR in probe, "no bash block invokes the probe pass"
     assert night and DOOR in night, "no bash block invokes the night without --probe"
-    assert _values(probe).get("--probe") == ["2"], (
-        "the probe pass does not pass `--probe 2`; a probe that draws elsewhere is a different run"
+    assert _values(probe).get("--probe") == ["16"], (
+        "the probe pass does not pass `--probe 16`; a probe that draws elsewhere is a different run"
     )
     assert "--probe" not in _values(night), "the night block still carries `--probe`"
     assert _flags(night), "the night command parsed into no flags at all"
+
+
+def test_the_probe_pass_is_the_section_10_25_sample() -> None:
+    """The probe pass is § 10.25's 272-draw measurement, not a 2-task smoke test.
+
+    The sample is § 10.26's 16 private tasks plus the one public task at `K = 16`, in the sheet's
+    roots order (`donor-b` then `donor-a`). A probe that draws anywhere else measures a different
+    sample, and its GO would not be the amendment's.
+    """
+    blocks = _bash_blocks(_runbook())
+    probe = _probe_block(blocks)
+    check = _probe_check_block(blocks)
+    night = _night_block(blocks)
+    assert _values(probe).get("--probe") == ["16"], (
+        "the probe pass does not draw `--probe 16`; § 10.25's measurement is 16 private tasks"
+    )
+    assert _values(check, PROBE_CHECK).get("--probe") == ["16"], (
+        "check-probe does not read the declared sample as 16; the pin compares the ledger's "
+        "task_set.probe to this value"
+    )
+    assert "--probe" not in _values(night), "the night block still carries `--probe`"
+    assert _values(probe).get("--tasks") == [
+        "$REPO/tasks/local/donor-b",
+        "$REPO/tasks/local/donor-a",
+    ], (
+        "the probe's roots are not donor-b then donor-a, the order § 10.26's sample names"
+    )
+    flat = _flat(_runbook())
+    for phrase in ("272", "16 private", "1 public", "17 tasks", "§ 10.26"):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: the sheet never states {phrase!r} for the § 10.25 sample. "
+            "A read of the draw count has nothing to count against"
+        )
 
 
 def test_every_flag_the_commands_pass_exists_in_the_parser() -> None:
@@ -517,6 +550,26 @@ def test_the_sheet_states_the_fit_caveat() -> None:
         )
 
 
+def test_the_sheet_describes_the_failure_class_repair() -> None:
+    """§ 10.25's repair carries the failing declared id and outcome, never the evidence."""
+    flat = _flat(_runbook())
+    for phrase in (
+        "first unpassed declared",
+        "junit outcome",
+        "no test body",
+        "no captured output",
+        "no prior completion",
+    ):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: the sheet never states {phrase!r} for the repair prompt. "
+            "§ 10.25 carries the declared node id and its junit outcome, and nothing executed"
+        )
+    assert "the first prompt plus the verdict, never the test output" not in flat, (
+        "WHY THIS IS A FAILURE: the sheet still carries the stale generic repair sentence, "
+        "which describes § 10.23's verdict-only prompt rather than § 10.25's"
+    )
+
+
 def test_the_denominator_is_the_fifty_two_task_draw() -> None:
     """The post-§ 10.16 arithmetic: 51 private + 1 public = 52 tasks, each drawn `K` times."""
     flat = _flat(_runbook())
@@ -528,6 +581,48 @@ def test_the_denominator_is_the_fifty_two_task_draw() -> None:
     assert "= 62 tasks" not in flat and "61 private" not in flat, (
         "WHY THIS IS A FAILURE: the sheet carries the pre-§ 10.16 denominator, which counts the "
         "held-out members as drawable"
+    )
+
+
+def test_the_sheet_discloses_the_no_oracle_sample() -> None:
+    """Four of § 10.26's sixteen are oracle-budget-excluded; disclosure is not a filter."""
+    flat = _flat(_runbook())
+    for phrase in ("4 of the 16", "NO_ORACLE", "64", "not dropped", "not re-drawn"):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: the sheet never states {phrase!r} for the sample's four "
+            "unscorable tasks. 64 expected NO_ORACLE draws are part of the denominator, not a "
+            "task to drop or redraw"
+        )
+    for task_id in (
+        "donor-b-45740535725b",
+        "donor-b-bffecd967c60",
+        "donor-b-d900ada906a3",
+        "donor-a-10476d50e5e8",
+    ):
+        assert task_id in flat, (
+            f"WHY THIS IS A FAILURE: the sheet does not name the unscorable sample task "
+            f"{task_id!r}; a disclosure without the ids is not auditable"
+        )
+
+
+def test_the_sheet_no_longer_advises_raising_k() -> None:
+    """The finding withdrew raise-`K`: the 8B night at `K = 16` produced zero."""
+    flat = _flat(_runbook())
+    for stale in (
+        "The next response is to raise `K`",
+        "Raising it is the roadmap's named response",
+    ):
+        assert stale not in flat, (
+            f"WHY THIS IS A FAILURE: the sheet still advises {stale!r}. `K` is declared at 16, "
+            "and the finding states raising it alone is not supported"
+        )
+    assert "`K` is declared at `16`" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not restate the declared `K`. The raise-`K` "
+        "advice is gone, so the current budget has to stand somewhere"
+    )
+    assert "raising `K` alone is not supported" in flat and "finding.md:72" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not carry the finding's withdrawn lever with its "
+        "citation, so the old advice can return as an opinion"
     )
 
 
@@ -582,6 +677,36 @@ def test_the_probe_decision_is_commanded_before_the_night() -> None:
     )
 
 
+def test_the_sheet_states_the_two_decisions() -> None:
+    """The harness rule and the § 10.25 GO are distinct; a green `check-probe` is not a GO.
+
+    `check-probe` answers whether the probe ran the declared harness: the control arm, the seed
+    map, `K`, the held-out digest, the backend pins and the declared sample size. The measurement
+    answers whether any draw solved: GO iff at least one of the 272 is strict-`PASS`. A zero is a
+    published NO-GO, never a reason to loosen the verifier.
+    """
+    flat = _flat(_runbook())
+    assert "Harness rule" in flat and "§ 10.25 GO" in flat, (
+        "WHY THIS IS A FAILURE: the sheet still states one decision rule. The harness rule and "
+        "the measurement's GO are different questions and only the second needs a solve"
+    )
+    assert "exit 0" in flat and "not the GO" in flat, (
+        "WHY THIS IS A FAILURE: the sheet does not say `check-probe` exit 0 is not the GO, so a "
+        "green harness can be read as a solve"
+    )
+    for phrase in (
+        "at least one of the 272 draws",
+        "strict-`PASS`",
+        "NO-GO",
+        "A zero yield is a NO-GO",
+        "never to a loosened verifier",
+    ):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: the sheet never states {phrase!r}. § 10.25's GO rule is the "
+            "measurement's decision, and it returns the lever to a human, never to a weaker check"
+        )
+
+
 def test_the_night_resumes_unchanged_and_the_probe_restarts_fresh() -> None:
     """A killed night resumes the same command; a killed probe is never resumed."""
     text = _runbook()
@@ -599,12 +724,12 @@ def test_the_night_resumes_unchanged_and_the_probe_restarts_fresh() -> None:
     )
     assert "never resumed" in flat and "restart it fresh" in flat, (
         "WHY THIS IS A FAILURE: the sheet does not say a killed probe is never resumed — the "
-        "cheap probe is the one place a fresh restart is affordable"
+        "probe is the one place a fresh restart is affordable"
     )
 
 
 def test_the_night_block_documents_the_remine_and_the_probe_does_not() -> None:
-    """The night re-mines from the operator's donor; the probe validates the chain cheaply."""
+    """The night re-mines from the operator's donor; the probe measures the chain without it."""
     blocks = _bash_blocks(_runbook())
     night = _night_block(blocks)
     probe = _probe_block(blocks)

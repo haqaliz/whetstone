@@ -50,9 +50,11 @@ AC.
 14B NF4 path failed its pre-flight (7/7 `NO_DIFF` at ~9 min/draw, then an uninterruptible Metal
 hang; § 10.23) and the 8B is the only measured stable runtime here: 35 hours, no hang, 206 real
 diffs in 624 evaluable draws, and 51 patches that applied and failed. The repair contract is the
-change: after a `NOT_SOLVED`, the run re-asks up to twice with a pre-posed repair prompt (the first
-prompt plus the verdict, never the test output), and the same STRICT verifier decides. The base's
-MPS fit was measured under § 10.21: 8.96 GB against the 25.6 GB headroom at ~118 s/step. `--only`
+change: after a `NOT_SOLVED`, the run re-asks up to twice with a pre-posed repair prompt carrying
+the first unpassed declared node id and its junit outcome (`failed`, `error`, `skipped`, `absent`)
+— no test body, no captured output and no prior completion (§ 10.25) — and the same STRICT
+verifier decides. The base's MPS fit was measured under § 10.21: 8.96 GB against the 25.6 GB
+headroom at ~118 s/step. `--only`
 is passed exactly once, with the full `Qwen/...` id: a night trains **one** candidate, and the
 shorter id would also match an on-disk MLX 4-bit directory in the substring matcher and be refused
 as two candidates.
@@ -112,7 +114,8 @@ repair selects a candidate.
    before the run and written down in the operator's own log. None is read from a clock or
    generated. This sheet declares **two** run ids — `<torch-probe-run-id>` for the probe, then
    `<torch-night-run-id>` for the night — distinct tokens, never one reused for both.
-3. **Run the probe first.** The chain is validated cheaply before a night is committed to.
+3. **Run the probe first.** The probe is § 10.25's 272-draw measurement; it also proves the
+   chain before a night is committed to.
 
 ## Going offline (before the probe)
 
@@ -142,7 +145,7 @@ index mid-night.
 
 ```bash
 caffeinate -dimsu uv run --extra torch whetstone run --night \
-  --probe 2 \
+  --probe 16 \
   --runtime torch \
   --repair 2 \
   --supervise \
@@ -169,10 +172,11 @@ caffeinate -dimsu uv run --extra torch whetstone run --night \
 ```
 
 The probe writes no checkpoint — a probe that trained would produce a candidate from a self-chosen
-subset. What it proves is the chain: the weights re-hash, the frozen contract, the control arm,
-the held-out exclusion, the seeded draws, the per-draw journals and transcripts, the selection, and
-the ledger. The stored `whetstone-run/3` record is read by `check-probe` through the verifying
-reader the gate uses.
+subset. It is § 10.25's measurement, not a smoke test: 16 private tasks plus the one public task at
+`K = 16`, 272 draws, and GO iff at least one is strict-`PASS`. Running it also proves the chain: the
+weights re-hash, the frozen contract, the control arm, the held-out exclusion, the seeded draws, the
+per-draw journals and transcripts, the selection, and the ledger. The stored `whetstone-run/3`
+record is read by `check-probe` through the verifying reader the gate uses.
 
 ```bash
 uv run --extra torch whetstone check-probe \
@@ -180,23 +184,29 @@ uv run --extra torch whetstone check-probe \
   --heldout $REPO/tasks/heldout/source-b.json \
   --runtime torch \
   --device mps \
-  --precision float16
+  --precision float16 \
+  --probe 16
 ```
 
-The decision is the command's exit: `whetstone check-probe` reads the run directory the probe block
-wrote (`runs/torch-mps-probe/<torch-probe-run-id>/ledger.json`) and, because the block passes
-`--heldout`, compares the ledger's held-out digest to the committed document's. Exit 0 — the probe
-satisfies the rule; proceed to the night. Exit 1 — a named finding (which draw/source, an empty
-seed map, declared draws that are not `sampling.K`, a held-out digest that is not the committed
-document's, or no held-out record at all); no night runs behind it. Exit 2 — a refusal an operator
-can fix by retyping, including an unreadable `--heldout` document; never a verdict about the probe.
+The command decides the harness, not the measurement: `whetstone check-probe` reads the run
+directory the probe block wrote (`runs/torch-mps-probe/<torch-probe-run-id>/ledger.json`) and,
+because the block passes `--heldout`, compares the ledger's held-out digest to the committed
+document's. Exit 0 — the probe satisfies the harness rule below. Exit 1 — a named finding (which
+draw/source, an empty seed map, declared draws that are not `sampling.K`, a declared sample size
+that is not `16`, the backend pins, a held-out digest that is not the committed document's, or no
+held-out record at all); no night runs behind it. Exit 2 — a refusal an operator can fix by
+retyping, including an unreadable `--heldout` document; never a verdict about the probe.
 
-**Decision rule (pre-committed): the night proceeds iff the probe completes with the control arm
-`PASS` on every draw and a non-empty seed map.** The declared draws must equal `sampling.K`
-(`K = 16`, declared in `whetstone.loop.sampling`, never a flag), and the ledger's held-out record
-must equal the digest of the committed `tasks/heldout/source-b.json`. A killed probe is **never
-resumed** — restart it fresh under a new `<torch-probe-run-id>`; a killed **night** still resumes
-unchanged (below).
+**Harness rule (what `check-probe` decides).** The control arm is `PASS` on every draw, the seed
+map is non-empty, the declared draws equal `sampling.K` (`K = 16`, declared in
+`whetstone.loop.sampling`, never a flag), the declared sample size is `16`, the ledger's held-out
+record equals the digest of the committed `tasks/heldout/source-b.json`, and the backend pins hold.
+Exit 0 answers this rule; it is not the GO. A killed probe is **never resumed** — restart it fresh
+under a new `<torch-probe-run-id>`; a killed **night** still resumes unchanged (below).
+
+**§ 10.25 GO (what the measurement decides).** GO iff at least one of the 272 draws is
+strict-`PASS`. `check-probe` exit 0 is **not** the GO. A zero yield is a NO-GO even when the command
+exits 0. A NO-GO returns the lever to a human, never to a loosened verifier.
 
 ## The pre-warm (after the probe, before the night)
 
@@ -259,18 +269,22 @@ on the choices:
   not a target — mining is hours per candidate. A donor that mints nothing, is absent, or is
   unprovisionable is a no-op, never a failure: the night proceeds on the existing corpus and
   records an empty delta.
-- **The probe does not re-mine.** Mining is hours, and the probe exists to validate the chain
-  cheaply before a night is committed to. Its task set therefore differs from the night's by the
-  re-mine delta; the pre-committed decision rule is about the control arm and the seed map, not
-  the exact task set.
+- **The probe does not re-mine.** Mining is hours, and the probe is the § 10.25 measurement, not a
+  pre-night smoke test. Its task set therefore differs from the night's by the re-mine delta; the
+  harness rule is about the control arm, the seed map and the declared sample, not the exact
+  post-re-mine task set.
 - **Denominator: 51 private (66 − 5 dev − 10 held-out not already dev-excluded) + 1 public = 52
   tasks, each drawn `K` times.** The exclusion order is dev overlay first, held-out second: the
   five declared dev ids leave both sources before anything is drawn, then the 12 held-out members
   leave what remains — 10 of them, the other 2 already in the dev band. A re-mine that adds tasks
   grows the denominator and is recorded in the ledger; the 52 is the committed corpus's count.
-- **`K` is not a flag.** It is a declared constant in `whetstone.loop.sampling`. Raising it is the
-  roadmap's named response to a low strict-PASS yield — as an edit to that line, in a diff, before
-  a night, never as an argument on a command that has already run once.
+- **The probe's sample is § 10.26's, named by id.** The probe draws 16 private tasks + 1 public =
+  17 tasks × `K = 16` = **272 draws**, in the sheet's roots order, and the sample is the 16 named in
+  `PREREGISTRATION.md` § 10.26. 4 of the 16 (`donor-b-45740535725b`, `donor-b-bffecd967c60`,
+  `donor-b-d900ada906a3`, `donor-a-10476d50e5e8`) are oracle-budget-excluded: their 64 draws are
+  expected `NO_ORACLE`, counted as unverified, **not dropped and not re-drawn**.
+- **`K` is declared at `16`** in `whetstone.loop.sampling`, never a flag. The 8B night at `K = 16`
+  produced zero, and the finding states raising `K` alone is not supported (`finding.md:72`).
 - **Retries are ON by default**; there is no `--retries` flag to pass. The hardened contract is
   the one this night runs under, and the ledger records which contract ran.
 - **`--timeout 900`** — headroom against a hung verification without letting one eat the night. A
@@ -331,9 +345,8 @@ non-zero exit halts here, before the gate.
 4. **A zero strict-PASS yield.** This is **not** a halt: it is a legitimate, published outcome. The
    night completes, writes no checkpoint, states the empty outcome in the ledger, and exits
    non-zero. The 7B produced zero and so did the 8B (0 `SOLVED` in 816 private draws) without
-   repairs; the repair contract is the response, and the probe may still yield zero. The next
-   response is to raise `K` — in a diff, before the next night — never to loosen what counts as a
-   win.
+   repairs; the repair contract is the response, and the probe may still yield zero. A zero is a
+   legitimate published outcome; the next lever is a human decision, never a loosened verifier.
 
 ## The finding, and what is not published
 

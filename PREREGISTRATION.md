@@ -332,6 +332,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-10-25 | The main series returns to the 8B base under a bounded repair contract after the 14B NF4 pre-flight failed; the 14B series is not extended (§ 10.23) | 1 — pins the inputs of a new series | Yes |
 | 2026-10-26 | The 51-task repair night is the repair's measurement after the eight-task probe produced no target event (§ 10.24) | 1 — pins the inputs of a measurement | Yes |
 | 2026-10-28 | The repair prompt carries the first unpassed declared test and its junit outcome; the 16-task probe measures it (§ 10.25) | 1 — pins the inputs of a measurement | Yes |
+| 2026-10-31 | The § 10.25 probe's 16-task sample is named by id, with four known `NO_ORACLE` tasks disclosed; the measurement's inputs are unchanged (§ 10.26) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1356,3 +1357,52 @@ them. The old series is not extended.
 still be too little information; a zero is possible and legitimate. The § 3 baseline remains
 unspent, nothing here claims the probe selects a strict-`PASS`, and a NO-GO returns the lever to
 a human, never to a loosened verifier.
+
+### 10.26 The § 10.25 probe's 16-task sample is named — 2026-10-31
+
+**Type 1 (§ 8.1): pins the inputs of a measurement, committed before the probe it governs runs.**
+It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not edit
+§ 10.25**: this document is append-only, and the 272-draw rule keeps its text byte-intact. What
+changes is that the sample § 10.25 called "the first 16 private tasks" is named by id, so the
+measurement is the same sample on any machine and any later reader can audit it.
+
+**The sample.** Under the Torch/MPS sheet's roots order (`--tasks .../donor-b` then
+`--tasks .../donor-a`), the five declared dev ids and the § 10.16 held-out document, the first
+16 private tasks are:
+
+- `donor-b-0cfbb1590a70`, `donor-b-0f8651175ef8`, `donor-b-0fe4582aeac1`,
+  `donor-b-45740535725b`, `donor-b-624a42175dda`, `donor-b-afd096a4b2ea`,
+  `donor-b-bffecd967c60`, `donor-b-c3e132b7469b`, `donor-b-c57246c7841a`,
+  `donor-b-cc7d3f520f1c`, `donor-b-ce6425d3101a`, `donor-b-d900ada906a3`,
+  `donor-b-dbf19c8009dd`, `donor-b-ee0841a837c9`, `donor-b-f589d0e93cc9`,
+  `donor-a-10476d50e5e8`.
+
+Plus the one public task, that is 17 tasks at `K = 16` — the **272 draws** of § 10.25. The five
+dev ids are `donor-b-2e149603209a`, `donor-b-353359e9ac6e`, `donor-b-3e3051c4192a`,
+`donor-b-844db07ed482`, `donor-b-9dba3ea557f5`; the held-out document is
+`tasks/heldout/source-b.json`, its digest unchanged from § 10.16.
+
+**Four of the sixteen are already recorded as unscorable.** `donor-b-45740535725b`,
+`donor-b-bffecd967c60`, `donor-b-d900ada906a3` and `donor-a-10476d50e5e8` are in the held-out
+document's `excluded` map: their source files exceed the 80,000-character oracle budget. Their
+64 draws are expected `NO_ORACLE`. They are **not dropped and not re-drawn**: they remain in the
+denominator, `NO_ORACLE` stays unverified and is never a failure, and the probe's GO rule is
+unchanged.
+
+**What does not change.** The base and revision, the runtime and precision, `K = 16` (§ 10.19),
+`R = 3` (§ 10.8), `R_repair = 2` (§ 10.23), the failure-class repair vocabulary (§ 10.25), the
+score-both-ways verifier, the gate rule and its exits, and the held-out document and its digest.
+The GO rule is still **GO iff at least one of the 272 draws is strict-`PASS`**.
+
+**Comparability.** Every figure measured under § 10.23, § 10.24, § 10.21, § 10.22, § 10.20,
+§ 10.10 or an arm is **non-comparable** to any figure measured under this probe. Naming the
+sample does not start a new series; it fixes the one § 10.25 already pinned.
+
+**No report home.** The gate record stays gitignored under `runs/`; the finding lives under
+`docs/planning/torch-mps-series/`; no `reports/` directory is created.
+
+**What is not claimed.** No count has been measured under this probe. The sample contains four
+tasks that cannot produce an oracle, so 64 of the 272 draws are expected `NO_ORACLE`; the
+amendment discloses that rather than filtering it out. The § 3 baseline remains unspent, nothing
+here claims the probe selects a strict-`PASS`, and a NO-GO returns the lever to a human, never to
+a loosened verifier.

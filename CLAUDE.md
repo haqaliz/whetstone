@@ -57,7 +57,11 @@ This file orients a coding agent working in this repository. Read it first.
 > § 10.25 probe itself remains unrun. Then the **mps-stall-supervisor** unit (2026-10-30):
 > `whetstone run --night --supervise` runs the night as a child the parent can kill on journal
 > inactivity, writes `stalled.json`, and lets the operator resume — containment for the recorded
-> MPS hang, not a root-cause fix; no probe or night has run.
+> MPS hang, not a root-cause fix; no probe or night has run. Then the **probe-sample-pin** unit
+> (2026-11-01): `whetstone check-probe --probe N` pins the probe's declared sample size,
+> `PREREGISTRATION.md` § 10.26 names § 10.25's 16-task sample by id, and the Torch sheet draws
+> `--probe 16` and states the harness rule and the 272-draw GO as separate decisions; the probe
+> itself remains unrun.
 >
 > **The corpus, stated precisely.** Source B (private, pre-registered headline):
 > **66 tasks**, each proven live rather than asserted. Source A (public SWE-bench-Lite):

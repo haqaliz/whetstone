@@ -10,6 +10,19 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The § 10.25 probe's sample is pinned in `check-probe` and named by id; the 272-draw probe is unrun** (2026-11-01, `probe-sample-pin`). The Torch sheet ran a 2-task probe and stated only the harness rule, while § 10.25's probe is a 272-draw measurement whose GO is a yield rule the command does not decide. The sample § 10.25 called "the first 16 private tasks" was not named, so the measurement could not be audited or reproduced on another machine.
+
+**What shipped.**
+- **`check-probe --probe N`.** The probe decision gains an optional declared sample size: it compares the ledger's `task_set.probe` to `N`, and a different size is a named exit-1 violation. Without the flag the decision is unchanged; a run that is not a probe at all is still refused by name.
+- **§ 10.26 names the sample.** The document pins the 16 private tasks by id in the Torch sheet's roots order, plus the one public task: 17 tasks at `K = 16` — the **272 draws** — with the GO rule untouched (at least one strict-`PASS`).
+- **The sheet is the measurement.** Both blocks draw `--probe 16`; the night still draws none. The sheet states the 272 draws and discloses that 4 of the 16 are oracle-budget-excluded: 64 expected `NO_ORACLE` draws, counted as unverified, neither dropped nor re-drawn.
+- **Two decisions.** The harness rule (`check-probe` exit 0: control arm, seed map, `K`, declared size, held-out digest, backend pins) is separated from the § 10.25 GO. A green harness is not the GO; a zero yield is a NO-GO, and a NO-GO returns the lever to a human, never to a loosened verifier.
+- **The stale advice is gone.** The sheet replaces the withdrawn raise-`K` advice with the finding's sentence (`finding.md:72`) and describes § 10.25's failure-class repair — the first unpassed declared node id and its junit outcome, with no test body, captured output or prior completion.
+
+**What is not claimed.** **No probe was run.** No yield, delta or model is claimed. The sample includes 4 known `NO_ORACLE` tasks, so 64 of the 272 draws are expected unverified; the arithmetic is deterministic, not measured. The § 3 baseline remains unspent, and the reward, gate, corpus, held-out document, `K` and `R` are untouched.
+
+---
+
 **A night can be supervised, so an uninterruptible MPS hang is a recorded stall; the root cause is not fixed** (2026-10-30, `mps-stall-supervisor`). The 8B night hit an MPS OOM on the public task after ~35 h and hung; a resume failed on a corrupted attention mask and a second resume hung. The 14B pre-flight hung in an uninterruptible Metal wait, and its 900 s draw timeout could not fire. An in-process timeout cannot break that; a parent process can.
 
 **What shipped.**
