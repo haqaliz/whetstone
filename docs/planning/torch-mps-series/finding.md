@@ -132,3 +132,54 @@ not of the first prompt. That is the next design question, with its own pre-regi
 
 The 8B series' conclusion stands: it follows the edit format and does not solve this corpus. No
 model was produced, and nothing is published.
+
+## The § 10.25 probe — 2026-11-02
+
+**Run:** `torch-8b-probe-16-001` · seed `20261102` · base `Qwen/Qwen3-8B` @
+`b968826d9c46dd6066d109eabc6255188de91218` · Torch 2.14.1 / MPS / `float16` · § 10.26's 16 private
+tasks + the one public task at `K = 16` (**272 draws**) · `--repair 2`.
+
+**The harness held.** `whetstone check-probe --probe 16` returned **PROCEED**: the control arm was
+`INTACT` on every draw, the seed map recorded 208 applied seeds, the declared sample was 16, the
+held-out digest was the committed document's, and the backend pins matched (`torch` 2.14.1, `mps`,
+`float16`). The harness is not the finding.
+
+**The yield is NO-GO.** The ledger records **0 strict-`PASS`** across 272 draws:
+
+| outcome | draws |
+|---|---|
+| `SOLVED` | **0** |
+| `NOT_SOLVED` | **1** |
+| `NOT_APPLIED` | 79 |
+| `NO_DIFF` | 128 |
+| `NO_ORACLE` | 64 |
+| `UNVERIFIED` | 0 |
+
+Coverage is **208** (12 evaluable private + 1 public × 16), unverified **64** (the four § 10.26
+tasks whose source files exceed the oracle budget). The § 10.25 rule — GO iff at least one of the
+272 draws is strict-`PASS` — therefore returns **NO-GO**.
+
+**The one near-miss, and what it does not show.** `donor-b-ce6425d3101a` (draw 14) applied,
+executed 25 tests and failed. The two-attempt repair budget was spent and the final verdict
+remained `NOT_SOLVED`; it converted none. The repair completions are **not in the transcript**:
+`Retry.generate_repair` bypasses `_record`, so the evidence records the budget and the final
+verdict, not what the repair generated. That is a provenance gap for any repair measurement.
+
+**The sample did not exercise the repair.** One near-miss in 208 evaluable draws is **0.5%**, not
+the ~16 § 10.25 expected from the 8B night's 51/624. The dominant failure is the format wall:
+128 `NO_DIFF` (prose) plus 79 `NOT_APPLIED` (refused diffs) are **207 of the 208 evaluable draws**
+that never produced an applied-and-failed patch. The first 16 tasks are not a near-miss-rich
+sample. The `night-autopsy` attributes the dominant cause on four tasks to
+`PARSED_BUT_DID_NOT_APPLY` — parsed diffs git refused — and on seven to `NO_DIFF_HEADER`; the
+checkout layer could not reach the rest.
+
+**What this says.** The § 10.25 vocabulary returned NO-GO on this sample, but the sample had one
+target. This is **not** evidence that the failure-class repair cannot convert a near-miss; it is
+evidence that the sample, not the repair, is the binding constraint. The 8B series' conclusion
+stands: it follows the edit format poorly on this sample and solves none of it. A repair
+measurement needs a sample that actually produces near-misses — the 51 tasks the 8B night measured
+— and the repair attempts must be recorded before the next probe.
+
+**What is not claimed.** No model, checkpoint, training set, gate decision or delta exists. The § 3
+baseline remains unspent. The one near-miss is not a repair result, and no count here is extended
+to § 10.23's, § 10.24's or the full 8B night's series.

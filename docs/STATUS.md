@@ -10,6 +10,18 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The § 10.25 probe ran and returned NO-GO; the sample produced one near-miss, so the repair was barely exercised** (2026-11-02, `torch-8b-probe-16-001`). The probe was § 10.26's 16 private tasks plus the one public task at `K = 16` — 272 draws — on `Qwen/Qwen3-8B`, Torch 2.14.1 / MPS / `float16`, with `--repair 2`. The harness held: `check-probe --probe 16` returned PROCEED, the control arm was `INTACT` on every draw, and the backend, sample and held-out pins matched.
+
+**What happened.**
+- **0 strict-`PASS`.** The ledger records 0 `SOLVED`, 1 `NOT_SOLVED`, 79 `NOT_APPLIED`, 128 `NO_DIFF`, 64 `NO_ORACLE`; coverage 208, unverified 64. § 10.25's GO — at least one strict-`PASS` — is NO-GO.
+- **One near-miss.** `donor-b-ce6425d3101a` (draw 14) applied, executed 25 tests and failed. The two-attempt repair budget was spent; the final verdict stayed `NOT_SOLVED`. The repair completions are not in the transcript: `Retry.generate_repair` bypasses `_record`.
+- **The sample did not exercise the repair.** 1 near-miss in 208 evaluable draws (0.5%), not the ~16 § 10.25 expected from the 8B night's 51/624. 207 of 208 evaluable draws never produced an applied-and-failed patch: 128 `NO_DIFF` (prose) and 79 `NOT_APPLIED` (refused diffs).
+- **The finding.** `docs/planning/torch-mps-series/finding.md` records the counts, the per-task causes and the boundary: this is a NO-GO for the sample, not evidence that the failure-class repair cannot convert a near-miss.
+
+**What is not claimed.** No model, checkpoint, training set, gate decision or delta exists. The § 3 baseline remains unspent. The one near-miss is not a repair result; a repair measurement needs a near-miss-rich sample and recorded repair attempts.
+
+---
+
 **The § 10.25 probe's sample is pinned in `check-probe` and named by id; the 272-draw probe is unrun** (2026-11-01, `probe-sample-pin`). The Torch sheet ran a 2-task probe and stated only the harness rule, while § 10.25's probe is a 272-draw measurement whose GO is a yield rule the command does not decide. The sample § 10.25 called "the first 16 private tasks" was not named, so the measurement could not be audited or reproduced on another machine.
 
 **What shipped.**

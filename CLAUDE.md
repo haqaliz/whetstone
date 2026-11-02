@@ -60,8 +60,10 @@ This file orients a coding agent working in this repository. Read it first.
 > MPS hang, not a root-cause fix; no probe or night has run. Then the **probe-sample-pin** unit
 > (2026-11-01): `whetstone check-probe --probe N` pins the probe's declared sample size,
 > `PREREGISTRATION.md` § 10.26 names § 10.25's 16-task sample by id, and the Torch sheet draws
-> `--probe 16` and states the harness rule and the 272-draw GO as separate decisions; the probe
-> itself remains unrun.
+> `--probe 16` and states the harness rule and the 272-draw GO as separate decisions. The probe
+> then ran on 2026-11-02 (`torch-8b-probe-16-001`): the harness held, and the yield returned
+> **NO-GO** — 0 strict-`PASS` in 272 draws, one near-miss, 64 `NO_ORACLE`; the sample did not
+> exercise the repair.
 >
 > **The corpus, stated precisely.** Source B (private, pre-registered headline):
 > **66 tasks**, each proven live rather than asserted. Source A (public SWE-bench-Lite):

@@ -944,6 +944,15 @@ transcripts to journals by hand. `NO_ORACLE` already carries its reason; this sh
 > arm's CPU dtype (§ 13). M1's exit criterion stands open — a night selects at least one
 > strict-`PASS` — and no third representation direction is proposed here; the finding records
 > the observation for the next contract designer rather than a lead this evidence supports.
+>
+> **Corrected 2026-11-02, when the § 10.25 probe returned NO-GO.** The probe ran § 10.26's
+> 16-task sample at 272 draws: **0 strict-`PASS`**, with one `NOT_SOLVED`, 79 `NOT_APPLIED`,
+> 128 `NO_DIFF` and 64 `NO_ORACLE`. The one near-miss spent the two-attempt repair budget and
+> converted none; the repair completions are not in the transcript. The sample produced 1
+> near-miss in 208 evaluable draws (0.5%), not the ~16 § 10.25 expected, so the failure-class
+> repair was barely exercised. This is a NO-GO for the sample, not evidence that the repair
+> cannot convert a near-miss. M1's exit criterion stands open; the next step is a near-miss-rich
+> sample with recorded repair attempts, or a base/approach change — never a looser verifier.
 
 ### M2 — Make the gate able to answer: the held-out set (issues #60, #62)
 
