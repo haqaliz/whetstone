@@ -252,14 +252,19 @@ class Retry:
         return completion
 
     def generate_repair(self, prompt: str) -> str:
-        """Generate a pre-posed repair prompt exactly once, never a nested retry.
+        """Generate a pre-posed repair prompt exactly once, record it, never a nested retry.
 
         A repair prompt is frozen into the contract; a retry prompt built *from* a repair
         prompt is not, and posing that chain would make the prompt set unbounded (B1). The seal
-        would refuse it, so the repair draw is one attempt: the outer loop decides whether a
-        second repair is worth issuing, and it issues the same pre-posed prompt again.
+        would refuse it, so the repair draw is one attempt: the outer `score` loop decides whether
+        a second repair is worth issuing, and it issues the same pre-posed prompt again. The draw
+        is recorded as `"repair"` with `attempt=1` — the file order is the repair sequence, and the
+        last row for the key is the decided record. An unfrozen repair prompt is delegated
+        unrecorded, exactly as `_record` delegates an unfrozen attempt.
         """
-        return self.inner.generate(prompt)
+        completion = self.inner.generate(prompt)
+        self._record(prompt, completion, attempt=1, decision="repair")
+        return completion
 
     def _record(self, prompt: str, completion: str, *, attempt: int, decision: Decision) -> None:
         """One attempt's record, after its generation — or nothing, without the pieces.

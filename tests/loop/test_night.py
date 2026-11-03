@@ -43,10 +43,18 @@ from loop.harness import (
     solving_answers,
     weights,
 )
-from whetstone.bakeoff.scoring import Outcome
+from whetstone.bakeoff.control import Control, Origin, Probe
+from whetstone.bakeoff.journal import Step
+from whetstone.bakeoff.rendering import prompt_hash
+from whetstone.bakeoff.retry import repair_prompt
+from whetstone.bakeoff.scoring import Outcome, Rollout
+from whetstone.bakeoff.sweep import Sweep
+from whetstone.bakeoff.transcript import Transcribed, Transcript
 from whetstone.loop import backend, sft
 from whetstone.loop import dataset as training
 from whetstone.loop import ledger as run_ledger
+from whetstone.loop import night as night_module
+from whetstone.loop.draws import Drawn
 from whetstone.loop.night import DATA_DIR, DATASET_FILE, EVIDENCE_DIR, Night, run_night
 from whetstone.verify.verdict import Status
 
@@ -526,4 +534,100 @@ def test_a_checkpoint_verifier_failure_still_writes_the_nights_ledger(
         f"WHY THIS IS A FAILURE: the checkpoint verifier raised and the ledger recorded "
         f"{len(recorded['draws_recorded'])} of {DRAWS} draws. The rollouts are the expensive, "
         "irreplaceable half of a night; they must survive a failure in the checkpoint step"
+    )
+
+
+def test_a_repaired_win_trains_on_the_repair_completion(tmp_path: Path) -> None:
+    """`_select` takes the last record for a key, so a repaired win trains on the repair text.
+
+    This is the reader boundary the ``"repair"`` row exists for: `_select` reads each draw's
+    transcript through `Transcript.replay()` and puts the keyed completion into the training set.
+    If replay returned the first ``"graded"`` completion, a repaired solve would train the base on
+    the attempt the verifier failed, not the patch that passed.
+    """
+    candidate = "base-a"
+    task_id = "alpha"
+    first = "Fix addition.\n\nFailing: tests/test_calc.py::test_add\n"
+    repaired = repair_prompt(first)
+    transcript = Transcript(path=tmp_path / "draw-01.transcript.jsonl")
+    transcript.append(
+        Transcribed(
+            candidate=candidate,
+            task_id=task_id,
+            prompt_sha256="0" * 64,
+            prompt=first,
+            completion="the first completion, applied but failed",
+            attempt=1,
+            decision="graded",
+        )
+    )
+    transcript.append(
+        Transcribed(
+            candidate=candidate,
+            task_id=task_id,
+            prompt_sha256=prompt_hash(repaired),
+            prompt=repaired,
+            completion="the repair that solved it",
+            attempt=1,
+            decision="repair",
+        )
+    )
+    rollout = Rollout(
+        candidate=candidate,
+        task_id=task_id,
+        outcome=Outcome.SOLVED,
+        strict=Status.PASS,
+        weak=Status.PASS,
+        verdict_kinds=("tests",),
+        executed=1,
+        prompt_sha256=prompt_hash(repaired),
+        detail="",
+        generation_seconds=0.1,
+        strict_seconds=0.1,
+        weak_seconds=0.1,
+    )
+    drawn = Drawn(
+        attempt=1,
+        runs={
+            "private": Sweep(
+                candidate=candidate,
+                status=Status.PASS,
+                steps=(
+                    Step(
+                        probe=Probe(
+                            candidate=candidate,
+                            task_id=task_id,
+                            control=Control.INTACT,
+                            without_patch=Status.FAIL,
+                            with_reference=Status.PASS,
+                            origin=Origin.DONOR,
+                            detail="",
+                            seconds=0.1,
+                        ),
+                        rollout=rollout,
+                    ),
+                ),
+            )
+        },
+        seeds=(),
+        journal=tmp_path / "draw-01.journal.jsonl",
+        transcript=transcript.path,
+    )
+
+    texts, denominator, unverified = night_module._select((drawn,), run_seed=SEED)
+
+    assert (denominator, unverified) == (1, 0), (
+        f"WHY THIS IS A FAILURE: _select counted {denominator} trainable of "
+        f"{unverified} unverified draws rather than one of zero"
+    )
+    assert len(texts) == 1, (
+        f"WHY THIS IS A FAILURE: _select returned {texts!r} rather than the one verified win"
+    )
+    assert texts[0].completion == "the repair that solved it", (
+        "WHY THIS IS A FAILURE: the training set carries the first graded completion, not the "
+        f"repair completion the verifier passed. Got {texts[0].completion!r}"
+    )
+    assert texts[0].prompt == repaired, (
+        "WHY THIS IS A FAILURE: the training set carries the first prompt, not the repair "
+        f"prompt the winning completion answered. Got {texts[0].prompt!r}"
     )
