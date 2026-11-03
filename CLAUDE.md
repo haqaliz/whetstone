@@ -63,7 +63,11 @@ This file orients a coding agent working in this repository. Read it first.
 > `--probe 16` and states the harness rule and the 272-draw GO as separate decisions. The probe
 > then ran on 2026-11-02 (`torch-8b-probe-16-001`): the harness held, and the yield returned
 > **NO-GO** — 0 strict-`PASS` in 272 draws, one near-miss, 64 `NO_ORACLE`; the sample did not
-> exercise the repair.
+> exercise the repair. Then the **repair-evidence** unit (2026-11-03): every repair draw is
+> recorded as a `"repair"` transcript row, and last-wins makes the repair completion the keyed
+> record — so a repaired solve trains on the text the final verdict was computed on. The
+> seven-field codec and every existing transcript are unchanged, the § 10.25 probe's transcript
+> was not rewritten, and no probe or night was run.
 >
 > **The corpus, stated precisely.** Source B (private, pre-registered headline):
 > **66 tasks**, each proven live rather than asserted. Source A (public SWE-bench-Lite):

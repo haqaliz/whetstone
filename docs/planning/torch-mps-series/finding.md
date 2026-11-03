@@ -183,3 +183,11 @@ measurement needs a sample that actually produces near-misses — the 51 tasks t
 **What is not claimed.** No model, checkpoint, training set, gate decision or delta exists. The § 3
 baseline remains unspent. The one near-miss is not a repair result, and no count here is extended
 to § 10.23's, § 10.24's or the full 8B night's series.
+
+**Follow-up — 2026-11-03 (`repair-evidence`).** The provenance gap above is closed in the code:
+`Retry.generate_repair` and the non-retry `Recording.generate_repair` now record every repair draw
+as a `"repair"` transcript row, and `Transcript.replay()`'s last-wins rule makes the repair
+completion the keyed record a reader — and `night._select` — takes. The seven-field codec is
+unchanged, so older transcripts read as before. **This probe's own transcript was not rewritten
+and still contains no repair rows**; the unit is not a repair measurement, no probe or night was
+re-run, and no yield, conversion or delta is claimed here.
