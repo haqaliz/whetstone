@@ -953,6 +953,12 @@ transcripts to journals by hand. `NO_ORACLE` already carries its reason; this sh
 > repair was barely exercised. This is a NO-GO for the sample, not evidence that the repair
 > cannot convert a near-miss. M1's exit criterion stands open; the next step is a near-miss-rich
 > sample with recorded repair attempts, or a base/approach change — never a looser verifier.
+>
+> **Corrected 2026-11-05, when § 10.27 named the near-miss sample.** The next measurement is the
+> 8B night's 20 private near-miss tasks plus the public task — 21 tasks × `K = 16` = **336 draws**
+> (`PREREGISTRATION.md` § 10.27). The sample is outcome-selected from an already-run night, so a
+> GO is evidence on those 21 tasks only, not on the corpus. M1's exit criterion is still a
+> selected strict-`PASS`, never a corpus claim restated from this sample.
 
 ### M2 — Make the gate able to answer: the held-out set (issues #60, #62)
 

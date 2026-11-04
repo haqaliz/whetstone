@@ -10,6 +10,18 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The 8B night's near-miss population is named, and the Torch probe pass measures it** (2026-11-05, `near-miss-sample`). `PREREGISTRATION.md` § 10.27 (Type 1) records the correction and names the sample: the 8B night's journals hold **51 private `NOT_SOLVED` draws across 20 private tasks**, plus 1 on `pallets__flask-4045` — **52** draws, not "51 tasks".
+
+**What shipped.**
+- **The sample.** The 20 private tasks with at least one `NOT_SOLVED` in the 8B night, plus the public task: 20 private + 1 public = 21 tasks × `K = 16` = **336 draws**. The five repair-night near-misses are a subset; none of the 20 is held out.
+- **The sheet.** `docs/planning/torch-mps-series/night-door/runbook.md` builds `$REPO/tasks/local/near-miss` by symlinking the 20 manifests, draws `--probe 20` on that one root (no `--dev-subset`), and pins `--probe 20` in `check-probe`. The night block is unchanged: the full 52-task corpus with the five dev ids.
+- **The disclosure.** The sample is outcome-selected from an already-run night, so a GO is evidence on these 21 tasks only, not on the corpus. The 20 are oracle-fittable; the 12 `NO_ORACLE` tasks are outside the sample.
+- **The decisions.** The harness rule (`check-probe` exit 0) and the § 10.27 GO (at least one of the 336 draws is strict-`PASS`) remain separate; exit 0 is not the GO.
+
+**What is not claimed.** No probe or night was run; no yield, delta or model exists. The base, runtime, precision, `K`, `R`, the repair vocabulary, the verifier, the gate and the held-out document are untouched.
+
+---
+
 **Repair draws are recorded, so a repaired rollout's keyed transcript record is the repair completion** (2026-11-03, `repair-evidence`). The § 10.25 probe's one near-miss spent the two-attempt repair budget but left no repair evidence: `Retry.generate_repair` generated and returned the completion without recording it, and the non-retry `Recording` path wrote a repair as a duplicate `"graded"` row.
 
 **What shipped.**
