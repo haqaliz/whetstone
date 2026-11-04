@@ -41,7 +41,7 @@ from whetstone.bakeoff.diffcheck import Trigger
 from whetstone.bakeoff.generator import Generator, StubGenerator
 from whetstone.bakeoff.rendering import prompt_hash, render_prompt
 from whetstone.bakeoff.retry import FAILURE_OUTCOMES, Retry, repair_prompt, retry_prompt
-from whetstone.bakeoff.run import Contract, ContractChanged, Sealed, freeze
+from whetstone.bakeoff.run import Contract, ContractChanged, Recording, Sealed, freeze
 from whetstone.bakeoff.sources import oracle_sources
 from whetstone.bakeoff.transcript import Transcript
 from whetstone.verify.task import Task
@@ -144,6 +144,82 @@ def test_a_repair_generation_does_not_issue_a_nested_retry(tmp_path: Path) -> No
         "WHY THIS IS A FAILURE: the repair generation did not return the inner completion. "
         "A repair that re-enters the retry wrapper asks for a nested prompt (repair + retry) "
         "that the freeze never posed, and the seal voids the run at the first malformed repair"
+    )
+
+
+def test_an_unfrozen_repair_prompt_writes_no_row(tmp_path: Path) -> None:
+    """A repair prompt the contract did not freeze is refused before any row exists.
+
+    The seal is checked inside `Sealed`, so `Retry.generate_repair` raises `ContractChanged`
+    before `_record` runs. A row written for a refused prompt would be a completion-less
+    record of a generation that never happened — and the run is void anyway.
+    """
+    task = _task(tmp_path, "alpha")
+    contract = freeze([task], repair=False)
+    first = _posed(task)
+    repaired = repair_prompt(first)
+    assert prompt_hash(repaired) not in contract.posed, (
+        "WHY THIS IS A FAILURE: the repair-disabled fixture froze a repair prompt, so this "
+        "test would not exercise the refusal it claims to"
+    )
+    transcript = Transcript(path=tmp_path / "t.jsonl")
+    composed = Retry(
+        inner=Sealed(inner=StubGenerator({repaired: "prose"}), contract=contract),
+        transcript=transcript,
+        candidate=CANDIDATE,
+        contract=contract.posed,
+    )
+
+    with pytest.raises(ContractChanged):
+        composed.generate_repair(repaired)
+
+    rows = _records(transcript) if transcript.path.exists() else []
+    assert rows == [], (
+        f"WHY THIS IS A FAILURE: a refused repair prompt left rows behind ({rows!r}). The "
+        "record follows the generation, and a prompt the contract refuses is not a generation"
+    )
+
+
+def test_recording_records_one_repair_row(tmp_path: Path) -> None:
+    """The non-retry composition records a repair as one `"repair"` row, not a second graded one.
+
+    `Recording` is the writer when `--retries` is off. Without `generate_repair` its only repair
+    path was `generate`, which would file the repair as a duplicate `"graded"` row and break the
+    one-graded-row invariant while hiding that a repair happened.
+    """
+    task = _task(tmp_path, "alpha")
+    contract = freeze([task], repair=True)
+    repaired = repair_prompt(_posed(task))
+    transcript = Transcript(path=tmp_path / "t.jsonl")
+    recording = Recording(
+        inner=Sealed(inner=StubGenerator({repaired: "prose"}), contract=contract),
+        transcript=transcript,
+        candidate=CANDIDATE,
+        contract=contract,
+    )
+
+    assert recording.generate_repair(repaired) == "prose", (
+        "WHY THIS IS A FAILURE: the non-retry recording path did not return the repair "
+        "completion — the recorder must not change what is observed"
+    )
+
+    records = _records(transcript)
+    assert len(records) == 1, (
+        f"WHY THIS IS A FAILURE: the transcript holds {records!r} rather than exactly one "
+        "repair row. The repair draw happened once and is not a retry"
+    )
+    assert (records[0]["attempt"], records[0]["decision"]) == (1, "repair"), (
+        f"WHY THIS IS A FAILURE: the row is {records[0]!r} rather than attempt 1, decision "
+        "'repair'. A repair filed as 'graded' hides the repair and duplicates the graded row"
+    )
+    assert records[0]["prompt_sha256"] == prompt_hash(repaired), (
+        "WHY THIS IS A FAILURE: the row does not carry the repair prompt's digest"
+    )
+    assert records[0]["completion"] == "prose", (
+        "WHY THIS IS A FAILURE: the row does not carry the repair completion"
+    )
+    assert records[0]["task_id"] == task.task_id, (
+        "WHY THIS IS A FAILURE: the repair was filed under the wrong task"
     )
 
 

@@ -89,7 +89,7 @@ from whetstone.bakeoff.stratum import (
     read_document,
 )
 from whetstone.bakeoff.sweep import Sweep, rankable, sweep
-from whetstone.bakeoff.transcript import RecordingGenerator, Transcript
+from whetstone.bakeoff.transcript import RecordingGenerator, Transcribed, Transcript
 from whetstone.bakeoff.weights import Weights, load_weights
 from whetstone.tasks.manifest import load_tasks
 from whetstone.verify.task import Task
@@ -314,6 +314,31 @@ class Recording:
             candidate=self.candidate,
             task_id=task_id,
         ).generate(prompt)
+
+    def generate_repair(self, prompt: str) -> str:
+        """Record a repair draw under the task the frozen prompt poses; delegate if unfrozen.
+
+        A repair is not a second graded attempt: it follows a graded attempt that failed
+        verification, and its row says `"repair"` with `attempt=1` — the file order is the repair
+        sequence, and the last row for the key is the decided record. An unfrozen prompt is passed
+        down unrecorded for the reason `generate` does it: `Sealed` is what refuses it.
+        """
+        task_id = self.contract.posed.get(prompt_hash(prompt))
+        if task_id is None:
+            return self.inner.generate(prompt)
+        completion = self.inner.generate(prompt)
+        self.transcript.append(
+            Transcribed(
+                candidate=self.candidate,
+                task_id=task_id,
+                prompt_sha256=prompt_hash(prompt),
+                prompt=prompt,
+                completion=completion,
+                attempt=1,
+                decision="repair",
+            )
+        )
+        return completion
 
 
 @dataclass(frozen=True)

@@ -10,6 +10,19 @@ carries the current state and the rules that still bind.
 
 ---
 
+**Repair draws are recorded, so a repaired rollout's keyed transcript record is the repair completion** (2026-11-03, `repair-evidence`). The § 10.25 probe's one near-miss spent the two-attempt repair budget but left no repair evidence: `Retry.generate_repair` generated and returned the completion without recording it, and the non-retry `Recording` path wrote a repair as a duplicate `"graded"` row.
+
+**What shipped.**
+- **The vocabulary.** `"repair"` joins `"retry"` and `"graded"` in `diffcheck.Decision` and in the transcript's runtime `DECISIONS` set; the decoder refuses an unknown decision by name (`TranscriptUnreadable`), and a test asserts the two spellings agree.
+- **Both writers.** `Retry.generate_repair` records one `"repair"` row through the same `_record` seam as a retry, with `attempt=1`; `Recording.generate_repair` does the same for the non-retry composition, replacing the duplicate-graded fallback.
+- **The reader.** `Transcript.replay()` is still last-wins: a trailing `"repair"` is the keyed record, so `night._select` trains on the completion the final verdict was computed on. A trailing `"retry"` is still refused. The seven-field codec is unchanged, and old transcripts replay unchanged.
+- **The seal.** A repair prompt outside the frozen contract still raises `ContractChanged` and writes no row.
+- **The reader boundary is pinned.** `tests/loop/test_night.py` builds a repaired win and asserts `night._select` puts the repair prompt and completion into the training set.
+
+**What is not claimed.** No probe or night was run; no repair conversion, yield, delta or model exists. The § 10.25 probe's own transcript was not rewritten and still has no repair rows. The reward, gate, corpus, held-out document, `K` and `R` are untouched.
+
+---
+
 **The § 10.25 probe ran and returned NO-GO; the sample produced one near-miss, so the repair was barely exercised** (2026-11-02, `torch-8b-probe-16-001`). The probe was § 10.26's 16 private tasks plus the one public task at `K = 16` — 272 draws — on `Qwen/Qwen3-8B`, Torch 2.14.1 / MPS / `float16`, with `--repair 2`. The harness held: `check-probe --probe 16` returned PROCEED, the control arm was `INTACT` on every draw, and the backend, sample and held-out pins matched.
 
 **What happened.**

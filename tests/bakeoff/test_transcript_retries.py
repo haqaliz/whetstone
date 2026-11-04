@@ -22,6 +22,10 @@ Everything asserted here follows from that contract:
   run a retry always has a following record; one that does not is a run killed between the
   retry and its completion — the same missing-evidence family as a truncated line, and it
   raises rather than silently reporting a decision the run never made.
+* **A `"repair"` record is a decided record, not a retry.** A repair draw follows a failed
+  graded attempt and may itself be the last row for its key, so it replays as the decided
+  completion. An unknown decision is refused by name, never replayed as a decision the
+  vocabulary does not carry.
 
 No model, no `mlx`, no network: every record here is constructed by hand.
 """
@@ -190,4 +194,85 @@ def test_a_trailing_retry_record_is_refused_as_corruption(tmp_path: Path) -> Non
     assert "retry" in message and ("base-a" in message or "t1" in message), (
         "WHY THIS IS A FAILURE: the refusal does not name the impossible shape — a trailing "
         f"record declaring a retry — or the key it is filed under. Got {message!r}"
+    )
+
+
+def test_a_repair_record_is_the_decided_record(tmp_path: Path) -> None:
+    """A graded row followed by a repair row: the repair completion is the decided record.
+
+    A repair draw is not a retry — it follows an attempt that was already decided and failed
+    verification — so it is legal as the last row for its key. Replay must return it, or a
+    repaired rollout would be attributed to the failed first completion the repair superseded.
+    """
+    transcript = Transcript(path=tmp_path / "transcript.jsonl")
+    graded = record(1, "graded", completion="first, applied but failed")
+    repair = record(1, "repair", completion=AWKWARD)
+
+    transcript.append(graded)
+    transcript.append(repair)
+
+    replayed = transcript.replay()
+
+    assert replayed == {("base-a", "t1"): repair}, (
+        "WHY THIS IS A FAILURE: a repair row did not replay as the decided record for its "
+        f"key. Got {replayed!r}. The run re-verified the repair completion, so that is the "
+        "text the final verdict was computed on, not the first graded attempt"
+    )
+    assert transcript.path.read_text(encoding="utf-8").count("\n") == 2, (
+        "WHY THIS IS A FAILURE: the graded row was lost or rewritten. Append-only: the "
+        "evidence that the first attempt happened must survive beside the repair"
+    )
+
+
+def test_an_unknown_decision_is_refused(tmp_path: Path) -> None:
+    """A decision outside the vocabulary is `TranscriptUnreadable`, named, never replayed.
+
+    The vocabulary is what makes "repair" mean something: a reader that accepted any string
+    would report a decided row whose decision no consumer can interpret. The line is refused
+    at the decoder, and the message names the value so an operator can see the corruption.
+    """
+    transcript = Transcript(path=tmp_path / "transcript.jsonl")
+    transcript.append(record(1, "graded"))
+    with transcript.path.open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "candidate": "base-a",
+                    "task_id": "t2",
+                    "prompt_sha256": "0" * 64,
+                    "prompt": "Fix addition.",
+                    "completion": "prose",
+                    "attempt": 1,
+                    "decision": "repiar",
+                }
+            )
+            + "\n"
+        )
+
+    with pytest.raises(TranscriptUnreadable) as unreadable:
+        transcript.replay()
+
+    assert "repiar" in str(unreadable.value), (
+        "WHY THIS IS A FAILURE: the refusal does not name the unknown decision, so an "
+        f"operator cannot tell a vocabulary gap from a truncated line. Got "
+        f"{str(unreadable.value)!r}"
+    )
+
+
+def test_the_decision_vocabulary_matches_diffcheck() -> None:
+    """The reader's runtime vocabulary and the writer's typed literal are one set.
+
+    Two spellings of the allowed decisions would let a writer emit a value the reader refuses
+    — or, worse, let the reader accept one the type never declared. Asserted as set equality
+    so a value added to either side alone fails here.
+    """
+    from typing import get_args
+
+    from whetstone.bakeoff.diffcheck import Decision
+    from whetstone.bakeoff.transcript import DECISIONS
+
+    assert set(get_args(Decision)) == DECISIONS, (
+        "WHY THIS IS A FAILURE: the transcript's runtime vocabulary and `diffcheck.Decision` "
+        f"disagree. Got {sorted(DECISIONS)!r} against {set(get_args(Decision))!r}. A writer "
+        "and a reader with different vocabularies cannot both be right about a decided row"
     )

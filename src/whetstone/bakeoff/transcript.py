@@ -60,6 +60,14 @@ from whetstone.bakeoff.rendering import prompt_hash
 #: control and scoring modules, none of which an offline replay has any use for.
 Key = tuple[str, str]
 
+#: Every decision a record may declare. Closed here, at the reader's boundary, as well as in
+#: `diffcheck.Decision` at the writer's: a value on disk that no reader can name is not evidence
+#: of a decided attempt, and a decoder that accepted it would report one anyway. `"repair"` is a
+#: repair draw — it follows an attempt that was already graded and failed verification, and it
+#: may itself be the last row for its key. The two spellings are asserted equal in
+#: `tests/bakeoff/test_transcript_retries.py`.
+DECISIONS = frozenset({"retry", "graded", "repair"})
+
 
 class TranscriptUnreadable(ValueError):
     """A transcript line could not be read back. Raised rather than skipped — see the docstring.
@@ -83,9 +91,10 @@ class Transcribed:
 
     With retries a (candidate, task) is generated more than once, so a record is one *attempt*:
     `attempt` numbers it within the run, and `decision` says whether a later record followed it
-    ("retry") or whether it is the record the run carried forward and scored ("graded"). The
-    decided record is always the last one for its key — that is what `replay` selects, unchanged
-    (`replay()` below).
+    ("retry") or whether it is the record the run carried forward and scored ("graded"). A repair
+    draw is recorded as `"repair"`: it follows an attempt that was already graded and failed
+    verification, and it may itself be the last row for its key. The decided record is always the
+    last one for its key — that is what `replay` selects, unchanged (`replay()` below).
     """
 
     #: The base that produced this completion.
@@ -108,8 +117,16 @@ class Transcribed:
     attempt: int
 
     #: What became of this attempt: "retry" when a later record follows it, "graded" when it
-    #: is the decided record for its key.
+    #: is the decided record of the first attempt, "repair" when it is a repair draw. The last
+    #: row for a key is the decided record; a repair row may be that row.
     decision: str
+
+    def __post_init__(self) -> None:
+        if self.decision not in DECISIONS:
+            raise ValueError(
+                f"decision {self.decision!r} is not one of {sorted(DECISIONS)}; a record "
+                "whose decision the reader cannot name is not evidence of a decided attempt"
+            )
 
     @property
     def key(self) -> Key:
@@ -160,11 +177,15 @@ class Transcript:
 
         A repeated key takes the **last** record, which is the append-only file's own answer: with
         retries, a pair recorded more than once is a run that tried again, and the later completion
-        is the decided one — the record the run would have carried forward and scored. `decision`
-        says so per record: every record but the last for a key is `"retry"`, and the last is
-        `"graded"`. A last record declaring `"retry"` is refused as corruption: in the live run a
-        retry always has a following record, so a trailing one is a run killed between the retry
-        and its completion — missing evidence, raised rather than repaired.
+        is the decided one — the record the run would have carried forward and scored. A repair row
+        is a later record too: it follows the graded attempt that failed verification, so if the
+        repair is the last row for its key it is the keyed record. `decision` says what each record
+        is: `"retry"` when a later attempt follows it, `"graded"` for the first attempt's decided
+        row, `"repair"` for a repair draw. A last record declaring `"retry"` is refused as
+        corruption: in the live run a retry always has a following record, so a trailing one is a
+        run killed between the retry and its completion — missing evidence, raised rather than
+        repaired. A trailing `"repair"` is legal: the repair draw completed, and its verdict lives
+        in the journal's `Rollout`, not in the transcript.
         """
         if not self.path.exists():
             return {}
@@ -228,11 +249,12 @@ class RecordingGenerator:
     happened. Exceptions propagate untouched for the reason `sweep` gives for not catching them: an
     interrupted run must stop rather than produce a full-looking record set with holes in it.
 
-    **The row is the decided attempt.** The recorder observes exactly one generation per
-    (candidate, task) — the one the run carried forward — so the row it writes is attempt 1 of
-    that run, decided and graded. The retry wrapper that makes the ordinary case multi-attempt
-    (aspect `retry-loop`) writes its own intermediate rows; nothing in this wrapper guesses an
-    attempt that was not observed.
+    **The row is the first attempt's decided record.** For a no-repair rollout the recorder
+    observes exactly one generation per (candidate, task) — the one the run carried forward — so
+    the row it writes is attempt 1 of that run, decided and graded. A repair draw is written by
+    the wrapper that issues it (`Retry.generate_repair`, or `run.Recording.generate_repair` in the
+    non-retry composition) as its own `"repair"` row, which can become the keyed record; nothing
+    in this wrapper guesses an attempt it did not observe.
     """
 
     #: What actually generates. Called exactly once per `generate`, with the prompt unaltered.
@@ -311,6 +333,7 @@ def _decode(raw: Any) -> Transcribed:
 
 
 __all__ = [
+    "DECISIONS",
     "Key",
     "RecordingGenerator",
     "Transcribed",

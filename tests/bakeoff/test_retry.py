@@ -588,6 +588,50 @@ def test_a_single_attempt_records_one_graded_record(tmp_path: Path) -> None:
     assert records[0]["completion"] == decided
 
 
+def test_generate_repair_records_one_repair_row(tmp_path: Path) -> None:
+    """A repair draw is recorded: attempt 1, decision "repair", its own prompt and completion.
+
+    `score` calls `generate_repair` after a `NOT_SOLVED` rollout, so without this row the
+    transcript shows the failed first completion and nothing of what the repair generated. The
+    repair row follows the graded row and carries the repaired prompt's digest, so an offline
+    reader can see exactly what was asked and answered.
+    """
+    repaired = repair_prompt(FIRST)
+    posed = {prompt_hash(FIRST): "alpha", prompt_hash(repaired): "alpha"}
+    transcript = Transcript(path=tmp_path / "transcript.jsonl")
+    wrapper = Retry(
+        inner=StubGenerator({FIRST: WELL_FORMED, repaired: "the repair completion"}),
+        transcript=transcript,
+        candidate="base-a",
+        contract=posed,
+    )
+
+    wrapper.generate(FIRST)
+    assert wrapper.generate_repair(repaired) == "the repair completion"
+
+    records = _records(transcript)
+    assert [(record["attempt"], record["decision"]) for record in records] == [
+        (1, "graded"),
+        (1, "repair"),
+    ], (
+        f"WHY THIS IS A FAILURE: the transcript holds {records!r} rather than a graded row "
+        "followed by one repair row. The repair completion was generated and returned, so a "
+        "transcript without it is evidence of the first attempt only"
+    )
+    assert records[-1]["prompt_sha256"] == prompt_hash(repaired), (
+        "WHY THIS IS A FAILURE: the repair row does not carry the repair prompt's digest, so "
+        "it cannot be tied to the question the repair answered"
+    )
+    assert records[-1]["completion"] == "the repair completion", (
+        "WHY THIS IS A FAILURE: the repair row does not carry the repair completion, which is "
+        "the whole evidence the row exists to keep"
+    )
+    assert records[-1]["task_id"] == "alpha", (
+        "WHY THIS IS A FAILURE: the repair row is filed under the wrong task. The repair "
+        "prompt was posed under the first prompt's task, so `_record`'s lookup must resolve it"
+    )
+
+
 def test_the_recording_pieces_must_come_together_or_not_at_all(tmp_path: Path) -> None:
     """`transcript`, `candidate` and `contract` are one switch: half a recorder is a broken one.
 

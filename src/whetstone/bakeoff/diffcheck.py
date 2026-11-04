@@ -45,9 +45,12 @@ from whetstone.bakeoff.autopsy import (
 )
 
 #: What became of an attempt: "retry" when a later record follows it, "graded" when it is the
-#: decided record for its key. The transcript's own vocabulary (`transcript.py`), spelled here
-#: as the literal the retry wrapper will decide with — two values, closed by type.
-Decision = Literal["retry", "graded"]
+#: decided record of the first attempt, "repair" when it is a repair draw (which follows a graded
+#: attempt that failed verification and may itself be the keyed record). The transcript's own
+#: vocabulary (`transcript.DECISIONS`), spelled here as the literal the wrappers decide with —
+#: three values, closed by type, and asserted equal to the reader's set in
+#: `tests/bakeoff/test_transcript_retries.py`.
+Decision = Literal["retry", "graded", "repair"]
 
 
 class Trigger(str, Enum):

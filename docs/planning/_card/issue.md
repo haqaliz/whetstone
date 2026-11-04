@@ -1,42 +1,40 @@
-# feat probe-sample-pin
+# feat repair-evidence
 
-**Source:** inline brief from the `whetstone-next` pick (2026-10-31), grounded in
-`PREREGISTRATION.md` § 10.25, `docs/planning/torch-mps-series/finding.md`, and the shipped
-`probe-backend-pin` unit.
+**Source:** the `whetstone-next` handoff after the § 10.25 probe result (`docs/planning/torch-mps-series/finding.md`, 2026-11-02).
 
 ## Brief
 
-The § 10.25 repair probe is the only unrun measurement, and the Torch/MPS sheet currently runs a
-2-task probe while the amendment pins a 16-task, 272-draw measurement. Add an optional
-`--probe N` pin to `whetstone check-probe` that compares the ledger's `task_set.probe` and names
-a mismatch as exit-1, leaving the unpinned decision byte-identical; a pin can only add a
-violation. Align the sheet's probe and check-probe blocks to `--probe 16`, state both decisions
-(the command's harness rule and § 10.25's yield GO: at least one strict-`PASS` of 272), and
-replace the stale "raise K" halt text.
+The § 10.25 probe returned NO-GO with **one** near-miss. The one near-miss spent the two-attempt
+repair budget, and the final verdict stayed `NOT_SOLVED` — but the repair completions are **not in
+the transcript**: `Retry.generate_repair` bypasses `_record`, so a repair run records the budget
+and the final verdict, not what the repair generated. That makes any repair measurement
+un-auditable.
+
+Record every repair prompt and completion in the transcript with a decision distinct from the
+first attempt and its retries, keep every existing transcript readable, and prove that a
+near-miss under `--repair 2` leaves the first graded row plus one row per repair, with the final
+verdict carried by the journal's graded rollout. The reward, gate, corpus, held-out document,
+`K`, `R` and the § 10.25 inputs do not move.
 
 ## Acceptance
 
-- `whetstone check-probe --probe N` compares the ledger's `task_set.probe` to `N`; a mismatch or a
-  full night is a named exit-1 violation; no pin is byte-identical to today; a pin never turns a
-  failing probe green.
-- The Torch/MPS sheet's probe block runs `--probe 16` (the § 10.25 sample: 16 private + 1 public
-  at `K = 16` = 272 draws), and its `check-probe` block passes `--probe 16`.
-- The sheet states both decisions distinctly: the command's harness rule (control `PASS` on every
-  draw, non-empty seed map, declared budget, held-out digest, backend pins) and § 10.25's yield GO
-  (at least one strict-`PASS` of the 272 draws). A zero yield is a NO-GO even when `check-probe`
-  exits 0.
-- The stale "the next response is to raise K" halt text is replaced with § 10.25's rule: a NO-GO
-  returns the lever to a human, never to a loosened verifier.
-- The sheet guard pins `--probe 16`, the roots order, and the derived sample count; the sample's
-  16 ids are derived from the committed `tasks/local-ledger.json` + `tasks/heldout/source-b.json`
-  + the five declared dev ids, or a § 10.26 Type 1 amendment names them before the probe.
-- Full suite, ruff and mypy green; no GPU run; the reward, gate, corpus, held-out document, `K`,
-  `R` and the § 10.25 inputs are untouched.
+- `Retry.generate_repair` records the repair prompt and completion, with a stable marker that
+  distinguishes a repair from a retry of the first prompt.
+- A near-miss under `--repair 2` produces the first attempt's rows plus **two** repair rows; a
+  run with `--repair 0` is byte-identical to today.
+- Existing transcripts (`probe-003`, the repair night, the § 10.25 probe) still read through the
+  verifying reader; the schema addition is backward-compatible or the reader tolerates the old
+  shape by name.
+- The transcript's retry invariant is not weakened: every retry has a following graded row, and
+  a repair row is never mistaken for a retry or for the graded row.
+- A repair prompt outside the frozen contract raises `ContractChanged` and writes no row, exactly
+  as a retried prompt outside it does.
+- Full suite, ruff and mypy green; no GPU run.
 
 ## Caveat
 
-The ledger records `task_set.probe` as an integer and counts, not the 16 ids
-(`src/whetstone/loop/ledger.py`). `--probe 16` therefore pins the sample size, not its identity;
-the sample is positional (15 surviving `donor-b-*` plus the first surviving `donor-a-*`), and a
-corpus change before the probe silently shifts it. If the dig finds the positional rule
-under-specified, append a § 10.26 Type 1 amendment naming the sample before anything runs.
+The transcript's `attempt`/`decision` fields and the reader's `records` invariant were built for
+the completion-retry loop, not for repairs. The dig must decide whether a repair is a new
+`decision`, a separate row stage, or a distinct attempt namespace — and whether the offline
+`attribution`/`autopsy` readers should consume repair rows or ignore them. Do not weaken the
+retry invariant to make the repair fit.
