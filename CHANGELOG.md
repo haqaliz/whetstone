@@ -11,6 +11,10 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The near-miss probe root also loads the held-out tasks, so the § 10.27 document applies** (2026-11-05, `near-miss-root`). The first § 10.27 probe refused before generating: its root carried only the 20 sample manifests, so the committed held-out document's 12 members matched no loaded task, and the door correctly refused a split that excludes nothing. The prep block now symlinks the 20 sample tasks **and** the 12 held-out manifests; the document's exclusion runs before the probe draws, leaving the 20. The sample, the amendment, the GO and the night block are unchanged. **No probe or night was run; no yield, delta or model is claimed.**
+
 ## [0.34.0] - 2026-11-05
 
 ### Added

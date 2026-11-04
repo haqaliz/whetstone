@@ -73,7 +73,9 @@ This file orients a coding agent working in this repository. Read it first.
 > `NOT_SOLVED` across 51 tasks" to 51 private draws across 20 tasks plus 1 public (52). The Torch
 > sheet draws `--probe 20` from `$REPO/tasks/local/near-miss` (no `--dev-subset`) and pins it in
 > `check-probe`; the night stays the full 52-task corpus. The sample is outcome-selected, so a GO
-> is evidence on those 21 tasks only, not the corpus; no probe or night was run.
+> is evidence on those 21 tasks only, not the corpus. The probe root also carries the 12 held-out
+> manifests, so the document applies and excludes them before the draw; the first run refused
+> until it did, and no probe or night has run.
 >
 > **The corpus, stated precisely.** Source B (private, pre-registered headline):
 > **66 tasks**, each proven live rather than asserted. Source A (public SWE-bench-Lite):

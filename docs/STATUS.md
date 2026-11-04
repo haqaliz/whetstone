@@ -10,6 +10,17 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The near-miss probe root loads the held-out tasks, so the § 10.27 document applies** (2026-11-05, `near-miss-root`). The first § 10.27 probe refused before generating: its root carried only the 20 sample manifests, so the committed held-out document's 12 members matched no loaded task, and the door correctly refused a split that excludes nothing.
+
+**What shipped.**
+- **The prep block.** `docs/planning/torch-mps-series/night-door/runbook.md` now symlinks the 20 sample tasks **and** the 12 held-out manifests into `$REPO/tasks/local/near-miss`; the document's exclusion runs before the probe draws, leaving the 20.
+- **The guard.** The sheet guard asserts the prep root equals the 20-task sample plus the committed document's membership; the sample itself is still the 20 and contains no dev id.
+- **What did not move.** The amendment, the sample, the GO, the night block, the reward, the gate, the corpus, `K`, `R` and the held-out document are unchanged.
+
+**What is not claimed.** No probe or night was run; the first attempt refused before generating, and no rollout exists. The 12 held-out tasks are loaded only so the document can be applied; they are never drawn.
+
+---
+
 **The 8B night's near-miss population is named, and the Torch probe pass measures it** (2026-11-05, `near-miss-sample`). `PREREGISTRATION.md` § 10.27 (Type 1) records the correction and names the sample: the 8B night's journals hold **51 private `NOT_SOLVED` draws across 20 private tasks**, plus 1 on `pallets__flask-4045` — **52** draws, not "51 tasks".
 
 **What shipped.**
