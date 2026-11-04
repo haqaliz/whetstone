@@ -11,6 +11,8 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-04
+
 ### Added
 
 - **Every repair draw is recorded in the transcript, and the last row is the keyed record** (2026-11-03, `repair-evidence`). `Retry.generate_repair` and the non-retry `Recording.generate_repair` write one `"repair"` row per repair draw — its prompt, completion, digest and task — so a near-miss's repair is evidence instead of being lost. `"repair"` joins `"retry"` and `"graded"` in `diffcheck.Decision` and the transcript's runtime `DECISIONS`; the decoder refuses any other value by name. `Transcript.replay()` keeps last-wins, so a repaired rollout's keyed record is the repair completion the final verdict was computed on; a trailing `"retry"` is still `TranscriptUnreadable`, and a trailing `"repair"` is legal. The seven-field codec is unchanged and every existing transcript replays unchanged. **No probe or night was run: no repair conversion, yield or delta is claimed**, and the § 10.25 probe's own transcript was not rewritten.
