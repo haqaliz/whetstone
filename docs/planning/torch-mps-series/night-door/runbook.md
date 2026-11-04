@@ -142,7 +142,10 @@ index mid-night.
 ## The probe pass
 
 First build § 10.27's near-miss sample root. The manifests stay in their donor roots; the links are
-gitignored and a missing manifest fails the loader by name:
+gitignored and a missing manifest fails the loader by name. The root carries the 20 sample tasks
+**and** the 12 held-out manifests: a held-out split is defined over the loaded corpus, so a
+document whose members match no loaded task is refused. The committed document is passed and its
+exclusion runs before the probe draws, leaving the 20. The 12 are never drawn.
 
 ```bash
 mkdir -p "$REPO/tasks/local/near-miss"
@@ -150,11 +153,15 @@ for id in donor-a-2f4e497580ff donor-a-34daf85182d5 donor-a-4731e32044c5 \
   donor-a-12a1d8e4d766 donor-a-5e25b106874c donor-a-f100a90e47f2 \
   donor-a-955d9a079c16 donor-a-a93fe36d6e85 donor-a-d601ff2d0ec0 \
   donor-a-99c0e0464c21 donor-a-37a91266029a donor-a-df207b27e82c \
-  donor-a-c32d7c672465 donor-a-6d35bb3a4d17 donor-a-3326ca8a116d; do
+  donor-a-c32d7c672465 donor-a-6d35bb3a4d17 donor-a-3326ca8a116d \
+  donor-a-18265334544f donor-a-192f26c402a3 donor-a-6884ed72a9e9 \
+  donor-a-74f000a772cf donor-a-b5f840cdf71d donor-a-c6e4d4c4de87 \
+  donor-a-c7cee63e3cab donor-a-d2c03949ecf3 donor-a-dc3be3134276; do
   ln -sf "$REPO/tasks/local/donor-a/$id.json" "$REPO/tasks/local/near-miss/$id.json"
 done
 for id in donor-b-c3e132b7469b donor-b-0fe4582aeac1 donor-b-c57246c7841a \
-  donor-b-cc7d3f520f1c donor-b-ce6425d3101a; do
+  donor-b-cc7d3f520f1c donor-b-ce6425d3101a donor-b-353359e9ac6e \
+  donor-b-3e3051c4192a donor-b-468e343e9fb5; do
   ln -sf "$REPO/tasks/local/donor-b/$id.json" "$REPO/tasks/local/near-miss/$id.json"
 done
 ```

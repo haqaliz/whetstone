@@ -37,6 +37,7 @@ Properties this sheet owns, in addition to the shape the MLX guard pins:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shlex
 from pathlib import Path
@@ -55,6 +56,16 @@ from whetstone.cli import build_parser
 RUNBOOK = (
     Path(__file__).parent.parent / "docs/planning/torch-mps-series/night-door/runbook.md"
 )
+
+#: The committed held-out document. The near-miss root must also load its 12 members: a held-out
+#: split is defined over the loaded corpus, and the door refuses a membership that matches no
+#: loaded task. The exclusion runs before the probe draws, leaving the 20 sample tasks.
+HELDOUT = Path(__file__).parents[1] / "tasks/heldout/source-b.json"
+
+
+def _heldout_membership() -> tuple[str, ...]:
+    """The committed split's members, read from the document the sheet passes."""
+    return tuple(json.loads(HELDOUT.read_text(encoding="utf-8"))["membership"])
 
 #: The command every block that invokes the door begins with. It is this sheet's own constant
 #: rather than the MLX guard's, because a guard that reaches into another guard's globals can
@@ -276,8 +287,10 @@ def test_the_probe_pass_is_the_section_10_27_sample() -> None:
     """The probe pass is § 10.27's 336-draw near-miss measurement, not a 2-task smoke test.
 
     The sample is the 8B night's 20 private near-miss tasks plus the one public task at `K = 16`,
-    symlinked into one root. A probe that draws anywhere else measures a different sample, and
-    its GO would not be the amendment's.
+    symlinked into one root. The root also carries the 12 held-out manifests, because the
+    committed document must match a loaded task; the document's exclusion runs before the probe
+    draws, leaving the 20. A probe that draws anywhere else measures a different sample, and its
+    GO would not be the amendment's.
     """
     blocks = _bash_blocks(_runbook())
     probe = _probe_block(blocks)
@@ -308,9 +321,11 @@ def test_the_probe_pass_is_the_section_10_27_sample() -> None:
         "the prep block does not build the probe's `$REPO/tasks/local/near-miss` root"
     )
     found = set(re.findall(r"donor-[ab]-[0-9a-f]{12}", prep))
-    assert found == set(NEAR_MISS), (
-        f"the prep block's symlinks are not § 10.27's 20 ids: "
-        f"missing {sorted(set(NEAR_MISS) - found)}, extra {sorted(found - set(NEAR_MISS))}"
+    expected = set(NEAR_MISS) | set(_heldout_membership())
+    assert found == expected, (
+        f"the prep block's symlinks are not the 20-task sample plus the held-out members: "
+        f"missing {sorted(expected - found)}, extra {sorted(found - expected)}. The held-out "
+        "members must be loaded or the door refuses a document that excludes nothing"
     )
 
     flat = _flat(_runbook())
@@ -677,13 +692,12 @@ def test_every_declared_dev_id_is_passed() -> None:
         f"{DECLARED_DEV!r}. The door refuses an id that matches no task, but it cannot "
         "notice one that was never passed"
     )
-    prep = next((block for block in blocks if "ln -sf" in block), "")
-    sample = set(re.findall(r"donor-[ab]-[0-9a-f]{12}", prep))
-    assert sample, "the sheet's near-miss prep block names no task ids"
-    overlap = sorted(sample & set(DECLARED_DEV))
+    # The prep root also carries the held-out manifests (two of which are dev ids), but the
+    # committed document excludes them before the probe draws. The sample itself is NEAR_MISS.
+    overlap = sorted(set(NEAR_MISS) & set(DECLARED_DEV))
     assert not overlap, (
         f"WHY THIS IS A FAILURE: the probe's near-miss sample contains dev id(s) {overlap}; "
-        "the probe omits `--dev-subset`, so a dev task in the root would be drawn"
+        "the probe omits `--dev-subset`, so a dev task in the sample would be drawn"
     )
 
 
