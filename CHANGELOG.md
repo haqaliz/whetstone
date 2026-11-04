@@ -11,6 +11,10 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+### Added
+
+- **§ 10.27 names the 8B night's near-miss sample, and the Torch probe pass draws 336** (2026-11-05, `near-miss-sample`). `PREREGISTRATION.md` § 10.27 (Type 1) corrects the finding's "51 `NOT_SOLVED` across 51 tasks" to **51 private draws across 20 private tasks**, plus 1 on `pallets__flask-4045` — **52** draws in total — and names the 20 private tasks by id. The Torch/MPS sheet symlinks those 20 manifests into `$REPO/tasks/local/near-miss`, draws `--probe 20` on that root without `--dev-subset`, and pins the same sample in `check-probe`: 20 private + 1 public = 21 tasks × `K = 16` = **336 draws**, GO iff at least one is strict-`PASS`. The amendment discloses that the sample is **outcome-selected** — those tasks produced a `NOT_SOLVED` in an already-run night — so a GO is evidence on these 21 tasks, not on the corpus; the 20 are oracle-fittable and the 12 `NO_ORACLE` tasks are outside the sample. The night block is unchanged: the full 52-task corpus with the five dev ids. **No probe or night was run: no yield, delta or model is claimed.**
+
 ## [0.33.0] - 2026-11-04
 
 ### Added

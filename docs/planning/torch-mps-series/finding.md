@@ -110,6 +110,12 @@ repair cannot convert a near-miss. The population the repair targets is the 8B n
 `NOT_SOLVED` across 51 tasks**, and the probe's eight tasks are not that population (the earlier
 8B pre-flight on the same eight tasks had only 4 `NOT_SOLVED` in 144; this seed had none).
 
+> **Corrected 2026-11-05, when § 10.27 named the sample.** "51 tasks" counted draws. The 8B
+> night's journals record 51 private `NOT_SOLVED` **draws across 20 private tasks**, plus 1 on the
+> public task (`pallets__flask-4045`) — **52** draws in total. `PREREGISTRATION.md` § 10.27 names
+> those 20 private tasks as the near-miss sample the § 10.25 follow-up probe draws: 21 tasks ×
+> `K = 16` = **336 draws**.
+
 **A provenance gap the probe exposed.** The 003 ledger's `generation_contract` omitted
 `repair_budget` and `repair_template_sha256`: the dataclass gained the fields, but the two
 explicit serializers (`loop/ledger.py` and `report._contract_block`) were not updated. A repair
