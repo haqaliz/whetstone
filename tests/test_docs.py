@@ -1548,6 +1548,106 @@ def test_the_probe_sample_amendment_names_the_sample() -> None:
     ), f"{PREREGISTRATION}'s amendment log no longer records the § 10.26 row."
 
 
+def test_the_near_miss_sample_amendment_names_the_sample() -> None:
+    """§ 10.27 names the 8B night's near-miss population: 20 private tasks + 1 public."""
+    expected = {
+        "donor-a-2f4e497580ff",
+        "donor-a-34daf85182d5",
+        "donor-a-4731e32044c5",
+        "donor-a-12a1d8e4d766",
+        "donor-a-5e25b106874c",
+        "donor-a-f100a90e47f2",
+        "donor-a-955d9a079c16",
+        "donor-a-a93fe36d6e85",
+        "donor-a-d601ff2d0ec0",
+        "donor-a-99c0e0464c21",
+        "donor-a-37a91266029a",
+        "donor-a-df207b27e82c",
+        "donor-a-c32d7c672465",
+        "donor-a-6d35bb3a4d17",
+        "donor-a-3326ca8a116d",
+        "donor-b-c3e132b7469b",
+        "donor-b-0fe4582aeac1",
+        "donor-b-c57246c7841a",
+        "donor-b-cc7d3f520f1c",
+        "donor-b-ce6425d3101a",
+    }
+    public = "pallets__flask-4045"
+    root = Path(__file__).resolve().parents[1]
+    ledger = json.loads((root / "tasks/local-ledger.json").read_text())
+    heldout = json.loads((root / "tasks/heldout/source-b.json").read_text())
+    ledger_ids = {task["task_id"] for task in ledger["tasks"]}
+    assert expected <= ledger_ids, (
+        f"§ 10.27 names tasks absent from the committed ledger: {sorted(expected - ledger_ids)}."
+    )
+    assert not expected & set(heldout["membership"]), (
+        f"§ 10.27 names held-out members: {sorted(expected & set(heldout['membership']))}. "
+        "The sample is drawn from the drawable corpus."
+    )
+    instance = json.loads((root / "tasks/public/instances" / f"{public}.json").read_text())
+    assert instance["task_id"] == public, (
+        f"the committed public instance is {instance['task_id']!r}, not {public!r}."
+    )
+
+    text = _read(PREREGISTRATION)
+    assert "### 10.27" in text, f"{PREREGISTRATION} no longer carries a § 10.27 amendment."
+    section = text.split("### 10.27", 1)[1].split("\n### ", 1)[0]
+    flat = _flat(section)
+    assert "near-miss sample is named" in flat, (
+        f"{PREREGISTRATION} § 10.27 no longer carries its heading."
+    )
+    assert "pins the inputs of a measurement" in flat, (
+        f"{PREREGISTRATION} § 10.27 no longer states the Type 1 pin."
+    )
+    assert "does not edit § 10.25 or § 10.26" in flat, (
+        f"{PREREGISTRATION} § 10.27 no longer states that both prior pins are untouched."
+    )
+    assert "introduces no success threshold" in flat and (
+        "rewords nothing in § 1, § 4 or § 6" in flat
+    ), f"{PREREGISTRATION} § 10.27 no longer carries the no-threshold/no-rewording line."
+
+    block = re.search(
+        r"plus\nthe public task:(.*?)plus `pallets__flask-4045`", section, re.DOTALL
+    )
+    assert block is not None, (
+        f"{PREREGISTRATION} § 10.27 no longer names the sample between 'plus the public task:' "
+        "and 'plus `pallets__flask-4045`'."
+    )
+    found = set(re.findall(r"donor-[ab]-[0-9a-f]{12}", block.group(1)))
+    assert found == expected, (
+        f"{PREREGISTRATION} § 10.27's sample no longer matches the named population: "
+        f"missing {sorted(expected - found)}, extra {sorted(found - expected)}."
+    )
+
+    for phrase in (
+        "pallets__flask-4045",
+        "336",
+        "21 tasks",
+        "20 private",
+        "on the public task",
+        "52",
+        "51 private",
+    ):
+        assert phrase in section, (
+            f"{PREREGISTRATION} § 10.27 no longer states {phrase!r} for the named sample."
+        )
+    assert "outcome-selected" in flat and "not the corpus" in flat, (
+        f"{PREREGISTRATION} § 10.27 no longer discloses that the sample is outcome-selected."
+    )
+    assert "No count has been measured" in flat and "§ 3 baseline remains unspent" in flat, (
+        f"{PREREGISTRATION} § 10.27 no longer states that no count exists."
+    )
+    assert "at least one" in flat, (
+        f"{PREREGISTRATION} § 10.27 no longer states the GO rule."
+    )
+
+    assert (
+        "2026-11-05 | The 8B night's near-miss population is named as the § 10.25 follow-up probe: "
+        "20 private tasks + the public task, 336 draws (§ 10.27) | 1 — pins the inputs of a "
+        "measurement | Yes" in _flat(text)
+    ), f"{PREREGISTRATION}'s amendment log no longer records the § 10.27 row."
+
+
 def test_the_roadmap_records_the_re_derived_split_by_dated_correction() -> None:
     """AC8. § 12 referenced the § 10.7 split as live; the correction records the re-derivation.
 

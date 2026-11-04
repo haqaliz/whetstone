@@ -333,6 +333,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-10-26 | The 51-task repair night is the repair's measurement after the eight-task probe produced no target event (§ 10.24) | 1 — pins the inputs of a measurement | Yes |
 | 2026-10-28 | The repair prompt carries the first unpassed declared test and its junit outcome; the 16-task probe measures it (§ 10.25) | 1 — pins the inputs of a measurement | Yes |
 | 2026-10-31 | The § 10.25 probe's 16-task sample is named by id, with four known `NO_ORACLE` tasks disclosed; the measurement's inputs are unchanged (§ 10.26) | 1 — pins the inputs of a measurement | Yes |
+| 2026-11-05 | The 8B night's near-miss population is named as the § 10.25 follow-up probe: 20 private tasks + the public task, 336 draws (§ 10.27) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1406,3 +1407,55 @@ tasks that cannot produce an oracle, so 64 of the 272 draws are expected `NO_ORA
 amendment discloses that rather than filtering it out. The § 3 baseline remains unspent, nothing
 here claims the probe selects a strict-`PASS`, and a NO-GO returns the lever to a human, never to
 a loosened verifier.
+
+### 10.27 The § 10.25 probe's near-miss sample is named — 2026-11-05
+
+**Type 1 (§ 8.1): pins the inputs of a measurement, committed before the probe it governs runs.**
+It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not edit
+§ 10.25 or § 10.26**: this document is append-only. What changes is the sample: the § 10.25
+16-task sample produced one near-miss in 208 evaluable draws, so the repair was barely exercised.
+This probe draws the 8B night's near-miss population instead.
+
+**The correction.** The finding's phrase "51 `NOT_SOLVED` across 51 tasks" counted draws, not
+tasks. The journals of `torch-8b-night-001` record **51 private `NOT_SOLVED` draws across 20
+private tasks**, plus **1** on the public task (`pallets__flask-4045`) — **52** draws in total.
+The 8B night has no ledger; its per-draw journals are the provenance.
+
+**The sample.** The 20 private tasks with at least one `NOT_SOLVED` in `torch-8b-night-001`, plus
+the public task:
+
+- `donor-a-2f4e497580ff`, `donor-a-34daf85182d5`, `donor-a-4731e32044c5`,
+  `donor-a-12a1d8e4d766`, `donor-a-5e25b106874c`, `donor-a-f100a90e47f2`,
+  `donor-a-955d9a079c16`, `donor-a-a93fe36d6e85`, `donor-a-d601ff2d0ec0`,
+  `donor-a-99c0e0464c21`, `donor-a-37a91266029a`, `donor-a-df207b27e82c`,
+  `donor-a-c32d7c672465`, `donor-a-6d35bb3a4d17`, `donor-a-3326ca8a116d`,
+  `donor-b-c3e132b7469b`, `donor-b-0fe4582aeac1`, `donor-b-c57246c7841a`,
+  `donor-b-cc7d3f520f1c`, `donor-b-ce6425d3101a`,
+
+plus `pallets__flask-4045`. That is 21 tasks at `K = 16` — **336 draws**. The five repair-night
+near-miss tasks (`donor-a-34daf85182d5`, `donor-b-ce6425d3101a`, `donor-a-2f4e497580ff`,
+`donor-a-4731e32044c5`, `donor-a-12a1d8e4d766`) are a subset; the sample is the full 8B
+near-miss population. None of the 20 is in the § 10.16 held-out membership.
+
+**The sample is outcome-selected, and that is stated.** The 20 tasks were chosen because they
+produced a `NOT_SOLVED` in an already-run night. That is the population the repair targets, not a
+random sample and not the corpus. A GO is evidence on these 21 tasks only; it is not a corpus
+claim, and it is not a headline. The GO rule is unchanged: **GO iff at least one of the 336 draws
+is strict-`PASS`**. The 20 tasks are all oracle-fittable; the 12 `NO_ORACLE` tasks are outside
+the sample.
+
+**What does not change.** The base and revision, the runtime and precision, `K = 16` (§ 10.19),
+`R = 3` (§ 10.8), `R_repair = 2` (§ 10.23), the failure-class repair vocabulary (§ 10.25), the
+score-both-ways verifier, the gate rule and its exits, and the held-out document and its digest.
+
+**Comparability.** Every figure measured under § 10.25, § 10.24, § 10.23, § 10.21, § 10.22,
+§ 10.20, § 10.10 or an arm is **non-comparable** to any figure measured under this probe: a
+different sample (or a different repair vocabulary, or different weights) sits between them.
+
+**No report home.** The gate record stays gitignored under `runs/`; the finding lives under
+`docs/planning/torch-mps-series/`; no `reports/` directory is created.
+
+**What is not claimed.** No count has been measured under this probe. The sample may produce
+fewer near-misses at the new seed; a zero is a legitimate NO-GO. The § 3 baseline remains unspent,
+nothing here claims the probe selects a strict-`PASS`, and a NO-GO returns the lever to a human,
+never to a loosened verifier.
