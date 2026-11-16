@@ -307,7 +307,7 @@ improvising a workflow.
 | `whetstone-begin-fast` | `wbf` | Worktree → context → dig → PRD → plan → implement (TDD, agents team) |
 | `whetstone-begin` | `wb` | Same, plus diagrams and technical/non-technical proposal PDFs before planning |
 | `whetstone-end-fast` | `wef` | Post-merge cleanup: master → pull → remove worktree → delete branch |
-| `whetstone-end` | `we` | Same, plus a completion note on Desktop |
+| `whetstone-end` | `we` | Same, plus a completion note in Projects Brain |
 | `whetstone-report` | — | The plain-English completion note |
 | `whetstone-worktrees` | — | Branch naming, worktree layout, per-worktree setup, cleanup |
 | `prd-interview` / `prd-generator` / `tech-plan` | — | The planning chain the begin skills call into |

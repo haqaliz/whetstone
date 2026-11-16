@@ -1,6 +1,6 @@
 ---
 name: whetstone-end
-description: Use when finishing local work on a Whetstone unit of work after the PR is merged and you also need a completion report on Desktop. Triggers on "whetstone-end", "we", "we bug 12", "we feat task-verifier", "end full".
+description: Use when finishing local work on a Whetstone unit of work after the PR is merged and you also need a completion report in Projects Brain. Triggers on "whetstone-end", "we", "we bug 12", "we feat task-verifier", "end full".
 arguments: "type id"
 ---
 
@@ -33,9 +33,9 @@ The two skills use slightly different type vocabularies — map before invoking:
 | `feat` | `feature` |
 | `feature` | `feature` |
 
-Example: `we bug 12` → invoke `whetstone-report` with `bug` + `12` → writes `~/Desktop/bug-12-completion.md`.
+Example: `we bug 12` → invoke `whetstone-report` with `bug` + `12` → writes `/Users/aliz/Documents/Projects Brain/at/whetstone/Cards/bug-12/bug-12-completion.md`.
 
-`whetstone-report` fetches the issue via `gh` when reachable (otherwise works from the merged PR / what we just did) and produces the standard template. If it asks for a screenshot/video, provide one (or hand it to the user to attach), then confirm the file landed on Desktop.
+`whetstone-report` fetches the issue via `gh` when reachable (otherwise works from the merged PR / what we just did) and produces the standard template. If it asks for a screenshot/video, provide one (or hand it to the user to attach), then confirm the file landed in Projects Brain.
 
 ### Phase 5 — Comment on the issue (optional)
 
