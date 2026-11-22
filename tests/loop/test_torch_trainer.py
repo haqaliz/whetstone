@@ -214,6 +214,9 @@ def test_the_declared_precision_for_each_device_is_exact() -> None:
 #: Which loads were prepared for k-bit training, so the branch is asserted rather than assumed.
 PREPARED: list[Any] = []
 
+#: The devices each fake load was moved onto, so the quantized branch's `.to()` skip is watched.
+TO_CALLS: list[str] = []
+
 
 def _prepare_kbit(model: Any, use_gradient_checkpointing: bool = True) -> Any:
     PREPARED.append(use_gradient_checkpointing)
@@ -230,11 +233,16 @@ def _install_fake_runtime(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any
     """
     calls: list[dict[str, Any]] = []
     PREPARED.clear()
+    TO_CALLS.clear()
 
     class _FakeModel:
         is_quantized = False
+        #: The placement a `device_map` load reports; `_load_torch` records `str(model.device)`
+        #: for the quantized branch instead of calling `.to()`.
+        device = "cuda:0"
 
         def to(self, device: str) -> _FakeModel:
+            TO_CALLS.append(str(device))
             return self
 
         def eval(self) -> None:

@@ -6,7 +6,10 @@ exported variable expands before the command runs, which is what makes the path 
 receives absolute.
 
 This sheet moves the main series to the founder's own host **`x202`**: 3× NVIDIA GTX 1080 8 GB,
-one GPU, **Pascal `sm_61`**. Only **GPU 0** is used. The installed wheel is **`torch 2.14.1+cu126`**
+**Pascal `sm_61`**. The quantized base is loaded across the **visible GPUs** with
+`device_map="balanced"`; measured, it split across two of the three cards (1.84 GB and 4.24 GB,
+with GPU 0 idle). `device_map="auto"` was tried first and packed badly (OOM); `balanced` is the
+recorded choice. The installed wheel is **`torch 2.14.1+cu126`**
 — the same version the series pinned, with the CUDA build changed to the Pascal-capable one,
 because the pinned `cu130` build has no `sm_61` kernels. The base and revision are **unchanged**:
 `Qwen/Qwen3-8B` at `b968826d9c46dd6066d109eabc6255188de91218`.
@@ -18,9 +21,21 @@ beside the 15 recorded ones, and `TorchGenerator.provenance()` records
 `"quantization": "nf4/bf16/double"`. A run whose provenance says only `bfloat16` is not this run.
 
 The measured pre-flight on x202: **6.75 new tokens/s**, 64 tokens in 9.5 s, **6.07 GB VRAM** of
-7.92 GiB, through the harness's own `TorchGenerator` with no loader change, under
-`TORCHDYNAMO_DISABLE=1` and `TORCH_COMPILE_DISABLE=1`. This is a pre-flight measurement, not the
-probe below: **no count has been measured** under § 10.28, and the § 3 baseline remains unspent.
+7.92 GiB, through the harness's own `TorchGenerator` with the quantized loader
+(`device_map="balanced"`, `.to()` skipped), under `TORCHDYNAMO_DISABLE=1` and
+`TORCH_COMPILE_DISABLE=1`. This is a pre-flight measurement, not the probe below: **no count has
+been measured** under § 10.28 or § 10.29, and the § 3 baseline remains unspent.
+
+## The chunked-SDPA shim
+
+Torch on Pascal (`sm_61`) has only the **math SDPA** kernel; memory-efficient and flash report
+`Invalid backend`. A 10,001-token prefill tried to allocate **7.38 GiB** on a 7.92 GiB card and
+OOM'd. The committed shim
+`docs/planning/pascal-4bit/night-door/sitecustomize.py` chunks the query axis at `_CHUNK = 256`,
+gated by `WHETSTONE_PASCAL_SDPA=1`, and changes **no arithmetic**: a causal 700-token comparison
+gave **max diff 0.0**, and a synthetic 10k GQA prefill peaked at **3.63 GB**. With
+`device_map="balanced"` and the shim, the real `TorchGenerator` completed a **10,001-token prompt,
+16 new tokens in 95.7 s**.
 
 The MPS series is **not retired** and not extended. Every figure here is **non-comparable** to
 the MPS series and to any bf16 CUDA figure: different device, different CUDA build, 4-bit weights,
@@ -34,6 +49,8 @@ export PATH=$HOME/probe-tools:$REPO/.venv/bin:$PATH
 export UV_CACHE_DIR=$HOME/whetstone-cache
 export UV_PYTHON_INSTALL_DIR=$HOME/whetstone-python
 export HF_HOME=$HOME/whetstone-hf
+export PYTHONPATH=$REPO/docs/planning/pascal-4bit/night-door
+export WHETSTONE_PASCAL_SDPA=1
 export TORCHDYNAMO_DISABLE=1
 export TORCH_COMPILE_DISABLE=1
 export WHETSTONE_REPO_MIRRORS='{"/home/foresight/whetstone-donors/contig": "/home/foresight/whetstone-donors/contig", "/home/foresight/whetstone-donors/belay": "/home/foresight/whetstone-donors/belay", "https://github.com/pallets/flask.git": "/home/foresight/whetstone-donors/flask.git"}'
@@ -55,6 +72,9 @@ sudo apt-get install -y gcc g++
 cd "$REPO"
 uv sync --extra torch
 uv pip install --reinstall torch==2.14.1 --index-url https://download.pytorch.org/whl/cu126
+
+# The committed Pascal SDPA shim is imported at interpreter startup through PYTHONPATH.
+test -f "$REPO/docs/planning/pascal-4bit/night-door/sitecustomize.py"
 
 mkdir -p "$REPO/weights/Qwen3-8B"
 $REPO/.venv/bin/python - <<'PY'
@@ -78,6 +98,8 @@ git clone --mirror https://github.com/pallets/flask.git /home/foresight/whetston
 
 The two donor URLs are private operator inputs, written here as placeholders for the same reason
 `<run-id>` is. The fetch is the only network step besides the wheel index and the donor clones.
+The quantized loader passes `device_map="balanced"` and never calls `.to()`; `--precision
+bfloat16` is the **compute dtype**, while the weights are 4-bit NF4 declared by the sidecar above.
 
 ## The prep root (30 links)
 
@@ -174,7 +196,8 @@ a human, never to a loosened verifier.
 ## The night (after a GO)
 
 The night draws the full 52-task corpus — 51 private + 1 public — with the five declared dev ids.
-It carries no `--probe`. Only GPU 0 is used; the host is not time-shared.
+It carries no `--probe`. The quantized base loads across the visible GPUs with
+`device_map="balanced"`; the host is not time-shared by other jobs.
 
 ```bash
 $REPO/.venv/bin/whetstone run --night \

@@ -1738,6 +1738,68 @@ def test_the_pascal_4bit_amendment_pins_the_series() -> None:
     )
 
 
+def test_the_pascal_4bit_multi_gpu_correction_pins_the_amendment() -> None:
+    """§ 10.29 supersedes § 10.28's single-GPU and no-loader-change lines with the measured load."""
+    text = _read(PREREGISTRATION)
+    assert "### 10.29" in text, f"{PREREGISTRATION} no longer carries a § 10.29 amendment."
+    section = text.split("### 10.29", 1)[1].split("\n### ", 1)[0]
+    flat = _flat(section)
+
+    assert "visible GPUs" in flat, (
+        f"{PREREGISTRATION} § 10.29 no longer carries its heading."
+    )
+    assert "pins the inputs of a measurement" in flat, (
+        f"{PREREGISTRATION} § 10.29 no longer states the Type 1 pin."
+    )
+    assert "does not edit § 10.28" in flat, (
+        f"{PREREGISTRATION} § 10.29 no longer states that the § 10.28 section is untouched."
+    )
+
+    for phrase in (
+        "supersedes",
+        "one GPU (GPU 0 only)",
+        "with no loader change",
+        'device_map="balanced"',
+        "sitecustomize.py",
+        "WHETSTONE_PASCAL_SDPA=1",
+        "_CHUNK = 256",
+        "304",
+        "7.38 GiB",
+        "1.84 GB",
+        "4.24 GB",
+        "95.7",
+        "3.63 GB",
+        "max diff 0.0",
+        "Invalid backend",
+        "math SDPA",
+        "no arithmetic",
+        "non-comparable",
+        "No count has been measured",
+    ):
+        assert phrase in flat, (
+            f"{PREREGISTRATION} § 10.29 no longer states {phrase!r}. The OOM, the two deployment "
+            "measures, the measurements and the superseded lines are what a reader re-derives "
+            "the deployment from."
+        )
+
+    row_28 = (
+        "2026-11-23 | The main series moves to x202 at 4-bit NF4 via torch 2.14.1+cu126; the "
+        "near-miss sample is 18 private + the public task, 304 draws (§ 10.28) | 1 — pins the "
+        "inputs of a measurement | Yes"
+    )
+    row_29 = (
+        "2026-11-23 | The x202 series runs the quantized base across the visible GPUs with "
+        'device_map="balanced" and the committed chunked-SDPA shim; § 10.28\'s one-GPU and '
+        "no-loader-change lines are superseded (§ 10.29) | 1 — pins the inputs of a measurement | "
+        "Yes"
+    )
+    whole = _flat(text)
+    assert row_29 in whole, f"{PREREGISTRATION}'s amendment log no longer records the § 10.29 row."
+    assert whole.index(row_28) < whole.index(row_29), (
+        f"{PREREGISTRATION}'s § 10.29 log row is not after the § 10.28 row."
+    )
+
+
 def test_the_roadmap_records_the_re_derived_split_by_dated_correction() -> None:
     """AC8. § 12 referenced the § 10.7 split as live; the correction records the re-derivation.
 

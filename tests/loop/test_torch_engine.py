@@ -324,6 +324,62 @@ def test_a_base_without_the_sidecar_loads_in_full_precision(
     )
 
 
+def test_a_quantized_base_loads_across_the_visible_gpus(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 4-bit base must spread across the cards; bitsandbytes cannot be `.to()`d afterwards.
+
+    Measured on x202: a single 8 GB card OOM'd on a 10,001-token prefill (7.38 GiB requested of
+    7.92 GiB). `device_map="balanced"` splits the quantized layers across the visible GPUs, and
+    the loader takes the model's own placement rather than moving it.
+    """
+    from loop.test_torch_trainer import TO_CALLS, _install_fake_runtime
+
+    calls = _install_fake_runtime(monkeypatch)
+    model_dir = _model_dir(tmp_path)
+    (model_dir / torch_runtime.QUANTIZE_SIDECAR).write_text(
+        '{"bnb_4bit_quant_type": "nf4"}', encoding="utf-8"
+    )
+
+    _, _, device = torch_runtime._load_torch(model_dir, "ea3f2471", None)
+
+    assert calls[0].get("device_map") == "balanced", (
+        f"WHY THIS IS A FAILURE: the loader asked for {calls[0]!r}. Without `device_map` the "
+        "4-bit model lands on one 8 GB card, where a 10k-token prefill OOM'd on x202"
+    )
+    assert TO_CALLS == [], (
+        f"WHY THIS IS A FAILURE: the loader called `.to()` on the quantized model "
+        f"({TO_CALLS!r}). Moving a bitsandbytes model after a single-device load either raises "
+        "or silently narrows the split the device map made"
+    )
+    assert device == "cuda:0", (
+        f"WHY THIS IS A FAILURE: the recorded device is {device!r}. The quantized loader takes "
+        "its device from the model's placement, and the ledger must name the device the inputs "
+        "actually run on"
+    )
+
+
+def test_a_full_precision_base_is_still_moved_onto_one_device(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The single-device path is for full-precision bases; the quantized branch must not leak."""
+    from loop.test_torch_trainer import TO_CALLS, _install_fake_runtime
+
+    calls = _install_fake_runtime(monkeypatch)
+
+    _, _, device = torch_runtime._load_torch(_model_dir(tmp_path), "ea3f2471", None)
+
+    assert "device_map" not in calls[0], (
+        f"WHY THIS IS A FAILURE: the loader passed {calls[0]!r} for a full-precision base. A "
+        "device map is the quantized path; a full-precision base keeps its single-device load"
+    )
+    assert TO_CALLS == ["cpu"], (
+        f"WHY THIS IS A FAILURE: the full-precision loader's `.to()` calls were {TO_CALLS!r}, "
+        "not the one move onto the resolved device"
+    )
+    assert device == "cpu", f"the full-precision loader recorded {device!r}, not 'cpu'"
+
+
 def _generator(tmp_path: Path, *, sidecar: str | None) -> torch_runtime.TorchGenerator:
     """A generator whose `provenance()` can run without loading a model or an inference stack."""
     directory = _model_dir(tmp_path)

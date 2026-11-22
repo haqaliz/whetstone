@@ -335,6 +335,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-10-31 | The § 10.25 probe's 16-task sample is named by id, with four known `NO_ORACLE` tasks disclosed; the measurement's inputs are unchanged (§ 10.26) | 1 — pins the inputs of a measurement | Yes |
 | 2026-11-05 | The 8B night's near-miss population is named as the § 10.25 follow-up probe: 20 private tasks + the public task, 336 draws (§ 10.27) | 1 — pins the inputs of a measurement | Yes |
 | 2026-11-23 | The main series moves to x202 at 4-bit NF4 via torch 2.14.1+cu126; the near-miss sample is 18 private + the public task, 304 draws (§ 10.28) | 1 — pins the inputs of a measurement | Yes |
+| 2026-11-23 | The x202 series runs the quantized base across the visible GPUs with device_map="balanced" and the committed chunked-SDPA shim; § 10.28's one-GPU and no-loader-change lines are superseded (§ 10.29) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1514,3 +1515,45 @@ run's records stay gitignored under `runs/`.
 **What is not claimed.** No count has been measured under this probe. The § 3 baseline remains
 unspent, nothing here claims the probe selects a strict-`PASS`, and a NO-GO returns the lever to a
 human, never to a loosened verifier.
+
+### 10.29 The x202 series runs the quantized base across the visible GPUs, with chunked SDPA — 2026-11-23
+
+**Type 1 (§ 8.1): pins the inputs of a measurement, committed before the probe it governs runs.**
+It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not edit
+§ 10.28**: this document is append-only. What changes is the deployment of the same series, not
+its base, sample or question.
+
+**The failure the deployment answers.** Torch on Pascal (`sm_61`) ships only the **math SDPA**
+kernel; memory-efficient and flash report `Invalid backend`. A 10,001-token prefill therefore
+materialised the attention matrix and tried to allocate **7.38 GiB** on a 7.92 GiB card, and
+OOM'd. A single 8 GB card cannot hold that prompt in one piece.
+
+**The two deployment measures.**
+
+1. **The quantized loader.** `_load_torch` loads a base with a `quantize.json` using
+   **`device_map="balanced"`** and skips the `.to(device)` move, recording
+   `device = str(model.device)`; a full-precision base keeps the old single-device `.to()` path.
+   `device_map="auto"` was tried first and packed badly (OOM); **`balanced` is the recorded
+   choice**. Measured on x202: the quantized model split across **two of the three cards — 1.84 GB
+   and 4.24 GB, with GPU 0 idle** — and the real `TorchGenerator` completed a **10,001-token
+   prompt, 16 new tokens in 95.7 s**.
+2. **The committed chunked-SDPA shim.** `docs/planning/pascal-4bit/night-door/sitecustomize.py`
+   chunks the query axis at **`_CHUNK = 256`**, gated by **`WHETSTONE_PASCAL_SDPA=1`**, and is put
+   on `PYTHONPATH` so the interpreter imports it at startup. The shim changes **no arithmetic**:
+   chunking the query axis is exact. A causal 700-token comparison gave **max diff 0.0**, and a
+   synthetic 10k GQA prefill peaked at **3.63 GB**.
+
+The sidecar remains the declaration of the precision: **4-bit NF4 with bf16 compute**. The
+committed shim is an operator input like the sidecar; it is inert unless the environment variable
+is `1`.
+
+**What this supersedes, and only this.** This amendment **supersedes § 10.28's** "one GPU (GPU 0
+only)" and "with no loader change" — and nothing else. The base and revision
+(`Qwen/Qwen3-8B` at `b968826d9c46dd6066d109eabc6255188de91218`), 4-bit NF4 with bf16 compute,
+the **304 draws** (18 private + the public task, `--probe 18`), the GO rule (at least one
+strict-`PASS`), the **non-comparable** status of every figure, and the held-out document and its
+digest all stand unchanged.
+
+**What is not claimed.** No count has been measured under this deployment. The § 3 baseline
+remains unspent, nothing here claims the probe selects a strict-`PASS`, and a NO-GO returns the
+lever to a human, never to a loosened verifier.

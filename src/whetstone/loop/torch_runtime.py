@@ -486,12 +486,16 @@ def _load_torch(
     # become errors. CI's second mypy run — the one with the extra — is what surfaced that, and
     # the annotation is what stops the file typechecking on one machine only.
     quantize = quantization_config(model_path)
+    # A 4-bit base is loaded across the visible GPUs rather than onto one: bitsandbytes cannot
+    # be moved with `.to()` after a single-device load, and a 4-bit 8B leaves too little room on
+    # an 8 GB card for a long prompt's prefill. `auto` spreads the layers and keeps the inputs on
+    # the first device, which is the one recorded. A full-precision base keeps the old path.
     model: Any = AutoModelForCausalLM.from_pretrained(
         str(model_path),
         revision=revision,
         dtype=dtype,
         low_cpu_mem_usage=True,
-        **({} if quantize is None else {"quantization_config": quantize}),
+        **({} if quantize is None else {"quantization_config": quantize, "device_map": "balanced"}),
     )
 
     if adapter_path is not None:
@@ -499,10 +503,13 @@ def _load_torch(
 
         model = PeftModel.from_pretrained(model, str(adapter_path))
 
-    # Reassigned rather than called for the side effect: `nn.Module.to` returns `self`, but
-    # `PeftModel`'s wrapper does not promise to, and a model left on the wrong device generates
-    # correctly and slowly rather than raising.
-    model = model.to(device)
+    if quantize is None:
+        # Reassigned rather than called for the side effect: `nn.Module.to` returns `self`, but
+        # `PeftModel`'s wrapper does not promise to, and a model left on the wrong device
+        # generates correctly and slowly rather than raising.
+        model = model.to(device)
+    else:
+        device = str(model.device)
     model.eval()
     return model, tokenizer, device
 

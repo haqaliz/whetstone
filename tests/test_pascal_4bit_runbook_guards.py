@@ -1,12 +1,12 @@
 """Guards over the Pascal-4bit night sheet, so its commands cannot drift from the door they invoke.
 
 `docs/planning/pascal-4bit/night-door/runbook.md` is the operator's sheet for the main series on
-`x202` — 3x GTX 1080 8 GB, one GPU — under `torch 2.14.1+cu126`, the pinned 8B base at 4-bit NF4
-with bf16 **compute**. It is a precision/runtime move, not an edit of the Torch/MPS sheet: the two
-series are non-comparable and the MPS series is not retired. This module is one guard per sheet, as
-`test_torch_mps_runbook_guards.py` is for its own: the command-independent parse helpers are
-imported **by identity** from `test_runbook_guards.py`, asserted `is`, and only the door-keyed ones
-are this file's own.
+`x202` — 3x GTX 1080 8 GB, loaded across the visible GPUs — under `torch 2.14.1+cu126`, the
+pinned 8B base at 4-bit NF4 with bf16 **compute**. It is a precision/runtime move, not an edit of
+the Torch/MPS sheet: the two series are non-comparable and the MPS series is not retired. This
+module is one guard per sheet, as `test_torch_mps_runbook_guards.py` is for its own: the
+command-independent parse helpers are imported **by identity** from `test_runbook_guards.py`,
+asserted `is`, and only the door-keyed ones are this file's own.
 
 Properties this sheet owns:
 
@@ -539,10 +539,35 @@ def test_the_setup_names_the_pascal_wheel_the_compiler_and_the_sidecar() -> None
         "WHY THIS IS A FAILURE: the setup does not clone both donors; the manifests' repo_url "
         "names them"
     )
-    for phrase in ("4-bit", "NF4", "quantize.json", "cu126", "GTX 1080", "GPU 0", "x202"):
+    for phrase in ("4-bit", "NF4", "quantize.json", "cu126", "GTX 1080", "device_map", "balanced"):
         assert phrase in flat, (
             f"WHY THIS IS A FAILURE: the sheet never names {phrase!r}. The precision, the "
-            "device, the host and the sidecar are the inputs a reader re-derives the run from"
+            "placement, the host and the sidecar are the inputs a reader re-derives the run from"
+        )
+
+
+def test_the_sheet_installs_the_chunked_sdpa_shim() -> None:
+    """Pascal has only the math SDPA kernel; the committed shim chunks the query axis.
+
+    Without it a 10,001-token prefill tried to allocate 7.38 GiB on a 7.92 GiB card. The shim is
+    numerically exact (query-axis chunking), committed in this repository, gated by
+    `WHETSTONE_PASCAL_SDPA=1`, and put on `PYTHONPATH` so the interpreter imports it at startup.
+    """
+    text = _runbook()
+    flat = _flat(text)
+    for phrase in (
+        "sitecustomize",
+        "WHETSTONE_PASCAL_SDPA=1",
+        "docs/planning/pascal-4bit/night-door",
+        "CHUNK = 256",
+        "PYTHONPATH",
+        "math SDPA",
+        "max diff 0.0",
+    ):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: the sheet never states {phrase!r} for the chunked-SDPA "
+            "shim. The shim is an input: without it the measured prefill OOMs, and without the "
+            "gate and the chunk size a reader cannot re-derive which arithmetic ran"
         )
 
 
