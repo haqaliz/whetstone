@@ -488,8 +488,9 @@ def _load_torch(
     quantize = quantization_config(model_path)
     # A 4-bit base is loaded across the visible GPUs rather than onto one: bitsandbytes cannot
     # be moved with `.to()` after a single-device load, and a 4-bit 8B leaves too little room on
-    # an 8 GB card for a long prompt's prefill. `auto` spreads the layers and keeps the inputs on
-    # the first device, which is the one recorded. A full-precision base keeps the old path.
+    # an 8 GB card for a long prompt's prefill. `balanced` spreads the layers; `auto` was tried
+    # first and packed them badly around the quantized sizes. A full-precision base keeps the old
+    # path, and the input device is `model.device` either way.
     model: Any = AutoModelForCausalLM.from_pretrained(
         str(model_path),
         revision=revision,
