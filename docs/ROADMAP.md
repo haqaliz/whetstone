@@ -959,6 +959,16 @@ transcripts to journals by hand. `NO_ORACLE` already carries its reason; this sh
 > (`PREREGISTRATION.md` § 10.27). The sample is outcome-selected from an already-run night, so a
 > GO is evidence on those 21 tasks only, not on the corpus. M1's exit criterion is still a
 > selected strict-`PASS`, never a corpus claim restated from this sample.
+>
+> **Corrected 2026-11-23, when § 10.28 moved the series to x202.** The next measurement runs on
+> the founder's own host **x202** — 3× GTX 1080 8 GB, one GPU, Pascal `sm_61` — on
+> **`torch 2.14.1+cu126`** (same version, Pascal-capable CUDA build), with the pinned base and
+> revision unchanged at **4-bit NF4 with bf16 compute** via the declared `quantize.json` sidecar
+> (6.75 tokens/s, 6.07 GB measured). The sample is § 10.27's near-miss population minus the two
+> macOS-only tasks: **18 private + the public task = 19 tasks × `K = 16` = 304 draws**
+> (`PREREGISTRATION.md` § 10.28). The MPS series is **not retired**; every figure is
+> **non-comparable** to it and to a full-precision bf16 CUDA figure; **no count has been
+> measured**, and M1's exit criterion is still a selected strict-`PASS`.
 
 ### M2 — Make the gate able to answer: the held-out set (issues #60, #62)
 

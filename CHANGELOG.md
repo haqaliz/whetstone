@@ -11,6 +11,10 @@ released version until it exists in the code.
 
 ## [Unreleased]
 
+### Added
+
+- **The main series moves to x202 at 4-bit NF4, and the provenance records it** (2026-11-23, `pascal-4bit`). `PREREGISTRATION.md` § 10.28 (Type 1) moves the main series to the founder's host **x202** — 3× GTX 1080 8 GB, one GPU, Pascal `sm_61` — on **`torch 2.14.1+cu126`** (same version, Pascal-capable CUDA build), with the base and revision unchanged: `Qwen/Qwen3-8B` at `b968826d9c46dd6066d109eabc6255188de91218`. The base loads **4-bit NF4 with bf16 compute** through the declared `quantize.json` sidecar, a recorded input accepted beside the 15 recorded files; the measured pre-flight is **6.75 new tokens/s** and **6.07 GB VRAM** of 7.92 GiB. `TorchGenerator.provenance()` gains `"quantization"` — `""` without a sidecar, `"nf4/bf16/double"` with it — so a 4-bit run cannot be read as full-precision bf16. The sample is § 10.27's 20 private tasks + the public task **minus the two macOS-only tasks** `donor-b-c57246c7841a` (three `@darwin_only` declared tests) and `donor-b-cc7d3f520f1c` (module-level Darwin skip): **18 private + 1 public = 19 tasks × `K = 16` = 304 draws**, `--probe 18`. `K`, `R`, `R_repair`, the verifier, the gate and the held-out document are unchanged, and the MPS series is **not retired**; every figure is **non-comparable** to it and to a full-precision bf16 CUDA figure. The x202 operator sheet is `docs/planning/pascal-4bit/night-door/runbook.md`. **No probe or night was run: no count, yield, delta or model is claimed**, and the § 3 baseline remains unspent.
+
 ## [0.34.1] - 2026-11-05
 
 ### Fixed

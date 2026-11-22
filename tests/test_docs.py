@@ -1648,6 +1648,96 @@ def test_the_near_miss_sample_amendment_names_the_sample() -> None:
     ), f"{PREREGISTRATION}'s amendment log no longer records the § 10.27 row."
 
 
+def test_the_pascal_4bit_amendment_pins_the_series() -> None:
+    """§ 10.28 moves the main series to x202 at 4-bit NF4, with § 10.27's sample less two tasks."""
+    base = "Qwen/Qwen3-8B"
+    revision = "b968826d9c46dd6066d109eabc6255188de91218"
+    excluded = {
+        "donor-b-c57246c7841a": (
+            "@darwin_only",
+            "tests/test_replay_batch_server_rooting.py",
+        ),
+        "donor-b-cc7d3f520f1c": (
+            'pytestmark = pytest.mark.skipif(sys.platform != "darwin"',
+            "tests/test_verify_cli.py",
+        ),
+    }
+
+    text = _read(PREREGISTRATION)
+    assert "### 10.28" in text, f"{PREREGISTRATION} no longer carries a § 10.28 amendment."
+    section = text.split("### 10.28", 1)[1].split("\n### ", 1)[0]
+    flat = _flat(section)
+
+    assert "main series moves to" in flat, (
+        f"{PREREGISTRATION} § 10.28 no longer carries its heading."
+    )
+    assert "pins the inputs of a measurement" in flat, (
+        f"{PREREGISTRATION} § 10.28 no longer states the Type 1 pin."
+    )
+    assert "introduces no success threshold" in flat and (
+        "rewords nothing in § 1, § 4 or § 6" in flat
+    ), f"{PREREGISTRATION} § 10.28 no longer carries the no-threshold/no-rewording line."
+    assert "does not edit § 10.27" in flat, (
+        f"{PREREGISTRATION} § 10.28 no longer states that the § 10.27 pin is untouched."
+    )
+
+    for phrase in (
+        base,
+        revision,
+        "torch 2.14.1+cu126",
+        "4-bit",
+        "NF4",
+        "quantize.json",
+        "x202",
+        "GTX 1080",
+        "304",
+        "18 private",
+        "19 tasks",
+        "§ 10.27",
+    ):
+        assert phrase in flat, (
+            f"{PREREGISTRATION} § 10.28 no longer states {phrase!r}. The runtime, the precision, "
+            "the sidecar, the host and the sample are what a reader re-derives the run from."
+        )
+
+    for task_id, reasons in excluded.items():
+        assert task_id in flat, (
+            f"{PREREGISTRATION} § 10.28 no longer names the excluded task {task_id!r}."
+        )
+        for reason in reasons:
+            assert reason in flat, (
+                f"{PREREGISTRATION} § 10.28 no longer states {reason!r} for {task_id}. The "
+                "sample is § 10.27's minus these two, and the reason travels with the id."
+            )
+
+    assert "not retired" in flat and "non-comparable" in flat, (
+        f"{PREREGISTRATION} § 10.28 no longer states that the MPS series is not retired and that "
+        "its figures are non-comparable."
+    )
+    assert "No count has been measured" in flat and "§ 3 baseline remains unspent" in flat, (
+        f"{PREREGISTRATION} § 10.28 no longer states that no count exists."
+    )
+    assert "removed after the measurement" in flat, (
+        f"{PREREGISTRATION} § 10.28 no longer states the corpus-removal rule."
+    )
+
+    row_27 = (
+        "2026-11-05 | The 8B night's near-miss population is named as the § 10.25 follow-up probe: "
+        "20 private tasks + the public task, 336 draws (§ 10.27) | 1 — pins the inputs of a "
+        "measurement | Yes"
+    )
+    row_28 = (
+        "2026-11-23 | The main series moves to x202 at 4-bit NF4 via torch 2.14.1+cu126; the "
+        "near-miss sample is 18 private + the public task, 304 draws (§ 10.28) | 1 — pins the "
+        "inputs of a measurement | Yes"
+    )
+    whole = _flat(text)
+    assert row_28 in whole, f"{PREREGISTRATION}'s amendment log no longer records the § 10.28 row."
+    assert whole.index(row_27) < whole.index(row_28), (
+        f"{PREREGISTRATION}'s § 10.28 log row is not after the § 10.27 row."
+    )
+
+
 def test_the_roadmap_records_the_re_derived_split_by_dated_correction() -> None:
     """AC8. § 12 referenced the § 10.7 split as live; the correction records the re-derivation.
 

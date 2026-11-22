@@ -385,6 +385,7 @@ class TorchGenerator:
                 "transformers": installed_version("transformers"),
                 "model_path": str(self._model_path),
                 "revision": self._revision,
+                "quantization": declared_quantization(self._model_path),
                 "adapter_path": "" if self._adapter_path is None else str(self._adapter_path),
                 "sampler": (
                     TORCH_SAMPLER.format(temperature=TEMPERATURE, top_p=TOP_P)
@@ -403,6 +404,30 @@ class TorchGenerator:
 #: `config.json` edit, so the fetched snapshot's own files stay byte-intact and the declaration
 #: is one more input the ledger names.
 QUANTIZE_SIDECAR = "quantize.json"
+
+
+def declared_quantization(model_path: Path) -> str:
+    """The sidecar's precision as one stable string, or `""` when the base declares none.
+
+    `--precision bfloat16` names the compute dtype; the weights may still be 4-bit NF4. The
+    provenance states both, so a 4-bit run cannot be read as a full-precision bf16 one. Built
+    from the declared fields rather than the file's bytes, so the value does not move with the
+    sidecar's key order.
+    """
+    sidecar = Path(model_path) / QUANTIZE_SIDECAR
+    if not sidecar.is_file():
+        return ""
+    import json
+
+    declared = json.loads(sidecar.read_text(encoding="utf-8"))
+    dtype = str(declared.get("bnb_4bit_compute_dtype", "float16"))
+    return "/".join(
+        (
+            str(declared.get("bnb_4bit_quant_type", "nf4")),
+            {"bfloat16": "bf16", "float16": "fp16", "float32": "fp32"}.get(dtype, dtype),
+            "double" if bool(declared.get("bnb_4bit_use_double_quant", True)) else "single",
+        )
+    )
 
 
 def quantization_config(model_path: Path) -> Any | None:

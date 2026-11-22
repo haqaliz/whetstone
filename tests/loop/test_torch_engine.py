@@ -324,6 +324,97 @@ def test_a_base_without_the_sidecar_loads_in_full_precision(
     )
 
 
+def _generator(tmp_path: Path, *, sidecar: str | None) -> torch_runtime.TorchGenerator:
+    """A generator whose `provenance()` can run without loading a model or an inference stack."""
+    directory = _model_dir(tmp_path)
+    if sidecar is not None:
+        (directory / torch_runtime.QUANTIZE_SIDECAR).write_text(sidecar, encoding="utf-8")
+    generator = torch_runtime.TorchGenerator.__new__(torch_runtime.TorchGenerator)
+    generator._model_path = directory.resolve()  # type: ignore[attr-defined]
+    generator._revision = "ea3f2471"  # type: ignore[attr-defined]
+    generator._draws = 16  # type: ignore[attr-defined]
+    generator._max_tokens = 64  # type: ignore[attr-defined]
+    generator._adapter_path = None  # type: ignore[attr-defined]
+    return generator
+
+
+def test_provenance_records_the_declared_quantization(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 4-bit run must not be readable as full-precision bf16.
+
+    `--precision bfloat16` names the **compute dtype**; the weights are 4-bit NF4, declared in
+    `quantize.json`. A provenance block that records only the dtype lets a reader restate the run
+    as a full-precision bf16 measurement — the same weights claim, on a different precision.
+    """
+    import importlib.metadata
+
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: "2.14.1")
+    generator = _generator(
+        tmp_path,
+        sidecar=(
+            '{"bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": "bfloat16",'
+            ' "bnb_4bit_use_double_quant": true}'
+        ),
+    )
+
+    record = generator.provenance()
+
+    assert record["quantization"] == "nf4/bf16/double", (
+        f"WHY THIS IS A FAILURE: the provenance records {record.get('quantization')!r}. The "
+        "sidecar declares 4-bit NF4 with bf16 compute and double quantization, and a run whose "
+        "provenance omits it reads as full-precision bf16"
+    )
+    assert "{" not in record["quantization"], (
+        "WHY THIS IS A FAILURE: the quantization record holds a dict repr. Its spelling would "
+        "then depend on the writer and two runs with the same sidecar would not compare"
+    )
+
+
+def test_provenance_records_no_quantization_without_the_sidecar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 8B full-precision series records the empty string, not a guessed `nf4`."""
+    import importlib.metadata
+
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: "2.14.1")
+    record = _generator(tmp_path, sidecar=None).provenance()
+
+    assert record["quantization"] == "", (
+        f"WHY THIS IS A FAILURE: a base with no quantize.json records "
+        f"{record.get('quantization')!r}. The sidecar is the only switch; a default would "
+        "attribute 4-bit weights to a full-precision run"
+    )
+
+
+def test_the_quantization_record_does_not_depend_on_the_sidecars_key_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One sidecar, one string: the record is built from fields, never from a serialisation."""
+    import importlib.metadata
+
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: "2.14.1")
+    ordered = _generator(
+        tmp_path / "one",
+        sidecar=(
+            '{"bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": "bfloat16",'
+            ' "bnb_4bit_use_double_quant": true}'
+        ),
+    )
+    reversed_keys = _generator(
+        tmp_path / "two",
+        sidecar=(
+            '{"bnb_4bit_use_double_quant": true, "bnb_4bit_compute_dtype": "bfloat16",'
+            ' "bnb_4bit_quant_type": "nf4"}'
+        ),
+    )
+
+    assert ordered.provenance()["quantization"] == reversed_keys.provenance()["quantization"], (
+        "WHY THIS IS A FAILURE: two spellings of the same sidecar produced different provenance "
+        "values. A record that moves with the file's key order cannot be compared between runs"
+    )
+
+
 def test_the_torch_sampler_string_is_not_a_copy_of_mlxs() -> None:
     """The two libraries do not implement the same sampler, so they must not claim to.
 
