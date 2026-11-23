@@ -27,6 +27,7 @@ acquire an inference stack by importing something near it.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -457,6 +458,35 @@ def quantization_config(model_path: Path) -> Any | None:
         bnb_4bit_use_double_quant=bool(declared.get("bnb_4bit_use_double_quant", True)),
     )
 
+
+def quantized_device_map(model_path: Path, torch: Any) -> dict[str, int] | str:
+    """Where a 4-bit base's modules load, by layer range over the visible GPUs.
+
+    `device_map="balanced"` is computed against the *quantized* module sizes, and on a host with
+    three 8 GB cards it packed the 6 GB model onto two of them; the third sat idle while the
+    fullest card OOM'd on a long prompt's prefill. An explicit range is a decision rather than a
+    library's guess, and it gives every GPU the same number of layers. A single visible GPU keeps
+    the library's `"balanced"`, which is the same answer there.
+    """
+    count_of = getattr(torch.cuda, "device_count", None)
+    count = int(count_of()) if count_of is not None else 1
+    if count < 2:
+        return "balanced"
+    declared = json.loads((Path(model_path) / MODEL_CONFIG).read_text(encoding="utf-8"))
+    layers = int(declared.get("num_hidden_layers", 0))
+    if layers < 1:
+        return "balanced"
+    per = (layers + count - 1) // count
+    mapping: dict[str, int] = {
+        "model.embed_tokens": 0,
+        "model.norm": count - 1,
+        "lm_head": count - 1,
+    }
+    for index in range(layers):
+        mapping[f"model.layers.{index}"] = min(index // per, count - 1)
+    return mapping
+
+
 def _load_torch(
     model_path: Path, revision: str, adapter_path: Path | None
 ) -> tuple[Any, Any, str]:
@@ -486,17 +516,24 @@ def _load_torch(
     # become errors. CI's second mypy run — the one with the extra — is what surfaced that, and
     # the annotation is what stops the file typechecking on one machine only.
     quantize = quantization_config(model_path)
-    # A 4-bit base is loaded across the visible GPUs rather than onto one: bitsandbytes cannot
-    # be moved with `.to()` after a single-device load, and a 4-bit 8B leaves too little room on
-    # an 8 GB card for a long prompt's prefill. `balanced` spreads the layers; `auto` was tried
-    # first and packed them badly around the quantized sizes. A full-precision base keeps the old
-    # path, and the input device is `model.device` either way.
+    # A 4-bit base is loaded across every visible GPU: bitsandbytes cannot be moved with `.to()`
+    # after a single-device load, and a 4-bit 8B leaves too little room on an 8 GB card for a
+    # long prompt's prefill. The explicit range in `quantized_device_map` beats `"auto"` and
+    # `"balanced"` here, both of which were measured packing the model onto two of three cards.
+    # A full-precision base keeps the old path, and the input device is `model.device` either way.
     model: Any = AutoModelForCausalLM.from_pretrained(
         str(model_path),
         revision=revision,
         dtype=dtype,
         low_cpu_mem_usage=True,
-        **({} if quantize is None else {"quantization_config": quantize, "device_map": "balanced"}),
+        **(
+            {}
+            if quantize is None
+            else {
+                "quantization_config": quantize,
+                "device_map": quantized_device_map(model_path, torch),
+            }
+        ),
     )
 
     if adapter_path is not None:

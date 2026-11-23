@@ -539,7 +539,7 @@ def test_the_setup_names_the_pascal_wheel_the_compiler_and_the_sidecar() -> None
         "WHY THIS IS A FAILURE: the setup does not clone both donors; the manifests' repo_url "
         "names them"
     )
-    for phrase in ("4-bit", "NF4", "quantize.json", "cu126", "GTX 1080", "device_map", "balanced"):
+    for phrase in ("4-bit", "NF4", "quantize.json", "cu126", "GTX 1080", "layer range", "device map"):
         assert phrase in flat, (
             f"WHY THIS IS A FAILURE: the sheet never names {phrase!r}. The precision, the "
             "placement, the host and the sidecar are the inputs a reader re-derives the run from"

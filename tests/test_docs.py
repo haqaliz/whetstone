@@ -2231,3 +2231,31 @@ def test_every_roadmap_citation_in_the_preregistration_resolves() -> None:
             "recomputed, so the pre-registration now points a reader at the wrong section. "
             "The document's whole claim is that a stranger can check it against its sources."
         )
+
+
+def test_the_pascal_4bit_layer_range_correction_pins_the_amendment() -> None:
+    """§ 10.30 replaces § 10.29's `balanced` placement with the measured explicit layer range."""
+    text = _read(PREREGISTRATION)
+    assert "### 10.30" in text, f"{PREREGISTRATION} no longer carries a § 10.30 amendment."
+    section = text.split("### 10.30", 1)[1].split("\n### ", 1)[0]
+    flat = _flat(section)
+
+    assert "explicit layer range" in flat, (
+        f"{PREREGISTRATION} § 10.30 no longer names the placement it pins."
+    )
+    for phrase in (
+        "pins an input of the measurement",
+        "does not edit § 10.27",
+        "§ 10.29",
+        "3.4 GB",
+        "6.4 GB",
+        "12/12/12",
+        "balanced",
+        "304",
+        "No count has been measured",
+        "§ 3 baseline remains unspent",
+    ):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: § 10.30 no longer states {phrase!r}. The measured split, the "
+            "correction and the unmeasured claim are what a reader checks the run against"
+        )

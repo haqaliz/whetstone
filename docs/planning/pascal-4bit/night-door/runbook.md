@@ -6,10 +6,11 @@ exported variable expands before the command runs, which is what makes the path 
 receives absolute.
 
 This sheet moves the main series to the founder's own host **`x202`**: 3× NVIDIA GTX 1080 8 GB,
-**Pascal `sm_61`**. The quantized base is loaded across the **visible GPUs** with
-`device_map="balanced"`; measured, it split across two of the three cards (1.84 GB and 4.24 GB,
-with GPU 0 idle). `device_map="auto"` was tried first and packed badly (OOM); `balanced` is the
-recorded choice. The installed wheel is **`torch 2.14.1+cu126`**
+**Pascal `sm_61`**. The quantized base is spread over **every visible GPU by an explicit layer
+range** (36 layers → 12 per card), with `embed_tokens` on card 0 and `norm`/`lm_head` on the last
+card. `"auto"` and `"balanced"` were both measured packing the model onto two cards while the
+third sat idle, and the fuller card OOM'd at prefill (§ 10.30). The installed wheel is
+**`torch 2.14.1+cu126`**
 — the same version the series pinned, with the CUDA build changed to the Pascal-capable one,
 because the pinned `cu130` build has no `sm_61` kernels. The base and revision are **unchanged**:
 `Qwen/Qwen3-8B` at `b968826d9c46dd6066d109eabc6255188de91218`.
@@ -22,7 +23,7 @@ beside the 15 recorded ones, and `TorchGenerator.provenance()` records
 
 The measured pre-flight on x202: **6.75 new tokens/s**, 64 tokens in 9.5 s, **6.07 GB VRAM** of
 7.92 GiB, through the harness's own `TorchGenerator` with the quantized loader
-(`device_map="balanced"`, `.to()` skipped), under `TORCHDYNAMO_DISABLE=1` and
+(an explicit layer range, `.to()` skipped), under `TORCHDYNAMO_DISABLE=1` and
 `TORCH_COMPILE_DISABLE=1`. This is a pre-flight measurement, not the probe below: **no count has
 been measured** under § 10.28 or § 10.29, and the § 3 baseline remains unspent.
 
@@ -34,7 +35,7 @@ OOM'd. The committed shim
 `docs/planning/pascal-4bit/night-door/sitecustomize.py` chunks the query axis at `_CHUNK = 256`,
 gated by `WHETSTONE_PASCAL_SDPA=1`, and changes **no arithmetic**: a causal 700-token comparison
 gave **max diff 0.0**, and a synthetic 10k GQA prefill peaked at **3.63 GB**. With
-`device_map="balanced"` and the shim, the real `TorchGenerator` completed a **10,001-token prompt,
+the layer range and the shim, the real `TorchGenerator` completed a **10,001-token prompt,
 16 new tokens in 95.7 s**.
 
 The MPS series is **not retired** and not extended. Every figure here is **non-comparable** to
@@ -98,7 +99,7 @@ git clone --mirror https://github.com/pallets/flask.git /home/foresight/whetston
 
 The two donor URLs are private operator inputs, written here as placeholders for the same reason
 `<run-id>` is. The fetch is the only network step besides the wheel index and the donor clones.
-The quantized loader passes `device_map="balanced"` and never calls `.to()`; `--precision
+The quantized loader passes an explicit per-layer device map and never calls `.to()`; `--precision
 bfloat16` is the **compute dtype**, while the weights are 4-bit NF4 declared by the sidecar above.
 
 ## The prep root (30 links)
@@ -196,8 +197,8 @@ a human, never to a loosened verifier.
 ## The night (after a GO)
 
 The night draws the full 52-task corpus — 51 private + 1 public — with the five declared dev ids.
-It carries no `--probe`. The quantized base loads across the visible GPUs with
-`device_map="balanced"`; the host is not time-shared by other jobs.
+It carries no `--probe`. The quantized base is spread over every visible GPU by an explicit layer range; the host is not
+time-shared by other jobs.
 
 ```bash
 $REPO/.venv/bin/whetstone run --night \

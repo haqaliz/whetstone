@@ -336,6 +336,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-11-05 | The 8B night's near-miss population is named as the § 10.25 follow-up probe: 20 private tasks + the public task, 336 draws (§ 10.27) | 1 — pins the inputs of a measurement | Yes |
 | 2026-11-23 | The main series moves to x202 at 4-bit NF4 via torch 2.14.1+cu126; the near-miss sample is 18 private + the public task, 304 draws (§ 10.28) | 1 — pins the inputs of a measurement | Yes |
 | 2026-11-23 | The x202 series runs the quantized base across the visible GPUs with device_map="balanced" and the committed chunked-SDPA shim; § 10.28's one-GPU and no-loader-change lines are superseded (§ 10.29) | 1 — pins the inputs of a measurement | Yes |
+| 2026-11-24 | The x202 quantized base is spread by an explicit layer range over every visible GPU; § 10.29's `balanced` line is superseded (§ 10.30) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1557,3 +1558,24 @@ digest all stand unchanged.
 **What is not claimed.** No count has been measured under this deployment. The § 3 baseline
 remains unspent, nothing here claims the probe selects a strict-`PASS`, and a NO-GO returns the
 lever to a human, never to a loosened verifier.
+
+### 10.30 The x202 quantized base is spread by an explicit layer range — 2026-11-24
+
+**Type 1 (§ 8.1): pins an input of the measurement, committed before the probe it governs
+resumes.** It appends; it does not edit § 10.27, § 10.28 or § 10.29.
+
+**What changed.** § 10.29 recorded `device_map="balanced"`. Run
+`torch-8b-pascal-4bit-002` measured what that does on this host: `balanced` put **3.4 GB** on one
+card and **6.4 GB** on another while the third sat idle, and at 16:36 EST it OOM'd on a task's
+prefill — 7.77 GB in use, 126 MiB requested of 7.92 GiB. The loader now builds an **explicit
+layer range**: `num_hidden_layers` split evenly over `torch.cuda.device_count()`, with
+`model.embed_tokens` on card 0 and `model.norm`/`lm_head` on the last card; a host with one
+visible GPU keeps `"balanced"`. With 36 layers and three cards that is **12/12/12**.
+
+**What does not change.** Everything in § 10.28 and § 10.29 except that sentence: the base and
+revision, 4-bit NF4 with bf16 compute and its sidecar, the 256-query chunked-SDPA shim, the
+18 private + public sample of **304 draws**, `--probe 18`, the GO rule, the held-out document and
+non-comparability. The 160 draws already recorded replay on resume; none is regenerated.
+
+**What is not claimed.** No count has been measured under this probe. The § 3 baseline remains
+unspent, and a NO-GO returns the lever to a human, never to a loosened verifier.

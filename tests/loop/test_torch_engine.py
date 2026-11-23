@@ -30,6 +30,8 @@ inference stack. CI is a machine with neither runtime installed.
 
 from __future__ import annotations
 
+import json
+import types
 from pathlib import Path
 from typing import Any
 
@@ -378,6 +380,43 @@ def test_a_full_precision_base_is_still_moved_onto_one_device(
         "not the one move onto the resolved device"
     )
     assert device == "cpu", f"the full-precision loader recorded {device!r}, not 'cpu'"
+
+
+def test_a_quantized_base_spreads_its_layers_evenly_over_three_cards(
+    tmp_path: Path,
+) -> None:
+    """`balanced` packed the model onto two of three cards and OOM'd; the range is explicit.
+
+    Measured on x202: `balanced` put 3.4 GB on one card and 6.4 GB on another while the third sat
+    idle, and the fuller card OOM'd on a long prompt's prefill. The explicit range gives each of
+    the three cards 12 of the 36 layers.
+    """
+    model_dir = _model_dir(tmp_path)
+    (model_dir / "config.json").write_text(
+        json.dumps({"num_hidden_layers": 36}), encoding="utf-8"
+    )
+    fake = types.SimpleNamespace(cuda=types.SimpleNamespace(device_count=lambda: 3))
+
+    mapping = torch_runtime.quantized_device_map(model_dir, fake)
+
+    assert isinstance(mapping, dict), (
+        f"WHY THIS IS A FAILURE: the map is {mapping!r}. A string falls back to the library's "
+        "packing, which is the behaviour that OOM'd"
+    )
+    assert mapping["model.embed_tokens"] == 0
+    assert mapping["model.norm"] == 2 and mapping["lm_head"] == 2
+    per_card = [
+        sum(
+            1
+            for name, card in mapping.items()
+            if name.startswith("model.layers.") and card == index
+        )
+        for index in range(3)
+    ]
+    assert per_card == [12, 12, 12], (
+        f"WHY THIS IS A FAILURE: the layers per card are {per_card!r}, not an even split. An "
+        "uneven split is what leaves one card short enough to OOM at prefill"
+    )
 
 
 def _generator(tmp_path: Path, *, sidecar: str | None) -> torch_runtime.TorchGenerator:
