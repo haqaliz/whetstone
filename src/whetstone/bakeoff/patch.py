@@ -54,6 +54,10 @@ and each asserted in `tests/bakeoff/test_extraction.py`:
 - *Truncated before the first hunk* → `NoDiff`, with a reason that names the missing hunk. A
   patch with no hunks changes nothing, but the reader needs to know it was a budget problem and
   not a prompt problem.
+- *Exactly `NO_DIFF`* → `NoDiff`, with a reason naming the sentinel. The prompt prefills an open
+  `diff` fence and offers this token as the one explicit decline, so it is neither prose nor a
+  parse failure; only the exact token counts, because a substring match would read any sentence
+  mentioning it as a decline.
 
 Stdlib only. No model, no network, and nothing under `verify/` or `tasks/` may import this.
 """
@@ -102,6 +106,11 @@ _HEADER_PREFIXES = (
 #: list item is still a fence, and after stripping the trailing `\r`, so CRLF output is not
 #: silently treated as a different language.
 _FENCE = "```"
+
+#: The explicit decline the prefilled contract offers. The prompt ends with an open `diff` fence,
+#: so a completion that is exactly this token is the base saying it cannot produce a diff — a
+#: different observation from prose that ignored the block, and counted separately.
+_NO_DIFF = "NO_DIFF"
 
 
 @dataclass(frozen=True)
@@ -152,12 +161,23 @@ def extract_patch(text: str) -> Extraction:
     considered together in **document order** — not fences first. The first candidate that is a
     well-formed diff (a file header, plus at least one parsable hunk) wins, and is returned
     verbatim from its opening header to the end of its last hunk.
+
+    The prompt this reads is **prefilled**: it ends with an open `diff` fence, so a compliant
+    completion carries no opening fence — a bare `---`/`+++` body, optionally followed by a
+    closing fence and an explanation. Both shapes are the same event here. A completion whose
+    stripped text is exactly `NO_DIFF` is the contract's explicit decline, not a parse failure.
     """
     lines = text.splitlines(keepends=True)
     if not any(line.strip() for line in lines):
         return NoDiff(
             "the model produced no output at all beyond whitespace, so there was nothing to "
             "search for a diff in"
+        )
+    if text.strip() == _NO_DIFF:
+        return NoDiff(
+            "the model replied exactly NO_DIFF, the contract's explicit decline: it saw the "
+            "prefilled diff block and stated it could not produce a diff rather than ignoring "
+            "the format"
         )
 
     fenced = _fenced_spans(lines)

@@ -620,12 +620,19 @@ def test_the_preregistration_contains_no_placeholder() -> None:
 
 
 def test_the_preregistration_states_no_figure_about_a_model() -> None:
-    """No model has been run, so any performance figure here would be invented.
+    """Text committed before a measurement may not state a proportion; a measured one may.
 
     `docs/ROADMAP.md:364-368`: *"not one number about a model exists anywhere in this
     repository."* `CLAUDE.md:119`, quoted at `:595-596`: *"If you need a statistic that isn't
-    here, do not invent one."* This document is written **before** the first measurement, so
-    a figure in it could only be a target dressed as a result.
+    here, do not invent one."* Everything up to the first measured amendment is written
+    **before** the first measurement, so a figure there could only be a target dressed as a
+    result.
+
+    **The one carve-out is § 10.31.** It is committed after `torch-8b-pascal-4bit-002` and its
+    whole purpose is to name the measured `NO_DIFF` baseline the prefill is read against, so a
+    proportion there is a count over its denominator — `213 of 304` — not an invention. That
+    section must carry the raw count and the denominator beside the percentage, which is what
+    this test now requires; everything before it is still banned outright.
 
     The ban covers the word as well as the glyph. A guard that `%` alone would satisfy is
     evaded by writing "percent", and a rule that is trivially sidestepped buys false
@@ -638,14 +645,21 @@ def test_the_preregistration_states_no_figure_about_a_model() -> None:
     rather than an accident of style.
     """
     text = _read(PREREGISTRATION)
-    lowered = text.lower()
+    committed_before_measurement, separator, measured = text.partition("### 10.31")
+    assert separator, f"{PREREGISTRATION} no longer carries the § 10.31 measured baseline."
+
+    lowered = committed_before_measurement.lower()
     found = [token for token in ("%", "percent", "percentage") if token in lowered]
     assert not found, (
-        f"{PREREGISTRATION} states a proportion: {found}\n\n"
-        "WHY THIS IS A FAILURE: this file is committed before the first measurement exists, "
-        "so a proportion in it is either a target being smuggled in as a result or a number "
-        "that leaked back from one. Report counts over their denominators; grounded external "
+        f"{PREREGISTRATION} states a proportion before § 10.31: {found}\n\n"
+        "WHY THIS IS A FAILURE: those sections are committed before the first measurement, so "
+        "a proportion there is either a target being smuggled in as a result or a number that "
+        "leaked back from one. Report counts over their denominators; grounded external "
         "statistics belong in docs/ROADMAP.md § 11."
+    )
+    assert "70%" in measured and "213" in measured and "304" in measured, (
+        f"{PREREGISTRATION} § 10.31 states a proportion without its count and denominator. The "
+        "measured baseline is 213 `NO_DIFF` of 304 draws; a bare percentage cannot be checked."
     )
     assert "no figure about a model" in _flat(text), (
         f"{PREREGISTRATION} no longer states its own no-figure rule. The check above asserts "
@@ -2259,6 +2273,63 @@ def test_the_pascal_4bit_layer_range_correction_pins_the_amendment() -> None:
             f"WHY THIS IS A FAILURE: § 10.30 no longer states {phrase!r}. The measured split, the "
             "correction and the unmeasured claim are what a reader checks the run against"
         )
+
+
+def test_the_diff_prefill_amendment_pins_the_contract() -> None:
+    """§ 10.31 changes only the generation contract: the open fence and the `NO_DIFF` sentinel.
+
+    The 304-draw Pascal probe measured the wall with the old prompt, which already asked for a
+    fenced diff: 213 `NO_DIFF` (70%), 86 `NOT_APPLIED`, 5 `NOT_SOLVED`, zero `PASS`. The prefill
+    is the untried lever; the amendment must name the contract, the unchanged host and sample,
+    the 70% baseline and the next-lever rule without claiming a count.
+    """
+    text = _read(PREREGISTRATION)
+    assert "### 10.31" in text, f"{PREREGISTRATION} no longer carries a § 10.31 amendment."
+    section = text.split("### 10.31", 1)[1].split("\n### ", 1)[0]
+    flat = _flat(section)
+
+    for phrase in (
+        "Type 1 (§ 8.1): pins an input of the measurement",
+        "does not edit § 10.27",
+        "x202",
+        "torch 2.14.1+cu126",
+        "4-bit NF4",
+        "256-query chunked-SDPA shim",
+        "explicit layer range",
+        "prefill",
+        "NO_DIFF",
+        "prompt hash",
+        "extractor",
+        "torch-8b-pascal-4bit-003",
+        "304",
+        "70%",
+        "no opening fence",
+        "never a looser verifier",
+        "non-comparable",
+        "No count has been measured",
+        "§ 3 baseline remains unspent",
+    ):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: § 10.31 no longer states {phrase!r}. The changed contract, "
+            "the unchanged host and sample, the measured baseline and the next-lever rule are "
+            "what a reader checks the run against"
+        )
+
+    row_30 = (
+        "2026-11-24 | The x202 quantized base is spread by an explicit layer range over every "
+        'visible GPU; § 10.29\'s `balanced` line is superseded (§ 10.30) | 1 — pins the inputs '
+        "of a measurement | Yes"
+    )
+    row_31 = (
+        "2026-11-25 | The x202 generation contract is prefilled with the open `diff` fence and "
+        "the `NO_DIFF` sentinel; host, sample and GO are unchanged (§ 10.31) | 1 — pins the "
+        "inputs of a measurement | Yes"
+    )
+    whole = _flat(text)
+    assert row_31 in whole, f"{PREREGISTRATION}'s amendment log no longer records the § 10.31 row."
+    assert whole.index(row_30) < whole.index(row_31), (
+        f"{PREREGISTRATION}'s § 10.31 log row is not after the § 10.30 row."
+    )
 
 
 def test_the_pascal_4bit_probe_finding_records_the_zero() -> None:

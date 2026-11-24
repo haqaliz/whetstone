@@ -25,7 +25,19 @@ The measured pre-flight on x202: **6.75 new tokens/s**, 64 tokens in 9.5 s, **6.
 7.92 GiB, through the harness's own `TorchGenerator` with the quantized loader
 (an explicit layer range, `.to()` skipped), under `TORCHDYNAMO_DISABLE=1` and
 `TORCH_COMPILE_DISABLE=1`. This is a pre-flight measurement, not the probe below: **no count has
-been measured** under § 10.28 or § 10.29, and the § 3 baseline remains unspent.
+been measured** under § 10.28, § 10.29 or § 10.31, and the § 3 baseline remains unspent.
+
+## The contract
+
+The inserted generation contract is a **prefill**: the rendered prompt ends with
+`Continue the diff inside this block. If you cannot produce a diff, reply exactly NO_DIFF.` and
+then an **open** fence tagged `diff` — three backticks, no closing fence, nothing after it. The
+completion therefore starts *inside* the block. `whetstone.bakeoff.patch.extract_patch` reads
+that body with **no opening fence**; a closing fence is optional, and trailing prose after it is
+ignored as before. A completion whose stripped text is exactly `NO_DIFF` is an **explicit
+no-diff with a named reason**, not a parse failure; prose that is not a diff is still a no-diff.
+The run id for this measurement is **`torch-8b-pascal-4bit-003`**; the `-002` prompt hash and
+extractor digest do not match this contract, so it cannot resume that run.
 
 ## The chunked-SDPA shim
 
@@ -158,10 +170,10 @@ $REPO/.venv/bin/whetstone run --night \
   --only Qwen/Qwen3-8B \
   --runs $REPO/runs \
   --checkpoints $REPO/checkpoints \
-  --workspace $REPO/runs/<run-id>-workspace \
+  --workspace $REPO/runs/torch-8b-pascal-4bit-003-workspace \
   --timeout 900 \
   --recorded-on <date> \
-  --run-id <run-id> \
+  --run-id torch-8b-pascal-4bit-003 \
   --run-seed <seed> \
   --heldout $REPO/tasks/heldout/source-b.json
 ```
@@ -175,7 +187,7 @@ exist or must be empty before its command.
 
 ```bash
 $REPO/.venv/bin/whetstone check-probe \
-  --run $REPO/runs/<run-id> \
+  --run $REPO/runs/torch-8b-pascal-4bit-003 \
   --heldout $REPO/tasks/heldout/source-b.json \
   --runtime torch \
   --device cuda \

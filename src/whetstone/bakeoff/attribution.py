@@ -79,7 +79,7 @@ class Cause(str, Enum):
     **not** ordered and must never be reduced against one another: they name distinct causes with
     distinct fixes, and the only thing anything downstream may do with them is count them.
 
-    The first four are `patch.py`'s own `NoDiff` reasons and exist one-per-construction-site (see
+    The first five are `patch.py`'s own `NoDiff` reasons and exist one-per-construction-site (see
     `NO_DIFF_MARKERS`). The rest are what a located diff met when it reached git.
     """
 
@@ -97,6 +97,11 @@ class Cause(str, Enum):
 
     #: No diff header anywhere: the output is prose. A prompt problem, not a budget one.
     NO_DIFF_HEADER = "NO_DIFF_HEADER"
+
+    #: The completion was exactly the contract's `NO_DIFF` sentinel: the base saw the prefilled
+    #: diff block and declined rather than ignoring it. Distinct from prose because the next
+    #: lever is the task or the base, not the response format.
+    EXPLICIT_NO_DIFF = "EXPLICIT_NO_DIFF"
 
     #: A diff was located and git would not parse it — a corrupt or truncated patch. Truncation
     #: is *inferred* from this shape rather than measured: `mlx_runtime.generate` returns text
@@ -122,8 +127,8 @@ class Cause(str, Enum):
 
 #: Bucket → a verbatim fragment of the sentence `patch.py` writes at that `NoDiff` site.
 #:
-#: A fragment rather than the whole sentence because two of the four reasons are f-strings
-#: (`patch.py:180,184`), so the full runtime text depends on a count nobody can predict. Each
+#: A fragment rather than the whole sentence because two of the five reasons are f-strings
+#: (`patch.py:201,205`), so the full runtime text depends on a count nobody can predict. Each
 #: marker is chosen to sit **inside one literal run**, never spanning a `{...}`, which is what
 #: lets the mapping test match it against the source and this module match it against the real
 #: string a run produced.
@@ -136,6 +141,7 @@ NO_DIFF_MARKERS: Mapping[Cause, str] = {
     Cause.HEADER_WITHOUT_HUNK: "a diff header was found but no hunk",
     Cause.FENCED_WITHOUT_DIFF: "fenced code block(s) but none of them contained a",
     Cause.NO_DIFF_HEADER: "line(s) the model produced; the output is prose",
+    Cause.EXPLICIT_NO_DIFF: "replied exactly NO_DIFF",
 }
 
 
@@ -259,6 +265,7 @@ _FOLD: Mapping[Cause, str] = {
     Cause.FENCED_WITHOUT_DIFF: "no_diff",
     Cause.HEADER_WITHOUT_HUNK: "no_diff",
     Cause.NO_DIFF_HEADER: "no_diff",
+    Cause.EXPLICIT_NO_DIFF: "no_diff",
     Cause.WOULD_NOT_PARSE: "not_applied",
     Cause.PARSED_BUT_DID_NOT_APPLY: "not_applied",
 }

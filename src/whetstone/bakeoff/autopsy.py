@@ -559,7 +559,9 @@ FINE_TO_COARSE: Mapping[FineCause, frozenset[Cause]] = {
     FineCause.HUNK_COUNT_MISMATCH: frozenset({Cause.WOULD_NOT_PARSE}),
     FineCause.HEADER_WITHOUT_HUNK: frozenset({Cause.HEADER_WITHOUT_HUNK}),
     FineCause.WELL_FORMED: frozenset({Cause.APPLIED, Cause.PARSED_BUT_DID_NOT_APPLY}),
-    FineCause.NO_DIFF: frozenset({Cause.NO_DIFF_HEADER, Cause.FENCED_WITHOUT_DIFF}),
+    FineCause.NO_DIFF: frozenset(
+        {Cause.NO_DIFF_HEADER, Cause.FENCED_WITHOUT_DIFF, Cause.EXPLICIT_NO_DIFF}
+    ),
     FineCause.UNRECOGNISED_SHAPE: frozenset(),
 }
 

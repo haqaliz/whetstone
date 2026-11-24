@@ -337,6 +337,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-11-23 | The main series moves to x202 at 4-bit NF4 via torch 2.14.1+cu126; the near-miss sample is 18 private + the public task, 304 draws (§ 10.28) | 1 — pins the inputs of a measurement | Yes |
 | 2026-11-23 | The x202 series runs the quantized base across the visible GPUs with device_map="balanced" and the committed chunked-SDPA shim; § 10.28's one-GPU and no-loader-change lines are superseded (§ 10.29) | 1 — pins the inputs of a measurement | Yes |
 | 2026-11-24 | The x202 quantized base is spread by an explicit layer range over every visible GPU; § 10.29's `balanced` line is superseded (§ 10.30) | 1 — pins the inputs of a measurement | Yes |
+| 2026-11-25 | The x202 generation contract is prefilled with the open `diff` fence and the `NO_DIFF` sentinel; host, sample and GO are unchanged (§ 10.31) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1579,3 +1580,59 @@ non-comparability. The 160 draws already recorded replay on resume; none is rege
 
 **What is not claimed.** No count has been measured under this probe. The § 3 baseline remains
 unspent, and a NO-GO returns the lever to a human, never to a loosened verifier.
+
+### 10.31 The x202 generation contract pre-fills the diff block and offers `NO_DIFF` — 2026-11-25
+
+**Type 1 (§ 8.1): pins an input of the measurement, committed before the probe it governs
+runs.** It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not
+edit § 10.27, § 10.28, § 10.29 or § 10.30**: this document is append-only. **The only changed
+input is the generation contract** — the text every base is shown and the code that reads its
+answer. The host, the deployment, the sample and the GO are unchanged.
+
+**What the previous measurement showed.** `torch-8b-pascal-4bit-002` completed the same 304-draw
+sample with zero strict `PASS`: **213 `NO_DIFF` (70.1%)**, 86 `NOT_APPLIED` (28.3%), 5
+`NOT_SOLVED` (1.6%). The MPS bf16 8B series showed the same mix — **416 `NO_DIFF` of 624 draws
+(67%)** — and both were already asked for "a single unified diff … inside one fenced block tagged
+`diff`". Most completions answered in prose regardless. The wall is the base answering in prose,
+not the host, the 4-bit precision or the extractor's grammar: 91 of the 304 Pascal completions
+were real diffs. The untried lever is therefore to **prefill the assistant turn**, where prose is
+not an option.
+
+**The contract.** The rendered prompt still carries the `diff` example that teaches the grammar.
+It now ends with the instruction `Continue the diff inside this block. If you cannot produce a
+diff, reply exactly NO_DIFF.` followed by a line containing exactly ` ```diff ` and **no closing
+fence**. The completion therefore starts *inside* the block. `extract_patch` accepts a body with
+**no opening fence** — leading `--- a/...`/`+++ b/...` hunk text, optionally followed by a closing
+fence, with trailing prose after the closing fence ignored as before. A completion whose stripped
+text is exactly `NO_DIFF` is an **explicit no-diff with a named reason**, not a parse failure.
+Nothing else is loosened: prose that is not a diff is still a no-diff, and a malformed diff is
+still a failure with its reason.
+
+**The hashes move.** The rendered prompt's SHA-256 (M8/M7b) and the extractor's source digest
+(`run.py:_extractor_version`) both change. A recorded `-002` hash does not match this contract,
+so the run cannot resume `-002`; this measurement is a fresh run under the new id
+**`torch-8b-pascal-4bit-003`**.
+
+**The host and setup are unchanged.** x202 (3× NVIDIA GTX 1080 8 GB, Pascal `sm_61`),
+`torch 2.14.1+cu126`, **4-bit NF4 with bf16 compute** through the declared `quantize.json`
+sidecar, the committed **256-query chunked-SDPA shim** (`_CHUNK = 256`, gated by
+`WHETSTONE_PASCAL_SDPA=1`), and the quantized base spread over every visible GPU by an
+**explicit layer range** (12/12/12): § 10.28, § 10.29 and § 10.30 stand unchanged.
+
+**The sample and the GO are unchanged.** The same 18 private near-miss tasks plus the public
+task, `K = 16`, **304 draws**, `--probe 18` on the 30-link near-miss root. `K`, `R`,
+`R_repair = 2`, the failure-class repair vocabulary, the verifier, the gate and the held-out
+document are untouched. **GO iff at least one of the 304 draws is strict-`PASS`.**
+
+**What is read.** The primary observation is the **`NO_DIFF` share against the 70% baseline**: if
+the prefill works, the prose wall should collapse before any solve appears. If `NO_DIFF` collapses
+and there is still no strict `PASS`, the next lever is a change of **base or approach, never a
+looser verifier**.
+
+**Comparability.** Every figure measured under this contract is **non-comparable** to
+`torch-8b-pascal-4bit-002`, to the MPS series and to any bf16 figure: a different generation
+contract sits between them, and the `-002` prompt hash and extractor digest do not replay here.
+
+**What is not claimed.** **No count has been measured** under this contract. The § 3 baseline
+remains unspent, nothing here claims the prefill selects a strict-`PASS`, and a NO-GO returns the
+lever to a human, never to a loosened verifier.
