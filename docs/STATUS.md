@@ -18,6 +18,8 @@ carries the current state and the rules that still bind.
 - **The sample.** § 10.27's 20 private + public minus the two macOS-only tasks `donor-b-c57246c7841a` and `donor-b-cc7d3f520f1c`: **18 private + 1 public = 19 tasks × `K = 16` = 304 draws**, `--probe 18`. The 30-link prep root loads the 18 and the 12 held-out; the held-out are excluded, never drawn.
 - **The sheet and guards.** `docs/planning/pascal-4bit/night-door/runbook.md` carries the env, setup (cu126 wheel, gcc/g++, sidecar, donor clones, mirrors), probe, `check-probe --device cuda --precision bfloat16 --probe 18`, and the full 52-task night; `tests/test_pascal_4bit_runbook_guards.py` and `tests/test_docs.py` pin it.
 
+**The first Pascal 4-bit probe is a NO-GO** (2026-11-25, `pascal-4bit`). `torch-8b-pascal-4bit-002` completed the 304-draw § 10.28 sample with **zero strict `PASS`**: 213 `NO_DIFF`, 86 `NOT_APPLIED`, 5 `NOT_SOLVED`. Every control was `INTACT` and `check-probe` returned `PROCEED`, so the zero is real for x202 at 4-bit NF4; it is non-comparable to MPS or bf16. The ledger is sealed (`bd2ff6c318e710593326810edfc80a9ce70ae9bbdfdf5f4ffb7fd39b723a409d`) and the finding is `docs/planning/pascal-4bit/finding.md`.
+
 **What is not claimed.** No probe or night was run; no count, yield, delta or model exists. The § 3 baseline remains unspent. The MPS series is not retired, and every figure is non-comparable to it and to a full-precision bf16 CUDA figure.
 
 ---

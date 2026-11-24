@@ -2259,3 +2259,29 @@ def test_the_pascal_4bit_layer_range_correction_pins_the_amendment() -> None:
             f"WHY THIS IS A FAILURE: § 10.30 no longer states {phrase!r}. The measured split, the "
             "correction and the unmeasured claim are what a reader checks the run against"
         )
+
+
+def test_the_pascal_4bit_probe_finding_records_the_zero() -> None:
+    """The NO-GO is only a result if the finding carries the measured split and its ledger."""
+    text = _read("docs/planning/pascal-4bit/finding.md")
+    flat = _flat(text)
+
+    for phrase in (
+        "torch-8b-pascal-4bit-002",
+        "304",
+        "Zero strict-`PASS`",
+        "NO-GO",
+        "213",
+        "86",
+        "5",
+        "`solved: 0`",
+        "`unverified: 0`",
+        "PROCEED",
+        "INTACT",
+        "bd2ff6c318e710593326810edfc80a9ce70ae9bbdfdf5f4ffb7fd39b723a409d",
+        "non-comparable",
+    ):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: the finding no longer states {phrase!r}. A zero without its "
+            "denominator, its ledger digest and the harness verdict is not evidence"
+        )

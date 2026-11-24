@@ -1075,3 +1075,7 @@ negative delta is publishable — `CLAUDE.md` #5 requires the honest number eith
 - **Any egress of the private corpus.** `CLAUDE.md` #3. Generation needs donor source files and up
   to the full oracle budget per task; running that anywhere but the user's machine contradicts the
   product's central promise.
+
+### Correction — 2026-11-25: the first Pascal 4-bit measurement is a NO-GO
+
+`torch-8b-pascal-4bit-002` (x202, 4-bit NF4, **304 draws** over 18 near-miss private tasks + the public task) completed with **zero strict-`PASS`** — 213 `NO_DIFF`, 86 `NOT_APPLIED`, 5 `NOT_SOLVED` — while every control was `INTACT` and `check-probe` returned `PROCEED`. The zero is a real measurement of this host and precision, not a harness failure, and it is **non-comparable** to the MPS series and to any bf16 figure. **M1 remains the only identified lever on the zero**, and a NO-GO returns it to a human. Full record: `docs/planning/pascal-4bit/finding.md`.
