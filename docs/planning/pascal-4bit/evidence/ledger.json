@@ -1,0 +1,1110 @@
+{
+  "backend": {
+    "device": "cuda",
+    "device_memory_bytes": 8499494912,
+    "library": "torch",
+    "name": "torch",
+    "precision": "bfloat16",
+    "version": "2.14.1+cu126"
+  },
+  "capacity": null,
+  "checkpoint": {
+    "absent": "this was a --probe 18 run: a declared sample of the private source, drawn to validate the chain. A probe that trained would produce a candidate from a self-chosen subset",
+    "digest": null
+  },
+  "claims": {
+    "backend": "fbc343dc7288d2ac2cf1040ded9cc63211aa1b6d48886d9ad4a77af86a5dbd24",
+    "capacity": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "checkpoint": "c4a8d963e3b7a4179e82ccac14db2f82e39ed0c7fe6020c1e77740ae144825d8",
+    "dataset": "3d2750c0330e63ce05ba5906ae23cc3be1c289cd85cfe28c521dc10594eebf0e",
+    "draws": "b17ef6d19c7a5b1ee83b907c595526dcb1eb06db8227d650d5dda0a9f4ce8cd9",
+    "draws_recorded": "ae2c5c47ebb51e9a9a8b21ca2bf1369fd43098959874f40626e21ba777a1e0be",
+    "environment_pins": "5ffb1895860ba27b54a83c5a62f3c13bb17531fac87e349f07bc2bab32aaa931",
+    "generation_contract": "5924d83d23de8a850b64df9a293156cb20839912b321f4aed9089f26bf654292",
+    "model": "7af8d4fd4fd295091e5c683bf01002c2b6451d345aad11422c416f2808834823",
+    "recorded_on": "860cc931f2746b53b7ef28ab1cbfbfb3340695f47990c74420cbd95368a5e60c",
+    "run_id": "d29ba968d23957ec4e407705a3888ebeda950591ffec0a5ef5a5f864983bf091",
+    "run_seed": "b6d913cceb852bccaba04033f1b09cd2efc48c5f19e09d47279e3dd5505af792",
+    "seeds": "8b23e715eaced10c9476e0a14e184d2ffa9e722b6e93271691666a6ce2bdd068",
+    "task_set": "6181c66f9707a3fe71ac6f68565241702fec38b31bcad97984c4432d8b1bde6a",
+    "tool_versions": "f47871dd5207525de3bd5d68df48ece1bc010ed2d2a5b781a3d0b535e06cac67"
+  },
+  "dataset": {
+    "coverage": 304,
+    "denominator": 304,
+    "digest": "e65535f2bcb39546bcffa62ce81285c83e83bca57a7b057e282691b984cc563b",
+    "examples": 0,
+    "unverified": 0,
+    "valid_split": "no valid split (strict-PASS set below floor)"
+  },
+  "digest": "bd2ff6c318e710593326810edfc80a9ce70ae9bbdfdf5f4ffb7fd39b723a409d",
+  "draws": 16,
+  "draws_recorded": [
+    {
+      "attempt": 1,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 2,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 3,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 4,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 5,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 6,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 7,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 8,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 9,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 10,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 11,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 12,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 13,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 14,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 15,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    },
+    {
+      "attempt": 16,
+      "counts": {
+        "private": {
+          "denominator": 18,
+          "solved": 0,
+          "unverified": 0
+        },
+        "public": {
+          "denominator": 1,
+          "solved": 0,
+          "unverified": 0
+        }
+      },
+      "harness": {
+        "private": "PASS",
+        "public": "PASS"
+      }
+    }
+  ],
+  "environment_pins": "per task, from its own manifest: exact `==` pins and a nominated interpreter, resolved once per distinct pin set (whetstone.bakeoff.scoring.Interpreters) and shared by the control arm and the rollout so both are graded under the same environment",
+  "generation_contract": {
+    "dev_subset": [],
+    "diagnosis_vocabulary_version": "4b5022c093b6cd7708dfff99840964c7617066f1f8e8669003a9c0d954ee91fd",
+    "extractor_version": "extract_patch@3e91bab8c123",
+    "max_tokens": 1024,
+    "prompt_sha256": "9b2498caa82a9b8a5cfbd2ecb237e6feee7fe3e5b467ebfc86760362ee898d40",
+    "repair_budget": 2,
+    "repair_template_sha256": "f66d00352c4bc3521fc53b7dc0cf119cafe48538d22e5c4286637e24287fc145",
+    "retrieval": "oracle",
+    "retry_budget": 2,
+    "retry_template_sha256": "0ce3496235180696d715740fc517c05ed9c30f5ceb7a6c625e854a106bac7a2b",
+    "sampler": "multinomial: temperature 0.8, top-p 0.95 (transformers.GenerationConfig do_sample=True), with torch.manual_seed(attempt_seed(run_seed, task_id, attempt)) applied immediately before each draw"
+  },
+  "model": {
+    "repo_id": "Qwen/Qwen3-8B",
+    "revision": "b968826d9c46dd6066d109eabc6255188de91218"
+  },
+  "recorded_on": "2026-11-23",
+  "run_id": "torch-8b-pascal-4bit-002",
+  "run_seed": 20261123,
+  "schema": "whetstone-run/3",
+  "seeds": [
+    {
+      "attempt": 1,
+      "seed": 5519709046757262315,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 1,
+      "seed": 16340041586083621298,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 1,
+      "seed": 13011235989118100294,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 1,
+      "seed": 1749841820562328551,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 1,
+      "seed": 4328577181801838060,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 1,
+      "seed": 3713731592463307835,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 1,
+      "seed": 16032001613915095045,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 1,
+      "seed": 5473421796883170053,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 1,
+      "seed": 17403240550200634102,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 2,
+      "seed": 5791055255413625638,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 2,
+      "seed": 9862851053544479816,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 2,
+      "seed": 16106112312231680773,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 2,
+      "seed": 8787632169904196037,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 2,
+      "seed": 8296391293478859623,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 2,
+      "seed": 8589682741758132351,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 2,
+      "seed": 13898578121885203584,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 2,
+      "seed": 12670530722151730447,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 2,
+      "seed": 16211522872396197690,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 3,
+      "seed": 356348118965257397,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 3,
+      "seed": 17172958380568621147,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 3,
+      "seed": 8048209066204290087,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 3,
+      "seed": 5460903390743217266,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 3,
+      "seed": 3271095431315621189,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 3,
+      "seed": 15158617612557099513,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 3,
+      "seed": 13970080941976536598,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 3,
+      "seed": 10133632177388945966,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 3,
+      "seed": 7072324584773598738,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 4,
+      "seed": 2599870822284714883,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 4,
+      "seed": 12017584188326600438,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 4,
+      "seed": 3099915906150033186,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 4,
+      "seed": 13117205544295703075,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 4,
+      "seed": 5606626764621667186,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 4,
+      "seed": 11205013914621359677,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 4,
+      "seed": 9745920299180563975,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 4,
+      "seed": 4129909965996355360,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 4,
+      "seed": 8935718605873093778,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 5,
+      "seed": 12175150466457631722,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 5,
+      "seed": 18181964500770663151,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 5,
+      "seed": 15218232140643130686,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 5,
+      "seed": 7587911345427437835,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 5,
+      "seed": 1072598878092414106,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 5,
+      "seed": 2708106856918090351,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 5,
+      "seed": 469810999051770276,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 5,
+      "seed": 8913536037705853277,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 5,
+      "seed": 13397894052894354958,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 6,
+      "seed": 17380938002171378225,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 6,
+      "seed": 795708151216632881,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 6,
+      "seed": 8781186988168657030,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 6,
+      "seed": 2771421367903391872,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 6,
+      "seed": 2449571593540526401,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 6,
+      "seed": 6570207351628008851,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 6,
+      "seed": 17699726183336383799,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 6,
+      "seed": 11726140690749557939,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 6,
+      "seed": 10678378359321574695,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 7,
+      "seed": 6742468947745209567,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 7,
+      "seed": 4670557312917941188,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 7,
+      "seed": 14102173421478894473,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 7,
+      "seed": 1289772439603939300,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 7,
+      "seed": 4186845510511865184,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 7,
+      "seed": 1149839197131610300,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 7,
+      "seed": 10311520997791162607,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 7,
+      "seed": 4799256986830658936,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 7,
+      "seed": 13992563971762203444,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 8,
+      "seed": 6931286150678269001,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 8,
+      "seed": 7252757311445872178,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 8,
+      "seed": 11772118382669482630,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 8,
+      "seed": 6655322988050750830,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 8,
+      "seed": 13239444382510527948,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 8,
+      "seed": 7932061320855563594,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 8,
+      "seed": 1669951254136443667,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 8,
+      "seed": 11728545541256599096,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 8,
+      "seed": 12153900816443532636,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 9,
+      "seed": 7323680333199810760,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 9,
+      "seed": 2313870234334739120,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 9,
+      "seed": 10638175770276013747,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 9,
+      "seed": 6355922494035889729,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 9,
+      "seed": 6626747546981811436,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 9,
+      "seed": 6480892954326262964,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 9,
+      "seed": 1772645146061900667,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 9,
+      "seed": 11999363455201657223,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 9,
+      "seed": 1424192158097204340,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 10,
+      "seed": 11538749647260373935,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 10,
+      "seed": 15991598637766242335,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 10,
+      "seed": 4431488781274126948,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 10,
+      "seed": 17753098101013605213,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 10,
+      "seed": 14634865969216923408,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 10,
+      "seed": 9819973879009264541,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 10,
+      "seed": 207648119595152326,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 10,
+      "seed": 15669566810860695049,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 10,
+      "seed": 3057753622894058936,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 11,
+      "seed": 6270494848777168281,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 11,
+      "seed": 1305781208760602752,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 11,
+      "seed": 15220722814825822494,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 11,
+      "seed": 17457798406068650120,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 11,
+      "seed": 11214239047238437323,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 11,
+      "seed": 4609531470151268164,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 11,
+      "seed": 8005622626142152779,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 11,
+      "seed": 6555918329823733869,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 11,
+      "seed": 11841826564475046422,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 12,
+      "seed": 16971705298046566155,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 12,
+      "seed": 8789468160988484267,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 12,
+      "seed": 1641804356135470161,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 12,
+      "seed": 14733632123451474767,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 12,
+      "seed": 8923572485439565574,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 12,
+      "seed": 10802755586505146302,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 12,
+      "seed": 15882520713419782691,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 12,
+      "seed": 4519379586848551646,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 12,
+      "seed": 11226177267415372753,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 13,
+      "seed": 12827572183719973532,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 13,
+      "seed": 11631953676951083992,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 13,
+      "seed": 17841096883012681018,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 13,
+      "seed": 15161538941378836191,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 13,
+      "seed": 1951623608733990200,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 13,
+      "seed": 8527290311592360336,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 13,
+      "seed": 11653309829622139114,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 13,
+      "seed": 14506305998577250451,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 13,
+      "seed": 13571801282620487058,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 14,
+      "seed": 11732858350536087287,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 14,
+      "seed": 611541495224117203,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 14,
+      "seed": 11999857184619895232,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 14,
+      "seed": 2816507793407320659,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 14,
+      "seed": 1873702462920410539,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 14,
+      "seed": 14601757682023518294,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 14,
+      "seed": 14910512875042814735,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 14,
+      "seed": 5470916982695779690,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 14,
+      "seed": 3694459049408218213,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 15,
+      "seed": 10223586858160352463,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 15,
+      "seed": 9911239113237101781,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 15,
+      "seed": 5825945396915946054,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 15,
+      "seed": 17478767750992036888,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 15,
+      "seed": 14698116356376657091,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 15,
+      "seed": 2133048107293615957,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 15,
+      "seed": 17072781282099659390,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 15,
+      "seed": 15381308557371233167,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 15,
+      "seed": 10138821303082698193,
+      "task_id": "pallets__flask-4045"
+    },
+    {
+      "attempt": 16,
+      "seed": 6791412730563713439,
+      "task_id": "donor-a-a93fe36d6e85"
+    },
+    {
+      "attempt": 16,
+      "seed": 7676674665032959785,
+      "task_id": "donor-a-c32d7c672465"
+    },
+    {
+      "attempt": 16,
+      "seed": 14982033322881977464,
+      "task_id": "donor-a-d601ff2d0ec0"
+    },
+    {
+      "attempt": 16,
+      "seed": 17490916836107933335,
+      "task_id": "donor-a-df207b27e82c"
+    },
+    {
+      "attempt": 16,
+      "seed": 4124506766918103186,
+      "task_id": "donor-a-f100a90e47f2"
+    },
+    {
+      "attempt": 16,
+      "seed": 6670943899769128911,
+      "task_id": "donor-b-0fe4582aeac1"
+    },
+    {
+      "attempt": 16,
+      "seed": 1666668024618447567,
+      "task_id": "donor-b-c3e132b7469b"
+    },
+    {
+      "attempt": 16,
+      "seed": 17038907821857228729,
+      "task_id": "donor-b-ce6425d3101a"
+    },
+    {
+      "attempt": 16,
+      "seed": 11286056701970822966,
+      "task_id": "pallets__flask-4045"
+    }
+  ],
+  "task_set": {
+    "dev_subset": [],
+    "heldout": {
+      "document_digest": "6b5fbd49e5d20fada7c53c53d5076cf846210ea6a4522046e1ba025142e9980d",
+      "membership_count": 12
+    },
+    "private": 18,
+    "probe": 18,
+    "public": 1,
+    "roots": 1,
+    "stratum": null
+  },
+  "tool_versions": {
+    "platform": "Linux 7.0.0-44-generic x86_64",
+    "python": "3.12.15",
+    "torch": "2.14.1+cu126",
+    "whetstonehq": "0.34.1"
+  }
+}
