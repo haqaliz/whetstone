@@ -10,6 +10,20 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The main series moves to x202 at 4-bit NF4, and the provenance records the quantization** (2026-11-23, `pascal-4bit`). The pinned `torch 2.14.1+cu130` has no `sm_61` kernels, so the main series cannot draw a token on its own host. Two measurements on x202 settled the move: `torch 2.14.1+cu126` runs fp16/bf16 on the GTX 1080, and the pinned 8B base loads 4-bit NF4 with bf16 compute through the existing `quantize.json` sidecar at 6.75 new tokens/s and 6.07 GB of 7.92 GiB.
+
+**What shipped.**
+- **§ 10.28.** `PREREGISTRATION.md` § 10.28 (Type 1) moves the main series to x202 (3× GTX 1080 8 GB, one GPU, `sm_61`), `torch 2.14.1+cu126`, base `Qwen/Qwen3-8B` at `b968826d9c46dd6066d109eabc6255188de91218` unchanged, **4-bit NF4 with bf16 compute** via the declared sidecar. The sidecar is a recorded input; no loader change was needed.
+- **The provenance key.** `TorchGenerator.provenance()` records `"quantization"`: `""` without a sidecar, `"nf4/bf16/double"` with it. `--precision bfloat16` is the compute dtype; the weights are 4-bit, and the record now says so.
+- **The sample.** § 10.27's 20 private + public minus the two macOS-only tasks `donor-b-c57246c7841a` and `donor-b-cc7d3f520f1c`: **18 private + 1 public = 19 tasks × `K = 16` = 304 draws**, `--probe 18`. The 30-link prep root loads the 18 and the 12 held-out; the held-out are excluded, never drawn.
+- **The sheet and guards.** `docs/planning/pascal-4bit/night-door/runbook.md` carries the env, setup (cu126 wheel, gcc/g++, sidecar, donor clones, mirrors), probe, `check-probe --device cuda --precision bfloat16 --probe 18`, and the full 52-task night; `tests/test_pascal_4bit_runbook_guards.py` and `tests/test_docs.py` pin it.
+
+**The first Pascal 4-bit probe is a NO-GO** (2026-11-25, `pascal-4bit`). `torch-8b-pascal-4bit-002` completed the 304-draw § 10.28 sample with **zero strict `PASS`**: 213 `NO_DIFF`, 86 `NOT_APPLIED`, 5 `NOT_SOLVED`. Every control was `INTACT` and `check-probe` returned `PROCEED`, so the zero is real for x202 at 4-bit NF4; it is non-comparable to MPS or bf16. The ledger is sealed (`bd2ff6c318e710593326810edfc80a9ce70ae9bbdfdf5f4ffb7fd39b723a409d`) and the finding is `docs/planning/pascal-4bit/finding.md`.
+
+**What is not claimed.** No probe or night was run; no count, yield, delta or model exists. The § 3 baseline remains unspent. The MPS series is not retired, and every figure is non-comparable to it and to a full-precision bf16 CUDA figure.
+
+---
+
 **The near-miss probe root loads the held-out tasks, so the § 10.27 document applies** (2026-11-05, `near-miss-root`). The first § 10.27 probe refused before generating: its root carried only the 20 sample manifests, so the committed held-out document's 12 members matched no loaded task, and the door correctly refused a split that excludes nothing.
 
 **What shipped.**

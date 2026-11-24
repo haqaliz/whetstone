@@ -1648,6 +1648,158 @@ def test_the_near_miss_sample_amendment_names_the_sample() -> None:
     ), f"{PREREGISTRATION}'s amendment log no longer records the § 10.27 row."
 
 
+def test_the_pascal_4bit_amendment_pins_the_series() -> None:
+    """§ 10.28 moves the main series to x202 at 4-bit NF4, with § 10.27's sample less two tasks."""
+    base = "Qwen/Qwen3-8B"
+    revision = "b968826d9c46dd6066d109eabc6255188de91218"
+    excluded = {
+        "donor-b-c57246c7841a": (
+            "@darwin_only",
+            "tests/test_replay_batch_server_rooting.py",
+        ),
+        "donor-b-cc7d3f520f1c": (
+            'pytestmark = pytest.mark.skipif(sys.platform != "darwin"',
+            "tests/test_verify_cli.py",
+        ),
+    }
+
+    text = _read(PREREGISTRATION)
+    assert "### 10.28" in text, f"{PREREGISTRATION} no longer carries a § 10.28 amendment."
+    section = text.split("### 10.28", 1)[1].split("\n### ", 1)[0]
+    flat = _flat(section)
+
+    assert "main series moves to" in flat, (
+        f"{PREREGISTRATION} § 10.28 no longer carries its heading."
+    )
+    assert "pins the inputs of a measurement" in flat, (
+        f"{PREREGISTRATION} § 10.28 no longer states the Type 1 pin."
+    )
+    assert "introduces no success threshold" in flat and (
+        "rewords nothing in § 1, § 4 or § 6" in flat
+    ), f"{PREREGISTRATION} § 10.28 no longer carries the no-threshold/no-rewording line."
+    assert "does not edit § 10.27" in flat, (
+        f"{PREREGISTRATION} § 10.28 no longer states that the § 10.27 pin is untouched."
+    )
+
+    for phrase in (
+        base,
+        revision,
+        "torch 2.14.1+cu126",
+        "4-bit",
+        "NF4",
+        "quantize.json",
+        "x202",
+        "GTX 1080",
+        "304",
+        "18 private",
+        "19 tasks",
+        "§ 10.27",
+    ):
+        assert phrase in flat, (
+            f"{PREREGISTRATION} § 10.28 no longer states {phrase!r}. The runtime, the precision, "
+            "the sidecar, the host and the sample are what a reader re-derives the run from."
+        )
+
+    for task_id, reasons in excluded.items():
+        assert task_id in flat, (
+            f"{PREREGISTRATION} § 10.28 no longer names the excluded task {task_id!r}."
+        )
+        for reason in reasons:
+            assert reason in flat, (
+                f"{PREREGISTRATION} § 10.28 no longer states {reason!r} for {task_id}. The "
+                "sample is § 10.27's minus these two, and the reason travels with the id."
+            )
+
+    assert "not retired" in flat and "non-comparable" in flat, (
+        f"{PREREGISTRATION} § 10.28 no longer states that the MPS series is not retired and that "
+        "its figures are non-comparable."
+    )
+    assert "No count has been measured" in flat and "§ 3 baseline remains unspent" in flat, (
+        f"{PREREGISTRATION} § 10.28 no longer states that no count exists."
+    )
+    assert "removed after the measurement" in flat, (
+        f"{PREREGISTRATION} § 10.28 no longer states the corpus-removal rule."
+    )
+
+    row_27 = (
+        "2026-11-05 | The 8B night's near-miss population is named as the § 10.25 follow-up probe: "
+        "20 private tasks + the public task, 336 draws (§ 10.27) | 1 — pins the inputs of a "
+        "measurement | Yes"
+    )
+    row_28 = (
+        "2026-11-23 | The main series moves to x202 at 4-bit NF4 via torch 2.14.1+cu126; the "
+        "near-miss sample is 18 private + the public task, 304 draws (§ 10.28) | 1 — pins the "
+        "inputs of a measurement | Yes"
+    )
+    whole = _flat(text)
+    assert row_28 in whole, f"{PREREGISTRATION}'s amendment log no longer records the § 10.28 row."
+    assert whole.index(row_27) < whole.index(row_28), (
+        f"{PREREGISTRATION}'s § 10.28 log row is not after the § 10.27 row."
+    )
+
+
+def test_the_pascal_4bit_multi_gpu_correction_pins_the_amendment() -> None:
+    """§ 10.29 supersedes § 10.28's single-GPU and no-loader-change lines with the measured load."""
+    text = _read(PREREGISTRATION)
+    assert "### 10.29" in text, f"{PREREGISTRATION} no longer carries a § 10.29 amendment."
+    section = text.split("### 10.29", 1)[1].split("\n### ", 1)[0]
+    flat = _flat(section)
+
+    assert "visible GPUs" in flat, (
+        f"{PREREGISTRATION} § 10.29 no longer carries its heading."
+    )
+    assert "pins the inputs of a measurement" in flat, (
+        f"{PREREGISTRATION} § 10.29 no longer states the Type 1 pin."
+    )
+    assert "does not edit § 10.28" in flat, (
+        f"{PREREGISTRATION} § 10.29 no longer states that the § 10.28 section is untouched."
+    )
+
+    for phrase in (
+        "supersedes",
+        "one GPU (GPU 0 only)",
+        "with no loader change",
+        'device_map="balanced"',
+        "sitecustomize.py",
+        "WHETSTONE_PASCAL_SDPA=1",
+        "_CHUNK = 256",
+        "304",
+        "7.38 GiB",
+        "1.84 GB",
+        "4.24 GB",
+        "95.7",
+        "3.63 GB",
+        "max diff 0.0",
+        "Invalid backend",
+        "math SDPA",
+        "no arithmetic",
+        "non-comparable",
+        "No count has been measured",
+    ):
+        assert phrase in flat, (
+            f"{PREREGISTRATION} § 10.29 no longer states {phrase!r}. The OOM, the two deployment "
+            "measures, the measurements and the superseded lines are what a reader re-derives "
+            "the deployment from."
+        )
+
+    row_28 = (
+        "2026-11-23 | The main series moves to x202 at 4-bit NF4 via torch 2.14.1+cu126; the "
+        "near-miss sample is 18 private + the public task, 304 draws (§ 10.28) | 1 — pins the "
+        "inputs of a measurement | Yes"
+    )
+    row_29 = (
+        "2026-11-23 | The x202 series runs the quantized base across the visible GPUs with "
+        'device_map="balanced" and the committed chunked-SDPA shim; § 10.28\'s one-GPU and '
+        "no-loader-change lines are superseded (§ 10.29) | 1 — pins the inputs of a measurement | "
+        "Yes"
+    )
+    whole = _flat(text)
+    assert row_29 in whole, f"{PREREGISTRATION}'s amendment log no longer records the § 10.29 row."
+    assert whole.index(row_28) < whole.index(row_29), (
+        f"{PREREGISTRATION}'s § 10.29 log row is not after the § 10.28 row."
+    )
+
+
 def test_the_roadmap_records_the_re_derived_split_by_dated_correction() -> None:
     """AC8. § 12 referenced the § 10.7 split as live; the correction records the re-derivation.
 
@@ -2078,4 +2230,58 @@ def test_every_roadmap_citation_in_the_preregistration_resolves() -> None:
             "WHY THIS IS A FAILURE: docs/ROADMAP.md was edited and the citation was not "
             "recomputed, so the pre-registration now points a reader at the wrong section. "
             "The document's whole claim is that a stranger can check it against its sources."
+        )
+
+
+def test_the_pascal_4bit_layer_range_correction_pins_the_amendment() -> None:
+    """§ 10.30 replaces § 10.29's `balanced` placement with the measured explicit layer range."""
+    text = _read(PREREGISTRATION)
+    assert "### 10.30" in text, f"{PREREGISTRATION} no longer carries a § 10.30 amendment."
+    section = text.split("### 10.30", 1)[1].split("\n### ", 1)[0]
+    flat = _flat(section)
+
+    assert "explicit layer range" in flat, (
+        f"{PREREGISTRATION} § 10.30 no longer names the placement it pins."
+    )
+    for phrase in (
+        "pins an input of the measurement",
+        "does not edit § 10.27",
+        "§ 10.29",
+        "3.4 GB",
+        "6.4 GB",
+        "12/12/12",
+        "balanced",
+        "304",
+        "No count has been measured",
+        "§ 3 baseline remains unspent",
+    ):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: § 10.30 no longer states {phrase!r}. The measured split, the "
+            "correction and the unmeasured claim are what a reader checks the run against"
+        )
+
+
+def test_the_pascal_4bit_probe_finding_records_the_zero() -> None:
+    """The NO-GO is only a result if the finding carries the measured split and its ledger."""
+    text = _read("docs/planning/pascal-4bit/finding.md")
+    flat = _flat(text)
+
+    for phrase in (
+        "torch-8b-pascal-4bit-002",
+        "304",
+        "Zero strict-`PASS`",
+        "NO-GO",
+        "213",
+        "86",
+        "5",
+        "`solved: 0`",
+        "`unverified: 0`",
+        "PROCEED",
+        "INTACT",
+        "bd2ff6c318e710593326810edfc80a9ce70ae9bbdfdf5f4ffb7fd39b723a409d",
+        "non-comparable",
+    ):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: the finding no longer states {phrase!r}. A zero without its "
+            "denominator, its ledger digest and the harness verdict is not evidence"
         )

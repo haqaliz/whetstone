@@ -27,6 +27,7 @@ acquire an inference stack by importing something near it.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -385,6 +386,7 @@ class TorchGenerator:
                 "transformers": installed_version("transformers"),
                 "model_path": str(self._model_path),
                 "revision": self._revision,
+                "quantization": declared_quantization(self._model_path),
                 "adapter_path": "" if self._adapter_path is None else str(self._adapter_path),
                 "sampler": (
                     TORCH_SAMPLER.format(temperature=TEMPERATURE, top_p=TOP_P)
@@ -403,6 +405,30 @@ class TorchGenerator:
 #: `config.json` edit, so the fetched snapshot's own files stay byte-intact and the declaration
 #: is one more input the ledger names.
 QUANTIZE_SIDECAR = "quantize.json"
+
+
+def declared_quantization(model_path: Path) -> str:
+    """The sidecar's precision as one stable string, or `""` when the base declares none.
+
+    `--precision bfloat16` names the compute dtype; the weights may still be 4-bit NF4. The
+    provenance states both, so a 4-bit run cannot be read as a full-precision bf16 one. Built
+    from the declared fields rather than the file's bytes, so the value does not move with the
+    sidecar's key order.
+    """
+    sidecar = Path(model_path) / QUANTIZE_SIDECAR
+    if not sidecar.is_file():
+        return ""
+    import json
+
+    declared = json.loads(sidecar.read_text(encoding="utf-8"))
+    dtype = str(declared.get("bnb_4bit_compute_dtype", "float16"))
+    return "/".join(
+        (
+            str(declared.get("bnb_4bit_quant_type", "nf4")),
+            {"bfloat16": "bf16", "float16": "fp16", "float32": "fp32"}.get(dtype, dtype),
+            "double" if bool(declared.get("bnb_4bit_use_double_quant", True)) else "single",
+        )
+    )
 
 
 def quantization_config(model_path: Path) -> Any | None:
@@ -431,6 +457,35 @@ def quantization_config(model_path: Path) -> Any | None:
         bnb_4bit_compute_dtype=getattr(torch, declared.get("bnb_4bit_compute_dtype", "float16")),
         bnb_4bit_use_double_quant=bool(declared.get("bnb_4bit_use_double_quant", True)),
     )
+
+
+def quantized_device_map(model_path: Path, torch: Any) -> dict[str, int] | str:
+    """Where a 4-bit base's modules load, by layer range over the visible GPUs.
+
+    `device_map="balanced"` is computed against the *quantized* module sizes, and on a host with
+    three 8 GB cards it packed the 6 GB model onto two of them; the third sat idle while the
+    fullest card OOM'd on a long prompt's prefill. An explicit range is a decision rather than a
+    library's guess, and it gives every GPU the same number of layers. A single visible GPU keeps
+    the library's `"balanced"`, which is the same answer there.
+    """
+    count_of = getattr(torch.cuda, "device_count", None)
+    count = int(count_of()) if count_of is not None else 1
+    if count < 2:
+        return "balanced"
+    declared = json.loads((Path(model_path) / MODEL_CONFIG).read_text(encoding="utf-8"))
+    layers = int(declared.get("num_hidden_layers", 0))
+    if layers < 1:
+        return "balanced"
+    per = (layers + count - 1) // count
+    mapping: dict[str, int] = {
+        "model.embed_tokens": 0,
+        "model.norm": count - 1,
+        "lm_head": count - 1,
+    }
+    for index in range(layers):
+        mapping[f"model.layers.{index}"] = min(index // per, count - 1)
+    return mapping
+
 
 def _load_torch(
     model_path: Path, revision: str, adapter_path: Path | None
@@ -461,12 +516,24 @@ def _load_torch(
     # become errors. CI's second mypy run — the one with the extra — is what surfaced that, and
     # the annotation is what stops the file typechecking on one machine only.
     quantize = quantization_config(model_path)
+    # A 4-bit base is loaded across every visible GPU: bitsandbytes cannot be moved with `.to()`
+    # after a single-device load, and a 4-bit 8B leaves too little room on an 8 GB card for a
+    # long prompt's prefill. The explicit range in `quantized_device_map` beats `"auto"` and
+    # `"balanced"` here, both of which were measured packing the model onto two of three cards.
+    # A full-precision base keeps the old path, and the input device is `model.device` either way.
     model: Any = AutoModelForCausalLM.from_pretrained(
         str(model_path),
         revision=revision,
         dtype=dtype,
         low_cpu_mem_usage=True,
-        **({} if quantize is None else {"quantization_config": quantize}),
+        **(
+            {}
+            if quantize is None
+            else {
+                "quantization_config": quantize,
+                "device_map": quantized_device_map(model_path, torch),
+            }
+        ),
     )
 
     if adapter_path is not None:
@@ -474,10 +541,13 @@ def _load_torch(
 
         model = PeftModel.from_pretrained(model, str(adapter_path))
 
-    # Reassigned rather than called for the side effect: `nn.Module.to` returns `self`, but
-    # `PeftModel`'s wrapper does not promise to, and a model left on the wrong device generates
-    # correctly and slowly rather than raising.
-    model = model.to(device)
+    if quantize is None:
+        # Reassigned rather than called for the side effect: `nn.Module.to` returns `self`, but
+        # `PeftModel`'s wrapper does not promise to, and a model left on the wrong device
+        # generates correctly and slowly rather than raising.
+        model = model.to(device)
+    else:
+        device = str(model.device)
     model.eval()
     return model, tokenizer, device
 

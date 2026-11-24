@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="340" viewBox="0 0 760 340">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="20" y="24" font-family="Helvetica, Arial, sans-serif" font-size="16" font-weight="bold">304 draws, outcomes (Qwen3-8B, 4-bit NF4, x202)</text>
+<text x="140" y="81.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14">NO_DIFF</text>
+<rect x="150" y="50" width="570.0" height="52" fill="#c9d6e3"/>
+<text x="728.0" y="81.0" font-family="Helvetica, Arial, sans-serif" font-size="14">213</text>
+<text x="140" y="147.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14">NOT_APPLIED</text>
+<rect x="150" y="116" width="230.14084507042253" height="52" fill="#e8b26a"/>
+<text x="388.14084507042253" y="147.0" font-family="Helvetica, Arial, sans-serif" font-size="14">86</text>
+<text x="140" y="213.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14">NOT_SOLVED</text>
+<rect x="150" y="182" width="13.380281690140844" height="52" fill="#d9776a"/>
+<text x="171.38028169014083" y="213.0" font-family="Helvetica, Arial, sans-serif" font-size="14">5</text>
+<text x="140" y="279.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14">SOLVED</text>
+<rect x="150" y="248" width="1" height="52" fill="#5a9e6f"/>
+<text x="159" y="279.0" font-family="Helvetica, Arial, sans-serif" font-size="14">0</text>
+<text x="20" y="328" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#555">0 strict PASS; all 304 verified by the sealed ledger (digest bd2ff6c3…).</text>
+</svg>

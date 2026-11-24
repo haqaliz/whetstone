@@ -334,6 +334,9 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-10-28 | The repair prompt carries the first unpassed declared test and its junit outcome; the 16-task probe measures it (§ 10.25) | 1 — pins the inputs of a measurement | Yes |
 | 2026-10-31 | The § 10.25 probe's 16-task sample is named by id, with four known `NO_ORACLE` tasks disclosed; the measurement's inputs are unchanged (§ 10.26) | 1 — pins the inputs of a measurement | Yes |
 | 2026-11-05 | The 8B night's near-miss population is named as the § 10.25 follow-up probe: 20 private tasks + the public task, 336 draws (§ 10.27) | 1 — pins the inputs of a measurement | Yes |
+| 2026-11-23 | The main series moves to x202 at 4-bit NF4 via torch 2.14.1+cu126; the near-miss sample is 18 private + the public task, 304 draws (§ 10.28) | 1 — pins the inputs of a measurement | Yes |
+| 2026-11-23 | The x202 series runs the quantized base across the visible GPUs with device_map="balanced" and the committed chunked-SDPA shim; § 10.28's one-GPU and no-loader-change lines are superseded (§ 10.29) | 1 — pins the inputs of a measurement | Yes |
+| 2026-11-24 | The x202 quantized base is spread by an explicit layer range over every visible GPU; § 10.29's `balanced` line is superseded (§ 10.30) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1459,3 +1462,120 @@ different sample (or a different repair vocabulary, or different weights) sits b
 fewer near-misses at the new seed; a zero is a legitimate NO-GO. The § 3 baseline remains unspent,
 nothing here claims the probe selects a strict-`PASS`, and a NO-GO returns the lever to a human,
 never to a loosened verifier.
+
+### 10.28 The main series moves to x202 at 4-bit NF4 — 2026-11-23
+
+**Type 1 (§ 8.1): pins the inputs of a measurement, committed before the probe it governs runs.**
+It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not edit
+§ 10.27**: this document is append-only. What changes is the host, the CUDA build, the weight
+precision and the sample; the measurement's question is unchanged.
+
+**The move.** The main series moves to the founder's own host `x202`: **3× NVIDIA GTX 1080 8 GB**,
+one GPU (**GPU 0** only), Pascal `sm_61`. Torch is **`torch 2.14.1+cu126`** — the same version as
+pinned, with the CUDA build changed to the Pascal-capable one; the pinned `cu130` build has no
+`sm_61` kernels. The pinned base and revision are **unchanged**: `Qwen/Qwen3-8B` at
+`b968826d9c46dd6066d109eabc6255188de91218`.
+
+**The precision.** The base loads **4-bit NF4 with bf16 compute via the declared `quantize.json`
+sidecar**:
+`{"bnb_4bit_quant_type":"nf4","bnb_4bit_compute_dtype":"bfloat16","bnb_4bit_use_double_quant":true}`.
+The sidecar is a **recorded input**: `whetstone.bakeoff.weights.load_weights` accepts it as an
+extra file beside the 15 recorded ones, `TorchGenerator` loads through the existing sidecar path
+with **no loader change**, and its provenance records the declared quantization so a 4-bit run
+cannot be read as full-precision bf16. The measured pre-flight on x202 is **6.75 new tokens/s**
+(64 tokens in 9.5 s) at **6.07 GB VRAM** of 7.92 GiB, under `TORCHDYNAMO_DISABLE=1` and
+`TORCH_COMPILE_DISABLE=1`. `--precision bfloat16` is the **compute dtype**; the weights are 4-bit
+NF4, and a figure that restates this run as a full-precision bf16 figure is not this run.
+
+**The sample.** § 10.27's 20 private tasks plus the public task, **minus the two macOS-only
+tasks**: `donor-b-c57246c7841a` (3 of its 5 declared tests are `@darwin_only` in
+`tests/test_replay_batch_server_rooting.py`) and `donor-b-cc7d3f520f1c`
+(`pytestmark = pytest.mark.skipif(sys.platform != "darwin", ...)` in `tests/test_verify_cli.py`).
+The measured sample is therefore **18 private + the public task = 19 tasks × `K = 16` = 304
+draws**, drawn with `--probe 18` on the near-miss root. The 12 held-out are loaded and excluded;
+none is drawn. The sample remains outcome-selected from `torch-8b-night-001`, so a GO is evidence
+on these 18 private tasks and the public one only, never a corpus claim.
+
+**What does not change.** `K = 16` (§ 10.19), `R = 3` (§ 10.8), `R_repair = 2` (§ 10.23), the
+failure-class repair vocabulary (§ 10.25), the score-both-ways verifier, the gate rule and its
+exits, and the held-out document and its digest. The GO rule is unchanged: **GO iff at least one
+of the 304 draws is strict-`PASS`**.
+
+**Comparability.** Every figure measured here is **non-comparable** to the MPS series and to any
+bf16 CUDA figure: different device, different CUDA build, 4-bit weights, and a different sample
+sit between them. The MPS series is **not retired** and **not extended** by this amendment; no
+figure from one may be restated as the other's.
+
+**The corpus.** The private corpus runs on the founder's own `x202`, and every file added there is
+removed after the measurement. The near-miss root and the fetched weights are operator inputs; the
+run's records stay gitignored under `runs/`.
+
+**No report home.** The gate record stays gitignored under `runs/`; the finding lives at
+`docs/planning/pascal-4bit/finding.md`; no `reports/` directory is created.
+
+**What is not claimed.** No count has been measured under this probe. The § 3 baseline remains
+unspent, nothing here claims the probe selects a strict-`PASS`, and a NO-GO returns the lever to a
+human, never to a loosened verifier.
+
+### 10.29 The x202 series runs the quantized base across the visible GPUs, with chunked SDPA — 2026-11-23
+
+**Type 1 (§ 8.1): pins the inputs of a measurement, committed before the probe it governs runs.**
+It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not edit
+§ 10.28**: this document is append-only. What changes is the deployment of the same series, not
+its base, sample or question.
+
+**The failure the deployment answers.** Torch on Pascal (`sm_61`) ships only the **math SDPA**
+kernel; memory-efficient and flash report `Invalid backend`. A 10,001-token prefill therefore
+materialised the attention matrix and tried to allocate **7.38 GiB** on a 7.92 GiB card, and
+OOM'd. A single 8 GB card cannot hold that prompt in one piece.
+
+**The two deployment measures.**
+
+1. **The quantized loader.** `_load_torch` loads a base with a `quantize.json` using
+   **`device_map="balanced"`** and skips the `.to(device)` move, recording
+   `device = str(model.device)`; a full-precision base keeps the old single-device `.to()` path.
+   `device_map="auto"` was tried first and packed badly (OOM); **`balanced` is the recorded
+   choice**. Measured on x202: the quantized model split across **two of the three cards — 1.84 GB
+   and 4.24 GB, with GPU 0 idle** — and the real `TorchGenerator` completed a **10,001-token
+   prompt, 16 new tokens in 95.7 s**.
+2. **The committed chunked-SDPA shim.** `docs/planning/pascal-4bit/night-door/sitecustomize.py`
+   chunks the query axis at **`_CHUNK = 256`**, gated by **`WHETSTONE_PASCAL_SDPA=1`**, and is put
+   on `PYTHONPATH` so the interpreter imports it at startup. The shim changes **no arithmetic**:
+   chunking the query axis is exact. A causal 700-token comparison gave **max diff 0.0**, and a
+   synthetic 10k GQA prefill peaked at **3.63 GB**.
+
+The sidecar remains the declaration of the precision: **4-bit NF4 with bf16 compute**. The
+committed shim is an operator input like the sidecar; it is inert unless the environment variable
+is `1`.
+
+**What this supersedes, and only this.** This amendment **supersedes § 10.28's** "one GPU (GPU 0
+only)" and "with no loader change" — and nothing else. The base and revision
+(`Qwen/Qwen3-8B` at `b968826d9c46dd6066d109eabc6255188de91218`), 4-bit NF4 with bf16 compute,
+the **304 draws** (18 private + the public task, `--probe 18`), the GO rule (at least one
+strict-`PASS`), the **non-comparable** status of every figure, and the held-out document and its
+digest all stand unchanged.
+
+**What is not claimed.** No count has been measured under this deployment. The § 3 baseline
+remains unspent, nothing here claims the probe selects a strict-`PASS`, and a NO-GO returns the
+lever to a human, never to a loosened verifier.
+
+### 10.30 The x202 quantized base is spread by an explicit layer range — 2026-11-24
+
+**Type 1 (§ 8.1): pins an input of the measurement, committed before the probe it governs
+resumes.** It appends; it does not edit § 10.27, § 10.28 or § 10.29.
+
+**What changed.** § 10.29 recorded `device_map="balanced"`. Run
+`torch-8b-pascal-4bit-002` measured what that does on this host: `balanced` put **3.4 GB** on one
+card and **6.4 GB** on another while the third sat idle, and at 16:36 EST it OOM'd on a task's
+prefill — 7.77 GB in use, 126 MiB requested of 7.92 GiB. The loader now builds an **explicit
+layer range**: `num_hidden_layers` split evenly over `torch.cuda.device_count()`, with
+`model.embed_tokens` on card 0 and `model.norm`/`lm_head` on the last card; a host with one
+visible GPU keeps `"balanced"`. With 36 layers and three cards that is **12/12/12**.
+
+**What does not change.** Everything in § 10.28 and § 10.29 except that sentence: the base and
+revision, 4-bit NF4 with bf16 compute and its sidecar, the 256-query chunked-SDPA shim, the
+18 private + public sample of **304 draws**, `--probe 18`, the GO rule, the held-out document and
+non-comparability. The 160 draws already recorded replay on resume; none is regenerated.
+
+**What is not claimed.** No count has been measured under this probe. The § 3 baseline remains
+unspent, and a NO-GO returns the lever to a human, never to a loosened verifier.
