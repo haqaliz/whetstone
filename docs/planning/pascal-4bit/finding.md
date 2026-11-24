@@ -76,9 +76,10 @@ trains nothing.
 
 ## Evidence
 
-- **Ledger:** `runs/torch-8b-pascal-4bit-002/ledger.json`, digest
-  `bd2ff6c318e710593326810edfc80a9ce70ae9bbdfdf5f4ffb7fd39b723a409d`, sealed; archived at
-  `runs/torch-8b-pascal-4bit-002-ledger.json`.
+- **Ledger:** `docs/planning/pascal-4bit/evidence/ledger.json` (committed; 28 KB, SHA-256
+  `63b1ac3361eb19f8812cdb8eea7d0afa5c0290185c5ea819d35fe3924d4fc30c`), content digest
+  `bd2ff6c318e710593326810edfc80a9ce70ae9bbdfdf5f4ffb7fd39b723a409d`, sealed. It carries no
+  code, prompt or private path — only ids, counts, digests and the backend.
 - **Draws:** 16 attempt journals + transcripts, 304 rollout records, archived under
   `runs/torch-8b-pascal-4bit-002/`.
 - **`check-probe`:** `PROCEED` (exit 0); `probe 18`, `runtime torch`, `device cuda`,
