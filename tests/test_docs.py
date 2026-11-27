@@ -2356,3 +2356,27 @@ def test_the_pascal_4bit_probe_finding_records_the_zero() -> None:
             f"WHY THIS IS A FAILURE: the finding no longer states {phrase!r}. A zero without its "
             "denominator, its ledger digest and the harness verdict is not evidence"
         )
+
+
+def test_the_diff_prefill_finding_records_the_contract_result() -> None:
+    """The § 10.31 result is a finding only with both contracts' shares and the sealed ledger."""
+    text = _read("docs/planning/pascal-4bit/finding.md")
+    flat = _flat(text)
+    for phrase in (
+        "torch-8b-pascal-4bit-003",
+        "open `diff` fence",
+        "70.1",
+        "9.9",
+        "86.5",
+        "263",
+        "0 strict `PASS`",
+        "PROCEED",
+        "45f46f7781a5f5e3a39b09669bc90c41ceeba95bbbcaf94ace5e9b334633e715",
+        "4020aab178b7924916863a53773967d17cc87812fda9b4a56833832716902d03",
+        "four forms",
+        "base/approach change",
+    ):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: the finding no longer states {phrase!r}. The contract change "
+            "is only evidence while both shares and the ledger digest sit beside it"
+        )

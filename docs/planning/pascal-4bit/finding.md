@@ -87,3 +87,42 @@ trains nothing.
 - **Controls:** 16/16 attempts `private PASS`, `public PASS`; no non-`INTACT` probe in 304.
 - The x202 files added for the measurement are removed after this finding; the ledger and the
   draws above are the archived evidence.
+
+---
+
+## The § 10.31 diff-prefill probe — 2026-11-27
+
+**Run:** `torch-8b-pascal-4bit-003` · `recorded-on` 2026-11-25 · seed `20261125` · the same base,
+host, 4-bit precision, shim and 304-draw sample as the probe above. **The only changed input is the
+generation contract** (§ 10.31): the rendered prompt ends with an **open `diff` fence** and a
+`NO_DIFF` sentinel, so prose is not an option.
+
+**Result: 304/304 draws, 0 strict `PASS`, 1 `UNVERIFIED`, `check-probe` `PROCEED`.** The contract
+did exactly what it was meant to do — and it did not produce a passing patch.
+
+| outcome | `-002` no prefill | `-003` prefill |
+|---|---:|---:|
+| `NO_DIFF` | 213 (70.1%) | **30 (9.9%)** |
+| `NOT_APPLIED` | 86 (28.3%) | **263 (86.5%)** |
+| `NOT_SOLVED` | 5 (1.6%) | 10 (3.3%) |
+| `UNVERIFIED` | 0 | 1 (0.3%) |
+| **`SOLVED`** | **0** | **0** |
+
+![contract comparison](finding-contract-comparison.svg)
+
+**What it says.** The prefill removed the prose answer: `NO_DIFF` fell **7×**, from 70% to 9.9%.
+The failure moved, it did not disappear — the model now writes unified diffs whose context lines and
+offsets do not match the checkout, and `git apply` refuses 86.5% of them. That is the same wall the
+three earlier representation findings measured, arriving from the other side: this base cannot
+transcribe a patch that applies. Nine draws got past `git apply` and failed their tests; one never
+reached a verdict.
+
+**So the decision-tree branch is the base/approach change**, not a fifth representation and not a
+larger `k` (§ 14). The representation axis is now spent in four forms — quoting, line-range
+addressing, whole-function, and an imposed diff prefill.
+
+**Evidence.** Ledger `docs/planning/pascal-4bit/evidence/ledger-10.31.json` (SHA-256
+`4020aab178b7924916863a53773967d17cc87812fda9b4a56833832716902d03`), content digest
+`45f46f7781a5f5e3a39b09669bc90c41ceeba95bbbcaf94ace5e9b334633e715`, sealed; the 16 attempt
+journals/transcripts (304 rollouts) are archived locally. `check-probe`: `PROCEED`; every control
+`INTACT`.

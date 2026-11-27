@@ -19,6 +19,8 @@ released version until it exists in the code.
 
 - **The Pascal 4-bit near-miss probe is a NO-GO: 304 draws, zero strict `PASS`** (2026-11-25, `pascal-4bit`). `torch-8b-pascal-4bit-002` on x202 completed the § 10.28 sample — 18 private near-miss tasks + the public task, `K = 16`, **304 draws** — with **213 `NO_DIFF`, 86 `NOT_APPLIED`, 5 `NOT_SOLVED` and 0 `SOLVED`** (`solved: 0`, `unverified: 0`). Every control was `INTACT` (16/16 attempts) and `check-probe` returned **`PROCEED`**, so the zero is a measurement of this host and precision, not a harness failure. It is a **NO-GO** under § 10.28 and is **non-comparable** to the MPS series and to any bf16 figure. The sealed ledger is `bd2ff6c318e710593326810edfc80a9ce70ae9bbdfdf5f4ffb7fd39b723a409d`; the record is `docs/planning/pascal-4bit/finding.md`.
 
+- **The diff-prefill contract cuts `NO_DIFF` 7× and still selects no `PASS`** (2026-11-27, `diff-prefill`). `torch-8b-pascal-4bit-003` ran the § 10.31 contract — the prompt ends with an open `diff` fence and a `NO_DIFF` sentinel — on the same 304-draw sample: **`NO_DIFF` 213 → 30 (70.1% → 9.9%)**, **`NOT_APPLIED` 86 → 263 (86.5%)**, 10 `NOT_SOLVED`, 1 `UNVERIFIED`, **0 `SOLVED`**. Every control `INTACT`; `check-probe` `PROCEED`. The wall is patch application, so § 14's next branch is a base/approach change; the sealed ledger is committed at `docs/planning/pascal-4bit/evidence/ledger-10.31.json`.
+
 ## [0.34.1] - 2026-11-05
 
 ### Fixed

@@ -1079,3 +1079,7 @@ negative delta is publishable — `CLAUDE.md` #5 requires the honest number eith
 ### Correction — 2026-11-25: the first Pascal 4-bit measurement is a NO-GO
 
 `torch-8b-pascal-4bit-002` (x202, 4-bit NF4, **304 draws** over 18 near-miss private tasks + the public task) completed with **zero strict-`PASS`** — 213 `NO_DIFF`, 86 `NOT_APPLIED`, 5 `NOT_SOLVED` — while every control was `INTACT` and `check-probe` returned `PROCEED`. The zero is a real measurement of this host and precision, not a harness failure, and it is **non-comparable** to the MPS series and to any bf16 figure. **M1 remains the only identified lever on the zero**, and a NO-GO returns it to a human. Full record: `docs/planning/pascal-4bit/finding.md`.
+
+### Correction — 2026-11-27: the fourth representation form is also NO-GO
+
+`torch-8b-pascal-4bit-003` measured § 10.31's imposed diff prefill on the 304-draw near-miss sample: `NO_DIFF` fell from 213/304 (70.1%) to 30/304 (9.9%), `NOT_APPLIED` rose from 86 to 263 (86.5%), and strict `PASS` stayed at **zero** (10 `NOT_SOLVED`, 1 `UNVERIFIED`; every control `INTACT`, `check-probe` `PROCEED`). The representation axis is now spent in **four** forms — quoting, addressing, whole-function and an imposed diff prefill. The failure is patch application by this base, so **§ 14's next branch is a base/approach change**, and `k`, the dtype and the verifier are not levers. Ledger: `docs/planning/pascal-4bit/evidence/ledger-10.31.json`.
