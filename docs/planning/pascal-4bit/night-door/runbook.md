@@ -24,8 +24,9 @@ beside the 15 recorded ones, and `TorchGenerator.provenance()` records
 The measured pre-flight on x202: **6.75 new tokens/s**, 64 tokens in 9.5 s, **6.07 GB VRAM** of
 7.92 GiB, through the harness's own `TorchGenerator` with the quantized loader
 (an explicit layer range, `.to()` skipped), under `TORCHDYNAMO_DISABLE=1` and
-`TORCH_COMPILE_DISABLE=1`. This is a pre-flight measurement, not the probe below: **no count has
-been measured** under § 10.28, § 10.29 or § 10.31, and the § 3 baseline remains unspent.
+`TORCH_COMPILE_DISABLE=1`. This is a pre-flight measurement, not the probe below: `-003` has
+since measured the § 10.31 contract (see `finding.md`), and **no count has been measured under
+§ 10.32**, so the § 3 baseline remains unspent.
 
 ## The contract
 
@@ -36,8 +37,20 @@ completion therefore starts *inside* the block. `whetstone.bakeoff.patch.extract
 that body with **no opening fence**; a closing fence is optional, and trailing prose after it is
 ignored as before. A completion whose stripped text is exactly `NO_DIFF` is an **explicit
 no-diff with a named reason**, not a parse failure; prose that is not a diff is still a no-diff.
-The run id for this measurement is **`torch-8b-pascal-4bit-003`**; the `-002` prompt hash and
-extractor digest do not match this contract, so it cannot resume that run.
+The run id for this measurement is **`torch-8b-pascal-4bit-004`**; the `-003` contract hash does
+not match this contract, so it cannot resume that run.
+
+## Apply repair (§ 10.32)
+
+A diff git refuses is now a second repair trigger. On `NOT_APPLIED`, the score loop re-asks up to
+**`R = 2`** times with a repair prompt frozen into the contract before the run: the first-attempt
+prompt, a fixed apply-repair instruction, and one fixed sentence for the **finite apply-failure
+class** — `CONTEXT_MISMATCH` (`patch failed` / `does not apply`), `PATH_MISSING` (`No such file` /
+`does not exist`), `MALFORMED` (git's parse errors), or `UNRECOGNISED`. Git's free-form stderr is
+never copied into the prompt. The budget is **shared** with the `NOT_SOLVED` repair: a
+`(candidate, task)` gets at most two repair prompts in total, each is applied and verified by the
+same STRICT verifier as a first attempt, and each is recorded as a `"repair"` row. The next run
+is **`torch-8b-pascal-4bit-004`**; `-003` remains its non-comparable predecessor.
 
 ## The chunked-SDPA shim
 
@@ -170,10 +183,10 @@ $REPO/.venv/bin/whetstone run --night \
   --only Qwen/Qwen3-8B \
   --runs $REPO/runs \
   --checkpoints $REPO/checkpoints \
-  --workspace $REPO/runs/torch-8b-pascal-4bit-003-workspace \
+  --workspace $REPO/runs/torch-8b-pascal-4bit-004-workspace \
   --timeout 900 \
   --recorded-on <date> \
-  --run-id torch-8b-pascal-4bit-003 \
+  --run-id torch-8b-pascal-4bit-004 \
   --run-seed <seed> \
   --heldout $REPO/tasks/heldout/source-b.json
 ```
@@ -187,7 +200,7 @@ exist or must be empty before its command.
 
 ```bash
 $REPO/.venv/bin/whetstone check-probe \
-  --run $REPO/runs/torch-8b-pascal-4bit-003 \
+  --run $REPO/runs/torch-8b-pascal-4bit-004 \
   --heldout $REPO/tasks/heldout/source-b.json \
   --runtime torch \
   --device cuda \

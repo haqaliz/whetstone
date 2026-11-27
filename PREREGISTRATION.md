@@ -338,6 +338,7 @@ which is why this file sits at the repository root and not under `docs/planning/
 | 2026-11-23 | The x202 series runs the quantized base across the visible GPUs with device_map="balanced" and the committed chunked-SDPA shim; § 10.28's one-GPU and no-loader-change lines are superseded (§ 10.29) | 1 — pins the inputs of a measurement | Yes |
 | 2026-11-24 | The x202 quantized base is spread by an explicit layer range over every visible GPU; § 10.29's `balanced` line is superseded (§ 10.30) | 1 — pins the inputs of a measurement | Yes |
 | 2026-11-25 | The x202 generation contract is prefilled with the open `diff` fence and the `NO_DIFF` sentinel; host, sample and GO are unchanged (§ 10.31) | 1 — pins the inputs of a measurement | Yes |
+| 2026-11-27 | A diff that does not apply triggers the pre-posed repair, named by its finite apply-failure class; R = 2 is shared with the failure-class repair (§ 10.32) | 1 — pins the inputs of a measurement | Yes |
 
 Everything above § 10 is as first committed. No amendment has introduced a success threshold, and
 none has narrowed, retracted, or reworded § 1, § 4, or any disclosure in § 6. § 7.3 is closed by the
@@ -1636,3 +1637,65 @@ contract sits between them, and the `-002` prompt hash and extractor digest do n
 **What is not claimed.** **No count has been measured** under this contract. The § 3 baseline
 remains unspent, nothing here claims the prefill selects a strict-`PASS`, and a NO-GO returns the
 lever to a human, never to a loosened verifier.
+
+### 10.32 A diff that does not apply triggers the pre-posed repair — 2026-11-27
+
+**Type 1 (§ 8.1): pins an input of the measurement, committed before the probe it governs
+runs.** It introduces no success threshold, rewords nothing in § 1, § 4 or § 6, and **does not
+edit § 10.31** (nor § 10.27–§ 10.30): this document is append-only. **The only change is the
+second repair trigger** in the score loop; the host, setup, base, sample and goal are § 10.28–§
+10.31 unchanged.
+
+**What the previous measurement showed.** `torch-8b-pascal-4bit-003` completed the same 304-draw
+sample under the § 10.31 prefill with zero strict `PASS`: `NO_DIFF` fell to 30 (9.9%), but
+**`NOT_APPLIED` rose to 263 of 304 (86.5%)** — the model now writes a diff and git refuses its
+context lines or offsets — with 10 `NOT_SOLVED` and 1 `UNVERIFIED`. The existing repair fires
+only after a patch **applies and its tests fail** (`scoring.py:477-499`), so those 263 draws are
+never re-asked. The second trigger is the untried lever on the same contract.
+
+**The second trigger.** On `NOT_APPLIED`, the run re-asks up to **`R = 2`** times with a repair
+prompt that was **frozen into the contract before the run**. The prompt is the first-attempt
+prompt plus a fixed apply-repair instruction plus **one fixed sentence naming the failure class**
+— never git's free-form stderr, which would make the prompt set unbounded and the seal
+unfreezable (spec B1). The classifier is deterministic over `git apply`'s own message and total
+over this finite vocabulary:
+
+- `CONTEXT_MISMATCH` — `patch failed`, `does not apply`, `while searching for`;
+- `PATH_MISSING` — `No such file`, `does not exist`;
+- `MALFORMED` — `corrupt patch`, `No valid patches`, `unrecognized input`, a diff-header parse
+  failure, `could not be parsed`;
+- `UNRECOGNISED` — the catch-all, so every `NOT_APPLIED` draw is still re-askable even when a
+  git wording falls outside the named markers.
+
+**The freeze and the seal.** `run.freeze(..., repair=True)` poses **every class × task** repair
+prompt, through the same `setdefault`, filed under the task whose question it re-asks. The seal
+therefore accepts every repair the loop may issue and refuses anything else, exactly as before.
+The repair template digest (`repair_template_sha256`) now covers the apply instruction and all
+four class sentences, and the run-level prompt digest moves because the posed set grew: a `-003`
+contract does not replay here. This measurement is a fresh run under
+**`torch-8b-pascal-4bit-004`**.
+
+**The budget is shared.** A `(candidate, task)` gets at most `R = 2` repair prompts **in total**,
+whether they answer a `NOT_SOLVED` draw or a `NOT_APPLIED` one — never `1 + 2R` generations. A
+repair is a draw within the same task, recorded with `decision="repair"` and `attempt=1` in file
+order, and its prompt carries the class so the transcript names the failure it answered. The
+sampling `K`, the GO rule, the base, host and precision, the 304-draw sample and the verifier are
+unchanged. **Nothing is loosened:** a repaired diff is applied and verified by the same STRICT
+verifier as a first attempt, and a repaired pass is a strict `PASS`.
+
+**The sample and the GO are unchanged.** The same 18 private near-miss tasks plus the public
+task, `K = 16`, **304 draws**, `--probe 18` on the 30-link near-miss root. **GO iff at least one
+of the 304 draws is strict-`PASS`.**
+
+**What is read.** The primary observation is the **`NOT_APPLIED` share against the measured
+86.5%** and **whether any repaired draw passes**. If the share falls and repairs convert, the
+same contract is measured again on a broader sample. If repaired diffs still fail, the next lever
+is a code-specialised base — **Qwen2.5-Coder-14B at 4-bit** — never a looser verifier.
+
+**Comparability.** Every figure measured under this contract is **non-comparable** to
+`torch-8b-pascal-4bit-003`, to `-002`, to the MPS series and to any bf16 figure: the repair
+vocabulary and the contract digest sit between them.
+
+**What is not claimed.** **No count has been measured** under this contract. The § 3 baseline
+remains unspent, nothing here claims the apply repair selects a strict-`PASS`, and a NO-GO
+returns the lever to a human, never to a loosened verifier.

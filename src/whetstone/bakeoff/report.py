@@ -217,8 +217,9 @@ class GenerationContract:
     #: be told apart programmatically (`p2-yield-probe/prd.md` D9), which § 10.1 asks for.
     retrieval: str
 
-    #: How many repair draws a (candidate, task) may get after a NOT_SOLVED verdict. `0` is the
-    #: no-repairs state: a contract without repair prompts frozen into it declares no budget.
+    #: How many repair draws a (candidate, task) may get, after either a `NOT_SOLVED` verdict or
+    #: a `NOT_APPLIED` one (§ 10.32; one shared budget). `0` is the no-repairs state: a contract
+    #: without repair prompts frozen into it declares no budget.
     repair_budget: int = 0
 
     #: A digest of the repair instruction, recomputable with stdlib alone. Blank exactly when

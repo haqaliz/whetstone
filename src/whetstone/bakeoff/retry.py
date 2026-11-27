@@ -34,6 +34,13 @@ after the generation it records has returned: a prompt refused by the seal raise
 `inner.generate` before any record exists for it, and no further attempts are made (the
 record-follows-generation rule, `transcript.py:223-235`).
 
+**The second repair trigger answers a diff git refused (`PREREGISTRATION.md` § 10.32).** A
+`NOT_APPLIED` record's message is classified into the finite `ApplyFailure` vocabulary and
+re-asked with the same first prompt plus the fixed apply instruction and one class sentence. The
+stderr stays on the record and never enters a prompt — a prompt that carried it would vary with
+every completion and the freeze could not enumerate it. `freeze` poses every class x task
+prompt, so the seal accepts exactly the repairs the score loop may issue.
+
 **Off the reward path, and off the driver path.** Nothing here imports `mlx`, the driver
 (`run.py`), or `scoring`; its own no-inference AST walk (`tests/bakeoff/test_retry.py`)
 refuses all of them. This module may not be imported by anything under `verify/` or
@@ -45,6 +52,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from enum import Enum
 
 from whetstone.bakeoff.diffcheck import (
     Decision,
@@ -123,9 +131,113 @@ def repair_prompt(prompt: str, node_id: str = "", outcome: str = "") -> str:
     return prompt + "\n\n" + REPAIR_INSTRUCTION
 
 
+class ApplyFailure(str, Enum):
+    """Why `git apply` refused a diff — a finite vocabulary, read from its own message.
+
+    The second repair trigger (`PREREGISTRATION.md` § 10.32). The repair prompt may name the
+    shape but never quote the stderr: a prompt that carried git's free-form message would vary
+    with every completion and the freeze could not enumerate it (spec B1). The classifier below
+    is a pure function of the message, so every repair prompt a run may issue is pre-renderable
+    from `(first prompt, class)`.
+
+    `UNRECOGNISED` is the total-function catch-all, not a fourth kind of refusal: every
+    `NOT_APPLIED` must still be re-askable, and a message outside the named markers must not
+    silently disable the trigger.
+    """
+
+    CONTEXT_MISMATCH = "CONTEXT_MISMATCH"
+    PATH_MISSING = "PATH_MISSING"
+    MALFORMED = "MALFORMED"
+    UNRECOGNISED = "UNRECOGNISED"
+
+
+#: The fixed substrings, in match order, that classify git's message. Ordered so a malformed
+#: patch is read as malformed even when its text also mentions a path, and each marker is a
+#: literal from git's own diagnostics (measured on this machine; `test_apply_repair.py` pins
+#: real samples). Case-folded by the classifier; no regex, so a changed git wording is a
+#: classification change, never a crash.
+_APPLY_MARKERS: tuple[tuple[ApplyFailure, tuple[str, ...]], ...] = (
+    (
+        ApplyFailure.MALFORMED,
+        (
+            "corrupt patch",
+            "no valid patches",
+            "unrecognized input",
+            "git diff header",
+            "could not be parsed",
+        ),
+    ),
+    (ApplyFailure.PATH_MISSING, ("no such file", "does not exist")),
+    (ApplyFailure.CONTEXT_MISMATCH, ("patch failed", "does not apply", "while searching for")),
+)
+
+
+def classify_apply_failure(detail: str) -> ApplyFailure:
+    """The class of a `NOT_APPLIED` record's detail, deterministically and totally.
+
+    `detail` is STRICT's `patch-apply` message — git's stderr wrapped by `verify.repo` — and
+    everything here is a fixed substring test over it. No git process, no regex, no task
+    context, so an offline replay of a stored message reaches the same class the live run did.
+    """
+    folded = detail.lower()
+    for failure, markers in _APPLY_MARKERS:
+        if any(marker in folded for marker in markers):
+            return failure
+    return ApplyFailure.UNRECOGNISED
+
+
+#: The fixed apply-repair instruction: the patch was refused before any test ran. It carries
+#: the verdict and never git's message or the prior completion (B1), so the class sentence is
+#: the only varying part and the freeze can pose every variant.
+APPLY_REPAIR_INSTRUCTION = (
+    "Your previous diff did not apply, so the task's tests never ran. Reply again with a "
+    "single unified diff and nothing else, inside one fenced block tagged `diff`. Change only "
+    "the patch; do not edit the tests."
+)
+
+#: One fixed sentence per class. Same finiteness rule as the retry vocabulary: no format hole,
+#: no digit, no completion-derived content — the freeze pre-renders every one of them.
+APPLY_DIAGNOSES: Mapping[ApplyFailure, str] = {
+    ApplyFailure.CONTEXT_MISMATCH: (
+        "The patch's context lines do not match the files at the task's base commit; re-read "
+        "them and write the patch against exactly that text."
+    ),
+    ApplyFailure.PATH_MISSING: (
+        "The patch names a path the task's checkout does not contain; write the patch against "
+        "a path the task's files actually carry."
+    ),
+    ApplyFailure.MALFORMED: (
+        "git could not parse the patch; rewrite it as one well-formed unified diff whose hunk "
+        "headers match their bodies."
+    ),
+    ApplyFailure.UNRECOGNISED: (
+        "git refused the patch for a reason outside the named classes; rewrite it as one "
+        "complete unified diff against the task's files."
+    ),
+}
+
+
+def apply_repair_prompt(prompt: str, failure: ApplyFailure) -> str:
+    """The repair draw of `prompt` for an apply failure, told its class and nothing else.
+
+    Pure in `(prompt, class)`, like `repair_prompt`, so `freeze` poses every class x task
+    prompt before the run and `Sealed` accepts exactly those. The free-form stderr is
+    deliberately absent: only the class sentence travels, which is what keeps the set finite.
+    """
+    return prompt + "\n\n" + APPLY_REPAIR_INSTRUCTION + "\n" + APPLY_DIAGNOSES[failure]
+
+
 def repair_template_sha256() -> str:
     """A digest of the repair vocabulary, published beside the retry template's."""
-    material = "\n".join((REPAIR_INSTRUCTION, REPAIR_TEST_INSTRUCTION, *FAILURE_OUTCOMES))
+    material = "\n".join(
+        (
+            REPAIR_INSTRUCTION,
+            REPAIR_TEST_INSTRUCTION,
+            *FAILURE_OUTCOMES,
+            APPLY_REPAIR_INSTRUCTION,
+            *(sorted(APPLY_DIAGNOSES.values())),
+        )
+    )
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 

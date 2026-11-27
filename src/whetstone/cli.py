@@ -519,8 +519,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         metavar="N",
         help=(
-            "re-ask up to N times with the pre-posed repair prompt after a patch applies and "
-            "the tests fail (0 disables; the repair prompts are frozen into the contract)"
+            "re-ask up to N times in total with the pre-posed repair prompt after a patch "
+            "applies and the tests fail, or after a diff git refuses (the apply failure is "
+            "named by its finite class; 0 disables; the repair prompts are frozen into the "
+            "contract)"
         ),
     )
     night.add_argument(

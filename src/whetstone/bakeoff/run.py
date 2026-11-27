@@ -72,7 +72,9 @@ from whetstone.bakeoff.report import (
 from whetstone.bakeoff.retry import (
     FAILURE_OUTCOMES,
     RETRY_BUDGET,
+    ApplyFailure,
     Retry,
+    apply_repair_prompt,
     repair_prompt,
     retry_prompt,
     retry_template_sha256,
@@ -485,6 +487,12 @@ def freeze(
     published, so a reader recomputing that SHA from the committed manifests gets the published
     value.
 
+    **`repair` folds both repair vocabularies into the same map.** The failure-class repair poses
+    the generic prompt and one per declared test x junit outcome (§ 10.25); the apply repair poses
+    one per `ApplyFailure` class (§ 10.32). Both are pure in `(first prompt, finite verdict)`, so
+    the seal accepts every repair the score loop may issue and nothing else. Off by default: a
+    repair-disabled run's contract is the contract the baseline report published.
+
     **`pool` must be the one `score` is given, and this is the seam where that bites.** A public
     task's file set is declared by its committed gold patch, so a seal taken without the pool omits
     a prompt the rollout then renders — and the sealed generator, correctly, refuses to send a
@@ -512,6 +520,13 @@ def freeze(
                     posed.setdefault(
                         prompt_hash(repair_prompt(first, node_id, outcome)), task.task_id
                     )
+            # The second repair trigger (§ 10.32). The apply failure is classified into this
+            # finite set, and every class x task prompt is posed here — the free-form stderr
+            # never reaches a prompt, so the seal's set stays enumerable.
+            for failure in ApplyFailure:
+                posed.setdefault(
+                    prompt_hash(apply_repair_prompt(first, failure)), task.task_id
+                )
     return Contract(
         sha256=hashlib.sha256("\n".join(sorted(posed)).encode("utf-8")).hexdigest(),
         posed=MappingProxyType(posed),

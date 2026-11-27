@@ -2332,6 +2332,64 @@ def test_the_diff_prefill_amendment_pins_the_contract() -> None:
     )
 
 
+def test_the_apply_repair_amendment_pins_the_contract() -> None:
+    """§ 10.32 adds one repair trigger — a diff that does not apply — and nothing else.
+
+    `torch-8b-pascal-4bit-003` cut `NO_DIFF` to 9.9% and raised `NOT_APPLIED` to 263 of 304
+    draws; the existing repair fires only after a patch applies. The amendment must name the
+    finite apply-failure class vocabulary, the shared `R = 2` budget, the unchanged sample and
+    GO, the frozen repair prompt and its digest, the next-lever rule, and claim no count.
+    """
+    text = _read(PREREGISTRATION)
+    assert "### 10.32" in text, f"{PREREGISTRATION} no longer carries a § 10.32 amendment."
+    section = text.split("### 10.32", 1)[1].split("\n### ", 1)[0]
+    flat = _flat(section)
+
+    for phrase in (
+        "Type 1 (§ 8.1): pins an input of the measurement",
+        "does not edit § 10.31",
+        "second repair trigger",
+        "CONTEXT_MISMATCH",
+        "PATH_MISSING",
+        "MALFORMED",
+        "UNRECOGNISED",
+        "R = 2",
+        "shared",
+        "frozen",
+        "repair_template_sha256",
+        "304",
+        "NOT_APPLIED",
+        "GO iff at least one",
+        "Qwen2.5-Coder-14B",
+        "never a looser verifier",
+        "non-comparable",
+        "No count has been measured",
+        "§ 3 baseline remains unspent",
+        "torch-8b-pascal-4bit-004",
+    ):
+        assert phrase in flat, (
+            f"WHY THIS IS A FAILURE: § 10.32 no longer states {phrase!r}. The second repair "
+            "trigger, its finite vocabulary and shared budget, the unchanged sample and GO, "
+            "and the no-count claim are what a reader checks the run against"
+        )
+
+    row_31 = (
+        "2026-11-25 | The x202 generation contract is prefilled with the open `diff` fence and "
+        "the `NO_DIFF` sentinel; host, sample and GO are unchanged (§ 10.31) | 1 — pins the "
+        "inputs of a measurement | Yes"
+    )
+    row_32 = (
+        "2026-11-27 | A diff that does not apply triggers the pre-posed repair, named by its "
+        "finite apply-failure class; R = 2 is shared with the failure-class repair (§ 10.32) | "
+        "1 — pins the inputs of a measurement | Yes"
+    )
+    whole = _flat(text)
+    assert row_32 in whole, f"{PREREGISTRATION}'s amendment log no longer records § 10.32."
+    assert whole.index(row_31) < whole.index(row_32), (
+        f"{PREREGISTRATION}'s § 10.32 log row is not after the § 10.31 row."
+    )
+
+
 def test_the_pascal_4bit_probe_finding_records_the_zero() -> None:
     """The NO-GO is only a result if the finding carries the measured split and its ledger."""
     text = _read("docs/planning/pascal-4bit/finding.md")

@@ -65,7 +65,7 @@ from typing import Any
 from whetstone.bakeoff.generator import Generator
 from whetstone.bakeoff.patch import Extracted, extract_patch
 from whetstone.bakeoff.rendering import prompt_hash, render_prompt
-from whetstone.bakeoff.retry import repair_prompt
+from whetstone.bakeoff.retry import apply_repair_prompt, classify_apply_failure, repair_prompt
 from whetstone.bakeoff.sources import oracle_sources
 from whetstone.tasks.environment import NotProvisionable, capture
 from whetstone.tasks.gates import Ineligible, check_environment
@@ -416,6 +416,13 @@ def score(
     held test path in its sources the way `render_prompt` does — the seam supplies bytes, never
     permission to show the answer key.
 
+    **A repair is one bounded re-ask, triggered two ways.** A patch that applied and whose tests
+    failed (`NOT_SOLVED`) is re-asked with the first unpassed declared test and its junit
+    outcome; a diff git refused (`NOT_APPLIED`) is re-asked with its finite apply-failure class
+    (`PREREGISTRATION.md` § 10.32). The budget is shared by both triggers, every repair prompt
+    was pre-posed at freeze time, and a repaired diff is applied and verified exactly as a
+    first attempt — a repaired `PASS` is a strict `PASS`.
+
     **The oracle is derived before the prompt exists**, for the same reason and one more: there is
     no prompt to render without it. Provisioning is checked first because a task can fail both
     ways and "the environment could not be built" is the finding an operator can act on — a
@@ -474,15 +481,23 @@ def score(
         timeout=timeout,
         interpreter=acquired.interpreter,
     )
-    # The first attempt's failing test is the trigger for every repair, and it stays on the
-    # record even when a repair succeeds: the near-miss is what the rollout's provenance is about.
+    # The first attempt's failing test is the trigger for every NOT_SOLVED repair, and it stays
+    # on the record even when a repair succeeds: the near-miss is what the rollout's provenance
+    # is about. The loop's budget is per (candidate, task) and **shared** by both triggers
+    # (§ 10.32): a draw is re-asked at most `repair` times in total, whether the current record
+    # is NOT_SOLVED or NOT_APPLIED. A NOT_APPLIED draw is told its finite class and nothing
+    # else — the stderr stays on the record and never reaches a prompt.
     trigger = (verified.failing, verified.failing_outcome)
     for attempt in range(repair):
-        if verified.outcome is not Outcome.NOT_SOLVED:
+        if verified.outcome is Outcome.NOT_APPLIED:
+            asked = apply_repair_prompt(prompt, classify_apply_failure(verified.detail))
+        elif verified.outcome is Outcome.NOT_SOLVED:
+            asked = repair_prompt(prompt, trigger[0], trigger[1])
+        else:
             break
         started = time.perf_counter()
         ask = getattr(generator, "generate_repair", generator.generate)
-        completion = ask(repair_prompt(prompt, trigger[0], trigger[1]))
+        completion = ask(asked)
         verified = replace(verified, generation_seconds=time.perf_counter() - started)
         extraction = extract_patch(completion)
         if not isinstance(extraction, Extracted):
