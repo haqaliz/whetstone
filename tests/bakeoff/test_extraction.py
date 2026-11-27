@@ -121,6 +121,7 @@ NO_DIFF_INPUTS = [
         "```diff\nI'll write the patch now.\n```\n",
         id="fence-labelled-diff-containing-none",
     ),
+    pytest.param("NO_DIFF", id="explicit-no-diff-sentinel"),
 ]
 
 
@@ -368,6 +369,71 @@ def test_a_mixed_patch_keeps_both_the_held_hunk_and_the_source_hunk() -> None:
 # --------------------------------------------------------------------------------------------
 # Locating the diff: fences, bare output, ordering, trailing prose.
 # --------------------------------------------------------------------------------------------
+
+
+def test_the_no_diff_sentinel_is_an_explicit_decline_with_a_named_reason() -> None:
+    """The prefilled contract offers one escape hatch: reply exactly `NO_DIFF`.
+
+    That is not prose and not a parse failure. It is the base saying it cannot produce a diff,
+    and recording it under the prose reason collapses "declined" into "did not follow the
+    format" — two observations with different next levers. Only the exact sentinel counts; a
+    sentence that merely starts with it is still prose.
+    """
+    for text in ("NO_DIFF", "  NO_DIFF  \n"):
+        result = extract_patch(text)
+        assert isinstance(result, NoDiff)
+        assert "NO_DIFF" in result.reason, (
+            f"the sentinel {text!r} was charged a generic reason: {result.reason!r}.\n\n"
+            "WHY THIS IS A FAILURE: the reason is the only evidence separating a base that "
+            "declined from one that ignored the format, and the two have different fixes"
+        )
+
+    embedded = extract_patch("NO_DIFF because the fix is unclear\n")
+    assert isinstance(embedded, NoDiff) and "NO_DIFF" not in embedded.reason, (
+        f"an embedded `NO_DIFF` was read as the sentinel: {embedded.reason!r}\n\n"
+        "WHY THIS IS A FAILURE: a substring match turns any prose that mentions the sentinel "
+        "into an explicit decline, inflating the one count this measurement reads"
+    )
+
+
+def test_prose_in_the_prefilled_block_is_still_a_no_diff() -> None:
+    """The completion begins inside the block; prose there is the same prose as before."""
+    result = extract_patch("I cannot write a unified diff for this change.\n")
+
+    assert isinstance(result, NoDiff), (
+        f"prose was extracted as {result!r}.\n\n"
+        "WHY THIS IS A FAILURE: nothing in the prefill makes prose a patch; handing anything "
+        "patch-shaped to the verifier grades text the base never wrote"
+    )
+    assert "prose" in result.reason, (
+        f"prose was not named as prose: {result.reason!r}.\n\n"
+        "WHY THIS IS A FAILURE: the reason is what tells the next reader whether the contract "
+        "was followed and declined, or ignored"
+    )
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        pytest.param("", id="no-closing-fence"),
+        pytest.param("```\n", id="closing-fence"),
+        pytest.param("```\n\nThat fixes the sign error.\n", id="closing-fence-then-prose"),
+    ],
+)
+def test_a_prefilled_body_is_extracted_with_an_optional_closing_fence(tail: str) -> None:
+    """The completion starts inside the block, so there is no opening fence to key on.
+
+    The body is the diff itself, followed by nothing, a closing fence, or a closing fence and an
+    explanation. All three are the prefilled contract being followed.
+    """
+    result = extract_patch(GOOD_DIFF + tail)
+
+    assert isinstance(result, Extracted) and result.diff == GOOD_DIFF, (
+        f"a prefilled body with {tail!r} after it was not extracted cleanly: {result!r}\n\n"
+        "WHY THIS IS A FAILURE: the prompt now opens the fence itself. Requiring the model to "
+        "open it again would charge a compliant base NO_DIFF for following the contract, and "
+        "the measured NO_DIFF share would be a fact about the extractor"
+    )
 
 
 @pytest.mark.parametrize("info", ["diff", "patch", ""])

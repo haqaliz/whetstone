@@ -16,6 +16,15 @@
         "src/whetstone/verify/repo.py"
       ],
       "reason": "The one public task's checkout needed the network at the end of a long night, so its control arm could not run and two six-hour nights were lost to UNVERIFIED. `materialise` is the boundary every caller meets, so the fix lives here: an explicit local mirror (`WHETSTONE_REPO_MIRRORS`), reuse of a clean pre-provisioned checkout at `base_commit` (never deleted, never cloned over), and repo-local hooks neutralised with `core.hooksPath=/dev/null` plus `GIT_NO_LAZY_FETCH=1`. No verdict moves: STRICT and WEAK, the sandbox, the task contract, the held-out document and the gate rule are untouched; the reward is still the same re-execution against the same operator-held tests. The two lost nights are the evidence for the change, and the new tests exercise the mirror, the reuse and the hook refusal."
+    },
+    {
+      "id": "2026-11-25-diff-prefill",
+      "recorded_on": "2026-11-25",
+      "paths": [
+        "src/whetstone/bakeoff/patch.py",
+        "src/whetstone/bakeoff/attribution.py"
+      ],
+      "reason": "The prefilled generation contract changes what the extractor reads. `patch.py` gains exactly one `NoDiff` construction site for a completion whose stripped text is `NO_DIFF`, the contract's explicit decline, while its never-repair rule and every existing reason stay byte-for-byte. `attribution.py` gains the matching coarse cause and marker, so the taxonomy remains a bijection with the extractor's reasons instead of folding a decline into prose. No verdict, reward, sandbox, scope rule or task content moves: the verifier, the sandbox and `verify/` are untouched, and the only new output shape is a no-diff that was previously charged as prose."
     }
   ]
 }

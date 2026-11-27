@@ -302,6 +302,56 @@ def test_the_oracle_sources_are_shown_with_their_paths(tmp_path: Path) -> None:
     )
 
 
+def test_the_prompt_ends_with_an_open_diff_fence(tmp_path: Path) -> None:
+    """The generation contract is prefilled: the completion starts inside the diff block.
+
+    Measured on the 304-draw Pascal probe: 213 draws (70%) answered the old contract — which
+    already asked for a single fenced diff — in prose, and every one was charged `NO_DIFF`. An
+    instruction a base can ignore is not a constraint; an open fence is, because the completion
+    begins inside it. The example above it stays, because it is what teaches the grammar.
+    """
+    task = build_task(tmp_path, SENTINEL_REPO, task_id="sentinel-held-test").task
+    prompt = render_prompt(task, ORACLE_SOURCES)
+
+    assert "Continue the diff inside this block." in prompt, (
+        "the rendered prompt does not tell the base to continue inside the block.\n\n"
+        "WHY THIS IS A FAILURE: the open fence is the constraint; the sentence is what makes it "
+        "an instruction rather than a truncated prompt. Without it the base is asked to guess "
+        "whether the block is open on purpose."
+    )
+    assert "reply exactly NO_DIFF" in prompt, (
+        "the rendered prompt offers no explicit way to decline.\n\n"
+        "WHY THIS IS A FAILURE: without a sentinel a base that cannot write the diff has only "
+        "prose to fall back on, and the run cannot tell a decline from a formatting failure"
+    )
+    assert prompt.endswith("```diff\n"), (
+        f"the prompt does not end with the open ```diff fence: {prompt[-80:]!r}\n\n"
+        "WHY THIS IS A FAILURE: the completion must begin inside the block. A closing fence or "
+        "trailing prose after the opening fence hands the base a new decision about where to "
+        "answer, which is the decision the prefill exists to remove."
+    )
+    after = prompt[prompt.rindex("```diff") + len("```diff") :]
+    assert after == "\n", (
+        f"something follows the opening fence: {after!r}\n\n"
+        "WHY THIS IS A FAILURE: a closing fence or trailing prose after the opening fence hands"
+        " the base a new decision about where to answer, which is the decision the prefill"
+        " exists to remove."
+    )
+    example = (
+        "```diff\n"
+        "--- a/path/to/file.py\n"
+        "+++ b/path/to/file.py\n"
+        "@@ ... @@\n"
+        "```\n"
+    )
+    assert example in prompt, (
+        "the diff grammar example is no longer in the prompt.\n\n"
+        "WHY THIS IS A FAILURE: the prefilled fence opens a block; it does not teach what goes "
+        "in one. Removing the example would make the contract a bare delimiter and score the "
+        "base's guess at the grammar rather than its ability to fix the task."
+    )
+
+
 def test_a_source_map_naming_an_operator_held_path_is_refused(tmp_path: Path) -> None:
     """The absolute ban, restated for the world where file contents ARE in the prompt.
 

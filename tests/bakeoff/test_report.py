@@ -2083,9 +2083,11 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
     `reports/local/` is excluded because `.gitignore` reserves it for the user's own nightly
     output, which is their data and never ours to assert on.
 
-    The document half is unchanged and is the part that never moves: `docs/ROADMAP.md` still
-    forbids a performance figure inside itself, and `PREREGISTRATION.md` still carries no
-    proportion in any spelling.
+    The document half is unchanged in spirit and is where the one exception lives: `docs/ROADMAP.md`
+    still forbids a performance figure inside itself, and `PREREGISTRATION.md` still carries no
+    proportion before § 10.31. That amendment is committed after `torch-8b-pascal-4bit-002` and
+    exists to name the measured `NO_DIFF` baseline, so its percentage must sit beside its raw
+    count and denominator (`213 of 304`); everything before it is banned outright.
     """
     reports = REPO_ROOT / "reports"
     relative = (
@@ -2141,11 +2143,18 @@ def test_the_authoritative_documents_still_hold_no_figure_about_a_model() -> Non
         "forbids a figure about a model no longer says so. reports/baseline/ is the only "
         "sanctioned home for one"
     )
-    prereg = (REPO_ROOT / "PREREGISTRATION.md").read_text(encoding="utf-8").lower()
-    assert not any(token in prereg for token in ("%", "percent", "percentage")), (
-        "WHY THIS IS A FAILURE: a proportion reached PREREGISTRATION.md. It is committed before "
-        "the first measurement, so a proportion in it is either a target smuggled in as a result "
-        "or a number that leaked back from one"
+    prereg = (REPO_ROOT / "PREREGISTRATION.md").read_text(encoding="utf-8")
+    before, separator, measured = prereg.partition("### 10.31")
+    assert separator, "PREREGISTRATION.md no longer carries the § 10.31 measured baseline"
+    assert not any(token in before.lower() for token in ("%", "percent", "percentage")), (
+        "WHY THIS IS A FAILURE: a proportion reached PREREGISTRATION.md before § 10.31. Those "
+        "sections are committed before the first measurement, so a proportion there is either a "
+        "target smuggled in as a result or a number that leaked back from one"
+    )
+    assert "70%" in measured and "213" in measured and "304" in measured, (
+        "WHY THIS IS A FAILURE: § 10.31 states the measured `NO_DIFF` proportion without its "
+        "count and denominator beside it. The baseline is 213 of 304 draws; a bare percentage "
+        "cannot be checked"
     )
 
 

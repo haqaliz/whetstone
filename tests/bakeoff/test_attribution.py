@@ -100,9 +100,10 @@ NO_DIFF_COMPLETIONS: tuple[tuple[str, Cause], ...] = (
     ),
     ("Try this:\n\n```python\ndef add(a, b):\n    return a + b\n```\n", Cause.FENCED_WITHOUT_DIFF),
     ("The bug is that `add` subtracts instead of adding.\n", Cause.NO_DIFF_HEADER),
+    ("NO_DIFF", Cause.EXPLICIT_NO_DIFF),
 )
 
-#: Marks an interpolation when a reason is reconstructed from source. Two of `patch.py`'s four
+#: Marks an interpolation when a reason is reconstructed from source. Two of `patch.py`'s five
 #: reasons are f-strings, and a bucket's marker must live inside one literal run rather than
 #: spanning a `{...}` — otherwise it would match the source and never match a real reason.
 PLACEHOLDER = "\x00"
@@ -223,18 +224,19 @@ def test_a_stored_completion_re_extracts_to_what_the_live_path_produced(tmp_path
 
 
 # --------------------------------------------------------------------------------------------
-# Layer 1's taxonomy: the buckets are `patch.py`'s reasons, and a fifth one must fail loudly.
+# Layer 1's taxonomy: the buckets are `patch.py`'s reasons, and a new one must fail loudly.
 # --------------------------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(("completion", "expected"), NO_DIFF_COMPLETIONS)
 def test_each_no_diff_reason_lands_in_its_own_bucket(completion: str, expected: Cause) -> None:
-    """Four shapes a base emits, four distinct causes, four different fixes.
+    """Five shapes a base emits, five distinct causes, five different fixes.
 
-    "Wrote prose", "wrote a fenced block that was not a patch", "started a patch and stopped" and
-    "said nothing" are a prompt problem, an extractor-or-format problem, a token-budget problem and
-    a model problem. Collapsing any pair of them would send the next slice's format choice after
-    the wrong one.
+    "Wrote prose", "wrote a fenced block that was not a patch", "started a patch and stopped",
+    "said nothing" and "declined with the sentinel" are a prompt problem, an
+    extractor-or-format problem, a token-budget problem, a model problem and a task-or-base
+    problem. Collapsing any pair of them would send the next slice's format choice after the
+    wrong one.
     """
     extraction = extract_patch(completion)
     assert isinstance(extraction, NoDiff), extraction
@@ -244,7 +246,7 @@ def test_each_no_diff_reason_lands_in_its_own_bucket(completion: str, expected: 
     assert result.cause is expected, (
         f"{completion!r} was attributed {result.cause} rather than {expected};"
         f" the extractor's reason was {extraction.reason!r}.\n\n"
-        "WHY THIS MATTERS: these four causes have four different fixes. A breakdown that merges"
+        "WHY THIS MATTERS: these five causes have five different fixes. A breakdown that merges"
         " any two of them reports a cause nobody measured, and the next slice spends a generation"
         " pass fixing it."
     )
@@ -334,7 +336,7 @@ def test_every_no_diff_site_in_patch_py_is_covered_by_exactly_one_bucket() -> No
     )
 
 
-def test_a_fifth_no_diff_reason_is_reported_rather_than_absorbed() -> None:
+def test_a_new_no_diff_reason_is_reported_rather_than_absorbed() -> None:
     """The mapping check's teeth, demonstrated on a synthetic `patch.py` rather than claimed.
 
     Written against a copy in memory so proving the guard works never means committing a
@@ -347,7 +349,7 @@ def test_a_fifth_no_diff_reason_is_reported_rather_than_absorbed() -> None:
     unmatched = [site for site in sites if not _covering_buckets(site)]
 
     assert unmatched == ["the model emitted a shape nobody has bucketed yet"], (
-        f"a planted fifth reason was not reported as uncovered; unmatched={unmatched}.\n\n"
+        f"a planted new reason was not reported as uncovered; unmatched={unmatched}.\n\n"
         "WHY THIS MATTERS: if a new reason can be added to patch.py without failing this file,"
         " the breakdown silently stops describing the extractor it claims to describe."
     )

@@ -124,13 +124,15 @@ _FENCE = "`"
 _MINIMUM_FENCE = 3
 _BACKTICKS = re.compile(r"`+")
 
-#: The output contract. A fenced `diff` block is what the extractor (`patch.py`) looks for, and
-#: an unfenced or prose-wrapped answer is charged as no-diff rather than as a wrong fix. Asking
-#: for the shape the extractor reads is not tuning — it is the two halves of one contract agreeing
-#: about what a response is.
+#: The output contract, imposed rather than requested. A fenced `diff` block is what the
+#: extractor (`patch.py`) reads, and the 304-draw Pascal probe measured what asking for one is
+#: worth: **213 draws (70%) answered in prose anyway**, and every one was charged no-diff. The
+#: contract now ends with an **open** fence, so the completion starts inside the block and prose
+#: is not an option; `NO_DIFF` is the one explicit way to decline. The example above the fence
+#: stays: the prefill says where to answer, the example says what a diff looks like.
 _RESPONSE_HEADING = "# Response format"
 _RESPONSE_FORMAT = (
-    "Reply with a single unified diff and nothing else, inside one fenced block tagged `diff`:\n"
+    "Here is the shape a diff takes:\n"
     "\n"
     "```diff\n"
     "--- a/path/to/file.py\n"
@@ -138,7 +140,10 @@ _RESPONSE_FORMAT = (
     "@@ ... @@\n"
     "```\n"
     "\n"
-    "Paths are relative to the repository root."
+    "Paths are relative to the repository root.\n"
+    "\n"
+    "Continue the diff inside this block. If you cannot produce a diff, reply exactly NO_DIFF.\n"
+    "```diff"
 )
 
 #: The digest's encoding, pinned rather than left to the platform. `str.encode()` defaults to

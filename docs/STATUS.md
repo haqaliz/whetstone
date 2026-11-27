@@ -10,6 +10,12 @@ carries the current state and the rules that still bind.
 
 ---
 
+**The generation contract pre-fills the diff block, so prose is not an option** (2026-11-25, `diff-prefill`). The 304-draw Pascal probe answered the old prompt — which already asked for a single fenced diff — in prose **70%** of the time (`torch-8b-pascal-4bit-002`: 213 `NO_DIFF`, 86 `NOT_APPLIED`, 5 `NOT_SOLVED`, zero `PASS`), and the 8B MPS series showed the same mix (416 `NO_DIFF` of 624, 67%). `PREREGISTRATION.md` § 10.31 (Type 1) changes the generation contract and nothing else: the rendered prompt ends with `Continue the diff inside this block. If you cannot produce a diff, reply exactly NO_DIFF.` and an open `diff` fence, so the completion starts inside the block. The extractor reads a body with no opening fence, accepts an optional closing fence, ignores trailing prose, and records a stripped `NO_DIFF` as an explicit decline with its own reason; prose is still a no-diff and a malformed diff is still a failure with its reason. The prompt hash and extractor digest move, so the measurement is a fresh `torch-8b-pascal-4bit-003`; the host, 4-bit NF4 bf16 compute, the 256-query chunked-SDPA shim, the per-layer spread, the 18 + public sample at `K = 16` (**304 draws**, `--probe 18`) and the GO (at least one strict `PASS`) are unchanged.
+
+**What is not claimed.** No count has been measured under the prefilled contract. The 70% figure is the previous run's measured baseline, every figure is non-comparable to it and to the MPS series, and the § 3 baseline remains unspent. If the `NO_DIFF` share collapses and still no `PASS` appears, the next lever is a base or approach change, never a looser verifier.
+
+---
+
 **The main series moves to x202 at 4-bit NF4, and the provenance records the quantization** (2026-11-23, `pascal-4bit`). The pinned `torch 2.14.1+cu130` has no `sm_61` kernels, so the main series cannot draw a token on its own host. Two measurements on x202 settled the move: `torch 2.14.1+cu126` runs fp16/bf16 on the GTX 1080, and the pinned 8B base loads 4-bit NF4 with bf16 compute through the existing `quantize.json` sidecar at 6.75 new tokens/s and 6.07 GB of 7.92 GiB.
 
 **What shipped.**

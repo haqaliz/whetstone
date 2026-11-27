@@ -32,12 +32,12 @@ of observed data — it is labelled `inherited-not-observed` so no reader mistak
 grounded one (`prd.md` § 8 gap 2).
 
 **Identity, not equivalence.** The fine pass walks with `patch.py`'s own functions — imported,
-never copied (`prd.md` R1) — and this file asserts the module uses them by identity and that
-`patch.py` itself has no diff on this branch. `_hunk_body` is the one extractor private the walk
-does not call: its return value exposes only where the body stopped, not *why*, and the whole
-point of this phase is the why — so the walk re-runs the body consumption recording the stop
-reason, over the same span, against the same counts. The identity test pins the five functions
-the walk does call.
+never copied (`prd.md` R1) — and this file asserts the module uses them by identity and that the
+header grammar and metadata vocabulary the walk reads are unchanged. `_hunk_body` is the one
+extractor private the walk does not call: its return value exposes only where the body stopped,
+not *why*, and the whole point of this phase is the why — so the walk re-runs the body
+consumption recording the stop reason, over the same span, against the same counts. The identity
+test pins the five functions the walk does call.
 
 All fixtures are tiny synthetic strings with toy paths (`adder.py`, `multiplier.py`) — replicas
 of the dig's observed shapes, never donor content (`card.md:68-70`).
@@ -59,9 +59,6 @@ from whetstone.bakeoff.autopsy import (
     classify_completion,
     im_start_ratio,
 )
-
-#: The repository root, reached from `tests/bakeoff/`. Used by the `patch.py`-unmodified guard.
-ROOT = Path(__file__).resolve().parents[2]
 
 # --------------------------------------------------------------------------------------------
 # One fixture per outcome — synthetic replicas of the dig's observed shapes (`dig-transcripts.md`
@@ -536,26 +533,44 @@ def test_classify_uses_patch_pys_own_functions_by_identity() -> None:
     assert autopsy_module.NoDiff is patch_module.NoDiff
 
 
-def test_patch_py_is_unmodified_on_this_branch(tmp_path: Path) -> None:
-    """`patch.py` has no diff on this branch: the walk measures the extractor it was built on.
+def test_the_extractor_grammar_the_walk_was_built_on_is_unchanged() -> None:
+    """The walk borrows `patch.py`'s span logic; the grammar under it is pinned by value.
 
-    The identity test pins the function objects; this pins the file. A `patch.py` modified on
-    the same branch would mean the stored completions were extracted by a different extractor
-    than the one this slice's fixtures were built against — and the verification runs the git
-    with the developer's own configuration switched off, so a machine-local setting cannot
-    change what the diff reports (`test_attribution.py:118-141`).
+    `patch.py` may grow behaviours the walk never calls — the prefilled contract's `NO_DIFF`
+    sentinel is one. What it may not do is change the header grammar or the metadata vocabulary
+    underneath the walk, because that would move the spans the stored completions were classified
+    over, and a fixture need not notice. The identity test pins the function objects; this pins
+    the constants those functions read.
     """
-    result = git(
-        ["diff", "--stat", "origin/master", "--", "src/whetstone/bakeoff/patch.py"],
-        cwd=ROOT,
+    assert patch_module._HUNK_HEADER.pattern == (
+        r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@"
+    ), "the hunk-header grammar moved under the autopsy's span walk"
+    assert (
+        patch_module._GIT_HEADER,
+        patch_module._OLD_FILE,
+        patch_module._NEW_FILE,
+        patch_module._FENCE,
+    ) == ("diff --git ", "--- ", "+++ ", "```"), (
+        "the diff-opening or fence grammar moved under the autopsy's span walk"
     )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout == "", (
-        f"patch.py changed on this branch:\n{result.stdout}\n\n"
-        "WHY THIS MATTERS: the autopsy's walk is pinned to the extractor's own span logic; a "
-        "file modified under it means the fixtures and the real extractor describe different "
-        "code, and the identity test above would be passing for the wrong reason."
-    )
+    assert patch_module._HEADER_PREFIXES == (
+        "diff --git ",
+        "--- ",
+        "+++ ",
+        "index ",
+        "old mode ",
+        "new mode ",
+        "new file mode ",
+        "deleted file mode ",
+        "similarity index ",
+        "dissimilarity index ",
+        "rename from ",
+        "rename to ",
+        "copy from ",
+        "copy to ",
+        "Binary files ",
+        "GIT binary patch",
+    ), "the metadata vocabulary the span walk skips moved"
 
 
 def test_classifying_a_fixture_twice_yields_identical_records() -> None:
