@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="360" viewBox="0 0 820 360">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="20" y="26" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold">Share of draws by outcome: prefill contract vs baseline</text>
+<rect x="20" y="40" width="12" height="12" fill="#c9d6e3"/><text x="38" y="51" font-family="Helvetica, Arial, sans-serif" font-size="12">-002 (no prefill, 304 draws)</text>
+<rect x="230" y="40" width="12" height="12" fill="#5a9e6f"/><text x="248" y="51" font-family="Helvetica, Arial, sans-serif" font-size="12">-003 (prefill, 304 draws)</text>
+<text x="130" y="83.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="13">NO_DIFF</text>
+<rect x="140" y="60.0" width="482.9111111111111" height="19.0" fill="#c9d6e3"/>
+<text x="628.911111111111" y="77.0" font-family="Helvetica, Arial, sans-serif" font-size="12">70.1%</text>
+<rect x="140" y="83.0" width="68.2" height="19.0" fill="#5a9e6f"/>
+<text x="214.2" y="100.0" font-family="Helvetica, Arial, sans-serif" font-size="12">9.9%</text>
+<text x="130" y="133.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="13">NOT_APPLIED</text>
+<rect x="140" y="110.0" width="194.95555555555558" height="19.0" fill="#c9d6e3"/>
+<text x="340.9555555555556" y="127.0" font-family="Helvetica, Arial, sans-serif" font-size="12">28.3%</text>
+<rect x="140" y="133.0" width="595.8888888888889" height="19.0" fill="#5a9e6f"/>
+<text x="741.8888888888889" y="150.0" font-family="Helvetica, Arial, sans-serif" font-size="12">86.5%</text>
+<text x="130" y="183.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="13">NOT_SOLVED</text>
+<rect x="140" y="160.0" width="11.022222222222222" height="19.0" fill="#c9d6e3"/>
+<text x="157.0222222222222" y="177.0" font-family="Helvetica, Arial, sans-serif" font-size="12">1.6%</text>
+<rect x="140" y="183.0" width="22.733333333333334" height="19.0" fill="#5a9e6f"/>
+<text x="168.73333333333335" y="200.0" font-family="Helvetica, Arial, sans-serif" font-size="12">3.3%</text>
+<text x="130" y="233.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="13">UNVERIFIED</text>
+<rect x="140" y="210.0" width="1" height="19.0" fill="#c9d6e3"/>
+<text x="147" y="227.0" font-family="Helvetica, Arial, sans-serif" font-size="12">0.0%</text>
+<rect x="140" y="233.0" width="2.0666666666666664" height="19.0" fill="#5a9e6f"/>
+<text x="148.06666666666666" y="250.0" font-family="Helvetica, Arial, sans-serif" font-size="12">0.3%</text>
+<text x="130" y="283.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="13">SOLVED</text>
+<rect x="140" y="260.0" width="1" height="19.0" fill="#c9d6e3"/>
+<text x="147" y="277.0" font-family="Helvetica, Arial, sans-serif" font-size="12">0.0%</text>
+<rect x="140" y="283.0" width="1" height="19.0" fill="#5a9e6f"/>
+<text x="147" y="300.0" font-family="Helvetica, Arial, sans-serif" font-size="12">0.0%</text>
+</svg>
